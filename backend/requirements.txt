@@ -1,0 +1,18 @@
+# Core web framework for all services
+fastapi
+uvicorn[standard]
+
+# For HTTP requests between services (used by orchestrator)
+httpx
+
+# For environment variable management (used by llm_gateway)
+pydantic-settings
+
+# For file uploads (used by file_service)
+python-multipart
+
+# For PDF text extraction (used by pdf_parser)
+PyMuPDF
+
+# Google Gemini API client library (used by llm_gateway)
+google-generativeai

@@ -1,0 +1,128 @@
+version: '3.8'
+
+services:
+  # The main brain of the application
+  report_orchestrator:
+    build:
+      context: ./backend/services/report_orchestrator
+      args:
+        - DOCKER_BUILDKIT=1
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/services/report_orchestrator/app:/usr/src/app/app
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  # Service for handling file uploads
+  file_service:
+    build:
+      context: ./backend/services/file_service
+      args:
+        - DOCKER_BUILDKIT=1
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./backend/services/file_service/app:/usr/src/app/app
+      - uploads_volume:/var/uploads
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  # Service for parsing PDF files
+  pdf_parser:
+    build:
+      context: ./backend/services/pdf_parser
+      args:
+        - DOCKER_BUILDKIT=1
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./backend/services/pdf_parser/app:/usr/src/app/app
+      - uploads_volume:/var/uploads
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  # Service for parsing Excel files
+  excel_parser:
+    build:
+      context: ./backend/services/excel_parser
+      args:
+        - DOCKER_BUILDKIT=1
+    ports:
+      - "8004:8004"
+    volumes:
+      - ./backend/services/excel_parser/app:/usr/src/app/app
+      - uploads_volume:/var/uploads
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  # Service for parsing Word files
+  word_parser:
+    build:
+      context: ./backend/services/word_parser
+      args:
+        - DOCKER_BUILDKIT=1
+    ports:
+      - "8005:8005"
+    volumes:
+      - ./backend/services/word_parser/app:/usr/src/app/app
+      - uploads_volume:/var/uploads
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  # Service for fetching public company data
+  public_data_service:
+    build:
+      context: ./backend/services/public_data_service
+      args:
+        - DOCKER_BUILDKIT=1
+    ports:
+      - "8006:8006"
+    volumes:
+      - ./backend/services/public_data_service/app:/usr/src/app/app
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  # Service acting as a gateway to Large Language Models
+  llm_gateway:
+    build:
+      context: ./backend/services/llm_gateway
+      args:
+        - DOCKER_BUILDKIT=1
+    env_file:
+      - .env # Load environment variables from .env file
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./backend/services/llm_gateway/app:/usr/src/app/app
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  # --- Placeholder services to be implemented ---
+  # Add other services like excel_parser, etc. here
+  # following the same pattern.
+
+  # --- Infrastructure Dependencies ---
+
+  # PostgreSQL Database (Temporarily disabled due to network issues)
+  # postgres_db:
+  #   image: postgres:15-alpine
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data/
+  #   environment:
+  #     - POSTGRES_USER=admin
+  #     - POSTGRES_PASSWORD=secret
+  #     - POSTGRES_DB=investor_agent_db
+
+  # RabbitMQ Message Broker (Temporarily disabled due to network issues)
+  # message_queue:
+  #   image: rabbitmq:3.12-management-alpine
+  #   ports:
+  #     - "5672:5672" # For application connection
+  #     - "15672:15672" # For web management UI
+
+volumes:
+  # postgres_data:
+  uploads_volume:

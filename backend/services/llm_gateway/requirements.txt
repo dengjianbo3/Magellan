@@ -1,0 +1,9 @@
+# Core web framework
+fastapi
+uvicorn[standard]
+
+# For environment variable management
+pydantic-settings
+
+# Google Gemini API client library
+google-generativeai

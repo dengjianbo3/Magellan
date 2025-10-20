@@ -1,0 +1,27 @@
+# IDE and OS files
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.log
+
+# Node.js
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Secrets
+.env
+
+# Uploads from file_service
+# Note: This directory is created inside the container via a volume.
+# Adding it here is good practice for local development.
+uploads/

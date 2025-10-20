@@ -1,0 +1,6 @@
+# Core web framework
+fastapi
+uvicorn[standard]
+
+# For parsing Word documents (.docx)
+python-docx

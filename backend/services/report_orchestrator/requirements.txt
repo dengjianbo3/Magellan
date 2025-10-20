@@ -1,0 +1,12 @@
+# Core web framework
+fastapi
+uvicorn[standard]
+
+# For making HTTP requests to other services
+httpx
+
+# For handling file uploads from the client
+python-multipart
+
+# For environment variable management (good practice)
+pydantic-settings

@@ -1,0 +1,9 @@
+# Core web framework
+fastapi
+uvicorn[standard]
+
+# Needed for FastAPI to handle file uploads
+python-multipart
+
+# For interacting with object storage like S3/MinIO (planning ahead)
+boto3
