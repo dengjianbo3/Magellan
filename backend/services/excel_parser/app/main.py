@@ -15,10 +15,23 @@ class ParseResponse(BaseModel):
     file_id: str
     extracted_data: dict[str, list[dict]] # A dict where keys are sheet names
 
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+import pandas as pd
+
 app = FastAPI(
     title="Excel Parsing Service",
-    description="Extracts structured data from Excel files into JSON.",
+    description="Extracts content from Excel files into a structured format.",
     version="1.0.0"
+)
+
+# --- CORS Middleware ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.post("/parse_excel", response_model=ParseResponse, tags=["Parsing"])

@@ -1,24 +1,23 @@
 # backend/services/word_parser/app/main.py
 import os
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from docx import Document
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
-
-SHARED_VOLUME_PATH = "/var/uploads"
-
-class ParseRequest(BaseModel):
-    file_id: str = Field(..., description="The unique filename of the Word document to parse.")
-
-class ParseResponse(BaseModel):
-    file_id: str
-    extracted_text: str
-    # In the future, we could also extract tables, images, etc.
-    # tables: list[list[list[str]]]
+import io
 
 app = FastAPI(
-    title="Word Parsing Service",
+    title="Word Document Parsing Service",
     description="Extracts text content from .docx files.",
     version="1.0.0"
+)
+
+# --- CORS Middleware ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.post("/parse_word", response_model=ParseResponse, tags=["Parsing"])

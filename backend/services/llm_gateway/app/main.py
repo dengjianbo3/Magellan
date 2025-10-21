@@ -1,82 +1,81 @@
 # backend/services/llm_gateway/app/main.py
 import google.generativeai as genai
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from typing import List
 
 from .core.config import settings
 
 # --- Pydantic Models for API Request/Response ---
-class GenerateRequest(BaseModel):
-    """Request model for the /generate endpoint."""
-    # As per user request, we will use the specified model name
-    model: str = Field(default="gemini-2.5-pro", description="The model to use for generation.")
-    prompt: str = Field(..., description="The prompt to send to the language model.")
+class ChatMessage(BaseModel):
+    role: str
+    parts: List[str]
 
-class Message(BaseModel):
+class GenerateRequest(BaseModel):
+    model: str = Field(default=settings.GEMINI_MODEL_NAME, description="The model to use for generation.")
+    history: List[ChatMessage] = Field(..., description="The conversational history to provide context.")
+
+class GenerateResponse(BaseModel):
     role: str
     content: str
 
-class Choice(BaseModel):
-    message: Message
-
-class GenerateResponse(BaseModel):
-    """Standardized response model, mimicking OpenAI's structure for consistency."""
-    model: str
-    choices: list[Choice]
-
 # --- FastAPI Application ---
 app = FastAPI(
-    title="LLM Gateway Service",
-    description="A gateway to interact with Google's Gemini Pro models.",
-    version="1.0.0"
+    title="LLM Gateway Service (Gemini)",
+    description="A dedicated gateway to interact with Google's Gemini models, optimized for chat.",
+    version="2.1.0" # Version bump
 )
 
+# --- CORS Middleware ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # --- Application Lifespan Events ---
 @app.on_event("startup")
 def startup_event():
-    """
-    On application startup, configure the Google Generative AI client
-    using the API key from the environment settings.
-    """
     try:
         genai.configure(api_key=settings.GOOGLE_API_KEY)
     except Exception as e:
-        # This will prevent the app from starting if the API key is missing or invalid
         raise RuntimeError(f"Failed to configure Google AI client: {e}")
 
 # --- API Endpoints ---
 @app.get("/", tags=["Health Check"])
 def read_root():
-    """Health check endpoint."""
     return {"status": "ok", "service": "LLM Gateway"}
 
-@app.post("/generate", response_model=GenerateResponse, tags=["AI Generation"])
-async def generate_text(request: GenerateRequest):
-    """
-    Receives a prompt and generates a response using the specified Gemini model.
-    """
+@app.post("/chat", response_model=GenerateResponse, tags=["AI Generation"])
+async def chat_handler(request: GenerateRequest):
+    print(f"--- LLM GATEWAY: RECEIVED REQUEST ---")
+    print(request.json())
+    print("------------------------------------")
     try:
-        model = genai.GenerativeModel(request.model)
-        response = model.generate_content(request.prompt)
+        # Explicitly use the v1beta API version to access the latest models
+        model = genai.GenerativeModel(model_name=request.model)
+        
+        gemini_history = [{'role': msg.role, 'parts': msg.parts} for msg in request.history]
+        latest_prompt = gemini_history.pop(-1)['parts']
 
-        # Standardize the response to our internal format.
-        # This abstraction is useful if we ever want to support multiple providers.
-        standardized_response = GenerateResponse(
-            model=request.model,
-            choices=[
-                Choice(
-                    message=Message(
-                        role="assistant",
-                        content=response.text
-                    )
-                )
-            ]
+        chat = model.start_chat(history=gemini_history)
+        response = await chat.send_message_async(latest_prompt)
+
+        response_data = GenerateResponse(
+            role="model",
+            content=response.text
         )
-        return standardized_response
+        print(f"--- LLM GATEWAY: SENDING RESPONSE ---")
+        print(response_data.json())
+        print("-------------------------------------")
+        return response_data
 
     except Exception as e:
-        # Catch potential errors from the Gemini API (e.g., invalid model, safety blocks)
+        # Log the detailed error from the API
+        print(f"An error occurred with the Gemini API: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"An error occurred with the Gemini API: {e}"
+            detail=f"An error occurred with the Gemini API: {str(e)}"
         )
