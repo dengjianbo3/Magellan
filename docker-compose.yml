@@ -83,6 +83,19 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
 
+  # Service for managing user personas
+  user_service:
+    build:
+      context: ./backend/services/user_service
+      args:
+        - DOCKER_BUILDKIT=1
+    ports:
+      - "8008:8008"
+    volumes:
+      - ./backend/services/user_service/app:/usr/src/app/app
+    environment:
+      - PYTHONUNBUFFERED=1
+
   # Service acting as a gateway to Large Language Models
   llm_gateway:
     build:

@@ -60,23 +60,34 @@
     <div v-if="report" class="result-area">
        <GlassPaper>
           <h3 class="form-section-title">为 {{ report.company_ticker }} 生成的报告</h3>
-          <pre>{{ JSON.stringify(report.report, null, 2) }}</pre>
+          <div v-for="section in report.report_sections" :key="section.section_title" class="report-section">
+            <h4>{{ section.section_title }}</h4>
+            <p>{{ section.content }}</p>
+          </div>
        </GlassPaper>
+    </div>
+     <div v-if="error" class="result-area error-box">
+      <GlassPaper>
+        <h3 class="form-section-title">发生错误</h3>
+        <p>{{ error }}</p>
+      </GlassPaper>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { ElUpload, ElIcon, ElButton, ElInput } from 'element-plus';
+import { ElUpload, ElIcon, ElButton, ElInput, ElMessage } from 'element-plus';
 import { UploadFilled } from '@element-plus/icons-vue';
 import type { UploadFile, UploadFiles } from 'element-plus';
 import GlassPaper from '../components/GlassPaper.vue';
+import { generateDeepReport, type FullReport } from '../services/api';
 
 const ticker = ref('');
 const fileList = ref<UploadFile[]>([]);
 const isLoading = ref(false);
-const report = ref<any>(null);
+const report = ref<FullReport | null>(null);
+const error = ref<string | null>(null);
 
 const handleFileChange = (uploadFile: UploadFile, uploadFiles: UploadFiles) => {
   fileList.value = uploadFiles;
@@ -89,14 +100,24 @@ const handleFileRemove = (uploadFile: UploadFile, uploadFiles: UploadFiles) => {
 const handleSubmit = async () => {
   isLoading.value = true;
   report.value = null;
-  // TODO: Call the /generate_full_report endpoint
-  console.log("Submitting for deep report:", {
-    ticker: ticker.value,
-    files: fileList.value.map(f => f.raw),
-  });
-  await new Promise(resolve => setTimeout(resolve, 3000));
-  report.value = { company_ticker: ticker.value, report: { "摘要": "这是一个深度报告的占位符。" } };
-  isLoading.value = false;
+  error.value = null;
+
+  const rawFiles = fileList.value.map(f => f.raw).filter(f => f) as File[];
+  if (rawFiles.length !== fileList.value.length) {
+    ElMessage.error('Some files are not ready for upload.');
+    isLoading.value = false;
+    return;
+  }
+
+  try {
+    const result = await generateDeepReport(ticker.value, rawFiles);
+    report.value = result;
+  } catch (e: any) {
+    error.value = e.message || 'An unknown error occurred during report generation.';
+    ElMessage.error(error.value);
+  } finally {
+    isLoading.value = false;
+  }
 };
 </script>
 
@@ -132,13 +153,12 @@ const handleSubmit = async () => {
 }
 
 .result-area { margin-top: 3rem; animation: fadeIn 0.5s ease-in-out; }
-pre {
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(0,0,0,0.2);
-  padding: 1rem;
-  border-radius: 8px;
+.report-section { margin-bottom: 1.5rem; }
+.report-section h4 { margin: 0 0 0.5rem 0; font-size: 1.1rem; font-weight: 600; color: #FF8E53; }
+.report-section p { margin: 0; line-height: 1.6; white-space: pre-wrap; }
+
+.error-box p {
+  color: #F44336;
 }
 
 .custom-input {

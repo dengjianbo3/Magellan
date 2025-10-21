@@ -2,16 +2,26 @@
 import os
 import shutil
 import uuid
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from typing import List
+import os
 
-# Define a shared volume path that will be mounted in the Docker container.
-# This allows other services to access the uploaded files.
-SHARED_VOLUME_PATH = "/var/uploads"
+UPLOAD_DIRECTORY = "/uploads"
 
 app = FastAPI(
-    title="File Ingestion Service",
-    description="Handles file uploads and saves them to a shared volume.",
+    title="File Service",
+    description="Handles file uploads and storage.",
     version="1.0.0"
+)
+
+# --- CORS Middleware ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.on_event("startup")

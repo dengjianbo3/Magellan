@@ -1,23 +1,24 @@
 # backend/services/pdf_parser/app/main.py
 import os
 import fitz  # PyMuPDF
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
-
-# This must be the same path used by the file_service
-SHARED_VOLUME_PATH = "/var/uploads"
-
-class ParseRequest(BaseModel):
-    file_id: str = Field(..., description="The unique filename of the PDF to parse.")
-
-class ParseResponse(BaseModel):
-    file_id: str
-    extracted_text: str
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+import fitz  # PyMuPDF
+import io
 
 app = FastAPI(
     title="PDF Parsing Service",
-    description="Extracts text content from PDF files stored in a shared volume.",
+    description="Extracts text content from PDF files.",
     version="1.0.0"
+)
+
+# --- CORS Middleware ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.post("/parse_pdf", response_model=ParseResponse, tags=["Parsing"])
