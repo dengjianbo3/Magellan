@@ -1,0 +1,787 @@
+# backend/services/report_orchestrator/app/core/dd_state_machine.py
+"""
+State machine for Due Diligence (DD) workflow.
+DD 工作流状态机
+"""
+import asyncio
+import json
+import re
+from typing import Optional, Dict, Any, List
+from fastapi import WebSocket
+import httpx
+from datetime import datetime
+
+from ..models.dd_models import (
+    DDWorkflowState,
+    DDSessionContext,
+    DDStep,
+    DDWorkflowMessage,
+    BPStructuredData,
+    TeamAnalysisOutput,
+    MarketAnalysisOutput,
+    DDQuestion,
+    PreliminaryIM,
+    CrossCheckResult,
+)
+
+
+class DDStateMachine:
+    """
+    State machine managing the DD workflow lifecycle.
+    
+    States:
+    1. INIT -> DOC_PARSE
+    2. DOC_PARSE -> TDD (and MDD in parallel)
+    3. TDD + MDD -> CROSS_CHECK
+    4. CROSS_CHECK -> DD_QUESTIONS
+    5. DD_QUESTIONS -> HITL_REVIEW
+    6. HITL_REVIEW -> COMPLETED
+    
+    Error at any state -> ERROR
+    """
+    
+    def __init__(
+        self, 
+        session_id: str, 
+        company_name: str, 
+        bp_file_content: Optional[bytes],
+        bp_filename: str,
+        user_id: str = "default_user"
+    ):
+        self.context = DDSessionContext(
+            session_id=session_id,
+            company_name=company_name,
+            user_id=user_id
+        )
+        self.bp_file_content = bp_file_content
+        self.bp_filename = bp_filename
+        self.websocket: Optional[WebSocket] = None
+        
+        # Service URLs (from environment in production)
+        self.LLM_GATEWAY_URL = "http://llm_gateway:8003"
+        self.EXTERNAL_DATA_URL = "http://external_data_service:8006"
+        self.WEB_SEARCH_URL = "http://web_search_service:8010"
+        self.INTERNAL_KNOWLEDGE_URL = "http://internal_knowledge_service:8009"
+        self.USER_SERVICE_URL = "http://user_service:8008"
+        
+        # Steps definition
+        self.steps = self._init_steps()
+    
+    def _init_steps(self) -> Dict[int, DDStep]:
+        """Initialize all workflow steps"""
+        return {
+            0: DDStep(id=0, title="初始化 DD 工作流", status="pending"),
+            1: DDStep(id=1, title="解析商业计划书 (BP)", status="pending", sub_steps=[
+                "上传文件到 LLM Gateway",
+                "提取结构化数据",
+                "验证数据完整性"
+            ]),
+            2: DDStep(id=2, title="机构偏好匹配检查", status="pending", sub_steps=[
+                "获取机构投资偏好",
+                "检查行业/阶段匹配度",
+                "计算综合匹配评分"
+            ]),
+            3: DDStep(id=3, title="团队背景调查 (TDD)", status="pending", sub_steps=[
+                "查询工商/LinkedIn 数据",
+                "网络搜索团队背景",
+                "生成团队分析报告"
+            ]),
+            4: DDStep(id=4, title="市场尽职调查 (MDD)", status="pending", sub_steps=[
+                "验证市场规模",
+                "搜索竞品信息",
+                "查询内部历史项目",
+                "生成市场分析报告"
+            ]),
+            5: DDStep(id=5, title="交叉验证 BP 数据", status="pending", sub_steps=[
+                "对比团队信息",
+                "验证市场数据",
+                "识别不一致之处"
+            ]),
+            6: DDStep(id=6, title="生成 DD 问题清单", status="pending", sub_steps=[
+                "分析薄弱环节",
+                "生成专业问题",
+                "分类和优先级排序"
+            ]),
+            7: DDStep(id=7, title="等待人工审核", status="pending", flush=True)
+        }
+    
+    async def run(self, websocket: Optional[WebSocket] = None):
+        """
+        Execute the complete DD workflow.
+        执行完整的 DD 工作流
+        """
+        self.websocket = websocket
+        
+        try:
+            print(f"[DD_WORKFLOW] Starting workflow for {self.context.company_name}", flush=True)
+            
+            # Step 0: Initialization
+            print(f"[DD_WORKFLOW] Step 0: Init", flush=True)
+            await self._transition_to_init()
+            
+            # Step 1: Parse BP
+            print(f"[DD_WORKFLOW] Step 1: Parse BP", flush=True)
+            await self._transition_to_doc_parse()
+            
+            # Step 2: Preference Check (Sprint 4 新增)
+            print(f"[DD_WORKFLOW] Step 2: Preference check", flush=True)
+            should_continue = await self._transition_to_preference_check()
+            if not should_continue:
+                # 偏好不匹配，提前终止
+                print(f"[DD_WORKFLOW] Preference mismatch, terminating early", flush=True)
+                await self._transition_to_completed()
+                return
+            
+            # Step 3 & 4: TDD and MDD (parallel)
+            print(f"[DD_WORKFLOW] Step 3&4: Parallel analysis", flush=True)
+            await self._transition_to_parallel_analysis()
+            
+            # Step 5: Cross-check
+            print(f"[DD_WORKFLOW] Step 5: Cross-check", flush=True)
+            await self._transition_to_cross_check()
+            
+            # Step 6: Generate DD questions
+            print(f"[DD_WORKFLOW] Step 6: DD questions", flush=True)
+            await self._transition_to_dd_questions()
+            
+            # Step 7: HITL Review
+            print(f"[DD_WORKFLOW] Step 7: HITL review", flush=True)
+            await self._transition_to_hitl_review()
+            
+            # Final: Completed
+            print(f"[DD_WORKFLOW] Finalizing", flush=True)
+            await self._transition_to_completed()
+            
+            print(f"[DD_WORKFLOW] Workflow completed successfully", flush=True)
+            
+        except Exception as e:
+            print(f"[DD_WORKFLOW] ERROR: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+            await self._transition_to_error(str(e))
+    
+    async def _transition_to_init(self):
+        """Initialize the workflow"""
+        self.context.current_state = DDWorkflowState.INIT
+        step = self.steps[0]
+        step.status = "running"
+        step.started_at = datetime.now().isoformat()
+        
+        await self._send_progress_update(step)
+        
+        # Simulate initialization
+        await asyncio.sleep(0.5)
+        
+        step.status = "success"
+        step.completed_at = datetime.now().isoformat()
+        step.result = f"已为 '{self.context.company_name}' 初始化 DD 工作流"
+        
+        await self._send_progress_update(step)
+    
+    async def _transition_to_doc_parse(self):
+        """Parse BP document or skip if no BP provided"""
+        self.context.current_state = DDWorkflowState.DOC_PARSE
+        step = self.steps[1]
+        step.status = "running"
+        step.started_at = datetime.now().isoformat()
+        step.progress = 0
+        
+        await self._send_progress_update(step)
+        
+        try:
+            # Check if BP file is provided
+            if not self.bp_file_content:
+                # No BP file - search for company info online
+                step.progress = 30
+                step.result = f"未提供 BP 文件，正在搜索 '{self.context.company_name}' 的公开信息..."
+                await self._send_progress_update(step)
+                
+                print(f"[DEBUG] No BP file, searching for company info online...", flush=True)
+                
+                # Search for company information
+                try:
+                    bp_data = await self._search_company_info(self.context.company_name)
+                    self.context.bp_data = bp_data
+                    
+                    step.progress = 100
+                    step.status = "success"
+                    step.completed_at = datetime.now().isoformat()
+                    step.result = f"从公开信息中获取了关于 '{self.context.company_name}' 的基本信息"
+                    print(f"[DEBUG] Company search successful!", flush=True)
+                except Exception as search_error:
+                    print(f"[ERROR] Company search failed: {search_error}", flush=True)
+                    # Fallback to minimal data
+                    self.context.bp_data = BPStructuredData(
+                        company_name=self.context.company_name,
+                        product_description="待通过调研确定",
+                        current_stage="待确定",
+                        target_market="待调研"
+                    )
+                    step.progress = 100
+                    step.status = "success"
+                    step.completed_at = datetime.now().isoformat()
+                    step.result = f"未找到公开信息，将基于公司名称进行基础分析"
+            else:
+                # BP file provided - parse it
+                print(f"[DEBUG] Parsing BP file: {self.bp_filename}, size: {len(self.bp_file_content)} bytes", flush=True)
+                from ..parsers.bp_parser import BPParser
+                
+                parser = BPParser(self.LLM_GATEWAY_URL)
+                
+                # Update progress during parsing
+                step.progress = 30
+                await self._send_progress_update(step)
+                
+                print(f"[DEBUG] Calling parser.parse_bp...", flush=True)
+                # Parse BP
+                try:
+                    bp_data = await parser.parse_bp(
+                        self.bp_file_content, 
+                        self.bp_filename,
+                        self.context.company_name
+                    )
+                    print(f"[DEBUG] BP parsing successful!", flush=True)
+                except Exception as parse_error:
+                    print(f"[DEBUG] BP parsing failed: {parse_error}", flush=True)
+                    import traceback
+                    traceback.print_exc()
+                    raise
+                
+                self.context.bp_data = bp_data
+                
+                step.progress = 100
+                step.status = "success"
+                step.completed_at = datetime.now().isoformat()
+                step.result = f"成功解析 BP，提取了 {len(bp_data.team)} 名团队成员和关键业务信息"
+            
+        except Exception as e:
+            step.status = "error"
+            step.error_message = f"BP 解析失败: {str(e)}"
+            self.context.errors.append(step.error_message)
+            raise
+        
+        await self._send_progress_update(step)
+    
+    async def _transition_to_preference_check(self) -> bool:
+        """
+        Check if project matches institution preferences (Sprint 4)
+        检查项目是否匹配机构偏好
+        
+        Returns:
+            bool: True if should continue, False if should terminate early
+        """
+        self.context.current_state = DDWorkflowState.PREFERENCE_CHECK
+        step = self.steps[2]
+        step.status = "running"
+        step.started_at = datetime.now().isoformat()
+        step.progress = 0
+        
+        await self._send_progress_update(step)
+        
+        try:
+            from ..agents.preference_match_agent import PreferenceMatchAgent
+            
+            agent = PreferenceMatchAgent(self.USER_SERVICE_URL)
+            
+            step.progress = 30
+            await self._send_progress_update(step)
+            
+            # Execute preference matching
+            match_result = await agent.check_match(
+                bp_data=self.context.bp_data,
+                user_id=self.context.user_id
+            )
+            
+            # Store result in context
+            self.context.preference_match_result = match_result.to_dict()
+            
+            step.progress = 100
+            step.status = "success"
+            step.completed_at = datetime.now().isoformat()
+            
+            if match_result.is_match:
+                step.result = f"✅ 匹配度: {match_result.match_score}分 - 继续分析"
+                await self._send_progress_update(step)
+                return True  # Continue workflow
+            else:
+                step.result = f"⚠️ 匹配度: {match_result.match_score}分 - 不匹配，提前终止"
+                step.error_message = f"不匹配原因: {'; '.join(match_result.mismatch_reasons)}"
+                
+                # Store mismatch info
+                self.context.errors.append(f"项目与机构投资偏好不符 (匹配度 {match_result.match_score}分)")
+                self.context.errors.extend(match_result.mismatch_reasons)
+                
+                await self._send_progress_update(step)
+                return False  # Terminate early
+        
+        except Exception as e:
+            step.status = "error"
+            step.error_message = f"偏好检查失败: {str(e)}"
+            self.context.errors.append(step.error_message)
+            
+            # On error, default to continue (fail-safe)
+            print(f"Warning: Preference check failed, defaulting to continue: {e}", flush=True)
+            await self._send_progress_update(step)
+            return True
+    
+    async def _transition_to_parallel_analysis(self):
+        """Execute TDD and MDD in parallel"""
+        # Start both steps
+        tdd_step = self.steps[3]  # Updated from 2 to 3 (Sprint 4)
+        mdd_step = self.steps[4]  # Updated from 3 to 4 (Sprint 4)
+        
+        tdd_step.status = "running"
+        tdd_step.started_at = datetime.now().isoformat()
+        mdd_step.status = "running"
+        mdd_step.started_at = datetime.now().isoformat()
+        
+        await self._send_progress_update(tdd_step)
+        await self._send_progress_update(mdd_step)
+        
+        try:
+            # Execute in parallel
+            tdd_task = asyncio.create_task(self._execute_tdd())
+            mdd_task = asyncio.create_task(self._execute_mdd())
+            
+            # Wait for both
+            team_analysis, market_analysis = await asyncio.gather(tdd_task, mdd_task)
+            
+            self.context.team_analysis = team_analysis
+            self.context.market_analysis = market_analysis
+            
+            # Mark both as success
+            tdd_step.status = "success"
+            tdd_step.completed_at = datetime.now().isoformat()
+            tdd_step.result = f"团队分析完成，经验匹配度: {team_analysis.experience_match_score}/10"
+            
+            mdd_step.status = "success"
+            mdd_step.completed_at = datetime.now().isoformat()
+            mdd_step.result = "市场分析完成，已验证市场规模和竞争格局"
+            
+            await self._send_progress_update(tdd_step)
+            await self._send_progress_update(mdd_step)
+            
+        except Exception as e:
+            # Mark both as error
+            tdd_step.status = "error"
+            tdd_step.error_message = str(e)
+            mdd_step.status = "error"
+            mdd_step.error_message = str(e)
+            self.context.errors.append(f"并行分析失败: {str(e)}")
+            raise
+    
+    async def _execute_tdd(self) -> TeamAnalysisOutput:
+        """Execute Team Due Diligence"""
+        from ..agents.team_analysis_agent import TeamAnalysisAgent
+        
+        agent = TeamAnalysisAgent(
+            external_data_url=self.EXTERNAL_DATA_URL,
+            web_search_url=self.WEB_SEARCH_URL,
+            llm_gateway_url=self.LLM_GATEWAY_URL
+        )
+        
+        return await agent.analyze(
+            bp_team_info=self.context.bp_data.team,
+            company_name=self.context.company_name
+        )
+    
+    async def _execute_mdd(self) -> MarketAnalysisOutput:
+        """Execute Market Due Diligence"""
+        from ..agents.market_analysis_agent import MarketAnalysisAgent
+        
+        agent = MarketAnalysisAgent(
+            web_search_url=self.WEB_SEARCH_URL,
+            internal_knowledge_url=self.INTERNAL_KNOWLEDGE_URL,
+            llm_gateway_url=self.LLM_GATEWAY_URL
+        )
+        
+        return await agent.analyze(
+            bp_market_info={
+                "target_market": self.context.bp_data.target_market,
+                "market_size_tam": self.context.bp_data.market_size_tam,
+                "competitors": self.context.bp_data.competitors,
+            },
+            company_name=self.context.company_name
+        )
+    
+    async def _transition_to_cross_check(self):
+        """Cross-check BP data against external sources"""
+        self.context.current_state = DDWorkflowState.CROSS_CHECK
+        step = self.steps[5]  # Updated from 4 to 5 (Sprint 4)
+        step.status = "running"
+        step.started_at = datetime.now().isoformat()
+        
+        await self._send_progress_update(step)
+        
+        try:
+            # Simple cross-checking logic (can be expanded)
+            cross_check_results = []
+            
+            # Check team information
+            if self.context.team_analysis and len(self.context.team_analysis.concerns) > 0:
+                for concern in self.context.team_analysis.concerns:
+                    cross_check_results.append(CrossCheckResult(
+                        category="Team",
+                        bp_claim="团队背景声明",
+                        external_data=concern,
+                        is_consistent=False,
+                        discrepancy_level="Minor",
+                        notes="团队分析中发现的潜在问题"
+                    ))
+            
+            # Check market information
+            if self.context.market_analysis and len(self.context.market_analysis.red_flags) > 0:
+                for red_flag in self.context.market_analysis.red_flags:
+                    cross_check_results.append(CrossCheckResult(
+                        category="Market",
+                        bp_claim="市场规模和增长预期",
+                        external_data=red_flag,
+                        is_consistent=False,
+                        discrepancy_level="Major" if "严重" in red_flag or "重大" in red_flag else "Minor",
+                        notes="市场分析中发现的风险"
+                    ))
+            
+            self.context.cross_check_results = cross_check_results
+            
+            step.status = "success"
+            step.completed_at = datetime.now().isoformat()
+            step.result = f"交叉验证完成，发现 {len(cross_check_results)} 个需要关注的点"
+            
+        except Exception as e:
+            step.status = "error"
+            step.error_message = f"交叉验证失败: {str(e)}"
+            self.context.errors.append(step.error_message)
+            raise
+        
+        await self._send_progress_update(step)
+    
+    async def _transition_to_dd_questions(self):
+        """Generate DD question list"""
+        self.context.current_state = DDWorkflowState.DD_QUESTIONS
+        step = self.steps[6]  # Updated from 5 to 6 (Sprint 4)
+        step.status = "running"
+        step.started_at = datetime.now().isoformat()
+        
+        await self._send_progress_update(step)
+        
+        try:
+            from ..agents.risk_agent import RiskAgent
+            
+            agent = RiskAgent(self.LLM_GATEWAY_URL)
+            
+            dd_questions = await agent.generate_dd_questions(
+                team_analysis=self.context.team_analysis,
+                market_analysis=self.context.market_analysis,
+                bp_data=self.context.bp_data
+            )
+            
+            self.context.dd_questions = dd_questions
+            
+            step.status = "success"
+            step.completed_at = datetime.now().isoformat()
+            step.result = f"已生成 {len(dd_questions)} 个 DD 问题"
+            
+        except Exception as e:
+            step.status = "error"
+            step.error_message = f"DD 问题生成失败: {str(e)}"
+            self.context.errors.append(step.error_message)
+            raise
+        
+        await self._send_progress_update(step)
+    
+    async def _transition_to_hitl_review(self):
+        """Pause for Human-in-the-Loop review"""
+        self.context.current_state = DDWorkflowState.HITL_REVIEW
+        step = self.steps[7]  # Updated from 6 to 7 (Sprint 4)
+        step.status = "paused"
+        step.started_at = datetime.now().isoformat()
+        step.result = "✅ 初步尽职调查完成！您现在可以：\n\n1. 📝 查看和编辑投资备忘录\n2. 📄 添加访谈纪要或补充材料\n3. 💬 回答 DD 问题以深化分析\n\n请在 IM 工作台中继续您的工作。"
+        
+        # Build preliminary IM
+        preliminary_im = PreliminaryIM(
+            company_name=self.context.company_name,
+            bp_structured_data=self.context.bp_data,
+            team_section=self.context.team_analysis,
+            market_section=self.context.market_analysis,
+            cross_check_results=self.context.cross_check_results,
+            dd_questions=self.context.dd_questions,
+            session_id=self.context.session_id
+        )
+        
+        # Send to frontend for review
+        await self._send_hitl_message(step, preliminary_im)
+    
+    async def _transition_to_completed(self):
+        """Mark workflow as completed"""
+        self.context.current_state = DDWorkflowState.COMPLETED
+        
+        step = DDStep(
+            id=7,
+            title="DD 工作流完成",
+            status="success",
+            result="所有分析步骤已完成，投资备忘录已生成"
+        )
+        
+        await self._send_progress_update(step, final=True)
+    
+    async def _transition_to_error(self, error_message: str):
+        """Handle error state"""
+        self.context.current_state = DDWorkflowState.ERROR
+        
+        error_step = DDStep(
+            id=-1,
+            title="工作流错误",
+            status="error",
+            error_message=error_message
+        )
+        
+        if self.websocket:
+            message = DDWorkflowMessage(
+                session_id=self.context.session_id,
+                status="error",
+                current_step=error_step,
+                message=f"DD 工作流遇到错误: {error_message}"
+            )
+            await self.websocket.send_json(message.dict())
+    
+    async def _send_progress_update(self, step: DDStep, final: bool = False):
+        """Send progress update via WebSocket"""
+        if not self.websocket:
+            return
+        
+        status = "completed" if final else "in_progress"
+        
+        message = DDWorkflowMessage(
+            session_id=self.context.session_id,
+            status=status,
+            current_step=step,
+            all_steps=list(self.steps.values())
+        )
+        
+        await self.websocket.send_json(message.dict())
+    
+    async def _send_hitl_message(self, step: DDStep, preliminary_im: PreliminaryIM):
+        """Send HITL review message"""
+        if not self.websocket:
+            return
+        
+        # Convert PreliminaryIM to frontend-compatible format
+        frontend_report = self._convert_im_to_frontend_format(preliminary_im)
+        
+        # Build message dict manually to avoid Pydantic validation on preliminary_im
+        message_dict = {
+            "session_id": self.context.session_id,
+            "status": "hitl_required",
+            "current_step": step.dict() if step else None,
+            "all_steps": [s.dict() for s in self.steps.values()],
+            "preliminary_im": frontend_report,  # Already a dict
+            "message": "初步投资备忘录已生成，请审核并提供反馈"
+        }
+        
+        await self.websocket.send_json(message_dict)
+    
+    async def _search_company_info(self, company_name: str) -> "BPStructuredData":
+        """
+        Search for company information online when no BP is provided.
+        使用网络搜索获取公司基本信息（当没有 BP 文件时）
+        """
+        from ..models.dd_models import BPStructuredData, TeamMember
+        
+        # Search for company basic info
+        query = f"{company_name} 公司简介 业务 产品"
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{self.WEB_SEARCH_URL}/search",
+                    json={"query": query, "max_results": 5}
+                )
+                
+                if response.status_code == 200:
+                    search_results = response.json().get("results", [])
+                    
+                    # Extract info from search results using LLM
+                    context = "\n\n".join([
+                        f"标题: {r.get('title', '')}\n内容: {r.get('snippet', '')}\n链接: {r.get('link', '')}"
+                        for r in search_results[:5]
+                    ])
+                    
+                    prompt = f"""根据以下搜索结果，提取关于 "{company_name}" 的基本信息：
+
+{context}
+
+请以 JSON 格式返回：
+{{
+    "company_name": "公司全称",
+    "product_description": "主营产品/业务描述（50-100字）",
+    "target_market": "目标市场/行业",
+    "current_stage": "发展阶段（种子期/天使轮/A轮/B轮/成熟期等）",
+    "founding_year": "成立年份（如果有）",
+    "team_size": "团队规模（如果有）",
+    "key_members": ["核心团队成员姓名和职位，如果有"]
+}}
+
+如果某些信息无法从搜索结果中获取，请填写 "未知" 或 "信息不详"。
+只返回 JSON，不要其他说明文字。"""
+
+                    # Call LLM Gateway
+                    llm_response = await client.post(
+                        f"{self.LLM_GATEWAY_URL}/chat",
+                        json={
+                            "history": [
+                                {"role": "user", "parts": [prompt]}
+                            ]
+                        }
+                    )
+                    
+                    if llm_response.status_code == 200:
+                        llm_content = llm_response.json().get("content", "{}")
+                        # Extract JSON from markdown code blocks if present
+                        import re
+                        json_match = re.search(r'```json\s*(\{.*?\})\s*```', llm_content, re.DOTALL)
+                        if json_match:
+                            llm_content = json_match.group(1)
+                        else:
+                            json_match = re.search(r'(\{.*\})', llm_content, re.DOTALL)
+                            if json_match:
+                                llm_content = json_match.group(1)
+                        
+                        try:
+                            company_info = json.loads(llm_content)
+                            
+                            # Build team members from key_members if available
+                            team_members = []
+                            if "key_members" in company_info and company_info["key_members"]:
+                                for member_info in company_info["key_members"][:5]:
+                                    if isinstance(member_info, str):
+                                        # Simple string format
+                                        parts = member_info.split()
+                                        name = parts[0] if parts else "未知"
+                                        title = " ".join(parts[1:]) if len(parts) > 1 else "管理层"
+                                    else:
+                                        name = member_info.get("name", "未知")
+                                        title = member_info.get("title", "管理层")
+                                    
+                                    team_members.append(TeamMember(
+                                        name=name,
+                                        title=title,
+                                        background=f"根据公开信息，{name} 担任 {company_name} 的 {title}"
+                                    ))
+                            
+                            return BPStructuredData(
+                                company_name=company_info.get("company_name", company_name),
+                                product_description=company_info.get("product_description", "信息不详"),
+                                target_market=company_info.get("target_market", "信息不详"),
+                                current_stage=company_info.get("current_stage", "信息不详"),
+                                team=team_members,
+                                founding_year=company_info.get("founding_year"),
+                                team_size=company_info.get("team_size")
+                            )
+                        except json.JSONDecodeError as e:
+                            print(f"[ERROR] Failed to parse LLM JSON response: {e}", flush=True)
+                            print(f"[ERROR] LLM content: {llm_content}", flush=True)
+        
+        except Exception as e:
+            print(f"[ERROR] Failed to search company info: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+        
+        # Fallback: minimal data
+        return BPStructuredData(
+            company_name=company_name,
+            product_description="信息不详，需进一步调研",
+            current_stage="信息不详",
+            target_market="信息不详"
+        )
+    
+    def _convert_im_to_frontend_format(self, preliminary_im: PreliminaryIM) -> Dict[str, Any]:
+        """
+        Convert PreliminaryIM to frontend-compatible FullReport format.
+        将 PreliminaryIM 转换为前端兼容的 FullReport 格式
+        """
+        # Build report sections
+        sections = []
+        
+        # 1. Executive Summary (基于 BP 数据)
+        bp_data = preliminary_im.bp_structured_data
+        exec_summary = f"""**公司**: {bp_data.company_name}
+**融资**: {bp_data.funding_request or '待定'}
+**估值**: {bp_data.current_valuation or '待定'}
+**阶段**: {bp_data.current_stage or '待确认'}
+
+**产品描述**: {bp_data.product_description or '详见BP'}
+
+**市场**: {bp_data.target_market or '待确认'}
+**市场规模**: {bp_data.market_size_tam or '待核实'}
+"""
+        sections.append({
+            "section_title": "执行摘要",
+            "content": exec_summary
+        })
+        
+        # 2. Team Analysis
+        team_section = preliminary_im.team_section
+        team_content = f"""{team_section.summary}
+
+**优势**:
+{chr(10).join(f'- {s}' for s in team_section.strengths)}
+
+**担忧**:
+{chr(10).join(f'- {c}' for c in team_section.concerns)}
+
+**经验匹配度**: {team_section.experience_match_score}/10
+"""
+        sections.append({
+            "section_title": "团队分析",
+            "content": team_content
+        })
+        
+        # 3. Market Analysis
+        market_section = preliminary_im.market_section
+        market_content = f"""{market_section.summary}
+
+**市场规模验证**: {market_section.market_validation}
+
+**增长潜力**: {market_section.growth_potential}
+
+**竞争格局**: {market_section.competitive_landscape}
+
+**市场风险**:
+{chr(10).join(f'- {r}' for r in market_section.red_flags) if market_section.red_flags else '暂无'}
+
+**市场机会**:
+{chr(10).join(f'- {o}' for o in market_section.opportunities) if market_section.opportunities else '暂无'}
+"""
+        sections.append({
+            "section_title": "市场分析",
+            "content": market_content
+        })
+        
+        # 4. Cross-check Results (if any)
+        if preliminary_im.cross_check_results:
+            cross_check_content = "以下是 BP 数据与外部数据源的交叉验证结果：\n\n"
+            for result in preliminary_im.cross_check_results:
+                cross_check_content += f"""**{result.category}**:
+- BP 声明: {result.bp_claim}
+- 外部数据: {result.external_data}
+- 一致性: {'✓ 一致' if result.is_consistent else '✗ 不一致'}
+- 差异程度: {result.discrepancy_level}
+{f'- 备注: {result.notes}' if result.notes else ''}
+
+"""
+            sections.append({
+                "section_title": "数据交叉验证",
+                "content": cross_check_content
+            })
+        
+        # Build frontend-compatible format
+        return {
+            "company_ticker": bp_data.company_name,
+            "report_sections": sections,
+            "session_id": preliminary_im.session_id,
+            "dd_questions": [q.dict() for q in preliminary_im.dd_questions]
+        }
+    
+    def get_current_context(self) -> DDSessionContext:
+        """Get current session context"""
+        return self.context

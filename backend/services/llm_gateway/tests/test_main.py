@@ -18,7 +18,7 @@ client = TestClient(app)
 
 @pytest.fixture
 def mock_genai():
-    with patch('google.generativeai.GenerativeModel') as mock_model:
+    with patch('google.genai.GenerativeModel') as mock_model:
         yield mock_model
 
 def test_health_check():

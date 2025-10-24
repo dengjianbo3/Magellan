@@ -67,7 +67,7 @@ onMounted(async () => {
     const data = await getUserPersona(userId);
     persona.value = { ...persona.value, ...data };
   } catch (error) {
-    ElMessage.error('Failed to load user persona.');
+    ElMessage.error('加载用户画像失败。');
   } finally {
     isLoading.value = false;
   }
@@ -79,7 +79,7 @@ const savePersona = async () => {
     await updateUserPersona(userId, { user_id: userId, ...persona.value });
     ElMessage.success('您的偏好已保存！');
   } catch (error) {
-    ElMessage.error('Failed to save persona.');
+    ElMessage.error('保存用户画像失败。');
   } finally {
     isLoading.value = false;
   }

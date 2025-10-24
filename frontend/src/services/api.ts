@@ -3,6 +3,7 @@ import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:8000';
 const USER_SERVICE_URL = 'http://localhost:8008';
+const KNOWLEDGE_SERVICE_URL = 'http://localhost:8009';
 
 export interface CompanyOption {
   ticker: string;
@@ -13,9 +14,14 @@ export interface CompanyOption {
 export interface AnalysisStep {
   id: number;
   title: string;
-  status: 'running' | 'success' | 'error' | 'paused';
+  status: 'pending' | 'running' | 'success' | 'error' | 'paused';
   result?: string | null;
   options?: CompanyOption[];
+  progress?: number | null;
+  sub_steps?: string[] | null;
+  error_message?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
 }
 
 export interface ReportSection {
@@ -60,7 +66,8 @@ const handleError = (error: any): string => {
   return 'An unexpected error occurred.';
 };
 
-const API_WS_URL = 'ws://localhost:8000/ws/start_analysis';
+// V3 WebSocket endpoint for DD workflow
+const API_WS_URL = 'ws://localhost:8000/ws/start_dd_analysis';
 
 export interface WebSocketMessage {
   session_id: string;
@@ -138,6 +145,78 @@ export const getUserPersona = async (userId: string): Promise<UserPersona> => {
 export const updateUserPersona = async (userId: string, persona: UserPersona): Promise<UserPersona> => {
   try {
     const response = await axios.post<UserPersona>(`${USER_SERVICE_URL}/users/${userId}`, persona);
+    return response.data;
+  } catch (error) {
+    throw new Error(handleError(error));
+  }
+};
+
+// --- Internal Knowledge Service ---
+export interface InsightResult {
+  content: string;
+  metadata: {
+    source?: string;
+    project?: string;
+    date?: string;
+    [key: string]: any;
+  };
+}
+
+export interface InsightsResponse {
+  results: InsightResult[];
+}
+
+export const searchInternalInsights = async (query: string, limit: number = 3): Promise<InsightsResponse> => {
+  try {
+    const payload = { query, limit };
+    const response = await axios.post<InsightsResponse>(`${KNOWLEDGE_SERVICE_URL}/search`, payload);
+    return response.data;
+  } catch (error) {
+    throw new Error(handleError(error));
+  }
+};
+
+// --- Valuation Analysis (Sprint 7) ---
+export interface ValuationAnalysisResponse {
+  session_id: string;
+  valuation_analysis: {
+    valuation_range: {
+      low: number;
+      high: number;
+      currency: string;
+    };
+    methodology: string;
+    comparable_companies: Array<{
+      name: string;
+      pe_ratio?: number;
+      ps_ratio?: number;
+      market_cap?: string;
+      growth_rate?: string;
+    }>;
+    key_assumptions: string[];
+    risks: string[];
+    analysis_text: string;
+  };
+  exit_analysis: {
+    primary_path: string;
+    ipo_analysis: {
+      feasibility: string;
+      estimated_timeline: string;
+      requirements: string[];
+      target_board?: string;
+    };
+    ma_opportunities: string[];
+    exit_risks: string[];
+    analysis_text: string;
+  };
+  im_section: string;
+}
+
+export const generateValuationAnalysis = async (sessionId: string): Promise<ValuationAnalysisResponse> => {
+  try {
+    const response = await axios.post<ValuationAnalysisResponse>(
+      `${API_BASE_URL}/api/v1/dd/${sessionId}/valuation`
+    );
     return response.data;
   } catch (error) {
     throw new Error(handleError(error));

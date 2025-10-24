@@ -89,11 +89,11 @@ const isLoading = ref(false);
 const report = ref<FullReport | null>(null);
 const error = ref<string | null>(null);
 
-const handleFileChange = (uploadFile: UploadFile, uploadFiles: UploadFiles) => {
+const handleFileChange = (_uploadFile: UploadFile, uploadFiles: UploadFiles) => {
   fileList.value = uploadFiles;
 };
 
-const handleFileRemove = (uploadFile: UploadFile, uploadFiles: UploadFiles) => {
+const handleFileRemove = (_uploadFile: UploadFile, uploadFiles: UploadFiles) => {
   fileList.value = uploadFiles;
 };
 
@@ -104,7 +104,7 @@ const handleSubmit = async () => {
 
   const rawFiles = fileList.value.map(f => f.raw).filter(f => f) as File[];
   if (rawFiles.length !== fileList.value.length) {
-    ElMessage.error('Some files are not ready for upload.');
+    ElMessage.error('部分文件尚未准备好上传。');
     isLoading.value = false;
     return;
   }
@@ -113,8 +113,10 @@ const handleSubmit = async () => {
     const result = await generateDeepReport(ticker.value, rawFiles);
     report.value = result;
   } catch (e: any) {
-    error.value = e.message || 'An unknown error occurred during report generation.';
-    ElMessage.error(error.value);
+    error.value = e.message || '生成报告期间发生未知错误。';
+    if (error.value) {
+      ElMessage.error(error.value);
+    }
   } finally {
     isLoading.value = false;
   }

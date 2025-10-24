@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+tavily-python
+httpx
+pytest
+pytest-asyncio
+reportlab
+python-dotenv

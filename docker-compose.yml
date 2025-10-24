@@ -1,25 +1,10 @@
 version: '3.8'
 
 services:
-  # The main brain of the application
-  report_orchestrator:
-    build:
-      context: ./backend/services/report_orchestrator
-      args:
-        - DOCKER_BUILDKIT=1
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./backend/services/report_orchestrator/app:/usr/src/app/app
-    environment:
-      - PYTHONUNBUFFERED=1
-
   # Service for handling file uploads
   file_service:
     build:
       context: ./backend/services/file_service
-      args:
-        - DOCKER_BUILDKIT=1
     ports:
       - "8001:8001"
     volumes:
@@ -28,26 +13,10 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
 
-  # Service for parsing PDF files
-  pdf_parser:
-    build:
-      context: ./backend/services/pdf_parser
-      args:
-        - DOCKER_BUILDKIT=1
-    ports:
-      - "8002:8002"
-    volumes:
-      - ./backend/services/pdf_parser/app:/usr/src/app/app
-      - uploads_volume:/var/uploads
-    environment:
-      - PYTHONUNBUFFERED=1
-
   # Service for parsing Excel files
   excel_parser:
     build:
       context: ./backend/services/excel_parser
-      args:
-        - DOCKER_BUILDKIT=1
     ports:
       - "8004:8004"
     volumes:
@@ -60,8 +29,6 @@ services:
   word_parser:
     build:
       context: ./backend/services/word_parser
-      args:
-        - DOCKER_BUILDKIT=1
     ports:
       - "8005:8005"
     volumes:
@@ -71,24 +38,32 @@ services:
       - PYTHONUNBUFFERED=1
 
   # Service for fetching public company data
-  public_data_service:
-    build:
-      context: ./backend/services/public_data_service
-      args:
-        - DOCKER_BUILDKIT=1
+  external_data_service:
+    build: ./backend/services/external_data_service
+    container_name: magellan-external_data_service
     ports:
       - "8006:8006"
-    volumes:
-      - ./backend/services/public_data_service/app:/usr/src/app/app
+    networks:
+      - default
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8006 --reload
+
+  report_orchestrator:
+    build: ./backend/services/report_orchestrator
+    container_name: magellan-report_orchestrator
+    ports:
+      - "8000:8000"
+    networks:
+      - default
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
-      - PYTHONUNBUFFERED=1
+      - PUBLIC_DATA_URL=http://external_data_service:8006
+      - LLM_GATEWAY_URL=http://llm_gateway:8003
+      - USER_SERVICE_URL=http://user_service:8008
 
   # Service for managing user personas
   user_service:
     build:
       context: ./backend/services/user_service
-      args:
-        - DOCKER_BUILDKIT=1
     ports:
       - "8008:8008"
     volumes:
@@ -96,12 +71,34 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
 
+  internal_knowledge_service:
+    build: ./backend/services/internal_knowledge_service
+    container_name: magellan-internal_knowledge_service
+    ports:
+      - "8009:8009"
+    networks:
+      - default
+    depends_on:
+      - chroma
+    env_file:
+      - .env # Pass all environment variables from .env file
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8009 --reload
+
+  web_search_service:
+    build: ./backend/services/web_search_service
+    container_name: magellan-web_search_service
+    ports:
+      - "8010:8010"
+    networks:
+      - default
+    env_file:
+      - .env # Load TAVILY_API_KEY from .env file
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8010 --reload
+
   # Service acting as a gateway to Large Language Models
   llm_gateway:
     build:
       context: ./backend/services/llm_gateway
-      args:
-        - DOCKER_BUILDKIT=1
     env_file:
       - .env # Load environment variables from .env file
     ports:
@@ -116,6 +113,12 @@ services:
   # following the same pattern.
 
   # --- Infrastructure Dependencies ---
+  chroma:
+    image: chromadb/chroma
+    ports:
+      - "8011:8000"
+    volumes:
+      - ./chroma_data:/chroma/.chroma/index
 
   # PostgreSQL Database (Temporarily disabled due to network issues)
   # postgres_db:
@@ -126,7 +129,7 @@ services:
   #     - postgres_data:/var/lib/postgresql/data/
   #   environment:
   #     - POSTGRES_USER=admin
-  #     - POSTGRES_PASSWORD=secret
+  #     - POSTG-RES_PASSWORD=secret
   #     - POSTGRES_DB=investor_agent_db
 
   # RabbitMQ Message Broker (Temporarily disabled due to network issues)
