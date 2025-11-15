@@ -12,17 +12,19 @@ from ..models.dd_models import MarketAnalysisOutput
 
 class MarketAnalysisAgent:
     """Agent for analyzing market and competition"""
-    
+
     def __init__(
-        self, 
-        web_search_url: str, 
+        self,
+        web_search_url: str,
         internal_knowledge_url: str,
         llm_gateway_url: str = "http://llm_gateway:8003"
     ):
         self.web_search_url = web_search_url
         self.internal_knowledge_url = internal_knowledge_url
         self.llm_gateway_url = llm_gateway_url
-    
+        # V4: EventBus for real-time updates (set by caller)
+        self.event_bus = None
+
     async def analyze(
         self,
         bp_market_info: Dict[str, Any],
@@ -30,27 +32,51 @@ class MarketAnalysisAgent:
     ) -> MarketAnalysisOutput:
         """
         Analyze market based on BP claims and external validation.
-        
+
         Steps:
         1. Validate market size claims
         2. Search for competitive information
         3. Query internal knowledge base
         4. Call LLM for comprehensive analysis
         5. Parse and return results
-        
+
         Args:
             bp_market_info: Market information from BP
             company_name: Company name
-        
+
         Returns:
             MarketAnalysisOutput with analysis results
         """
+        # V4: Publish thinking event
+        if self.event_bus:
+            await self.event_bus.publish_thinking(
+                agent_name="Market Agent",
+                message="正在验证市场规模数据...",
+                progress=0.2
+            )
+
         # Step 1: Search for market validation
         market_search_results = await self._search_market_data(bp_market_info)
-        
+
+        # V4: Publish searching event
+        if self.event_bus:
+            await self.event_bus.publish_searching(
+                agent_name="Market Agent",
+                query=f"{bp_market_info.get('target_market', '')} 竞争格局",
+                progress=0.4
+            )
+
         # Step 2: Search for competitive info
         competitor_search_results = await self._search_competitors(bp_market_info)
-        
+
+        # V4: Publish analyzing event
+        if self.event_bus:
+            await self.event_bus.publish_analyzing(
+                agent_name="Market Agent",
+                message="正在查询内部项目库...",
+                progress=0.6
+            )
+
         # Step 3: Query internal knowledge
         internal_insights = await self._query_internal_knowledge(bp_market_info)
         
@@ -224,20 +250,46 @@ class MarketAnalysisAgent:
     async def _call_llm(self, prompt: str) -> str:
         """Call LLM Gateway for analysis"""
         async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{self.llm_gateway_url}/chat",
-                json={
-                    "history": [
-                        {"role": "user", "parts": [prompt]}
-                    ]
-                }
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"LLM Gateway returned {response.status_code}")
-            
-            result = response.json()
-            return result.get("content", "")
+            try:
+                response = await client.post(
+                    f"{self.llm_gateway_url}/chat",
+                    json={
+                        "history": [
+                            {"role": "user", "parts": [prompt]}
+                        ]
+                    }
+                )
+
+                if response.status_code != 200:
+                    raise Exception(f"LLM Gateway returned {response.status_code}")
+
+                result = response.json()
+                return result.get("content", "")
+            except httpx.RemoteProtocolError as e:
+                print(f"[Market Agent] LLM server disconnected: {e}", flush=True)
+                # 返回一个简化的响应,避免整个流程崩溃
+                return """```json
+{
+    "summary": "由于LLM服务暂时不可用，无法完成完整的市场分析。建议稍后重试或使用备用分析方法。",
+    "market_validation": "LLM服务不可用",
+    "growth_potential": "待评估",
+    "competitive_landscape": "待分析",
+    "red_flags": ["LLM服务连接失败，无法完成自动化分析"],
+    "opportunities": []
+}
+```"""
+            except httpx.TimeoutException as e:
+                print(f"[Market Agent] LLM request timeout: {e}", flush=True)
+                return """```json
+{
+    "summary": "LLM请求超时，无法完成市场分析。",
+    "market_validation": "分析超时",
+    "growth_potential": "待评估",
+    "competitive_landscape": "待分析",
+    "red_flags": ["分析请求超时"],
+    "opportunities": []
+}
+```"""
     
     def _parse_llm_response(
         self,

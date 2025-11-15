@@ -12,43 +12,69 @@ from ..models.dd_models import TeamMember, TeamAnalysisOutput
 
 class TeamAnalysisAgent:
     """Agent for analyzing startup team"""
-    
+
     def __init__(self, external_data_url: str, web_search_url: str, llm_gateway_url: str = "http://llm_gateway:8003"):
         self.external_data_url = external_data_url
         self.web_search_url = web_search_url
         self.llm_gateway_url = llm_gateway_url
+        # V4: EventBus for real-time updates (set by caller)
+        self.event_bus = None
     
     async def analyze(
-        self, 
+        self,
         bp_team_info: List[TeamMember],
         company_name: str
     ) -> TeamAnalysisOutput:
         """
         Analyze team based on BP info and external data.
-        
+
         Steps:
         1. Gather external data (company info, web search)
         2. Build comprehensive context
         3. Call LLM for analysis
         4. Parse and validate output
-        
+
         Args:
             bp_team_info: Team members from BP
             company_name: Company name
-        
+
         Returns:
             TeamAnalysisOutput with analysis results
         """
+        # V4: Publish thinking event
+        if self.event_bus:
+            await self.event_bus.publish_thinking(
+                agent_name="Team Agent",
+                message=f"正在搜索团队背景信息...",
+                progress=0.2
+            )
+
         # Step 1: Gather external data
         web_search_results = await self._search_team_background(bp_team_info, company_name)
-        
+
+        # V4: Publish analyzing event
+        if self.event_bus:
+            await self.event_bus.publish_analyzing(
+                agent_name="Team Agent",
+                message=f"正在分析团队经验和背景...",
+                progress=0.5
+            )
+
         # Step 2: Build context
         context = self._build_context(bp_team_info, web_search_results)
-        
+
         # Step 3: Call LLM for analysis
         prompt = self._build_analysis_prompt(context, bp_team_info, company_name)
         analysis_result = await self._call_llm(prompt)
-        
+
+        # V4: Publish progress event
+        if self.event_bus:
+            await self.event_bus.publish_progress(
+                agent_name="Team Agent",
+                message="正在解析分析结果...",
+                progress=0.9
+            )
+
         # Step 4: Parse and return
         return self._parse_llm_response(analysis_result, bp_team_info)
     
@@ -185,20 +211,41 @@ class TeamAnalysisAgent:
     async def _call_llm(self, prompt: str) -> str:
         """Call LLM Gateway for analysis"""
         async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{self.llm_gateway_url}/chat",
-                json={
-                    "history": [
-                        {"role": "user", "parts": [prompt]}
-                    ]
-                }
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"LLM Gateway returned {response.status_code}: {response.text}")
-            
-            result = response.json()
-            return result.get("content", "")
+            try:
+                response = await client.post(
+                    f"{self.llm_gateway_url}/chat",
+                    json={
+                        "history": [
+                            {"role": "user", "parts": [prompt]}
+                        ]
+                    }
+                )
+
+                if response.status_code != 200:
+                    raise Exception(f"LLM Gateway returned {response.status_code}: {response.text}")
+
+                result = response.json()
+                return result.get("content", "")
+            except httpx.RemoteProtocolError as e:
+                print(f"[Team Agent] LLM server disconnected: {e}", flush=True)
+                return """```json
+{
+    "summary": "由于LLM服务暂时不可用，无法完成完整的团队分析。",
+    "strengths": [],
+    "concerns": ["LLM服务连接失败"],
+    "experience_match_score": 5.0
+}
+```"""
+            except httpx.TimeoutException as e:
+                print(f"[Team Agent] LLM request timeout: {e}", flush=True)
+                return """```json
+{
+    "summary": "LLM请求超时，无法完成团队分析。",
+    "strengths": [],
+    "concerns": ["分析请求超时"],
+    "experience_match_score": 5.0
+}
+```"""
     
     def _parse_llm_response(
         self,

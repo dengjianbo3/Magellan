@@ -77,12 +77,14 @@ class RiskAgent:
         }
         
         # Team weak points
-        weak_points["team"].extend(team_analysis.concerns)
-        if team_analysis.experience_match_score < 6.0:
+        if team_analysis and team_analysis.concerns:
+            weak_points["team"].extend(team_analysis.concerns)
+        if team_analysis and team_analysis.experience_match_score < 6.0:
             weak_points["team"].append("团队整体经验匹配度偏低")
-        
+
         # Market weak points
-        weak_points["market"].extend(market_analysis.red_flags)
+        if market_analysis and market_analysis.red_flags:
+            weak_points["market"].extend(market_analysis.red_flags)
         if not bp_data.market_size_tam:
             weak_points["market"].append("BP 未提供市场规模数据")
         
@@ -123,14 +125,14 @@ class RiskAgent:
 **背景信息**:
 
 【团队分析】
-{team_analysis.summary}
-- 经验匹配度: {team_analysis.experience_match_score}/10
-- 担忧点: {', '.join(team_analysis.concerns) if team_analysis.concerns else '无'}
+{team_analysis.summary if team_analysis else '未进行团队分析'}
+- 经验匹配度: {team_analysis.experience_match_score if team_analysis else 'N/A'}/10
+- 担忧点: {', '.join(team_analysis.concerns) if team_analysis and team_analysis.concerns else '无'}
 
 【市场分析】
-{market_analysis.summary}
-- 市场验证: {market_analysis.market_validation}
-- 风险: {', '.join(market_analysis.red_flags) if market_analysis.red_flags else '无'}
+{market_analysis.summary if market_analysis else '未进行市场分析'}
+- 市场验证: {market_analysis.market_validation if market_analysis else 'N/A'}
+- 风险: {', '.join(market_analysis.red_flags) if market_analysis and market_analysis.red_flags else '无'}
 
 【BP 关键数据】
 - 融资金额: {bp_data.funding_request or '未提供'}

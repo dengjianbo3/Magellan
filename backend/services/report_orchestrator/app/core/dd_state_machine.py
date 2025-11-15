@@ -8,6 +8,7 @@ import json
 import re
 from typing import Optional, Dict, Any, List
 from fastapi import WebSocket
+from starlette.websockets import WebSocketState
 import httpx
 from datetime import datetime
 
@@ -23,6 +24,9 @@ from ..models.dd_models import (
     PreliminaryIM,
     CrossCheckResult,
 )
+
+# V4: Import AgentEventBus
+from .agent_event_bus import get_event_bus, AgentEventType
 
 
 class DDStateMachine:
@@ -41,12 +45,18 @@ class DDStateMachine:
     """
     
     def __init__(
-        self, 
-        session_id: str, 
-        company_name: str, 
+        self,
+        session_id: str,
+        company_name: str,
         bp_file_content: Optional[bytes],
         bp_filename: str,
-        user_id: str = "default_user"
+        user_id: str = "default_user",
+        # V5: Frontend configuration support
+        project_name: Optional[str] = None,
+        selected_agents: Optional[List[str]] = None,
+        data_sources: Optional[List[str]] = None,
+        priority: str = "normal",
+        description: Optional[str] = None
     ):
         self.context = DDSessionContext(
             session_id=session_id,
@@ -56,17 +66,73 @@ class DDStateMachine:
         self.bp_file_content = bp_file_content
         self.bp_filename = bp_filename
         self.websocket: Optional[WebSocket] = None
-        
+
+        # V5: Store frontend configuration
+        self.project_name = project_name or f"{company_name} DD Analysis"
+        self.selected_agents = selected_agents or []
+        self.data_sources = data_sources or []
+        self.priority = priority
+        self.description = description
+
+        # V4: AgentEventBus for real-time updates
+        self.event_bus = get_event_bus()
+
         # Service URLs (from environment in production)
         self.LLM_GATEWAY_URL = "http://llm_gateway:8003"
         self.EXTERNAL_DATA_URL = "http://external_data_service:8006"
         self.WEB_SEARCH_URL = "http://web_search_service:8010"
         self.INTERNAL_KNOWLEDGE_URL = "http://internal_knowledge_service:8009"
         self.USER_SERVICE_URL = "http://user_service:8008"
-        
-        # Steps definition
+
+        # Steps definition (dynamically adjusted based on selected_agents)
         self.steps = self._init_steps()
-    
+
+    def _should_run_step(self, step_id: int) -> bool:
+        """
+        V5: Determine if a step should run based on selected_agents configuration.
+
+        Agent to Step mapping:
+        - team-evaluator -> Step 3 (TDD)
+        - market-analyst -> Step 4 (MDD)
+        - financial-expert -> Step 1 (BP Parse), Step 4 (MDD)
+        - risk-assessor -> Step 5 (Cross-check), Step 6 (Questions)
+        - tech-specialist -> Step 4 (MDD)
+        - legal-advisor -> Step 6 (Questions)
+
+        Steps 0, 1, 7 always run (Init, BP Parse, HITL Review)
+        """
+        # If no agents selected, run all steps (default behavior)
+        if not self.selected_agents:
+            return True
+
+        # Always run these steps
+        if step_id in [0, 1, 7]:
+            return True
+
+        # Step 2: Preference check (always run if configured)
+        if step_id == 2:
+            return True
+
+        # Step 3: TDD - requires team-evaluator
+        if step_id == 3:
+            return 'team-evaluator' in self.selected_agents
+
+        # Step 4: MDD - requires market-analyst, financial-expert, or tech-specialist
+        if step_id == 4:
+            return any(agent in self.selected_agents for agent in
+                      ['market-analyst', 'financial-expert', 'tech-specialist'])
+
+        # Step 5: Cross-check - requires risk-assessor or at least 2 agents
+        if step_id == 5:
+            return 'risk-assessor' in self.selected_agents or len(self.selected_agents) >= 2
+
+        # Step 6: DD Questions - requires risk-assessor or legal-advisor
+        if step_id == 6:
+            return any(agent in self.selected_agents for agent in
+                      ['risk-assessor', 'legal-advisor'])
+
+        return True
+
     def _init_steps(self) -> Dict[int, DDStep]:
         """Initialize all workflow steps"""
         return {
@@ -111,48 +177,73 @@ class DDStateMachine:
         执行完整的 DD 工作流
         """
         self.websocket = websocket
-        
+
+        # V4: Subscribe websocket to event bus
+        if self.websocket:
+            await self.event_bus.subscribe(self.websocket)
+
         try:
             print(f"[DD_WORKFLOW] Starting workflow for {self.context.company_name}", flush=True)
-            
+            print(f"[DD_WORKFLOW] Selected agents: {self.selected_agents}", flush=True)
+            print(f"[DD_WORKFLOW] Data sources: {self.data_sources}", flush=True)
+
             # Step 0: Initialization
             print(f"[DD_WORKFLOW] Step 0: Init", flush=True)
             await self._transition_to_init()
-            
+
             # Step 1: Parse BP
             print(f"[DD_WORKFLOW] Step 1: Parse BP", flush=True)
             await self._transition_to_doc_parse()
-            
-            # Step 2: Preference Check (Sprint 4 新增)
-            print(f"[DD_WORKFLOW] Step 2: Preference check", flush=True)
-            should_continue = await self._transition_to_preference_check()
-            if not should_continue:
-                # 偏好不匹配，提前终止
-                print(f"[DD_WORKFLOW] Preference mismatch, terminating early", flush=True)
-                await self._transition_to_completed()
-                return
-            
-            # Step 3 & 4: TDD and MDD (parallel)
-            print(f"[DD_WORKFLOW] Step 3&4: Parallel analysis", flush=True)
-            await self._transition_to_parallel_analysis()
-            
-            # Step 5: Cross-check
-            print(f"[DD_WORKFLOW] Step 5: Cross-check", flush=True)
-            await self._transition_to_cross_check()
-            
-            # Step 6: Generate DD questions
-            print(f"[DD_WORKFLOW] Step 6: DD questions", flush=True)
-            await self._transition_to_dd_questions()
-            
+
+            # Step 2: Preference Check (V5: conditional)
+            if self._should_run_step(2):
+                print(f"[DD_WORKFLOW] Step 2: Preference check", flush=True)
+                should_continue = await self._transition_to_preference_check()
+                if not should_continue:
+                    print(f"[DD_WORKFLOW] Preference mismatch, terminating early", flush=True)
+                    await self._transition_to_completed()
+                    return
+            else:
+                print(f"[DD_WORKFLOW] Step 2: Skipped (not configured)", flush=True)
+                self.steps[2].status = "skipped"
+
+            # Step 3 & 4: TDD and MDD (V5: conditional parallel)
+            run_tdd = self._should_run_step(3)
+            run_mdd = self._should_run_step(4)
+
+            if run_tdd or run_mdd:
+                print(f"[DD_WORKFLOW] Step 3&4: Parallel analysis (TDD={run_tdd}, MDD={run_mdd})", flush=True)
+                await self._transition_to_parallel_analysis()
+            else:
+                print(f"[DD_WORKFLOW] Step 3&4: Skipped (no agents selected)", flush=True)
+                self.steps[3].status = "skipped"
+                self.steps[4].status = "skipped"
+
+            # Step 5: Cross-check (V5: conditional)
+            if self._should_run_step(5):
+                print(f"[DD_WORKFLOW] Step 5: Cross-check", flush=True)
+                await self._transition_to_cross_check()
+            else:
+                print(f"[DD_WORKFLOW] Step 5: Skipped (risk-assessor not selected)", flush=True)
+                self.steps[5].status = "skipped"
+
+            # Step 6: Generate DD questions (V5: conditional)
+            if self._should_run_step(6):
+                print(f"[DD_WORKFLOW] Step 6: DD questions", flush=True)
+                await self._transition_to_dd_questions()
+            else:
+                print(f"[DD_WORKFLOW] Step 6: Skipped (no Q&A agents selected)", flush=True)
+                self.steps[6].status = "skipped"
+
             # Step 7: HITL Review
             print(f"[DD_WORKFLOW] Step 7: HITL review", flush=True)
             await self._transition_to_hitl_review()
-            
-            # Final: Completed
-            print(f"[DD_WORKFLOW] Finalizing", flush=True)
-            await self._transition_to_completed()
-            
-            print(f"[DD_WORKFLOW] Workflow completed successfully", flush=True)
+
+            # HITL review pauses the workflow - user needs to review the preliminary IM
+            # The workflow will resume when user provides feedback (future implementation)
+            # For now, HITL review is the final step
+
+            print(f"[DD_WORKFLOW] Workflow paused for HITL review", flush=True)
             
         except Exception as e:
             print(f"[DD_WORKFLOW] ERROR: {e}", flush=True)
@@ -185,9 +276,15 @@ class DDStateMachine:
         step.status = "running"
         step.started_at = datetime.now().isoformat()
         step.progress = 0
-        
+
         await self._send_progress_update(step)
-        
+
+        # V4: Publish Agent event
+        await self.event_bus.publish_started(
+            agent_name="BP Parser",
+            message=f"开始解析商业计划书"
+        )
+
         try:
             # Check if BP file is provided
             if not self.bp_file_content:
@@ -195,6 +292,13 @@ class DDStateMachine:
                 step.progress = 30
                 step.result = f"未提供 BP 文件，正在搜索 '{self.context.company_name}' 的公开信息..."
                 await self._send_progress_update(step)
+
+                # V4: Publish searching event
+                await self.event_bus.publish_searching(
+                    agent_name="BP Parser",
+                    query=f"{self.context.company_name} 公司信息",
+                    progress=0.3
+                )
                 
                 print(f"[DEBUG] No BP file, searching for company info online...", flush=True)
                 
@@ -248,11 +352,24 @@ class DDStateMachine:
                     raise
                 
                 self.context.bp_data = bp_data
-                
+
+                # V4: Publish result event
+                await self.event_bus.publish_result(
+                    agent_name="BP Parser",
+                    message=f"提取了 {len(bp_data.team)} 名团队成员和关键业务信息",
+                    data={"team_count": len(bp_data.team)}
+                )
+
                 step.progress = 100
                 step.status = "success"
                 step.completed_at = datetime.now().isoformat()
                 step.result = f"成功解析 BP，提取了 {len(bp_data.team)} 名团队成员和关键业务信息"
+
+                # V4: Publish completed event
+                await self.event_bus.publish_completed(
+                    agent_name="BP Parser",
+                    message="BP解析完成"
+                )
             
         except Exception as e:
             step.status = "error"
@@ -325,77 +442,123 @@ class DDStateMachine:
             return True
     
     async def _transition_to_parallel_analysis(self):
-        """Execute TDD and MDD in parallel"""
-        # Start both steps
-        tdd_step = self.steps[3]  # Updated from 2 to 3 (Sprint 4)
-        mdd_step = self.steps[4]  # Updated from 3 to 4 (Sprint 4)
-        
-        tdd_step.status = "running"
-        tdd_step.started_at = datetime.now().isoformat()
-        mdd_step.status = "running"
-        mdd_step.started_at = datetime.now().isoformat()
-        
-        await self._send_progress_update(tdd_step)
-        await self._send_progress_update(mdd_step)
-        
+        """Execute TDD and MDD in parallel (V5: conditional based on selected_agents)"""
+        tdd_step = self.steps[3]
+        mdd_step = self.steps[4]
+
+        # V5: Check which analyses should run
+        run_tdd = self._should_run_step(3)
+        run_mdd = self._should_run_step(4)
+
+        tasks = []
+
         try:
-            # Execute in parallel
-            tdd_task = asyncio.create_task(self._execute_tdd())
-            mdd_task = asyncio.create_task(self._execute_mdd())
-            
-            # Wait for both
-            team_analysis, market_analysis = await asyncio.gather(tdd_task, mdd_task)
-            
-            self.context.team_analysis = team_analysis
-            self.context.market_analysis = market_analysis
-            
-            # Mark both as success
-            tdd_step.status = "success"
-            tdd_step.completed_at = datetime.now().isoformat()
-            tdd_step.result = f"团队分析完成，经验匹配度: {team_analysis.experience_match_score}/10"
-            
-            mdd_step.status = "success"
-            mdd_step.completed_at = datetime.now().isoformat()
-            mdd_step.result = "市场分析完成，已验证市场规模和竞争格局"
-            
-            await self._send_progress_update(tdd_step)
-            await self._send_progress_update(mdd_step)
-            
+            # Execute TDD if needed
+            if run_tdd:
+                tdd_step.status = "running"
+                tdd_step.started_at = datetime.now().isoformat()
+                await self._send_progress_update(tdd_step)
+                tdd_task = asyncio.create_task(self._execute_tdd())
+                tasks.append(('tdd', tdd_task))
+            else:
+                tdd_step.status = "skipped"
+                tdd_step.result = "未选择团队评估智能体"
+                await self._send_progress_update(tdd_step)
+
+            # Execute MDD if needed
+            if run_mdd:
+                mdd_step.status = "running"
+                mdd_step.started_at = datetime.now().isoformat()
+                await self._send_progress_update(mdd_step)
+                mdd_task = asyncio.create_task(self._execute_mdd())
+                tasks.append(('mdd', mdd_task))
+            else:
+                mdd_step.status = "skipped"
+                mdd_step.result = "未选择市场分析智能体"
+                await self._send_progress_update(mdd_step)
+
+            # Wait for all running tasks
+            if tasks:
+                results = await asyncio.gather(*[task for _, task in tasks])
+
+                # Process results
+                for (task_type, _), result in zip(tasks, results):
+                    if task_type == 'tdd':
+                        self.context.team_analysis = result
+                        tdd_step.status = "success"
+                        tdd_step.completed_at = datetime.now().isoformat()
+                        tdd_step.result = f"团队分析完成，经验匹配度: {result.experience_match_score}/10"
+                        await self._send_progress_update(tdd_step)
+                    elif task_type == 'mdd':
+                        self.context.market_analysis = result
+                        mdd_step.status = "success"
+                        mdd_step.completed_at = datetime.now().isoformat()
+                        mdd_step.result = "市场分析完成，已验证市场规模和竞争格局"
+                        await self._send_progress_update(mdd_step)
+
         except Exception as e:
-            # Mark both as error
-            tdd_step.status = "error"
-            tdd_step.error_message = str(e)
-            mdd_step.status = "error"
-            mdd_step.error_message = str(e)
+            # Mark running steps as error
+            if run_tdd:
+                tdd_step.status = "error"
+                tdd_step.error_message = str(e)
+            if run_mdd:
+                mdd_step.status = "error"
+                mdd_step.error_message = str(e)
             self.context.errors.append(f"并行分析失败: {str(e)}")
             raise
     
     async def _execute_tdd(self) -> TeamAnalysisOutput:
         """Execute Team Due Diligence"""
+        # V4: Publish started event
+        await self.event_bus.publish_started(
+            agent_name="Team Agent",
+            message=f"开始团队尽职调查"
+        )
+
         from ..agents.team_analysis_agent import TeamAnalysisAgent
-        
+
         agent = TeamAnalysisAgent(
             external_data_url=self.EXTERNAL_DATA_URL,
             web_search_url=self.WEB_SEARCH_URL,
             llm_gateway_url=self.LLM_GATEWAY_URL
         )
-        
-        return await agent.analyze(
+
+        # V4: Pass event bus to agent
+        agent.event_bus = self.event_bus
+
+        result = await agent.analyze(
             bp_team_info=self.context.bp_data.team,
             company_name=self.context.company_name
         )
+
+        # V4: Publish completed event
+        await self.event_bus.publish_completed(
+            agent_name="Team Agent",
+            message=f"团队分析完成，经验匹配度: {result.experience_match_score}/10"
+        )
+
+        return result
     
     async def _execute_mdd(self) -> MarketAnalysisOutput:
         """Execute Market Due Diligence"""
+        # V4: Publish started event
+        await self.event_bus.publish_started(
+            agent_name="Market Agent",
+            message=f"开始市场尽职调查"
+        )
+
         from ..agents.market_analysis_agent import MarketAnalysisAgent
-        
+
         agent = MarketAnalysisAgent(
             web_search_url=self.WEB_SEARCH_URL,
             internal_knowledge_url=self.INTERNAL_KNOWLEDGE_URL,
             llm_gateway_url=self.LLM_GATEWAY_URL
         )
-        
-        return await agent.analyze(
+
+        # V4: Pass event bus to agent
+        agent.event_bus = self.event_bus
+
+        result = await agent.analyze(
             bp_market_info={
                 "target_market": self.context.bp_data.target_market,
                 "market_size_tam": self.context.bp_data.market_size_tam,
@@ -403,6 +566,14 @@ class DDStateMachine:
             },
             company_name=self.context.company_name
         )
+
+        # V4: Publish completed event
+        await self.event_bus.publish_completed(
+            agent_name="Market Agent",
+            message="市场分析完成"
+        )
+
+        return result
     
     async def _transition_to_cross_check(self):
         """Cross-check BP data against external sources"""
@@ -418,7 +589,7 @@ class DDStateMachine:
             cross_check_results = []
             
             # Check team information
-            if self.context.team_analysis and len(self.context.team_analysis.concerns) > 0:
+            if self.context.team_analysis and self.context.team_analysis.concerns and len(self.context.team_analysis.concerns) > 0:
                 for concern in self.context.team_analysis.concerns:
                     cross_check_results.append(CrossCheckResult(
                         category="Team",
@@ -430,7 +601,7 @@ class DDStateMachine:
                     ))
             
             # Check market information
-            if self.context.market_analysis and len(self.context.market_analysis.red_flags) > 0:
+            if self.context.market_analysis and self.context.market_analysis.red_flags and len(self.context.market_analysis.red_flags) > 0:
                 for red_flag in self.context.market_analysis.red_flags:
                     cross_check_results.append(CrossCheckResult(
                         category="Market",
@@ -527,47 +698,83 @@ class DDStateMachine:
     async def _transition_to_error(self, error_message: str):
         """Handle error state"""
         self.context.current_state = DDWorkflowState.ERROR
-        
+
         error_step = DDStep(
             id=-1,
             title="工作流错误",
             status="error",
             error_message=error_message
         )
-        
+
         if self.websocket:
+            # Check if WebSocket is still connected before sending
+            try:
+                if self.websocket.client_state != WebSocketState.CONNECTED:
+                    print(f"[DEBUG] WebSocket not connected in error handler (state: {self.websocket.client_state}), skipping error message", flush=True)
+                    return
+            except Exception as state_check_error:
+                print(f"[DEBUG] WebSocket state check failed in error handler: {state_check_error}", flush=True)
+                return
+
             message = DDWorkflowMessage(
                 session_id=self.context.session_id,
                 status="error",
                 current_step=error_step,
                 message=f"DD 工作流遇到错误: {error_message}"
             )
-            await self.websocket.send_json(message.dict())
+
+            try:
+                await self.websocket.send_json(message.dict())
+            except Exception as e:
+                print(f"[DEBUG] Failed to send error message via WebSocket: {e}", flush=True)
     
     async def _send_progress_update(self, step: DDStep, final: bool = False):
         """Send progress update via WebSocket"""
         if not self.websocket:
             return
-        
+
+        # Check if WebSocket is still connected
+        try:
+            if self.websocket.client_state != WebSocketState.CONNECTED:
+                print(f"[DEBUG] WebSocket not connected (state: {self.websocket.client_state}), skipping progress update", flush=True)
+                return
+        except Exception as state_check_error:
+            print(f"[DEBUG] WebSocket state check failed: {state_check_error}", flush=True)
+            return
+
         status = "completed" if final else "in_progress"
-        
+
         message = DDWorkflowMessage(
             session_id=self.context.session_id,
             status=status,
             current_step=step,
             all_steps=list(self.steps.values())
         )
-        
-        await self.websocket.send_json(message.dict())
+
+        try:
+            await self.websocket.send_json(message.dict())
+        except Exception as e:
+            print(f"[DEBUG] Failed to send progress update: {e}", flush=True)
     
     async def _send_hitl_message(self, step: DDStep, preliminary_im: PreliminaryIM):
         """Send HITL review message"""
         if not self.websocket:
+            print(f"[HITL] No websocket available", flush=True)
             return
-        
+
+        # Check if WebSocket is still connected
+        try:
+            if self.websocket.client_state != WebSocketState.CONNECTED:
+                print(f"[HITL] WebSocket not connected (state: {self.websocket.client_state}), skipping HITL message", flush=True)
+                return
+        except Exception as state_check_error:
+            print(f"[HITL] WebSocket state check failed: {state_check_error}", flush=True)
+            return
+
+        print(f"[HITL] Converting preliminary IM to frontend format...", flush=True)
         # Convert PreliminaryIM to frontend-compatible format
         frontend_report = self._convert_im_to_frontend_format(preliminary_im)
-        
+
         # Build message dict manually to avoid Pydantic validation on preliminary_im
         message_dict = {
             "session_id": self.context.session_id,
@@ -577,8 +784,15 @@ class DDStateMachine:
             "preliminary_im": frontend_report,  # Already a dict
             "message": "初步投资备忘录已生成，请审核并提供反馈"
         }
-        
-        await self.websocket.send_json(message_dict)
+
+        try:
+            print(f"[HITL] Sending HITL message with report for session {self.context.session_id}", flush=True)
+            await self.websocket.send_json(message_dict)
+            print(f"[HITL] ✅ HITL message sent successfully!", flush=True)
+        except Exception as e:
+            print(f"[HITL] ❌ Failed to send HITL message: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
     
     async def _search_company_info(self, company_name: str) -> "BPStructuredData":
         """
@@ -721,24 +935,28 @@ class DDStateMachine:
         
         # 2. Team Analysis
         team_section = preliminary_im.team_section
-        team_content = f"""{team_section.summary}
+        if team_section:
+            team_strengths = chr(10).join(f'- {s}' for s in team_section.strengths) if team_section.strengths else '- 无'
+            team_concerns = chr(10).join(f'- {c}' for c in team_section.concerns) if team_section.concerns else '- 无'
+            team_content = f"""{team_section.summary}
 
 **优势**:
-{chr(10).join(f'- {s}' for s in team_section.strengths)}
+{team_strengths}
 
 **担忧**:
-{chr(10).join(f'- {c}' for c in team_section.concerns)}
+{team_concerns}
 
 **经验匹配度**: {team_section.experience_match_score}/10
 """
-        sections.append({
-            "section_title": "团队分析",
-            "content": team_content
-        })
+            sections.append({
+                "section_title": "团队分析",
+                "content": team_content
+            })
         
         # 3. Market Analysis
         market_section = preliminary_im.market_section
-        market_content = f"""{market_section.summary}
+        if market_section:
+            market_content = f"""{market_section.summary}
 
 **市场规模验证**: {market_section.market_validation}
 
@@ -752,10 +970,10 @@ class DDStateMachine:
 **市场机会**:
 {chr(10).join(f'- {o}' for o in market_section.opportunities) if market_section.opportunities else '暂无'}
 """
-        sections.append({
-            "section_title": "市场分析",
-            "content": market_content
-        })
+            sections.append({
+                "section_title": "市场分析",
+                "content": market_content
+            })
         
         # 4. Cross-check Results (if any)
         if preliminary_im.cross_check_results:

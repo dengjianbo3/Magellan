@@ -52,6 +52,8 @@ services:
     container_name: magellan-report_orchestrator
     ports:
       - "8000:8000"
+    volumes:
+      - ./backend/services/report_orchestrator/app:/usr/src/app/app
     networks:
       - default
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -59,6 +61,7 @@ services:
       - PUBLIC_DATA_URL=http://external_data_service:8006
       - LLM_GATEWAY_URL=http://llm_gateway:8003
       - USER_SERVICE_URL=http://user_service:8008
+      - PYTHONUNBUFFERED=1
 
   # Service for managing user personas
   user_service:

@@ -189,8 +189,8 @@ class PreliminaryIM(BaseModel):
     
     # Core analysis sections
     bp_structured_data: BPStructuredData
-    team_section: TeamAnalysisOutput
-    market_section: MarketAnalysisOutput
+    team_section: Optional[TeamAnalysisOutput] = Field(default=None, description="团队分析结果(可选)")
+    market_section: Optional[MarketAnalysisOutput] = Field(default=None, description="市场分析结果(可选)")
     cross_check_results: List[CrossCheckResult] = Field(default=[], description="交叉验证结果")
     
     # DD Questions

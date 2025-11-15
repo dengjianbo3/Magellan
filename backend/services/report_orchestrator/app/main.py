@@ -21,6 +21,9 @@ from .models.dd_models import (
 # V3: Import state machine
 from .core.dd_state_machine import DDStateMachine
 
+# V4: Import intent recognition and conversation management
+from .core.intent_recognizer import IntentRecognizer, ConversationManager, IntentType
+
 # --- Service Discovery ---
 EXTERNAL_DATA_URL = "http://external_data_service:8006"
 LLM_GATEWAY_URL = "http://llm_gateway:8003"
@@ -411,6 +414,15 @@ def read_root():
 # Session storage (in-memory for now, should use Redis in production)
 dd_sessions: Dict[str, DDSessionContext] = {}
 
+# V5: Saved reports storage (in-memory for now)
+saved_reports: List[Dict[str, Any]] = []
+
+# V5: Dashboard analytics storage
+dashboard_analytics = {
+    "daily_stats": [],  # Daily reports/analyses counts
+    "agent_usage": {}   # Agent usage statistics
+}
+
 
 @app.websocket("/ws/start_dd_analysis")
 async def websocket_dd_analysis_endpoint(websocket: WebSocket):
@@ -448,18 +460,27 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
         bp_file_base64 = initial_request.get("bp_file_base64")
         bp_filename = initial_request.get("bp_filename", "business_plan.pdf")
         user_id = initial_request.get("user_id", "default_user")
-        
+
+        # V5: Extract frontend configuration
+        project_name = initial_request.get("project_name")
+        selected_agents = initial_request.get("selected_agents", [])
+        data_sources = initial_request.get("data_sources", [])
+        priority = initial_request.get("priority", "normal")
+        description = initial_request.get("description")
+
         print(f"[DEBUG] company_name={company_name}, has_bp={bp_file_base64 is not None}", flush=True)
-        
+        print(f"[DEBUG] project_name={project_name}, selected_agents={selected_agents}", flush=True)
+        print(f"[DEBUG] data_sources={data_sources}, priority={priority}", flush=True)
+
         if not company_name:
             print(f"[DEBUG] Missing company_name, closing connection", flush=True)
             await websocket.close(code=1008, reason="company_name is required")
             return
-        
+
         # 2. Generate session ID
         session_id = f"dd_{company_name}_{uuid.uuid4().hex[:8]}"
         print(f"[DEBUG] Generated session_id: {session_id}", flush=True)
-        
+
         # 3. Decode BP file (optional)
         import base64
         bp_file_content = None
@@ -472,7 +493,7 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
                 raise
         else:
             print(f"[DEBUG] No BP file provided", flush=True)
-        
+
         # 4. Create and run state machine
         print(f"[DEBUG] Creating DDStateMachine...", flush=True)
         try:
@@ -481,7 +502,13 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
                 company_name=company_name,
                 bp_file_content=bp_file_content,
                 bp_filename=bp_filename,
-                user_id=user_id
+                user_id=user_id,
+                # V5: Pass frontend configuration
+                project_name=project_name,
+                selected_agents=selected_agents,
+                data_sources=data_sources,
+                priority=priority,
+                description=description
             )
             print(f"[DEBUG] DDStateMachine created successfully", flush=True)
         except Exception as create_error:
@@ -577,14 +604,125 @@ async def _run_dd_workflow_background(state_machine: DDStateMachine):
         traceback.print_exc()
 
 
+@app.post("/api/reports", tags=["Reports (V5)"])
+async def save_report(report_data: Dict[str, Any]):
+    """
+    V5: Save a completed DD analysis report.
+
+    Request body:
+    {
+        "session_id": "dd_...",
+        "project_name": "...",
+        "company_name": "...",
+        "analysis_type": "...",
+        "preliminary_im": {...},
+        "steps": [...],
+        "created_at": "...",
+        "status": "completed"
+    }
+    """
+    import uuid
+    from datetime import datetime
+
+    # Generate report ID
+    report_id = f"report_{uuid.uuid4().hex[:12]}"
+
+    # Add metadata
+    saved_report = {
+        "id": report_id,
+        "session_id": report_data.get("session_id"),
+        "project_name": report_data.get("project_name"),
+        "company_name": report_data.get("company_name"),
+        "analysis_type": report_data.get("analysis_type", "due-diligence"),
+        "preliminary_im": report_data.get("preliminary_im"),
+        "steps": report_data.get("steps", []),
+        "status": report_data.get("status", "completed"),
+        "created_at": report_data.get("created_at", datetime.now().isoformat()),
+        "saved_at": datetime.now().isoformat()
+    }
+
+    # Store report
+    saved_reports.append(saved_report)
+
+    print(f"[REPORTS] Saved report {report_id} for {saved_report['company_name']}", flush=True)
+
+    return {
+        "success": True,
+        "report_id": report_id,
+        "message": "报告已成功保存"
+    }
+
+
+@app.get("/api/reports", tags=["Reports (V5)"])
+async def get_reports():
+    """
+    V5: Get all saved reports.
+
+    Returns a list of saved DD analysis reports sorted by creation time.
+    """
+    # Sort by created_at (newest first)
+    sorted_reports = sorted(
+        saved_reports,
+        key=lambda r: r.get("created_at", ""),
+        reverse=True
+    )
+
+    return {
+        "success": True,
+        "count": len(sorted_reports),
+        "reports": sorted_reports
+    }
+
+
+@app.get("/api/reports/{report_id}", tags=["Reports (V5)"])
+async def get_report(report_id: str):
+    """
+    V5: Get a specific report by ID.
+    """
+    report = next((r for r in saved_reports if r["id"] == report_id), None)
+
+    if not report:
+        raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
+
+    return {
+        "success": True,
+        "report": report
+    }
+
+
+@app.delete("/api/reports/{report_id}", tags=["Reports (V5)"])
+async def delete_report(report_id: str):
+    """
+    V5: Delete a report by ID.
+    """
+    global saved_reports
+
+    # Find the report
+    report_index = next((i for i, r in enumerate(saved_reports) if r["id"] == report_id), None)
+
+    if report_index is None:
+        raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
+
+    # Remove the report
+    deleted_report = saved_reports.pop(report_index)
+
+    print(f"[REPORTS] Deleted report {report_id} for {deleted_report.get('company_name')}", flush=True)
+
+    return {
+        "success": True,
+        "message": "报告已成功删除",
+        "deleted_report_id": report_id
+    }
+
+
 @app.get("/dd_session/{session_id}", tags=["DD Workflow (V3)"])
 async def get_dd_session(session_id: str):
     """Query DD session status"""
     if session_id not in dd_sessions:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
-    
+
     context = dd_sessions[session_id]
-    
+
     # Build response
     response = {
         "session_id": context.session_id,
@@ -593,7 +731,7 @@ async def get_dd_session(session_id: str):
         "created_at": context.created_at,
         "updated_at": context.updated_at,
     }
-    
+
     # Add results if available
     if context.current_state == "completed":
         response["preliminary_im"] = PreliminaryIM(
@@ -605,11 +743,219 @@ async def get_dd_session(session_id: str):
             dd_questions=context.dd_questions,
             session_id=context.session_id
         ).dict()
-    
+
     if len(context.errors) > 0:
         response["errors"] = context.errors
-    
+
     return response
+
+
+# ============================================================================
+# V5: Dashboard Analytics APIs
+# ============================================================================
+
+@app.get("/api/dashboard/stats", tags=["Dashboard (V5)"])
+async def get_dashboard_stats():
+    """
+    V5: Get dashboard statistics including:
+    - Total reports count
+    - Active analyses count
+    - AI agents count
+    - Success rate
+    """
+    from datetime import datetime, timedelta
+
+    # Total reports
+    total_reports = len(saved_reports)
+
+    # Active analyses (sessions that are not completed)
+    active_analyses = len([s for s in dd_sessions.values() if s.current_state not in ["completed", "error"]])
+
+    # AI agents count (fixed number for now)
+    ai_agents_count = 6  # market-analyst, financial-expert, team-evaluator, risk-assessor, tech-specialist, legal-advisor
+
+    # Success rate (reports with status='completed' vs all reports)
+    completed_reports = len([r for r in saved_reports if r.get("status") == "completed"])
+    success_rate = (completed_reports / total_reports * 100) if total_reports > 0 else 0
+
+    # Calculate trends (compare to previous period - using mock data for now)
+    # In production, this should compare to data from a database
+    reports_change = "+12.5%"  # Mock
+    analyses_change = f"+{active_analyses}"
+    agents_change = "0"
+    success_rate_change = "+2.1%"  # Mock
+
+    return {
+        "success": True,
+        "stats": {
+            "total_reports": {
+                "value": total_reports,
+                "change": reports_change,
+                "trend": "up"
+            },
+            "active_analyses": {
+                "value": active_analyses,
+                "change": analyses_change,
+                "trend": "up" if active_analyses > 0 else "neutral"
+            },
+            "ai_agents": {
+                "value": ai_agents_count,
+                "change": agents_change,
+                "trend": "neutral"
+            },
+            "success_rate": {
+                "value": f"{success_rate:.1f}%",
+                "change": success_rate_change,
+                "trend": "up"
+            }
+        }
+    }
+
+
+@app.get("/api/dashboard/recent-reports", tags=["Dashboard (V5)"])
+async def get_recent_reports(limit: int = 5):
+    """
+    V5: Get most recent reports for dashboard display.
+    """
+    from datetime import datetime
+
+    # Sort by created_at (newest first) and limit
+    sorted_reports = sorted(
+        saved_reports,
+        key=lambda r: r.get("created_at", ""),
+        reverse=True
+    )[:limit]
+
+    # Format for dashboard display
+    recent_reports = []
+    for report in sorted_reports:
+        # Calculate time ago
+        created_at = datetime.fromisoformat(report.get("created_at", datetime.now().isoformat()))
+        time_diff = datetime.now() - created_at
+
+        if time_diff.days > 0:
+            time_ago = f"{time_diff.days} day{'s' if time_diff.days > 1 else ''} ago"
+        elif time_diff.seconds >= 3600:
+            hours = time_diff.seconds // 3600
+            time_ago = f"{hours} hour{'s' if hours > 1 else ''} ago"
+        else:
+            minutes = time_diff.seconds // 60
+            time_ago = f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+
+        # Count agents used
+        agents_used = len(report.get("steps", []))
+
+        recent_reports.append({
+            "id": report["id"],
+            "title": report.get("project_name", f"{report.get('company_name')} Analysis"),
+            "date": time_ago,
+            "status": report.get("status", "completed"),
+            "agents": agents_used
+        })
+
+    return {
+        "success": True,
+        "reports": recent_reports
+    }
+
+
+@app.get("/api/dashboard/trends", tags=["Dashboard (V5)"])
+async def get_analysis_trends(days: int = 7):
+    """
+    V5: Get analysis trends data for the past N days.
+    Returns daily counts of reports and analyses.
+    """
+    from datetime import datetime, timedelta
+    from collections import defaultdict
+
+    # Generate labels for the past N days
+    labels = []
+    end_date = datetime.now()
+    for i in range(days - 1, -1, -1):
+        date = end_date - timedelta(days=i)
+        labels.append(date.strftime("%a"))  # Mon, Tue, Wed, etc.
+
+    # Count reports by day
+    reports_by_day = defaultdict(int)
+    analyses_by_day = defaultdict(int)
+
+    for report in saved_reports:
+        created_at = datetime.fromisoformat(report.get("created_at", datetime.now().isoformat()))
+        days_ago = (end_date - created_at).days
+        if days_ago < days:
+            day_label = created_at.strftime("%a")
+            reports_by_day[day_label] += 1
+
+    for session in dd_sessions.values():
+        created_at = datetime.fromisoformat(session.created_at)
+        days_ago = (end_date - created_at).days
+        if days_ago < days:
+            day_label = created_at.strftime("%a")
+            analyses_by_day[day_label] += 1
+
+    # Build data arrays matching the labels
+    reports_data = [reports_by_day.get(label, 0) for label in labels]
+    analyses_data = [analyses_by_day.get(label, 0) for label in labels]
+
+    return {
+        "success": True,
+        "labels": labels,
+        "datasets": {
+            "reports": reports_data,
+            "analyses": analyses_data
+        }
+    }
+
+
+@app.get("/api/dashboard/agent-performance", tags=["Dashboard (V5)"])
+async def get_agent_performance():
+    """
+    V5: Get agent performance/usage statistics.
+    Returns the distribution of tasks by agent type.
+    """
+    from collections import defaultdict
+
+    # Count agent usage from saved reports
+    agent_usage = defaultdict(int)
+
+    for report in saved_reports:
+        steps = report.get("steps", [])
+        for step in steps:
+            # Map step titles to agent categories
+            title = step.get("title", "").lower()
+            if "market" in title or "市场" in title:
+                agent_usage["market_analysis"] += 1
+            elif "financial" in title or "财务" in title:
+                agent_usage["financial_review"] += 1
+            elif "team" in title or "团队" in title:
+                agent_usage["team_evaluation"] += 1
+            elif "risk" in title or "风险" in title:
+                agent_usage["risk_assessment"] += 1
+
+    # Get total for percentage calculation
+    total = sum(agent_usage.values())
+
+    # Return percentages
+    if total > 0:
+        performance = {
+            "market_analysis": round(agent_usage["market_analysis"] / total * 100),
+            "financial_review": round(agent_usage["financial_review"] / total * 100),
+            "team_evaluation": round(agent_usage["team_evaluation"] / total * 100),
+            "risk_assessment": round(agent_usage["risk_assessment"] / total * 100)
+        }
+    else:
+        # Mock data if no reports
+        performance = {
+            "market_analysis": 35,
+            "financial_review": 25,
+            "team_evaluation": 20,
+            "risk_assessment": 20
+        }
+
+    return {
+        "success": True,
+        "performance": performance
+    }
 
 
 # ======================================
@@ -751,5 +1097,397 @@ def _build_valuation_section(valuation: Any, exit: Any) -> str:
     section += valuation.analysis_text
     section += "\n\n"
     section += exit.analysis_text
-    
+
     return section
+
+
+# ============================================================================
+# V4: Roundtable Discussion WebSocket Endpoint
+# ============================================================================
+
+@app.websocket("/ws/roundtable")
+async def websocket_roundtable_endpoint(websocket: WebSocket):
+    """
+    圆桌讨论 WebSocket 端点
+
+    支持多智能体投资分析讨论
+
+    Client sends:
+    {
+        "action": "start_discussion",
+        "topic": "特斯拉2024Q4投资价值分析",
+        "company_name": "特斯拉",
+        "context": {...}  // Optional: 公司数据、财务数据等上下文
+    }
+
+    Server responses:
+    {
+        "type": "agent_event",
+        "event": {
+            "agent_name": "市场分析师",
+            "event_type": "thinking" | "message" | "completed",
+            "message": "...",
+            "data": {...}
+        }
+    }
+
+    OR:
+    {
+        "type": "discussion_complete",
+        "summary": {...}
+    }
+    """
+    await websocket.accept()
+    print(f"[ROUNDTABLE] WebSocket connection accepted", flush=True)
+
+    # Import roundtable components
+    from .core.roundtable import Meeting, Message, MessageType
+    from .core.roundtable.investment_agents import (
+        create_leader,
+        create_market_analyst,
+        create_financial_expert,
+        create_risk_assessor,
+        create_team_evaluator
+    )
+    from .core.agent_event_bus import AgentEventBus
+
+    session_id = None
+
+    try:
+        # Wait for initial request
+        initial_request = await websocket.receive_json()
+        print(f"[ROUNDTABLE] Received request: {initial_request}", flush=True)
+
+        action = initial_request.get("action")
+
+        if action == "start_discussion":
+            topic = initial_request.get("topic", "投资价值分析")
+            company_name = initial_request.get("company_name", "目标公司")
+            context = initial_request.get("context", {})
+
+            # Generate session ID
+            session_id = f"roundtable_{company_name}_{uuid.uuid4().hex[:8]}"
+            print(f"[ROUNDTABLE] Starting discussion for: {company_name}, session: {session_id}", flush=True)
+
+            # Create agent event bus for real-time updates
+            event_bus = AgentEventBus()
+            await event_bus.subscribe(websocket)
+
+            # Create expert team
+            agents = [
+                create_leader(),
+                create_market_analyst(),
+                create_financial_expert(),
+                create_team_evaluator(),
+                create_risk_assessor()
+            ]
+
+            print(f"[ROUNDTABLE] Created {len(agents)} agents", flush=True)
+
+            # Send agent list to frontend
+            await websocket.send_json({
+                "type": "agents_ready",
+                "session_id": session_id,
+                "agents": [agent.name for agent in agents],
+                "message": f"圆桌讨论准备就绪，共{len(agents)}位专家参与"
+            })
+
+            # Create meeting
+            meeting = Meeting(
+                agents=agents,
+                agent_event_bus=event_bus,
+                max_turns=15,
+                max_duration_seconds=300
+            )
+
+            # Build initial message based on context
+            initial_content = f"各位专家好！今天我们要讨论{company_name}的{topic}。"
+
+            # Add context if available
+            if context:
+                if context.get("summary"):
+                    initial_content += f"\n\n公司概况：\n{context['summary']}"
+                if context.get("financial_data"):
+                    initial_content += f"\n\n关键财务数据已提供。"
+                if context.get("market_data"):
+                    initial_content += f"\n\n市场数据已提供。"
+
+            initial_content += "\n\n请各位从自己的专业角度分析，给出投资建议。请领导者主持讨论。"
+
+            initial_message = Message(
+                sender="主持人",
+                recipient="ALL",
+                content=initial_content
+            )
+
+            print(f"[ROUNDTABLE] Starting meeting...", flush=True)
+
+            # Run discussion
+            try:
+                result = await meeting.run(initial_message=initial_message)
+
+                print(f"[ROUNDTABLE] Discussion completed", flush=True)
+
+                # Send completion summary
+                await websocket.send_json({
+                    "type": "discussion_complete",
+                    "session_id": session_id,
+                    "summary": result
+                })
+
+            except Exception as meeting_error:
+                print(f"[ROUNDTABLE] Meeting error: {meeting_error}", flush=True)
+                import traceback
+                traceback.print_exc()
+
+                await websocket.send_json({
+                    "type": "error",
+                    "message": f"讨论过程中出现错误: {str(meeting_error)}"
+                })
+
+            finally:
+                # Unsubscribe event bus
+                await event_bus.unsubscribe(websocket)
+
+        else:
+            await websocket.send_json({
+                "type": "error",
+                "message": f"未知的操作: {action}"
+            })
+
+    except WebSocketDisconnect:
+        print(f"[ROUNDTABLE] Client disconnected from session {session_id}", flush=True)
+    except Exception as e:
+        print(f"[ROUNDTABLE] Error: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+
+        try:
+            if websocket.client_state == 1:  # OPEN
+                await websocket.send_json({
+                    "type": "error",
+                    "message": f"圆桌讨论出现错误: {str(e)}"
+                })
+        except Exception as send_error:
+            print(f"[ROUNDTABLE] Failed to send error message: {send_error}", flush=True)
+
+
+# ============================================================================
+# V4: Intelligent Conversation WebSocket Endpoint
+# ============================================================================
+
+@app.websocket("/ws/conversation")
+async def websocket_conversation_endpoint(websocket: WebSocket):
+    """
+    V4 智能对话WebSocket端点
+
+    支持意图识别、对话式交互、用户确认后再启动分析
+
+    Client sends:
+    {
+        "type": "message",
+        "content": "用户输入的消息",
+        "bp_file_base64": "...",  // Optional
+        "bp_filename": "..."       // Optional
+    }
+
+    OR:
+    {
+        "type": "action",
+        "action": "start_dd_analysis",  // 或其他action
+        "company_name": "...",
+        "bp_file_base64": "...",  // Optional
+        "bp_filename": "...",      // Optional
+        "user_id": "..."
+    }
+
+    Server responses:
+    {
+        "type": "intent_recognized",
+        "intent": {...},
+        "message": "...",
+        "options": [...]
+    }
+
+    OR:
+    {
+        "type": "dd_progress",
+        "session_id": "...",
+        "status": "...",
+        "current_step": {...}
+    }
+    """
+    await websocket.accept()
+    print(f"[CONVERSATION] WebSocket connection accepted", flush=True)
+
+    # Initialize intent recognizer and conversation manager
+    intent_recognizer = IntentRecognizer(llm_gateway_url=LLM_GATEWAY_URL)
+    conversation_manager = ConversationManager(intent_recognizer)
+
+    session_id = None
+
+    try:
+        while True:
+            # Receive message from client
+            try:
+                message = await websocket.receive_json()
+                print(f"[CONVERSATION] Received message: {message}", flush=True)
+            except Exception as recv_error:
+                print(f"[CONVERSATION] Error receiving message: {recv_error}", flush=True)
+                break
+
+            message_type = message.get("type", "message")
+
+            if message_type == "message":
+                # User sent a text message - recognize intent
+                user_input = message.get("content", "")
+
+                if not user_input:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "请输入消息内容"
+                    })
+                    continue
+
+                # Process message with conversation manager
+                response = await conversation_manager.process_message(user_input)
+
+                # Send intent recognition result
+                await websocket.send_json({
+                    "type": "intent_recognized",
+                    "intent": {
+                        "type": response["intent"].type,
+                        "confidence": response["intent"].confidence,
+                        "entities": response["intent"].extracted_entities
+                    },
+                    "response_type": response["response_type"],
+                    "message": response.get("message", ""),
+                    "options": response.get("options", []),
+                    "suggested_action": response.get("suggested_action"),
+                    "file_upload_hint": response.get("file_upload_hint")
+                })
+                print(f"[CONVERSATION] Sent intent recognition response", flush=True)
+
+            elif message_type == "action":
+                # User confirmed an action - execute it
+                action = message.get("action")
+                company_name = message.get("company_name", "")
+                bp_file_base64 = message.get("bp_file_base64")
+                bp_filename = message.get("bp_filename", "business_plan.pdf")
+                user_id = message.get("user_id", "default_user")
+
+                if action == "start_dd_analysis":
+                    # Start DD analysis workflow
+                    print(f"[CONVERSATION] Starting DD analysis for: {company_name}", flush=True)
+
+                    # Generate session ID
+                    session_id = f"dd_{company_name}_{uuid.uuid4().hex[:8]}"
+
+                    # Decode BP file if provided
+                    import base64
+                    bp_file_content = None
+                    if bp_file_base64:
+                        try:
+                            bp_file_content = base64.b64decode(bp_file_base64)
+                            print(f"[CONVERSATION] Decoded BP file: {len(bp_file_content)} bytes", flush=True)
+                        except Exception as decode_error:
+                            print(f"[CONVERSATION] Failed to decode BP file: {decode_error}", flush=True)
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": "BP文件解码失败"
+                            })
+                            continue
+
+                    # Send acknowledgment
+                    await websocket.send_json({
+                        "type": "action_started",
+                        "action": "dd_analysis",
+                        "session_id": session_id,
+                        "message": f"正在为「{company_name}」启动完整尽职调查分析..."
+                    })
+
+                    # Create and run DD state machine
+                    try:
+                        state_machine = DDStateMachine(
+                            session_id=session_id,
+                            company_name=company_name,
+                            bp_file_content=bp_file_content,
+                            bp_filename=bp_filename,
+                            user_id=user_id
+                        )
+
+                        # Store session
+                        dd_sessions[session_id] = state_machine.get_current_context()
+
+                        # Execute workflow (this will send progress updates via websocket)
+                        await state_machine.run(websocket)
+
+                        # Update stored session
+                        dd_sessions[session_id] = state_machine.get_current_context()
+
+                        print(f"[CONVERSATION] DD analysis completed for {session_id}", flush=True)
+
+                    except Exception as dd_error:
+                        print(f"[CONVERSATION] DD analysis failed: {dd_error}", flush=True)
+                        import traceback
+                        traceback.print_exc()
+
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": f"分析过程中出现错误: {str(dd_error)}"
+                        })
+
+                elif action == "quick_overview":
+                    # Quick overview (simplified analysis)
+                    print(f"[CONVERSATION] Starting quick overview for: {company_name}", flush=True)
+
+                    await websocket.send_json({
+                        "type": "action_started",
+                        "action": "quick_overview",
+                        "message": f"正在快速获取「{company_name}」的基本信息..."
+                    })
+
+                    # TODO: Implement quick overview logic
+                    # For now, send a simple response
+                    await websocket.send_json({
+                        "type": "quick_overview_result",
+                        "company_name": company_name,
+                        "summary": "快速概览功能即将推出..."
+                    })
+
+                elif action == "free_chat":
+                    # Free chat mode
+                    print(f"[CONVERSATION] Entering free chat mode", flush=True)
+
+                    await websocket.send_json({
+                        "type": "chat_mode_active",
+                        "message": "已进入自由对话模式。有什么我可以帮助您的吗？"
+                    })
+
+                else:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": f"未知的操作: {action}"
+                    })
+
+            else:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": f"未知的消息类型: {message_type}"
+                })
+
+    except WebSocketDisconnect:
+        print(f"[CONVERSATION] Client disconnected", flush=True)
+    except Exception as e:
+        print(f"[CONVERSATION] Error: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+
+        try:
+            if websocket.client_state == 1:  # OPEN
+                await websocket.send_json({
+                    "type": "error",
+                    "message": f"对话过程中出现错误: {str(e)}"
+                })
+        except Exception as send_error:
+            print(f"[CONVERSATION] Failed to send error message: {send_error}", flush=True)
