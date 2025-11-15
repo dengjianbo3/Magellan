@@ -14,10 +14,15 @@ ReWOO三阶段执行:
 """
 import asyncio
 import json
+import re
+import logging
 from typing import List, Dict, Any, Optional
 from .agent import Agent
 from .tool import Tool
 import httpx
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 
 class ReWOOAgent(Agent):
@@ -117,39 +122,65 @@ class ReWOOAgent(Agent):
         plan: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """
-        阶段2: 执行
+        阶段2: 执行（带超时和错误处理）
 
         并行执行所有工具调用
         """
-        print(f"[{self.name}] Phase 2: Executing {len(plan)} tools in parallel...")
+        logger.info(f"[{self.name}] Phase 2: Executing {len(plan)} tools in parallel...")
 
         # 创建异步任务列表
         tasks = []
-        for step in plan:
+        for i, step in enumerate(plan):
             tool_name = step.get("tool")
             tool_params = step.get("params", {})
+            purpose = step.get("purpose", "")
 
             # 查找工具
             tool = self.tools.get(tool_name)
-            if tool:
-                task = tool.execute(**tool_params)
-                tasks.append(task)
-            else:
+            if not tool:
                 # 工具不存在，添加错误结果
+                logger.warning(f"[{self.name}] Tool '{tool_name}' not found for step {i+1}")
                 error_result = {
                     "success": False,
                     "error": f"Tool '{tool_name}' not found",
                     "summary": f"工具'{tool_name}'未找到"
                 }
-                tasks.append(asyncio.coroutine(lambda e=error_result: e)())
+                tasks.append(self._create_completed_future(error_result))
+                continue
+
+            # 创建带超时的任务
+            try:
+                # 每个工具30秒超时
+                task = asyncio.wait_for(
+                    tool.execute(**tool_params),
+                    timeout=30.0
+                )
+                tasks.append(task)
+                logger.debug(f"[{self.name}] Step {i+1}: {tool_name}({tool_params}) - {purpose}")
+            except Exception as e:
+                logger.error(f"[{self.name}] Failed to create task for {tool_name}: {e}")
+                error_result = {
+                    "success": False,
+                    "error": str(e),
+                    "summary": f"任务创建失败: {str(e)}"
+                }
+                tasks.append(self._create_completed_future(error_result))
 
         # 并行执行所有任务
         observations = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 处理异常
+        # 处理结果和异常
         processed_observations = []
         for i, obs in enumerate(observations):
-            if isinstance(obs, Exception):
+            if isinstance(obs, asyncio.TimeoutError):
+                logger.error(f"[{self.name}] Step {i+1} timed out after 30s")
+                processed_observations.append({
+                    "success": False,
+                    "error": "Tool execution timeout",
+                    "summary": f"工具执行超时(30s)"
+                })
+            elif isinstance(obs, Exception):
+                logger.error(f"[{self.name}] Step {i+1} failed with exception: {obs}")
                 processed_observations.append({
                     "success": False,
                     "error": str(obs),
@@ -158,10 +189,21 @@ class ReWOOAgent(Agent):
             else:
                 processed_observations.append(obs)
 
+        # 统计成功率
         success_count = sum(1 for o in processed_observations if o.get('success', False))
-        print(f"[{self.name}] Execution complete. {success_count}/{len(plan)} successful.")
+        success_rate = success_count / len(plan) if plan else 0
+
+        logger.info(f"[{self.name}] Execution complete: {success_count}/{len(plan)} successful ({success_rate:.1%})")
+
+        # 如果成功率太低，记录警告
+        if success_rate < 0.3 and len(plan) > 0:
+            logger.warning(f"[{self.name}] Low success rate ({success_rate:.1%}), analysis quality may be affected")
 
         return processed_observations
+
+    async def _create_completed_future(self, result: Any):
+        """创建一个已完成的future"""
+        return result
 
     async def _solve_phase(
         self,
@@ -202,49 +244,47 @@ class ReWOOAgent(Agent):
             return f"分析失败: {str(e)}"
 
     def _create_planning_prompt(self) -> str:
-        """创建规划阶段的Prompt"""
+        """创建规划阶段的Prompt (强化JSON输出)"""
         tools_desc = self._format_tools_description()
 
-        return f"""你是 {self.name}，需要为分析任务制定工具调用计划。
+        return f"""You are {self.name}, planning tool calls for an analysis task.
 
 {self.role_prompt}
 
-## 你的工具:
+## Available Tools:
 {tools_desc}
 
-## 规划任务:
-给定一个分析任务，你需要:
-1. 理解任务目标
-2. 确定需要哪些信息
-3. 选择合适的工具获取这些信息
-4. 按逻辑顺序排列工具调用
+## Planning Task:
+For the given analysis task, you need to:
+1. Understand the goal
+2. Determine what information is needed
+3. Select appropriate tools to gather this information
+4. Arrange tool calls in logical order
 
-## 输出格式 (JSON数组):
-```json
+## OUTPUT FORMAT (CRITICAL - MUST FOLLOW EXACTLY):
+
+You MUST output ONLY a JSON array in this exact format. NO other text, NO explanation, NO markdown formatting.
+
+Valid output examples:
+
+Example 1 (with tools):
 [
-  {{
-    "step": 1,
-    "tool": "tool_name",
-    "params": {{"param1": "value1", "param2": "value2"}},
-    "purpose": "为什么需要这个工具调用"
-  }},
-  {{
-    "step": 2,
-    "tool": "another_tool",
-    "params": {{"query": "search query"}},
-    "purpose": "获取行业数据"
-  }}
+  {{"step": 1, "tool": "yahoo_finance", "params": {{"symbol": "TSLA", "action": "price"}}, "purpose": "Get current stock price"}},
+  {{"step": 2, "tool": "sec_edgar", "params": {{"ticker": "TSLA", "form_type": "10-K"}}, "purpose": "Get annual report"}},
+  {{"step": 3, "tool": "tavily_search", "params": {{"query": "Tesla market share 2024"}}, "purpose": "Get market position"}}
 ]
-```
 
-## 重要规则:
-1. **只输出JSON数组，不要其他文字**
-2. **tool名称必须完全匹配**可用工具列表
-3. **params必须符合工具要求**
-4. **合理规划步骤数量**(通常3-6步即可)
-5. **步骤之间可以并行执行**，因此顺序不是很重要
+Example 2 (no tools needed):
+[]
 
-如果无需使用工具，返回空数组 `[]`
+## CRITICAL RULES:
+1. Output ONLY the JSON array - nothing before, nothing after
+2. Tool names MUST exactly match available tools
+3. Params MUST match tool requirements
+4. Typically plan 3-6 steps
+5. Steps can execute in parallel
+
+DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON array.
 """
 
     def _create_solving_prompt(self) -> str:
@@ -363,60 +403,111 @@ class ReWOOAgent(Agent):
         return "\n".join(parts)
 
     def _parse_plan(self, llm_response: str) -> List[Dict[str, Any]]:
-        """解析LLM生成的计划"""
-        # 提取JSON (可能被包裹在```json ```中)
+        """解析LLM生成的计划（增强版，支持多种格式）"""
         json_str = llm_response.strip()
 
-        # 移除markdown代码块标记
-        if "```json" in json_str:
-            json_str = json_str.split("```json")[1].split("```")[0]
-        elif "```" in json_str:
-            json_str = json_str.split("```")[1].split("```")[0]
+        # 尝试多种JSON提取模式
+        patterns = [
+            r'```json\s*(\[.*?\])\s*```',  # ```json [...] ```
+            r'```\s*(\[.*?\])\s*```',      # ``` [...] ```
+            r'(\[.*\])',                    # 直接找JSON数组
+        ]
 
-        # 尝试解析JSON
+        for pattern in patterns:
+            match = re.search(pattern, json_str, re.DOTALL)
+            if match:
+                try:
+                    plan = json.loads(match.group(1).strip())
+                    if isinstance(plan, list):
+                        logger.info(f"[{self.name}] Successfully parsed plan with {len(plan)} steps")
+                        return plan
+                except json.JSONDecodeError:
+                    continue
+
+        # 最后尝试直接解析整个响应
         try:
-            plan = json.loads(json_str.strip())
-
+            plan = json.loads(json_str)
             if isinstance(plan, list):
+                logger.info(f"[{self.name}] Parsed plan directly: {len(plan)} steps")
                 return plan
             else:
-                print(f"[{self.name}] Plan is not a list: {type(plan)}")
-                return []
-
+                logger.warning(f"[{self.name}] Parsed JSON is not a list: {type(plan)}")
         except json.JSONDecodeError as e:
-            print(f"[{self.name}] Failed to parse plan JSON: {e}")
-            print(f"[{self.name}] Raw response: {llm_response[:200]}...")
-            return []
+            logger.error(f"[{self.name}] Failed to parse plan JSON: {e}")
+            logger.error(f"[{self.name}] Response preview: {llm_response[:300]}...")
+
+        # 解析失败，返回空列表（会触发fallback）
+        logger.warning(f"[{self.name}] Plan parsing failed, will use fallback")
+        return []
 
     async def _call_llm(
         self,
         messages: List[Dict[str, str]],
-        temperature: float = None
+        temperature: float = None,
+        max_retries: int = 3
     ) -> str:
-        """调用LLM"""
+        """调用LLM（带重试机制）"""
         if temperature is None:
             temperature = self.temperature
 
-        try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(
-                    f"{self.llm_gateway_url}/chat",
-                    json={
-                        "model": self.model,
-                        "messages": messages,
-                        "temperature": temperature
-                    }
-                )
-                response.raise_for_status()
-                result = response.json()
+        last_error = None
 
-                # 提取LLM回复
-                content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-                return content
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    response = await client.post(
+                        f"{self.llm_gateway_url}/chat",
+                        json={
+                            "model": self.model,
+                            "messages": messages,
+                            "temperature": temperature
+                        }
+                    )
+                    response.raise_for_status()
+                    result = response.json()
 
-        except Exception as e:
-            print(f"[{self.name}] LLM call failed: {e}")
-            raise
+                    # 提取LLM回复
+                    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+                    if not content:
+                        raise ValueError("Empty response from LLM")
+
+                    logger.info(f"[{self.name}] LLM call succeeded on attempt {attempt + 1}")
+                    return content
+
+            except httpx.TimeoutException as e:
+                last_error = e
+                logger.warning(f"[{self.name}] LLM timeout on attempt {attempt + 1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)  # 指数退避: 1s, 2s, 4s
+                continue
+
+            except httpx.HTTPStatusError as e:
+                last_error = e
+                if e.response.status_code == 429:  # Rate limit
+                    logger.warning(f"[{self.name}] Rate limited, retrying... (attempt {attempt + 1}/{max_retries})")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(5)  # 等待5s后重试
+                    continue
+                elif e.response.status_code >= 500:  # Server error
+                    logger.error(f"[{self.name}] Server error {e.response.status_code}, retrying...")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2 ** attempt)
+                    continue
+                else:
+                    logger.error(f"[{self.name}] HTTP error {e.response.status_code}: {e}")
+                    raise  # 客户端错误不重试
+
+            except Exception as e:
+                last_error = e
+                logger.error(f"[{self.name}] LLM call failed on attempt {attempt + 1}/{max_retries}: {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2)
+                continue
+
+        # 所有重试都失败
+        logger.error(f"[{self.name}] All {max_retries} LLM call attempts failed")
+        raise last_error if last_error else Exception("LLM call failed")
 
     async def _fallback_direct_analysis(
         self,
