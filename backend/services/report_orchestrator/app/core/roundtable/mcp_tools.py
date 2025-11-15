@@ -315,6 +315,10 @@ class KnowledgeBaseTool(Tool):
         }
 
 
+from .yahoo_finance_tool import YahooFinanceTool
+from .sec_edgar_tool import SECEdgarTool
+
+
 # 工具工厂函数
 def create_mcp_tools_for_agent(agent_role: str) -> List[Tool]:
     """
@@ -336,17 +340,29 @@ def create_mcp_tools_for_agent(agent_role: str) -> List[Tool]:
     if agent_role in ["MarketAnalyst", "市场分析师"]:
         # 市场分析师需要公开数据和搜索
         tools.append(PublicDataTool())
+        tools.append(YahooFinanceTool())  # 添加股票市场数据工具
+        tools.append(SECEdgarTool())      # 添加SEC官方数据工具
 
     elif agent_role in ["FinancialExpert", "财务专家"]:
-        # 财务专家需要公开数据
+        # 财务专家需要公开数据和财务报表
         tools.append(PublicDataTool())
+        tools.append(YahooFinanceTool())  # 添加财报数据工具
+        tools.append(SECEdgarTool())      # 添加SEC官方财报工具
 
     elif agent_role in ["TeamEvaluator", "团队评估"]:
         # 团队评估专家需要搜索团队背景
         pass  # 主要使用 Tavily 搜索
 
     elif agent_role in ["RiskAssessor", "风险评估"]:
-        # 风险评估专家需要搜索风险信息
+        # 风险评估专家需要搜索风险信息和查看SEC披露的风险因素
+        tools.append(SECEdgarTool())  # 添加SEC工具查看8-K重大事件和10-K风险因素
+
+    elif agent_role in ["TechSpecialist", "技术专家"]:
+        # 技术专家主要使用搜索工具
+        pass  # 主要使用 Tavily 搜索
+
+    elif agent_role in ["LegalAdvisor", "法律顾问"]:
+        # 法律顾问主要使用搜索工具查询法规
         pass  # 主要使用 Tavily 搜索
 
     # 知识库工具 - 所有专家都可以使用
