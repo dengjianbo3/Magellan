@@ -45,6 +45,73 @@ class ReWOOAgent(Agent):
         self.planning_temperature = 0.3  # 规划阶段使用更低温度
         self.solving_temperature = temperature  # 综合阶段使用正常温度
 
+    async def think_and_act(self) -> List:
+        """
+        Override base Agent's think_and_act to use ReWOO workflow
+
+        This is called by the Meeting/Roundtable system. Instead of using the base
+        Agent's simple tool calling, we use the ReWOO three-phase approach.
+
+        Returns:
+            List of Message objects to send
+        """
+        from .message import Message, MessageType
+
+        if not self.message_bus:
+            raise RuntimeError(f"Agent {self.name} not connected to MessageBus")
+
+        # 1. Get new messages
+        new_messages = self.message_bus.get_messages(self.name)
+
+        if not new_messages:
+            return []
+
+        # 2. Update message history
+        self.message_history.extend(new_messages)
+
+        # 3. Extract query and context from messages
+        # Combine all message content as the query
+        query_parts = []
+        for msg in new_messages:
+            query_parts.append(f"[{msg.sender}]: {msg.content}")
+
+        query = "\n\n".join(query_parts)
+
+        # Build context from all conversation history
+        context = {
+            "conversation_history": [msg.to_dict() for msg in self.message_history[-10:]],
+            "available_agents": list(self.message_bus.registered_agents) if self.message_bus else []
+        }
+
+        # 4. Run ReWOO analysis
+        print(f"[{self.name}] Running ReWOO analysis...")
+        try:
+            result = await self.analyze_with_rewoo(query, context)
+
+            # 5. Create response message
+            if result:
+                # Analyze message intent to determine recipient
+                message_type, recipient = self._analyze_message_intent(result)
+
+                msg = Message(
+                    sender=self.name,
+                    recipient=recipient,
+                    content=result,
+                    message_type=message_type
+                )
+
+                self.message_history.append(msg)
+                return [msg]
+            else:
+                print(f"[{self.name}] ReWOO analysis returned no result")
+                return []
+
+        except Exception as e:
+            print(f"[{self.name}] ReWOO analysis failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
     async def analyze_with_rewoo(
         self,
         query: str,
