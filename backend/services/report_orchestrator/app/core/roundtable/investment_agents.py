@@ -700,21 +700,6 @@ def create_financial_expert(language: str = "zh") -> ReWOOAgent:
         temperature=0.5  # 财务分析需要相对精确
     )
 
-    # 财务专家的工具
-    financial_tool = FunctionTool(
-        name="analyze_financials",
-        description="分析公司财务指标和报表",
-        func=analyze_financial_ratios,
-        parameters_schema={
-            "type": "object",
-            "properties": {
-                "company": {"type": "string", "description": "公司名称"}
-            },
-            "required": ["company"]
-        }
-    )
-    agent.register_tool(financial_tool)
-
     # 添加 MCP 工具
     mcp_tools = create_mcp_tools_for_agent("FinancialExpert")
     for tool in mcp_tools:
@@ -937,21 +922,6 @@ def create_team_evaluator(language: str = "zh") -> Agent:
         temperature=0.7
     )
 
-    # 团队评估专家的工具
-    team_tool = FunctionTool(
-        name="search_team_info",
-        description="搜索公司团队和管理层信息",
-        func=search_team_info,
-        parameters_schema={
-            "type": "object",
-            "properties": {
-                "company": {"type": "string", "description": "公司名称"}
-            },
-            "required": ["company"]
-        }
-    )
-    agent.register_tool(team_tool)
-
     # 添加 MCP 工具
     mcp_tools = create_mcp_tools_for_agent("TeamEvaluator")
     for tool in mcp_tools:
@@ -1164,22 +1134,6 @@ def create_risk_assessor(language: str = "zh") -> Agent:
         model="gpt-4",
         temperature=0.6
     )
-
-    # 风险评估专家的工具
-    risk_tool = FunctionTool(
-        name="assess_risks",
-        description="评估公司和行业的各类风险",
-        func=assess_risks,
-        parameters_schema={
-            "type": "object",
-            "properties": {
-                "company": {"type": "string", "description": "公司名称"},
-                "industry": {"type": "string", "description": "所属行业"}
-            },
-            "required": ["company", "industry"]
-        }
-    )
-    agent.register_tool(risk_tool)
 
     # 添加 MCP 工具
     mcp_tools = create_mcp_tools_for_agent("RiskAssessor")
@@ -1431,20 +1385,10 @@ def create_tech_specialist(language: str = "zh") -> Agent:
         temperature=0.65
     )
 
-    # 技术专家的工具
-    web_search_tool = FunctionTool(
-        name="search_tech_info",
-        description="搜索技术和专利信息",
-        func=search_web,
-        parameters_schema={
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "搜索查询"}
-            },
-            "required": ["query"]
-        }
-    )
-    agent.register_tool(web_search_tool)
+    # 添加 MCP 工具
+    mcp_tools = create_mcp_tools_for_agent("TechSpecialist")
+    for tool in mcp_tools:
+        agent.register_tool(tool)
 
     return agent
 
@@ -1709,21 +1653,6 @@ def create_legal_advisor(language: str = "zh") -> Agent:
         model="gpt-4",
         temperature=0.4  # 更保守的温度，法律分析需要精确
     )
-
-    # 法律顾问的工具 - 主要使用网络搜索查询法规和案例
-    web_search_tool = FunctionTool(
-        name="search_legal_info",
-        description="搜索法律法规、监管要求和行业合规信息",
-        func=search_web,
-        parameters_schema={
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "法律搜索查询"}
-            },
-            "required": ["query"]
-        }
-    )
-    agent.register_tool(web_search_tool)
 
     # 添加 MCP 工具
     mcp_tools = create_mcp_tools_for_agent("LegalAdvisor")
