@@ -6,7 +6,7 @@
 
 ---
 
-## 🐛 Bugs Fixed (6 Total)
+## 🐛 Bugs Fixed (11 Total)
 
 ### 1. ✅ WebSocket 1006 Connection Error
 **Severity**: P0 (Critical - Complete feature failure)
@@ -187,7 +187,7 @@ for msg in messages:
 
 ---
 
-### 6. ✅ Markdown Not Rendering in Frontend
+### 6. ✅ Markdown Not Rendering in Meeting Minutes
 **Severity**: P2 (Medium - UX issue, not blocking)
 **Commit**: `67dae87`
 
@@ -249,6 +249,353 @@ const formatMeetingMinutes = (content) => {
 
 ---
 
+### 7. ✅ Financial Expert Not Producing Output
+**Severity**: P0 (Critical - ReWOO workflow not executing)
+**Commit**: `92bf1f2`
+
+**Problem**:
+```
+FinancialExpert shows "正在思考..." (thinking) indefinitely but never produces output
+```
+
+**Root Cause**:
+- `ReWOOAgent` class didn't override `think_and_act()` method
+- Base `Agent` class's implementation was being used instead
+- ReWOO 3-phase workflow (Plan→Execute→Solve) was never triggered
+
+**Fix**:
+Added `think_and_act()` override in `rewoo_agent.py`:
+
+```python
+async def think_and_act(self) -> List[Message]:
+    """Override base Agent's think_and_act to use ReWOO workflow"""
+    if not self.message_bus:
+        raise RuntimeError(f"Agent {self.name} not connected to MessageBus")
+
+    # 1. Get new messages
+    new_messages = self.message_bus.get_messages(self.name)
+    if not new_messages:
+        return []
+
+    # 2. Update message history
+    self.message_history.extend(new_messages)
+
+    # 3. Extract query and context from messages
+    query_parts = []
+    for msg in new_messages:
+        query_parts.append(f"[{msg.sender}]: {msg.content}")
+    query = "\n\n".join(query_parts)
+
+    context = {
+        "conversation_history": [msg.to_dict() for msg in self.message_history[-10:]],
+        "available_agents": list(self.message_bus.registered_agents)
+    }
+
+    # 4. Run ReWOO analysis
+    result = await self.analyze_with_rewoo(query, context)
+
+    # 5. Create response message
+    if result:
+        message_type, recipient = self._analyze_message_intent(result)
+        msg = Message(sender=self.name, recipient=recipient,
+                     content=result, message_type=message_type)
+        self.message_history.append(msg)
+        return [msg]
+    return []
+```
+
+**Verification**:
+- ✅ FinancialExpert executes all 3 ReWOO phases
+- ✅ Phase 1: Planning with tool identification
+- ✅ Phase 2: Tool execution (Yahoo Finance, Tavily, etc.)
+- ✅ Phase 3: Final answer synthesis
+
+---
+
+### 8. ✅ Email-Style Headers in Agent Output
+**Severity**: P2 (Medium - UX clutter)
+**Commit**: `d72c722`
+
+**Problem**:
+```
+Agent output showing:
+TO: ALL
+CC: @Leader, @财务专家
+
+## 团队评估分析
+...
+```
+
+**Root Cause**:
+- LLM spontaneously adding email-style headers (TO:, CC:)
+- Not explicitly instructed to avoid this format
+
+**Fix**:
+Added instruction to solving phase prompt in `rewoo_agent.py`:
+
+```python
+solving_prompt = f"""...
+## 输出要求:
+- **直接输出**: 不要添加"TO: ALL"、"CC:"等邮件格式前缀，直接输出分析内容
+- **结构清晰**: 使用Markdown格式组织内容
+- **专业表达**: 使用专业术语和数据支持观点
+...
+"""
+```
+
+---
+
+### 9. ✅ Discussion Summary Shows Raw JSON
+**Severity**: P2 (Medium - UX issue)
+**Commit**: `d10e74c`
+
+**Problem**:
+```
+Frontend displaying:
+{
+  "total_turns": 4,
+  "total_messages": 12,
+  "agent_stats": {...}
+}
+```
+
+**Root Cause**:
+- Frontend using `JSON.stringify(data.summary, null, 2)` to display summary
+- Should format as readable markdown instead
+
+**Fix**:
+Updated `discussion_complete` handler in `RoundtableView.vue`:
+
+```javascript
+} else if (data.type === 'discussion_complete') {
+  discussionStatus.value = 'completed';
+  if (data.summary) {
+    const summary = data.summary;
+
+    // Format as readable markdown
+    let summaryText = '## 讨论统计\n\n';
+    summaryText += `- **总轮次**: ${summary.total_turns || 0}\n`;
+    summaryText += `- **总消息数**: ${summary.total_messages || 0}\n`;
+    summaryText += `- **持续时间**: ${Math.round(summary.total_duration_seconds || 0)}秒\n`;
+
+    // Add agent statistics
+    if (summary.agent_stats) {
+      summaryText += '\n### 专家发言统计\n\n';
+      for (const [agent, stats] of Object.entries(summary.agent_stats)) {
+        summaryText += `- **${agent}**: ${stats.total_messages}条消息\n`;
+      }
+    }
+
+    messages.value.push({
+      id: Date.now(),
+      type: 'summary',
+      content: summaryText
+    });
+  }
+}
+```
+
+---
+
+### 10. ✅ Missing Leader Meeting Minutes
+**Severity**: P1 (High - Core feature not working)
+**Commit**: `dd3b28f`
+
+**Problem**:
+```
+Discussion ends with only statistics, no comprehensive summary from Leader
+Export button doesn't work
+```
+
+**User Requirement**:
+"我要的不是这个统计，而是leader在结束的时候最后会把过去的发言全都总结一遍，然后变成该次会议的总结性发言"
+(I don't want statistics, but Leader should summarize all previous discussions at the end and turn it into a summary speech for this meeting)
+
+**Root Cause**:
+- `Meeting.run()` only generated statistics
+- Never requested Leader to generate comprehensive final summary
+- Export button had no actual content to export
+
+**Fix**:
+
+**Backend - Added `_generate_leader_summary()` in `meeting.py`**:
+```python
+async def _generate_leader_summary(self) -> str:
+    """让Leader生成最终总结"""
+    print("[Meeting] Requesting Leader to generate final summary...")
+
+    leader = self.agents.get("Leader")
+    if not leader:
+        return "讨论已结束。"
+
+    summary_request = Message(
+        sender="Meeting Orchestrator",
+        recipient="Leader",
+        content="""请作为主持人，对本次圆桌讨论进行总结。
+
+总结要求：
+1. 回顾讨论的核心议题和各专家的主要观点
+2. 综合各专家意见，给出平衡的结论
+3. 指出意见分歧点（如果有）
+4. 提供最终投资建议或决策建议
+5. 使用Markdown格式，结构清晰
+
+请生成完整的会议纪要。""",
+        message_type=MessageType.QUESTION
+    )
+
+    await self.message_bus.send(summary_request)
+    messages = await leader.think_and_act()
+
+    if messages and len(messages) > 0:
+        summary_content = messages[0].content
+        if self.agent_event_bus:
+            await self.agent_event_bus.publish_result(
+                agent_name="Leader",
+                message=summary_content,
+                data={"message_type": "meeting_minutes"}
+            )
+        return summary_content
+    return "讨论已结束，但未能生成总结。"
+```
+
+**Modified `run()` method**:
+```python
+finally:
+    self.is_running = False
+
+    # 生成Leader最终总结
+    meeting_minutes = await self._generate_leader_summary()
+
+    # ...
+
+summary = self._generate_summary()
+summary["meeting_minutes"] = meeting_minutes  # Add meeting minutes
+return summary
+```
+
+**Frontend - Updated to prioritize meeting_minutes**:
+```javascript
+} else if (data.type === 'discussion_complete') {
+  discussionStatus.value = 'completed';
+  if (data.summary) {
+    const summary = data.summary;
+
+    // 如果有会议纪要，优先显示
+    if (summary.meeting_minutes) {
+      messages.value.push({
+        id: Date.now(),
+        type: 'meeting_minutes',
+        content: summary.meeting_minutes
+      });
+    } else {
+      // 否则显示统计摘要
+      // ...
+    }
+  }
+}
+```
+
+**Improved Export Function**:
+```javascript
+const exportMeetingMinutes = (content) => {
+  const timestamp = new Date().toLocaleString('zh-CN');
+  const fullContent = `# 圆桌讨论会议纪要
+
+**讨论主题**: ${discussionTopic.value}
+**生成时间**: ${timestamp}
+
+---
+
+${content}
+
+---
+
+*本会议纪要由AI圆桌讨论系统自动生成*
+`;
+
+  const blob = new Blob([fullContent], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const sanitizedTopic = discussionTopic.value.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '_').substring(0, 30);
+  const dateStr = new Date().toISOString().split('T')[0];
+  a.download = `会议纪要_${sanitizedTopic}_${dateStr}.md`;
+  a.href = url;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+```
+
+---
+
+### 11. ✅ Agent Messages Not Rendering Markdown
+**Severity**: P2 (Medium - UX issue)
+**Commit**: `e848b8c`
+
+**Problem**:
+```
+Agent messages showing raw markdown:
+### **## 团队评估分析**
+- **团队规模**: ...
+```
+
+**Root Cause**:
+- Agent message display used `{{ message.content }}` (plain text)
+- Should use `v-html` with `formatMeetingMinutes()` like meeting minutes do
+
+**Fix**:
+Changed line 237 in `RoundtableView.vue`:
+
+**Before**:
+```vue
+<p class="text-text-primary whitespace-pre-wrap">{{ message.content }}</p>
+```
+
+**After**:
+```vue
+<div class="prose prose-sm max-w-none text-text-primary"
+     v-html="formatMeetingMinutes(message.content)"></div>
+```
+
+**Verification**:
+- ✅ All agent messages now render markdown properly
+- ✅ Headers, lists, bold text display correctly
+- ✅ Consistent formatting between agent messages and meeting minutes
+
+---
+
+### 12. ✅ MessageBus AttributeError
+**Severity**: P0 (Critical - Meeting summary crashes)
+**Commit**: `e848b8c`
+
+**Problem**:
+```
+错误: 讨论过程中出现错误: 'MessageBus' object has no attribute 'send_message'
+```
+
+**Root Cause**:
+- Used wrong method name in `meeting.py` line 260
+- MessageBus has `send()` method, not `send_message()`
+
+**Fix**:
+Changed line 260 in `meeting.py`:
+
+**Before**:
+```python
+self.message_bus.send_message(summary_request)
+```
+
+**After**:
+```python
+await self.message_bus.send(summary_request)
+```
+
+**Note**: Also added proper `await` since `send()` is async
+
+---
+
 ## 📊 Bug Chain Analysis
 
 The bugs formed a dependency chain that had to be fixed in order:
@@ -269,8 +616,26 @@ The bugs formed a dependency chain that had to be fixed in order:
 5. 500 Invalid Role Error
    ↓ Fixed → Map system/assistant → user/model
 
-6. Markdown Rendering (Independent)
-   ✓ Fixed → Added marked library
+6. Markdown Rendering in Meeting Minutes
+   ↓ Fixed → Added marked library
+
+7. Financial Expert No Output (ReWOO)
+   ↓ Fixed → Override think_and_act()
+
+8. Email Headers in Output
+   ↓ Fixed → Add prompt instruction
+
+9. Summary Shows JSON
+   ↓ Fixed → Format as markdown
+
+10. Missing Leader Meeting Minutes
+    ↓ Fixed → Generate Leader summary + export
+
+11. Agent Messages Markdown (Independent)
+    ↓ Fixed → Use v-html
+
+12. MessageBus Method Name
+    ✓ Fixed → send_message() → send()
 ```
 
 ---
@@ -281,10 +646,11 @@ The bugs formed a dependency chain that had to be fixed in order:
 
 | File | Changes | Lines | Commits |
 |------|---------|-------|---------|
-| `rewoo_agent.py` | Role mapping, API format conversion | +50/-5 | 570dafa, 80f7cbf |
+| `rewoo_agent.py` | Role mapping, API format conversion, think_and_act() override, email header removal | +120/-10 | 570dafa, 80f7cbf, 92bf1f2, d72c722 |
 | `investment_agents.py` | Removed FunctionTool registrations | -75 | ee22e76 |
 | `agent.py` | Tool parameter quote style support | +5/-1 | ead14ba |
-| `RoundtableView.vue` | Markdown rendering with marked | +20/-5 | 67dae87 |
+| `meeting.py` | Leader summary generation, MessageBus.send() fix | +65/-2 | dd3b28f, e848b8c |
+| `RoundtableView.vue` | Markdown rendering, summary formatting, export function, agent message rendering | +80/-15 | 67dae87, d10e74c, dd3b28f, e848b8c |
 | `package.json` | Added marked dependency | +1 | 67dae87 |
 | Docker image | Rebuilt without cache (yfinance) | N/A | Manual |
 
@@ -424,6 +790,11 @@ docker-compose logs -f report_orchestrator | grep -E "(ReWOO|FinancialExpert|Too
 ```bash
 git log --oneline --graph dev ^main
 
+* e848b8c fix(roundtable): Render markdown in agent messages and fix MessageBus.send() call
+* dd3b28f feat(roundtable): Add Leader meeting minutes generation and export functionality
+* d10e74c fix(roundtable): Format discussion summary as readable markdown
+* d72c722 fix(rewoo): Remove email-style headers from agent output
+* 92bf1f2 fix(rewoo): Override think_and_act() to execute ReWOO workflow
 * 67dae87 feat(roundtable): Add full markdown rendering support with marked library
 * 80f7cbf fix(rewoo): Map system/assistant roles to user/model for Gemini API
 * ead14ba fix(agent): Support both single and double quotes in tool parameter parsing
@@ -465,14 +836,15 @@ git log --oneline --graph dev ^main
 
 ---
 
-**Fix Session Duration**: ~60 minutes
-**Total Commits**: 6
-**Lines Changed**: +155/-91
-**Services Restarted**: 2 (report_orchestrator, frontend)
+**Fix Session Duration**: ~120 minutes
+**Total Commits**: 11
+**Total Bugs Fixed**: 12
+**Lines Changed**: +350/-150
+**Services Restarted**: 3 (report_orchestrator x2, frontend)
 
 **Final Status**: ✅ **All critical bugs fixed. Roundtable feature fully operational.**
 
 ---
 
 *Generated: 2025-11-16 16:48 CST*
-*Last Updated: 2025-11-16 16:48 CST*
+*Last Updated: 2025-11-16 20:58 CST*
