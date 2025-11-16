@@ -456,12 +456,23 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
             try:
                 async with httpx.AsyncClient(timeout=120.0) as client:
                     # 转换消息格式为LLM Gateway期待的格式
+                    # Gemini只支持 "user" 和 "model" role,不支持 "system"
                     history = []
                     for msg in messages:
+                        role = msg.get("role", "user")
+                        # 将 "system" 转换为 "user" (Gemini不支持system role)
+                        if role == "system":
+                            role = "user"
+                        elif role == "assistant":
+                            role = "model"  # Gemini使用 "model" 而非 "assistant"
+
                         history.append({
-                            "role": msg.get("role", "user"),
+                            "role": role,
                             "parts": [msg.get("content", "")]
                         })
+
+                    # Debug: Print what we're sending
+                    print(f"[ReWOO:{self.name}] Sending to LLM Gateway: {json.dumps({'history': history}, indent=2)}")
 
                     response = await client.post(
                         f"{self.llm_gateway_url}/chat",
