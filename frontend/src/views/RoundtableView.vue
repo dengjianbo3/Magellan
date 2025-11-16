@@ -565,7 +565,24 @@ const handleWebSocketMessage = (data) => {
   } else if (data.type === 'discussion_complete') {
     discussionStatus.value = 'completed';
     if (data.summary) {
-      const summaryText = JSON.stringify(data.summary, null, 2);
+      // Format summary as readable markdown instead of raw JSON
+      const summary = data.summary;
+      let summaryText = '## 讨论统计\n\n';
+      summaryText += `- **总轮次**: ${summary.total_turns || 0}\n`;
+      summaryText += `- **总消息数**: ${summary.total_messages || 0}\n`;
+      summaryText += `- **讨论时长**: ${(summary.total_duration_seconds || 0).toFixed(1)} 秒\n\n`;
+
+      if (summary.agent_stats) {
+        summaryText += '### 专家发言统计\n\n';
+        for (const [agent, stats] of Object.entries(summary.agent_stats)) {
+          summaryText += `**${agent}**:\n`;
+          summaryText += `- 总消息: ${stats.total_messages || 0}\n`;
+          summaryText += `- 广播: ${stats.broadcast || 0}\n`;
+          summaryText += `- 私聊: ${stats.private || 0}\n`;
+          summaryText += `- 提问: ${stats.questions || 0}\n\n`;
+        }
+      }
+
       messages.value.push({
         id: Date.now(),
         type: 'summary',
