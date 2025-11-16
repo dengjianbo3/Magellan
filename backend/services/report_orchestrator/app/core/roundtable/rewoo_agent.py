@@ -455,19 +455,25 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
         for attempt in range(max_retries):
             try:
                 async with httpx.AsyncClient(timeout=120.0) as client:
+                    # 转换消息格式为LLM Gateway期待的格式
+                    history = []
+                    for msg in messages:
+                        history.append({
+                            "role": msg.get("role", "user"),
+                            "parts": [msg.get("content", "")]
+                        })
+
                     response = await client.post(
                         f"{self.llm_gateway_url}/chat",
                         json={
-                            "model": self.model,
-                            "messages": messages,
-                            "temperature": temperature
+                            "history": history
                         }
                     )
                     response.raise_for_status()
                     result = response.json()
 
-                    # 提取LLM回复
-                    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    # 提取LLM回复 (LLM Gateway返回 {"content": "..."})
+                    content = result.get("content", "")
 
                     if not content:
                         raise ValueError("Empty response from LLM")
