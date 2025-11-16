@@ -28,9 +28,9 @@
           <!-- Experts Selection -->
           <div>
             <label class="block text-sm font-semibold text-text-primary mb-3">
-              {{ t('roundtable.startPanel.expertsLabel') }} ({{ selectedExperts.length }}/5 {{ t('roundtable.startPanel.expertsSelected') }})
+              {{ t('roundtable.startPanel.expertsLabel') }} ({{ selectedExperts.length }} {{ t('roundtable.startPanel.expertsSelected') }})
             </label>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               <div
                 v-for="expert in availableExperts"
                 :key="expert.id"
@@ -94,9 +94,9 @@
     </div>
 
     <!-- Active Discussion View -->
-    <div v-else class="flex gap-6">
+    <div v-else class="flex gap-6" style="height: calc(100vh - 180px);">
       <!-- Left Sidebar: Experts Panel -->
-      <div class="w-80 flex-shrink-0 space-y-4">
+      <div class="w-80 flex-shrink-0 space-y-4 overflow-y-auto">
         <!-- Discussion Info -->
         <div class="bg-surface border border-border-color rounded-lg p-4">
           <h3 class="text-sm font-semibold text-text-primary mb-3">{{ t('roundtable.discussion.progress') }}</h3>
@@ -147,6 +147,21 @@
         <!-- Control Buttons -->
         <div class="space-y-2">
           <button
+            @click="generateMeetingSummary"
+            :disabled="isGeneratingSummary || messages.length === 0"
+            :class="[
+              'w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-semibold',
+              isGeneratingSummary || messages.length === 0
+                ? 'bg-surface text-text-secondary cursor-not-allowed'
+                : 'bg-primary/20 text-primary hover:bg-primary/30'
+            ]"
+          >
+            <span class="material-symbols-outlined" :class="{ 'animate-spin': isGeneratingSummary }">
+              {{ isGeneratingSummary ? 'sync' : 'summarize' }}
+            </span>
+            {{ isGeneratingSummary ? '生成中...' : '生成会议纪要' }}
+          </button>
+          <button
             @click="stopDiscussion"
             class="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-accent-red/20 text-accent-red hover:bg-accent-red/30 transition-colors text-sm font-semibold"
           >
@@ -166,7 +181,7 @@
       <!-- Main Discussion Area -->
       <div class="flex-1 bg-surface border border-border-color rounded-lg overflow-hidden flex flex-col">
         <!-- Discussion Header -->
-        <div class="px-6 py-4 border-b border-border-color bg-background-dark">
+        <div class="px-6 py-4 border-b border-border-color bg-background-dark flex-shrink-0">
           <div class="flex items-center justify-between">
             <div class="flex-1 min-w-0">
               <h2 class="text-xl font-bold text-text-primary truncate">{{ discussionTopic }}</h2>
@@ -184,15 +199,15 @@
         </div>
 
         <!-- Reconnecting Banner -->
-        <div v-if="isReconnecting" class="px-6 py-3 bg-accent-yellow/10 border-b border-accent-yellow/30">
+        <div v-if="isReconnecting" class="px-6 py-3 bg-accent-yellow/10 border-b border-accent-yellow/30 flex-shrink-0">
           <div class="flex items-center gap-2 text-accent-yellow">
             <span class="material-symbols-outlined animate-spin">sync</span>
             <span class="text-sm font-semibold">连接断开，正在尝试重新连接...</span>
           </div>
         </div>
 
-        <!-- Messages Container -->
-        <div ref="messagesContainer" class="flex-1 overflow-y-auto p-6 space-y-4">
+        <!-- Messages Container - 固定高度，内部滚动 -->
+        <div ref="messagesContainer" class="flex-1 overflow-y-auto p-6 space-y-4" style="min-height: 0;">
           <div v-for="message in messages" :key="message.id">
             <!-- System Message -->
             <div v-if="message.type === 'system'" class="flex justify-center">
@@ -244,15 +259,26 @@
               </div>
             </div>
 
-            <!-- Summary -->
-            <div v-else-if="message.type === 'summary'" class="mt-6">
+            <!-- Summary / Meeting Minutes -->
+            <div v-else-if="message.type === 'summary' || message.type === 'meeting_minutes'" class="mt-6">
               <div class="bg-primary/10 border border-primary rounded-lg p-6">
-                <div class="flex items-center gap-2 mb-4">
-                  <span class="material-symbols-outlined text-primary">summarize</span>
-                  <h3 class="text-lg font-bold text-text-primary">{{ t('roundtable.summary.title') }}</h3>
+                <div class="flex items-center justify-between mb-4">
+                  <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary">summarize</span>
+                    <h3 class="text-lg font-bold text-text-primary">
+                      {{ message.type === 'meeting_minutes' ? '会议纪要' : t('roundtable.summary.title') }}
+                    </h3>
+                  </div>
+                  <button
+                    @click="exportMeetingMinutes(message.content)"
+                    class="flex items-center gap-1 px-3 py-1 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors text-xs font-semibold"
+                  >
+                    <span class="material-symbols-outlined text-sm">download</span>
+                    导出
+                  </button>
                 </div>
                 <div class="prose prose-sm max-w-none text-text-primary">
-                  <p class="whitespace-pre-wrap">{{ message.content }}</p>
+                  <div v-html="formatMeetingMinutes(message.content)" class="whitespace-pre-wrap"></div>
                 </div>
               </div>
             </div>
@@ -272,10 +298,12 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onUnmounted } from 'vue';
+import { ref, computed, nextTick, onUnmounted, onMounted } from 'vue';
 import { useLanguage } from '../composables/useLanguage';
+import { getRoundtableAgents } from '../config/agents';
+import { marked } from 'marked';
 
-const { t } = useLanguage();
+const { t, locale } = useLanguage();
 
 // Discussion state
 const isDiscussionActive = ref(false);
@@ -286,51 +314,32 @@ const discussionStatus = ref('idle'); // idle, running, completed
 const startTime = ref('');
 const isConnecting = ref(false);
 const isReconnecting = ref(false); // Track reconnection attempts
+const isGeneratingSummary = ref(false); // Track summary generation
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 let shouldReconnect = true; // Flag to control reconnection
 let discussionConfig = null; // Store config for reconnection
 
-// Available experts - using computed for i18n reactivity
-const availableExperts = computed(() => [
-  {
-    id: 'leader',
-    name: t('roundtable.experts.leader.name'),
-    role: t('roundtable.experts.leader.role'),
-    description: t('roundtable.experts.leader.description'),
-    icon: 'emoji_events'
-  },
-  {
-    id: 'market-analyst',
-    name: t('roundtable.experts.marketAnalyst.name'),
-    role: t('roundtable.experts.marketAnalyst.role'),
-    description: t('roundtable.experts.marketAnalyst.description'),
-    icon: 'show_chart'
-  },
-  {
-    id: 'financial-expert',
-    name: t('roundtable.experts.financialExpert.name'),
-    role: t('roundtable.experts.financialExpert.role'),
-    description: t('roundtable.experts.financialExpert.description'),
-    icon: 'account_balance'
-  },
-  {
-    id: 'team-evaluator',
-    name: t('roundtable.experts.teamEvaluator.name'),
-    role: t('roundtable.experts.teamEvaluator.role'),
-    description: t('roundtable.experts.teamEvaluator.description'),
-    icon: 'groups'
-  },
-  {
-    id: 'risk-assessor',
-    name: t('roundtable.experts.riskAssessor.name'),
-    role: t('roundtable.experts.riskAssessor.role'),
-    description: t('roundtable.experts.riskAssessor.description'),
-    icon: 'shield'
-  }
-]);
+// Available experts - computed to be reactive to language changes
+const availableExperts = computed(() => {
+  const agents = getRoundtableAgents();
+  const isZh = locale.value.startsWith('zh'); // 'zh-CN' or 'zh'
+  return agents.map(agent => ({
+    id: agent.id,
+    name: isZh ? agent.name_zh : agent.name,
+    role: isZh ? agent.role_zh : agent.role,
+    description: isZh ? agent.description_zh : agent.description,
+    icon: agent.icon
+  }));
+});
 
-const selectedExperts = ref(['leader', 'market-analyst', 'financial-expert', 'team-evaluator', 'risk-assessor']);
+const selectedExperts = ref([]);
+
+// Initialize selected experts on mount
+onMounted(() => {
+  const agents = getRoundtableAgents();
+  selectedExperts.value = agents.map(a => a.id);
+});
 
 // Messages
 const messages = ref([]);
@@ -405,10 +414,12 @@ const connectWebSocket = () => {
       reconnectAttempts = 0;
 
       // Send initial message to start discussion
+      const lang = locale.value.startsWith('zh') ? 'zh' : 'en'; // 转换为后端期望的格式
       const initialMessage = {
         action: 'start_discussion',
         topic: discussionConfig?.topic || discussionTopic.value,
         company_name: (discussionConfig?.topic || discussionTopic.value).split(' ')[0] || '目标公司',
+        language: lang, // 添加语言偏好
         context: {
           max_rounds: discussionConfig?.maxRounds || maxRounds.value,
           experts: discussionConfig?.experts || selectedExperts.value
@@ -582,6 +593,63 @@ const stopDiscussion = () => {
   isReconnecting.value = false;
 };
 
+const generateMeetingSummary = async () => {
+  if (isGeneratingSummary.value || messages.value.length === 0) return;
+
+  isGeneratingSummary.value = true;
+
+  try {
+    // 收集所有对话消息
+    const dialogueMessages = messages.value
+      .filter(m => m.type === 'agent_message')
+      .map(m => ({
+        speaker: m.sender,
+        content: m.content,
+        timestamp: m.timestamp
+      }));
+
+    // 调用后端API生成会议纪要
+    const lang = locale.value.startsWith('zh') ? 'zh' : 'en'; // 转换为后端期望的格式
+    const response = await fetch('http://localhost:8000/api/roundtable/generate_summary', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        topic: discussionTopic.value,
+        messages: dialogueMessages,
+        participants: selectedExperts.value,
+        rounds: currentRound.value,
+        language: lang // 添加语言偏好
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to generate meeting summary');
+    }
+
+    const data = await response.json();
+
+    // 添加会议纪要到消息列表
+    messages.value.push({
+      id: Date.now(),
+      type: 'meeting_minutes',
+      content: data.summary
+    });
+
+    scrollToBottom();
+  } catch (error) {
+    console.error('Error generating meeting summary:', error);
+    messages.value.push({
+      id: Date.now(),
+      type: 'system',
+      content: '生成会议纪要失败，请重试'
+    });
+  } finally {
+    isGeneratingSummary.value = false;
+  }
+};
+
 const exportDiscussion = () => {
   const content = messages.value
     .filter(m => m.type === 'agent_message' || m.type === 'summary')
@@ -601,6 +669,37 @@ const exportDiscussion = () => {
   a.download = `roundtable_${discussionTopic.value}_${new Date().getTime()}.txt`;
   a.click();
   URL.revokeObjectURL(url);
+};
+
+const exportMeetingMinutes = (content) => {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `meeting_minutes_${discussionTopic.value}_${new Date().getTime()}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+const formatMeetingMinutes = (content) => {
+  // Convert markdown to HTML using marked library
+  try {
+    // Configure marked for safer rendering
+    marked.setOptions({
+      breaks: true,      // Convert \n to <br>
+      gfm: true,         // GitHub Flavored Markdown
+      headerIds: false,  // Don't add IDs to headers
+      mangle: false      // Don't escape email addresses
+    });
+
+    return marked.parse(content);
+  } catch (error) {
+    console.error('Markdown parsing error:', error);
+    // Fallback to simple formatting
+    return content
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br/>');
+  }
 };
 
 const scrollToBottom = () => {
