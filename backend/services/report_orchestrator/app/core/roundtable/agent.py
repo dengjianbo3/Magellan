@@ -291,10 +291,16 @@ class Agent:
 
                         # 解析参数
                         try:
-                            # 简单的参数解析: key="value", key2="value2"
+                            # 支持双引号和单引号: key="value" 或 key='value'
                             params = {}
-                            param_pattern = r'(\w+)="([^"]*)"'
-                            param_matches = re.findall(param_pattern, params_str)
+                            # 先尝试双引号
+                            param_pattern_double = r'(\w+)="([^"]*)"'
+                            param_matches = re.findall(param_pattern_double, params_str)
+                            # 再尝试单引号
+                            if not param_matches:
+                                param_pattern_single = r"(\w+)='([^']*)'"
+                                param_matches = re.findall(param_pattern_single, params_str)
+
                             for key, value in param_matches:
                                 params[key] = value
 
