@@ -234,7 +234,7 @@
                   </span>
                 </div>
                 <div class="bg-background-dark border border-border-color rounded-lg p-4">
-                  <p class="text-text-primary whitespace-pre-wrap">{{ message.content }}</p>
+                  <div class="prose prose-sm max-w-none text-text-primary" v-html="formatMeetingMinutes(message.content)"></div>
                 </div>
               </div>
             </div>

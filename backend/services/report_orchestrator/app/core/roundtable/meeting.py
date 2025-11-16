@@ -257,7 +257,7 @@ class Meeting:
         )
 
         # 发送给Leader
-        self.message_bus.send_message(summary_request)
+        await self.message_bus.send(summary_request)
 
         # 让Leader思考和回复
         try:
