@@ -373,6 +373,7 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
 - **深度分析**: 不只是数据罗列，要有洞察和判断
 - **客观准确**: 明确区分事实和推断
 - **中文输出**: 使用简洁专业的中文
+- **直接输出**: 不要添加"TO: ALL"、"CC:"等邮件格式前缀，直接输出分析内容
 
 ## 分析框架:
 根据你的角色特点，采用相应的分析框架（如财务分析的杜邦分析、市场分析的SWOT等）
