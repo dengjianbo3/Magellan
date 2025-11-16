@@ -565,29 +565,39 @@ const handleWebSocketMessage = (data) => {
   } else if (data.type === 'discussion_complete') {
     discussionStatus.value = 'completed';
     if (data.summary) {
-      // Format summary as readable markdown instead of raw JSON
       const summary = data.summary;
-      let summaryText = '## 讨论统计\n\n';
-      summaryText += `- **总轮次**: ${summary.total_turns || 0}\n`;
-      summaryText += `- **总消息数**: ${summary.total_messages || 0}\n`;
-      summaryText += `- **讨论时长**: ${(summary.total_duration_seconds || 0).toFixed(1)} 秒\n\n`;
 
-      if (summary.agent_stats) {
-        summaryText += '### 专家发言统计\n\n';
-        for (const [agent, stats] of Object.entries(summary.agent_stats)) {
-          summaryText += `**${agent}**:\n`;
-          summaryText += `- 总消息: ${stats.total_messages || 0}\n`;
-          summaryText += `- 广播: ${stats.broadcast || 0}\n`;
-          summaryText += `- 私聊: ${stats.private || 0}\n`;
-          summaryText += `- 提问: ${stats.questions || 0}\n\n`;
+      // 如果有会议纪要，优先显示
+      if (summary.meeting_minutes) {
+        messages.value.push({
+          id: Date.now(),
+          type: 'meeting_minutes',
+          content: summary.meeting_minutes
+        });
+      } else {
+        // 否则显示统计摘要
+        let summaryText = '## 讨论统计\n\n';
+        summaryText += `- **总轮次**: ${summary.total_turns || 0}\n`;
+        summaryText += `- **总消息数**: ${summary.total_messages || 0}\n`;
+        summaryText += `- **讨论时长**: ${(summary.total_duration_seconds || 0).toFixed(1)} 秒\n\n`;
+
+        if (summary.agent_stats) {
+          summaryText += '### 专家发言统计\n\n';
+          for (const [agent, stats] of Object.entries(summary.agent_stats)) {
+            summaryText += `**${agent}**:\n`;
+            summaryText += `- 总消息: ${stats.total_messages || 0}\n`;
+            summaryText += `- 广播: ${stats.broadcast || 0}\n`;
+            summaryText += `- 私聊: ${stats.private || 0}\n`;
+            summaryText += `- 提问: ${stats.questions || 0}\n\n`;
+          }
         }
-      }
 
-      messages.value.push({
-        id: Date.now(),
-        type: 'summary',
-        content: summaryText
-      });
+        messages.value.push({
+          id: Date.now(),
+          type: 'summary',
+          content: summaryText
+        });
+      }
     }
     scrollToBottom();
   } else if (data.type === 'error') {
@@ -689,12 +699,33 @@ const exportDiscussion = () => {
 };
 
 const exportMeetingMinutes = (content) => {
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  // 生成完整的会议纪要Markdown文件
+  const timestamp = new Date().toLocaleString('zh-CN');
+  const fullContent = `# 圆桌讨论会议纪要
+
+**讨论主题**: ${discussionTopic.value}
+**生成时间**: ${timestamp}
+
+---
+
+${content}
+
+---
+
+*本会议纪要由AI圆桌讨论系统自动生成*
+`;
+
+  const blob = new Blob([fullContent], { type: 'text/markdown;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `meeting_minutes_${discussionTopic.value}_${new Date().getTime()}.txt`;
+  // 生成友好的文件名
+  const sanitizedTopic = discussionTopic.value.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '_').substring(0, 30);
+  const dateStr = new Date().toISOString().split('T')[0];
+  a.download = `会议纪要_${sanitizedTopic}_${dateStr}.md`;
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 };
 

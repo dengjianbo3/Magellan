@@ -126,6 +126,9 @@ class Meeting:
         finally:
             self.is_running = False
 
+            # 生成Leader最终总结
+            meeting_minutes = await self._generate_leader_summary()
+
             # 推送meeting结束事件
             if self.agent_event_bus:
                 await self.agent_event_bus.publish_completed(
@@ -133,8 +136,10 @@ class Meeting:
                     message=f"圆桌讨论结束，共进行{self.current_turn}轮对话"
                 )
 
-        # 生成讨论摘要
-        return self._generate_summary()
+        # 生成讨论摘要，包含会议纪要
+        summary = self._generate_summary()
+        summary["meeting_minutes"] = meeting_minutes
+        return summary
 
     async def _execute_turn(self) -> bool:
         """
@@ -218,6 +223,74 @@ class Meeting:
                     }
                 )
             )
+
+    async def _generate_leader_summary(self) -> str:
+        """
+        让Leader生成最终总结
+
+        Returns:
+            Leader的总结性发言（Markdown格式）
+        """
+        print("[Meeting] Requesting Leader to generate final summary...")
+
+        # 获取Leader
+        leader = self.agents.get("Leader")
+        if not leader:
+            print("[Meeting] No Leader found, skipping summary generation")
+            return "讨论已结束。"
+
+        # 构建总结请求
+        summary_request = Message(
+            sender="Meeting Orchestrator",
+            recipient="Leader",
+            content="""请作为主持人，对本次圆桌讨论进行总结。
+
+总结要求：
+1. 回顾讨论的核心议题和各专家的主要观点
+2. 综合各专家意见，给出平衡的结论
+3. 指出意见分歧点（如果有）
+4. 提供最终投资建议或决策建议
+5. 使用Markdown格式，结构清晰
+
+请生成完整的会议纪要。""",
+            message_type=MessageType.QUESTION
+        )
+
+        # 发送给Leader
+        self.message_bus.send_message(summary_request)
+
+        # 让Leader思考和回复
+        try:
+            if self.agent_event_bus:
+                await self.agent_event_bus.publish_thinking(
+                    agent_name="Leader",
+                    message="正在生成会议纪要..."
+                )
+
+            messages = await leader.think_and_act()
+
+            if messages and len(messages) > 0:
+                summary_content = messages[0].content
+
+                # 发布Leader的总结
+                if self.agent_event_bus:
+                    await self.agent_event_bus.publish_result(
+                        agent_name="Leader",
+                        message=summary_content,
+                        data={"message_type": "meeting_minutes"}
+                    )
+
+                print(f"[Meeting] Leader summary generated: {len(summary_content)} chars")
+                return summary_content
+            else:
+                print("[Meeting] Leader did not generate summary")
+                return "讨论已结束，但未能生成总结。"
+
+        except Exception as e:
+            print(f"[Meeting] Error generating leader summary: {e}")
+            import traceback
+            traceback.print_exc()
+            return f"讨论已结束。（总结生成失败：{str(e)}）"
 
     def _generate_summary(self) -> Dict[str, Any]:
         """
