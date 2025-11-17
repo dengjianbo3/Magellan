@@ -5,6 +5,7 @@ import json
 import re
 import os
 import uuid
+import time
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -24,9 +25,33 @@ from .core.dd_state_machine import DDStateMachine
 # V4: Import intent recognition and conversation management
 from .core.intent_recognizer import IntentRecognizer, ConversationManager, IntentType
 
+# V5: Import Redis session store
+from .core.session_store import SessionStore
+
+# Phase 2: Prometheus metrics
+from prometheus_fastapi_instrumentator import Instrumentator
+
+# Phase 2: Structured logging
+from .core.logging_config import configure_logging, get_logger
+import os
+
+# Phase 2: Knowledge Base services
+from .services.vector_store import VectorStoreService
+from .services.document_parser import DocumentParser
+from .services.rag_service import RAGService
+import tempfile
+import shutil
+
+# Configure logging (JSON in production, console in development)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+JSON_LOGS = os.getenv("JSON_LOGS", "false").lower() == "true"
+configure_logging(log_level=LOG_LEVEL, json_logs=JSON_LOGS)
+logger = get_logger(__name__)
+
 # --- Service Discovery ---
 EXTERNAL_DATA_URL = "http://external_data_service:8006"
 LLM_GATEWAY_URL = "http://llm_gateway:8003"
+FILE_SERVICE_URL = "http://file_service:8001"
 
 app = FastAPI(
     title="Orchestrator Agent Service",
@@ -42,6 +67,9 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
+
+# Phase 2: Initialize Prometheus metrics
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", tags=["System (Phase 2)"])
 
 # --- Pydantic Models ---
 class AnalysisRequest(BaseModel):
@@ -411,17 +439,127 @@ def read_root():
 # V3: DD Workflow WebSocket Endpoint
 # ============================================================================
 
-# Session storage (in-memory for now, should use Redis in production)
-dd_sessions: Dict[str, DDSessionContext] = {}
+# V5: Initialize Redis Session Store for persistence
+try:
+    session_store = SessionStore()  # Uses REDIS_URL from environment
+    print("[main.py] ✅ SessionStore initialized successfully")
+except Exception as e:
+    print(f"[main.py] ❌ Failed to initialize SessionStore: {e}")
+    print("[main.py] ⚠️  Falling back to in-memory storage")
+    session_store = None
 
-# V5: Saved reports storage (in-memory for now)
-saved_reports: List[Dict[str, Any]] = []
+# V5: Backward compatibility - keep in-memory storage as fallback
+dd_sessions: Dict[str, DDSessionContext] = {}  # Fallback if Redis fails
+saved_reports: List[Dict[str, Any]] = []  # Fallback if Redis fails
 
 # V5: Dashboard analytics storage
 dashboard_analytics = {
     "daily_stats": [],  # Daily reports/analyses counts
     "agent_usage": {}   # Agent usage statistics
 }
+
+# Phase 2: Initialize Vector Store for Knowledge Base
+try:
+    QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
+    vector_store = VectorStoreService(qdrant_url=QDRANT_URL)
+    print("[main.py] ✅ VectorStore initialized successfully")
+except Exception as e:
+    print(f"[main.py] ❌ Failed to initialize VectorStore: {e}")
+    print("[main.py] ⚠️  Knowledge base features will be disabled")
+    vector_store = None
+
+# Phase 2: Initialize RAG Service for Advanced Search
+try:
+    if vector_store:
+        rag_service = RAGService(vector_store_service=vector_store)
+        # Build BM25 index on startup
+        rag_service.refresh_bm25_index()
+        print("[main.py] ✅ RAG Service initialized successfully")
+    else:
+        rag_service = None
+        print("[main.py] ⚠️  RAG Service disabled (VectorStore not available)")
+except Exception as e:
+    print(f"[main.py] ❌ Failed to initialize RAG Service: {e}")
+    print("[main.py] ⚠️  Advanced search features will be disabled")
+    rag_service = None
+
+
+# ============================================================================
+# V5: Storage Helper Functions (Redis with Fallback)
+# ============================================================================
+
+def save_session(session_id: str, context: DDSessionContext) -> bool:
+    """Save session to Redis or fallback to in-memory storage."""
+    if session_store:
+        # Convert DDSessionContext to dict for JSON serialization
+        context_dict = context.model_dump() if hasattr(context, 'model_dump') else context.dict()
+        return session_store.save_session(session_id, context_dict, ttl_days=30)
+    else:
+        # Fallback to in-memory
+        dd_sessions[session_id] = context
+        return True
+
+
+def get_session(session_id: str) -> Optional[DDSessionContext]:
+    """Get session from Redis or fallback to in-memory storage."""
+    if session_store:
+        context_dict = session_store.get_session(session_id)
+        if context_dict:
+            return DDSessionContext(**context_dict)
+        return None
+    else:
+        # Fallback to in-memory
+        return dd_sessions.get(session_id)
+
+
+def session_exists(session_id: str) -> bool:
+    """Check if session exists."""
+    if session_store:
+        return session_store.session_exists(session_id)
+    else:
+        return session_id in dd_sessions
+
+
+def _save_report_to_store(report_id: str, report_data: Dict[str, Any]) -> bool:
+    """Save report to Redis or fallback to in-memory storage."""
+    if session_store:
+        return session_store.save_report(report_id, report_data, ttl_days=365)
+    else:
+        # Fallback to in-memory
+        saved_reports.append(report_data)
+        return True
+
+
+def _get_report_from_store(report_id: str) -> Optional[Dict[str, Any]]:
+    """Get report from Redis or fallback to in-memory storage."""
+    if session_store:
+        return session_store.get_report(report_id)
+    else:
+        # Fallback to in-memory
+        return next((r for r in saved_reports if r["id"] == report_id), None)
+
+
+def _get_all_reports_from_store(limit: int = 100) -> List[Dict[str, Any]]:
+    """Get all reports from Redis or fallback to in-memory storage."""
+    if session_store:
+        return session_store.get_all_reports(limit=limit)
+    else:
+        # Fallback to in-memory
+        return saved_reports[:limit]
+
+
+def _delete_report_from_store(report_id: str) -> bool:
+    """Delete report from Redis or fallback to in-memory storage."""
+    if session_store:
+        return session_store.delete_report(report_id)
+    else:
+        # Fallback to in-memory
+        global saved_reports
+        report_index = next((i for i, r in enumerate(saved_reports) if r["id"] == report_id), None)
+        if report_index is not None:
+            saved_reports.pop(report_index)
+            return True
+        return False
 
 
 @app.websocket("/ws/start_dd_analysis")
@@ -457,7 +595,8 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
             raise
         
         company_name = initial_request.get("company_name")
-        bp_file_base64 = initial_request.get("bp_file_base64")
+        bp_file_base64 = initial_request.get("bp_file_base64")  # Legacy: base64 encoded file
+        file_id = initial_request.get("file_id")  # V5: File ID from upload API
         bp_filename = initial_request.get("bp_filename", "business_plan.pdf")
         user_id = initial_request.get("user_id", "default_user")
 
@@ -468,7 +607,7 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
         priority = initial_request.get("priority", "normal")
         description = initial_request.get("description")
 
-        print(f"[DEBUG] company_name={company_name}, has_bp={bp_file_base64 is not None}", flush=True)
+        print(f"[DEBUG] company_name={company_name}, has_bp_base64={bp_file_base64 is not None}, file_id={file_id}", flush=True)
         print(f"[DEBUG] project_name={project_name}, selected_agents={selected_agents}", flush=True)
         print(f"[DEBUG] data_sources={data_sources}, priority={priority}", flush=True)
 
@@ -481,13 +620,46 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
         session_id = f"dd_{company_name}_{uuid.uuid4().hex[:8]}"
         print(f"[DEBUG] Generated session_id: {session_id}", flush=True)
 
-        # 3. Decode BP file (optional)
+        # 3. Load BP file content
         import base64
         bp_file_content = None
-        if bp_file_base64:
+
+        # V5: Try file_id first (new approach)
+        if file_id:
+            try:
+                print(f"[DEBUG] Loading file from File Service: {file_id}", flush=True)
+                # Load file from shared volume
+                file_path = f"/var/uploads/{file_id}"
+
+                if os.path.exists(file_path):
+                    with open(file_path, "rb") as f:
+                        bp_file_content = f.read()
+                    print(f"[DEBUG] Loaded file from disk: {len(bp_file_content)} bytes", flush=True)
+                else:
+                    print(f"[ERROR] File not found: {file_path}", flush=True)
+                    await websocket.send_json({
+                        "status": "error",
+                        "message": f"文件未找到: {file_id}"
+                    })
+                    await websocket.close(code=1011, reason="File not found")
+                    return
+
+            except Exception as file_load_error:
+                print(f"[ERROR] Failed to load file {file_id}: {file_load_error}", flush=True)
+                import traceback
+                traceback.print_exc()
+                await websocket.send_json({
+                    "status": "error",
+                    "message": f"文件加载失败: {str(file_load_error)}"
+                })
+                await websocket.close(code=1011, reason="File load error")
+                return
+
+        # Legacy: Fall back to base64 encoded file
+        elif bp_file_base64:
             try:
                 bp_file_content = base64.b64decode(bp_file_base64)
-                print(f"[DEBUG] Decoded BP file: {len(bp_file_content)} bytes", flush=True)
+                print(f"[DEBUG] Decoded BP file from base64: {len(bp_file_content)} bytes", flush=True)
             except Exception as decode_error:
                 print(f"[ERROR] Failed to decode BP file: {decode_error}", flush=True)
                 raise
@@ -518,9 +690,9 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
             raise
         
         # Store session
-        dd_sessions[session_id] = state_machine.get_current_context()
+        save_session(session_id, state_machine.get_current_context())
         print(f"[DEBUG] Session stored", flush=True)
-        
+
         # 5. Execute workflow
         print(f"[DEBUG] Starting workflow execution...", flush=True)
         try:
@@ -531,9 +703,60 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
             import traceback
             traceback.print_exc()
             raise
-        
+
         # 6. Update stored session
-        dd_sessions[session_id] = state_machine.get_current_context()
+        save_session(session_id, state_machine.get_current_context())
+
+        # 7. Auto-save report after workflow completion
+        try:
+            context = state_machine.get_current_context()
+            if context.get("current_state") == "COMPLETED":
+                from datetime import datetime
+
+                # Generate report ID
+                report_id = f"report_{uuid.uuid4().hex[:12]}"
+
+                # Serialize steps (convert Pydantic models to dict)
+                steps_data = []
+                if hasattr(state_machine, 'steps'):
+                    for step in state_machine.steps:
+                        if hasattr(step, 'dict'):
+                            steps_data.append(step.dict())
+                        elif isinstance(step, dict):
+                            steps_data.append(step)
+
+                # Create report data
+                saved_report = {
+                    "id": report_id,
+                    "session_id": session_id,
+                    "project_name": project_name or company_name,
+                    "company_name": company_name,
+                    "analysis_type": "due-diligence",
+                    "preliminary_im": context.get("preliminary_im"),
+                    "team_analysis": context.get("team_analysis"),
+                    "market_analysis": context.get("market_analysis"),
+                    "steps": steps_data,
+                    "status": "completed",
+                    "created_at": context.get("created_at", datetime.now().isoformat()),
+                    "saved_at": datetime.now().isoformat()
+                }
+
+                # Save report to store
+                _save_report_to_store(report_id, saved_report)
+
+                print(f"[REPORTS] Auto-saved report {report_id} for {company_name}", flush=True)
+
+                # Notify frontend about saved report
+                await websocket.send_json({
+                    "type": "report_saved",
+                    "report_id": report_id,
+                    "session_id": session_id,
+                    "message": "报告已自动保存"
+                })
+        except Exception as save_error:
+            print(f"[ERROR] Failed to auto-save report: {save_error}", flush=True)
+            import traceback
+            traceback.print_exc()
         
     except WebSocketDisconnect:
         print(f"[INFO] Client disconnected from DD session {session_id}", flush=True)
@@ -581,8 +804,8 @@ async def start_dd_analysis_http(
     )
     
     # Store session
-    dd_sessions[session_id] = state_machine.get_current_context()
-    
+    save_session(session_id, state_machine.get_current_context())
+
     # Run workflow in background
     asyncio.create_task(_run_dd_workflow_background(state_machine))
     
@@ -597,11 +820,103 @@ async def _run_dd_workflow_background(state_machine: DDStateMachine):
     """Run DD workflow in background (for HTTP endpoint)"""
     try:
         await state_machine.run(websocket=None)
-        dd_sessions[state_machine.context.session_id] = state_machine.get_current_context()
+        save_session(state_machine.context.session_id, state_machine.get_current_context())
     except Exception as e:
         print(f"Background DD workflow error: {e}")
         import traceback
         traceback.print_exc()
+
+
+# ============================================================================
+# V5: BP File Upload API
+# ============================================================================
+
+@app.post("/api/upload_bp", tags=["File Upload (V5)"])
+async def upload_bp_file(
+    file: UploadFile = File(...),
+    max_size_mb: int = 10
+):
+    """
+    V5: Upload BP (Business Plan) file to File Service.
+
+    Supports: PDF, Word (.doc, .docx), Excel (.xls, .xlsx)
+
+    Returns:
+        file_id: Unique identifier for the uploaded file
+        original_filename: Original name of the uploaded file
+        file_size: Size of the file in bytes
+
+    Usage:
+        1. Frontend uploads BP file to this endpoint
+        2. Get file_id from response
+        3. Send file_id via WebSocket to start DD analysis
+    """
+    try:
+        # 1. Validate file type
+        allowed_extensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx']
+        file_extension = os.path.splitext(file.filename)[1].lower()
+
+        if file_extension not in allowed_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"不支持的文件类型: {file_extension}. 支持的类型: {', '.join(allowed_extensions)}"
+            )
+
+        # 2. Read file content for size validation
+        file_content = await file.read()
+        file_size = len(file_content)
+
+        # Validate file size (convert MB to bytes)
+        max_size_bytes = max_size_mb * 1024 * 1024
+        if file_size > max_size_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"文件过大: {file_size / (1024*1024):.2f}MB. 最大允许: {max_size_mb}MB"
+            )
+
+        # 3. Forward file to File Service
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Reset file pointer and create new UploadFile for forwarding
+            files = {
+                "file": (file.filename, file_content, file.content_type)
+            }
+
+            response = await client.post(
+                f"{FILE_SERVICE_URL}/upload",
+                files=files
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"文件上传失败: {response.text}"
+                )
+
+            # 4. Get file_id from File Service response
+            upload_result = response.json()
+            file_id = upload_result.get("file_id")
+
+            print(f"[UPLOAD] ✅ File uploaded: {file.filename} → {file_id} ({file_size} bytes)")
+
+            return {
+                "success": True,
+                "file_id": file_id,
+                "original_filename": file.filename,
+                "file_size": file_size,
+                "file_extension": file_extension,
+                "message": "文件上传成功"
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[UPLOAD] ❌ Upload error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"文件上传失败: {str(e)}"
+        )
 
 
 @app.post("/api/reports", tags=["Reports (V5)"])
@@ -642,7 +957,7 @@ async def save_report(report_data: Dict[str, Any]):
     }
 
     # Store report
-    saved_reports.append(saved_report)
+    _save_report_to_store(report_id, saved_report)
 
     print(f"[REPORTS] Saved report {report_id} for {saved_report['company_name']}", flush=True)
 
@@ -660,9 +975,12 @@ async def get_reports():
 
     Returns a list of saved DD analysis reports sorted by creation time.
     """
+    # Get all reports from store
+    all_reports = _get_all_reports_from_store(limit=100)
+
     # Sort by created_at (newest first)
     sorted_reports = sorted(
-        saved_reports,
+        all_reports,
         key=lambda r: r.get("created_at", ""),
         reverse=True
     )
@@ -679,7 +997,7 @@ async def get_report(report_id: str):
     """
     V5: Get a specific report by ID.
     """
-    report = next((r for r in saved_reports if r["id"] == report_id), None)
+    report = _get_report_from_store(report_id)
 
     if not report:
         raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
@@ -695,18 +1013,19 @@ async def delete_report(report_id: str):
     """
     V5: Delete a report by ID.
     """
-    global saved_reports
+    # Get report before deleting (for logging)
+    report = _get_report_from_store(report_id)
 
-    # Find the report
-    report_index = next((i for i, r in enumerate(saved_reports) if r["id"] == report_id), None)
-
-    if report_index is None:
+    if not report:
         raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
 
-    # Remove the report
-    deleted_report = saved_reports.pop(report_index)
+    # Delete the report
+    success = _delete_report_from_store(report_id)
 
-    print(f"[REPORTS] Deleted report {report_id} for {deleted_report.get('company_name')}", flush=True)
+    if not success:
+        raise HTTPException(status_code=500, detail=f"Failed to delete report {report_id}")
+
+    print(f"[REPORTS] Deleted report {report_id} for {report.get('company_name')}", flush=True)
 
     return {
         "success": True,
@@ -715,13 +1034,376 @@ async def delete_report(report_id: str):
     }
 
 
+@app.get("/api/reports/{report_id}/export/pdf", tags=["Reports (Phase 2)"])
+async def export_report_to_pdf(report_id: str, language: str = "zh"):
+    """
+    Phase 2: Export a report to PDF format.
+
+    Args:
+        report_id: 报告ID
+        language: 语言设置 ("zh" or "en")
+
+    Returns:
+        PDF file as downloadable response
+    """
+    from fastapi.responses import FileResponse
+    from .exporters.pdf_generator import generate_pdf_report
+    import tempfile
+    import os
+
+    # Get report data
+    report = _get_report_from_store(report_id)
+
+    if not report:
+        raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
+
+    try:
+        # Create temporary PDF file
+        temp_dir = tempfile.gettempdir()
+        company_name = report.get('company_name', 'Company').replace(' ', '_')
+        pdf_filename = f"{company_name}_Report_{report_id[:8]}.pdf"
+        pdf_path = os.path.join(temp_dir, pdf_filename)
+
+        # Generate PDF
+        print(f"[PDF_EXPORT] Generating PDF for report {report_id}, language={language}", flush=True)
+        generate_pdf_report(report, pdf_path, language=language)
+        print(f"[PDF_EXPORT] PDF generated successfully: {pdf_path}", flush=True)
+
+        # Return PDF file
+        return FileResponse(
+            path=pdf_path,
+            media_type='application/pdf',
+            filename=pdf_filename,
+            headers={
+                "Content-Disposition": f'attachment; filename="{pdf_filename}"'
+            }
+        )
+
+    except Exception as e:
+        print(f"[PDF_EXPORT] Error generating PDF: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate PDF: {str(e)}"
+        )
+
+
+@app.get("/api/reports/{report_id}/export/word", tags=["Reports (Phase 2)"])
+async def export_report_to_word(report_id: str, language: str = "zh"):
+    """
+    Phase 2: Export a report to Word format.
+
+    Args:
+        report_id: 报告ID
+        language: 语言设置 ("zh" or "en")
+
+    Returns:
+        Word file as downloadable response
+    """
+    from fastapi.responses import FileResponse
+    from .exporters.word_generator import generate_word_report
+    import tempfile
+    import os
+
+    # Get report data
+    report = _get_report_from_store(report_id)
+
+    if not report:
+        raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
+
+    try:
+        # Create temporary Word file
+        temp_dir = tempfile.gettempdir()
+        company_name = report.get('company_name', 'Company').replace(' ', '_')
+        word_filename = f"{company_name}_Report_{report_id[:8]}.docx"
+        word_path = os.path.join(temp_dir, word_filename)
+
+        # Generate Word
+        print(f"[WORD_EXPORT] Generating Word for report {report_id}, language={language}", flush=True)
+        generate_word_report(report, word_path, language=language)
+        print(f"[WORD_EXPORT] Word generated successfully: {word_path}", flush=True)
+
+        # Return Word file
+        return FileResponse(
+            path=word_path,
+            media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            filename=word_filename,
+            headers={
+                "Content-Disposition": f'attachment; filename="{word_filename}"'
+            }
+        )
+
+    except Exception as e:
+        print(f"[WORD_EXPORT] Error generating Word: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate Word: {str(e)}"
+        )
+
+
+@app.get("/api/reports/{report_id}/export/excel", tags=["Reports (Phase 2)"])
+async def export_report_to_excel(report_id: str, language: str = "zh"):
+    """
+    Phase 2: Export a report to Excel format.
+
+    Args:
+        report_id: 报告ID
+        language: 语言设置 ("zh" or "en")
+
+    Returns:
+        Excel file as downloadable response
+    """
+    from fastapi.responses import FileResponse
+    from .exporters.excel_generator import generate_excel_report
+    import tempfile
+    import os
+
+    # Get report data
+    report = _get_report_from_store(report_id)
+
+    if not report:
+        raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
+
+    try:
+        # Create temporary Excel file
+        temp_dir = tempfile.gettempdir()
+        company_name = report.get('company_name', 'Company').replace(' ', '_')
+        excel_filename = f"{company_name}_Report_{report_id[:8]}.xlsx"
+        excel_path = os.path.join(temp_dir, excel_filename)
+
+        # Generate Excel
+        print(f"[EXCEL_EXPORT] Generating Excel for report {report_id}, language={language}", flush=True)
+        generate_excel_report(report, excel_path, language=language)
+        print(f"[EXCEL_EXPORT] Excel generated successfully: {excel_path}", flush=True)
+
+        # Return Excel file
+        return FileResponse(
+            path=excel_path,
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            filename=excel_filename,
+            headers={
+                "Content-Disposition": f'attachment; filename="{excel_filename}"'
+            }
+        )
+
+    except Exception as e:
+        print(f"[EXCEL_EXPORT] Error generating Excel: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate Excel: {str(e)}"
+        )
+
+
+@app.get("/api/reports/{report_id}/charts/{chart_type}", tags=["Reports (Phase 2)"])
+async def generate_report_chart(report_id: str, chart_type: str, language: str = "zh"):
+    """
+    Phase 2: Generate chart for a specific report.
+
+    Args:
+        report_id: Report ID
+        chart_type: Type of chart (revenue, profit, financial_health, market_share, market_growth, risk_matrix, team_radar)
+        language: Language setting ("zh" or "en")
+
+    Returns:
+        PNG image of the chart
+    """
+    from fastapi.responses import FileResponse
+    from .exporters.chart_generator import generate_chart_for_report
+    import tempfile
+    import os
+
+    # Get report data
+    report = _get_report_from_store(report_id)
+
+    if not report:
+        raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
+
+    try:
+        # Prepare chart data based on type
+        chart_data = _prepare_chart_data(report, chart_type)
+
+        # Create temporary chart file
+        temp_dir = tempfile.gettempdir()
+        chart_filename = f"{report_id}_{chart_type}.png"
+        chart_path = os.path.join(temp_dir, chart_filename)
+
+        # Generate chart
+        print(f"[CHART] Generating {chart_type} chart for report {report_id}, language={language}", flush=True)
+        generate_chart_for_report(chart_type, chart_data, chart_path, language=language)
+        print(f"[CHART] Chart generated successfully: {chart_path}", flush=True)
+
+        # Return chart file
+        return FileResponse(
+            path=chart_path,
+            media_type='image/png',
+            filename=chart_filename,
+            headers={
+                "Content-Disposition": f'inline; filename="{chart_filename}"'
+            }
+        )
+
+    except Exception as e:
+        print(f"[CHART] Error generating chart: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate chart: {str(e)}"
+        )
+
+
+def _prepare_chart_data(report: Dict[str, Any], chart_type: str) -> Dict[str, Any]:
+    """
+    Prepare chart data from report based on chart type
+    从报告中准备图表数据
+    """
+    preliminary_im = report.get('preliminary_im', {})
+    market_analysis = report.get('market_analysis', {})
+    team_analysis = report.get('team_analysis', {})
+
+    if chart_type == 'revenue':
+        # Extract or mock revenue data
+        return {
+            'years': [2021, 2022, 2023],
+            'revenue': [1000000, 1500000, 2200000]  # Mock data
+        }
+
+    elif chart_type == 'profit':
+        return {
+            'years': [2021, 2022, 2023],
+            'gross_margin': [0.45, 0.52, 0.58],
+            'net_margin': [0.15, 0.22, 0.28]
+        }
+
+    elif chart_type == 'financial_health':
+        return {
+            'liquidity': 0.75,
+            'solvency': 0.68,
+            'profitability': 0.72,
+            'efficiency': 0.65,
+            'growth': 0.80
+        }
+
+    elif chart_type == 'market_share':
+        return {
+            'companies': [report.get('company_name', 'Target'), 'Competitor A', 'Competitor B', 'Others'],
+            'shares': [15, 25, 20, 40]
+        }
+
+    elif chart_type == 'market_growth':
+        return {
+            'years': [2019, 2020, 2021, 2022, 2023],
+            'market_size': [500, 650, 850, 1100, 1400],
+            'growth_rate': [None, 30, 31, 29, 27]
+        }
+
+    elif chart_type == 'risk_matrix':
+        risks_data = preliminary_im.get('risks', [])
+        if isinstance(risks_data, list) and risks_data:
+            # Convert risk data to matrix format
+            risks = []
+            for risk in risks_data[:5]:  # Limit to 5 risks
+                if isinstance(risk, dict):
+                    risks.append({
+                        'name': risk.get('name', 'Unknown'),
+                        'probability': 0.5,  # Mock - ideally extracted from risk data
+                        'impact': 0.6
+                    })
+            return risks if risks else [{'name': 'Sample Risk', 'probability': 0.5, 'impact': 0.5}]
+        return [{'name': 'Market Risk', 'probability': 0.6, 'impact': 0.7}]
+
+    elif chart_type == 'team_radar':
+        return {
+            'technical': 0.8,
+            'market': 0.7,
+            'leadership': 0.75,
+            'execution': 0.72,
+            'finance': 0.65,
+            'innovation': 0.78
+        }
+
+    else:
+        raise ValueError(f"Unknown chart type: {chart_type}")
+
+
+@app.get("/health", tags=["System (Phase 2)"])
+async def health_check():
+    """
+    Phase 2: System health check endpoint.
+
+    Returns:
+        Health status of the service and its dependencies
+    """
+    import time
+    from datetime import datetime
+
+    health_status = {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "service": "report_orchestrator",
+        "version": "3.0.0-phase2",
+        "checks": {}
+    }
+
+    # Check Redis connection
+    try:
+        session_store.redis_client.ping()
+        health_status["checks"]["redis"] = {
+            "status": "healthy",
+            "message": "Connected to Redis"
+        }
+    except Exception as e:
+        health_status["status"] = "unhealthy"
+        health_status["checks"]["redis"] = {
+            "status": "unhealthy",
+            "message": f"Redis connection failed: {str(e)}"
+        }
+
+    # Check LLM Gateway (optional - don't fail health check if down)
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get("http://llm_gateway:8002/health", timeout=2.0)
+            if response.status_code == 200:
+                health_status["checks"]["llm_gateway"] = {
+                    "status": "healthy",
+                    "message": "LLM Gateway is reachable"
+                }
+            else:
+                health_status["checks"]["llm_gateway"] = {
+                    "status": "degraded",
+                    "message": f"LLM Gateway returned status {response.status_code}"
+                }
+    except Exception as e:
+        health_status["checks"]["llm_gateway"] = {
+            "status": "degraded",
+            "message": f"LLM Gateway unreachable: {str(e)}"
+        }
+
+    # System info
+    health_status["system"] = {
+        "python_version": "3.11",
+        "uptime_seconds": int(time.time() - startup_time) if 'startup_time' in globals() else 0
+    }
+
+    return health_status
+
+
+# Track startup time for uptime calculation
+startup_time = time.time()
+
+
 @app.get("/dd_session/{session_id}", tags=["DD Workflow (V3)"])
 async def get_dd_session(session_id: str):
     """Query DD session status"""
-    if session_id not in dd_sessions:
+    if not session_exists(session_id):
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
-    context = dd_sessions[session_id]
+    context = get_session(session_id)
 
     # Build response
     response = {
@@ -765,17 +1447,23 @@ async def get_dashboard_stats():
     """
     from datetime import datetime, timedelta
 
-    # Total reports
-    total_reports = len(saved_reports)
-
-    # Active analyses (sessions that are not completed)
-    active_analyses = len([s for s in dd_sessions.values() if s.current_state not in ["completed", "error"]])
+    # Get stats from Redis if available
+    if session_store:
+        redis_stats = session_store.get_stats()
+        total_reports = redis_stats.get('reports', 0)
+        # Note: active_analyses not available in Redis stats yet, use 0 for now
+        active_analyses = 0
+    else:
+        # Fallback to in-memory stats
+        total_reports = len(saved_reports)
+        active_analyses = len([s for s in dd_sessions.values() if s.current_state not in ["completed", "error"]])
 
     # AI agents count (fixed number for now)
     ai_agents_count = 6  # market-analyst, financial-expert, team-evaluator, risk-assessor, tech-specialist, legal-advisor
 
     # Success rate (reports with status='completed' vs all reports)
-    completed_reports = len([r for r in saved_reports if r.get("status") == "completed"])
+    all_reports = _get_all_reports_from_store(limit=1000)  # Get a large number for stats
+    completed_reports = len([r for r in all_reports if r.get("status") == "completed"])
     success_rate = (completed_reports / total_reports * 100) if total_reports > 0 else 0
 
     # Calculate trends (compare to previous period - using mock data for now)
@@ -819,9 +1507,10 @@ async def get_recent_reports(limit: int = 5):
     """
     from datetime import datetime
 
-    # Sort by created_at (newest first) and limit
+    # Get reports from store and sort
+    all_reports = _get_all_reports_from_store(limit=limit*2)  # Get more than needed
     sorted_reports = sorted(
-        saved_reports,
+        all_reports,
         key=lambda r: r.get("created_at", ""),
         reverse=True
     )[:limit]
@@ -879,19 +1568,25 @@ async def get_analysis_trends(days: int = 7):
     reports_by_day = defaultdict(int)
     analyses_by_day = defaultdict(int)
 
-    for report in saved_reports:
+    # Get all reports from store
+    all_reports = _get_all_reports_from_store(limit=1000)
+    for report in all_reports:
         created_at = datetime.fromisoformat(report.get("created_at", datetime.now().isoformat()))
         days_ago = (end_date - created_at).days
         if days_ago < days:
             day_label = created_at.strftime("%a")
             reports_by_day[day_label] += 1
 
-    for session in dd_sessions.values():
-        created_at = datetime.fromisoformat(session.created_at)
-        days_ago = (end_date - created_at).days
-        if days_ago < days:
-            day_label = created_at.strftime("%a")
-            analyses_by_day[day_label] += 1
+    # Note: Session-based analytics not available with Redis yet
+    # Using only report data for now
+    if not session_store:
+        # Fallback: use in-memory sessions
+        for session in dd_sessions.values():
+            created_at = datetime.fromisoformat(session.created_at)
+            days_ago = (end_date - created_at).days
+            if days_ago < days:
+                day_label = created_at.strftime("%a")
+                analyses_by_day[day_label] += 1
 
     # Build data arrays matching the labels
     reports_data = [reports_by_day.get(label, 0) for label in labels]
@@ -918,7 +1613,9 @@ async def get_agent_performance():
     # Count agent usage from saved reports
     agent_usage = defaultdict(int)
 
-    for report in saved_reports:
+    # Get all reports from store
+    all_reports = _get_all_reports_from_store(limit=1000)
+    for report in all_reports:
         steps = report.get("steps", [])
         for step in steps:
             # Map step titles to agent categories
@@ -970,10 +1667,10 @@ async def generate_valuation_analysis(session_id: str):
     为已完成的 DD 工作流生成估值和退出路径分析
     """
     # 1. 检查 session 是否存在
-    if session_id not in dd_sessions:
+    if not session_exists(session_id):
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
-    
-    context = dd_sessions[session_id]
+
+    context = get_session(session_id)
     
     # 2. 检查是否已有必要的分析结果
     if not context.bp_data or not context.market_analysis:
@@ -1102,8 +1799,137 @@ def _build_valuation_section(valuation: Any, exit: Any) -> str:
 
 
 # ============================================================================
-# V4: Roundtable Discussion WebSocket Endpoint
+# V4: Roundtable Discussion APIs
 # ============================================================================
+
+@app.post("/api/roundtable/generate_summary", tags=["Roundtable"])
+async def generate_roundtable_summary(request: dict):
+    """
+    根据圆桌讨论历史生成会议纪要
+
+    Request body:
+    {
+        "topic": "讨论主题",
+        "messages": [{speaker, content, timestamp}],
+        "participants": ["leader", "market-analyst", ...],
+        "rounds": 5
+    }
+    """
+    try:
+        topic = request.get("topic", "投资讨论")
+        messages = request.get("messages", [])
+        participants = request.get("participants", [])
+        rounds = request.get("rounds", 0)
+        language = request.get("language", "zh")  # 获取语言偏好
+
+        # 构建对话历史
+        dialogue_text = "\n\n".join([
+            f"【{msg.get('speaker')}】\n{msg.get('content')}"
+            for msg in messages
+        ])
+
+        # 使用LLM生成会议纪要 - 根据语言选择prompt
+        llm_service_url = LLM_GATEWAY_BASE_URL
+
+        if language == "en":
+            summary_prompt = f"""Based on the following roundtable discussion, generate a professional meeting minutes.
+
+Discussion Topic: {topic}
+Participants: {', '.join(participants)}
+Discussion Rounds: {rounds}
+
+Discussion Content:
+{dialogue_text}
+
+Please generate meeting minutes in the following format:
+
+## Meeting Minutes
+
+**Topic**: {topic}
+**Participants**: {', '.join(participants)}
+**Date & Time**: [Current time]
+
+### 1. Key Viewpoints Summary
+[Summarize main viewpoints of each expert, list by bullet points]
+
+### 2. Key Discussion Points
+[List key issues and disagreements in the discussion]
+
+### 3. Consensus Reached
+[List conclusions agreed upon by all parties]
+
+### 4. Action Recommendations
+[Specific recommendations based on the discussion]
+
+### 5. Risk Alerts
+[Risk factors mentioned in the discussion]
+
+Please present in a professional and concise manner with clear logic.
+"""
+        else:
+            summary_prompt = f"""基于以下圆桌讨论内容，生成一份专业的会议纪要。
+
+讨论主题：{topic}
+参与专家：{', '.join(participants)}
+讨论轮次：{rounds}
+
+讨论内容：
+{dialogue_text}
+
+请按以下格式生成会议纪要：
+
+## 会议纪要
+
+**会议主题**: {topic}
+**参与人员**: {', '.join(participants)}
+**讨论时间**: [当前时间]
+
+### 一、核心观点总结
+[总结各专家的主要观点，分点列出]
+
+### 二、关键讨论点
+[列出讨论中的关键问题和分歧点]
+
+### 三、达成的共识
+[列出各方达成一致的结论]
+
+### 四、行动建议
+[基于讨论提出的具体建议]
+
+### 五、风险提示
+[讨论中提到的风险因素]
+
+请以专业、简洁的方式呈现，确保逻辑清晰。
+"""
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{llm_service_url}/v1/chat/completions",
+                json={
+                    "model": "gpt-4",
+                    "messages": [
+                        {"role": "system", "content": "你是一位专业的会议记录员，擅长总结和提炼会议要点。"},
+                        {"role": "user", "content": summary_prompt}
+                    ],
+                    "temperature": 0.3
+                }
+            )
+
+            if response.status_code == 200:
+                llm_response = response.json()
+                summary = llm_response.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+                return {
+                    "success": True,
+                    "summary": summary
+                }
+            else:
+                raise HTTPException(status_code=500, detail="LLM服务调用失败")
+
+    except Exception as e:
+        print(f"[ERROR] Failed to generate roundtable summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.websocket("/ws/roundtable")
 async def websocket_roundtable_endpoint(websocket: WebSocket):
@@ -1164,6 +1990,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
             topic = initial_request.get("topic", "投资价值分析")
             company_name = initial_request.get("company_name", "目标公司")
             context = initial_request.get("context", {})
+            language = initial_request.get("language", "zh")  # 获取语言偏好，默认中文
 
             # Generate session ID
             session_id = f"roundtable_{company_name}_{uuid.uuid4().hex[:8]}"
@@ -1173,13 +2000,13 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
             event_bus = AgentEventBus()
             await event_bus.subscribe(websocket)
 
-            # Create expert team
+            # Create expert team with language preference
             agents = [
-                create_leader(),
-                create_market_analyst(),
-                create_financial_expert(),
-                create_team_evaluator(),
-                create_risk_assessor()
+                create_leader(language),
+                create_market_analyst(language),
+                create_financial_expert(language),
+                create_team_evaluator(language),
+                create_risk_assessor(language)
             ]
 
             print(f"[ROUNDTABLE] Created {len(agents)} agents", flush=True)
@@ -1417,13 +2244,13 @@ async def websocket_conversation_endpoint(websocket: WebSocket):
                         )
 
                         # Store session
-                        dd_sessions[session_id] = state_machine.get_current_context()
+                        save_session(session_id, state_machine.get_current_context())
 
                         # Execute workflow (this will send progress updates via websocket)
                         await state_machine.run(websocket)
 
                         # Update stored session
-                        dd_sessions[session_id] = state_machine.get_current_context()
+                        save_session(session_id, state_machine.get_current_context())
 
                         print(f"[CONVERSATION] DD analysis completed for {session_id}", flush=True)
 
@@ -1491,3 +2318,398 @@ async def websocket_conversation_endpoint(websocket: WebSocket):
                 })
         except Exception as send_error:
             print(f"[CONVERSATION] Failed to send error message: {send_error}", flush=True)
+
+# ============================================================================
+# Phase 2: Knowledge Base Management APIs
+# ============================================================================
+
+@app.post("/api/knowledge/upload", tags=["Knowledge Base (Phase 2)"])
+async def upload_document(
+    file: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    category: Optional[str] = Form(None)
+):
+    """
+    Upload a document to the knowledge base
+    
+    Supports: PDF, DOCX, TXT
+    """
+    if not vector_store:
+        raise HTTPException(status_code=503, detail="Vector store not available")
+    
+    # Validate file type
+    allowed_extensions = ['.pdf', '.docx', '.doc', '.txt']
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    
+    if file_ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}"
+        )
+    
+    try:
+        # Save uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+            temp_path = temp_file.name
+        
+        # Parse document
+        parsed_doc = DocumentParser.parse_document(temp_path)
+        
+        # Clean up temp file
+        os.unlink(temp_path)
+        
+        if not parsed_doc['success']:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to parse document: {parsed_doc['metadata'].get('error', 'Unknown error')}"
+            )
+        
+        text = parsed_doc['text']
+        if not text.strip():
+            raise HTTPException(status_code=400, detail="Document contains no extractable text")
+        
+        # Chunk text for better retrieval
+        chunks = DocumentParser.chunk_text(text, chunk_size=500, chunk_overlap=50)
+        
+        # Prepare metadata
+        base_metadata = {
+            "title": title or file.filename,
+            "filename": file.filename,
+            "category": category or "general",
+            "file_type": file_ext[1:],  # Remove dot
+            **parsed_doc['metadata']
+        }
+        
+        # Add chunks to vector store
+        doc_ids = []
+        for i, chunk in enumerate(chunks):
+            chunk_metadata = base_metadata.copy()
+            chunk_metadata['chunk_index'] = i
+            chunk_metadata['total_chunks'] = len(chunks)
+            
+            doc_id = vector_store.add_document(
+                text=chunk,
+                metadata=chunk_metadata
+            )
+            doc_ids.append(doc_id)
+        
+        logger.info(f"Uploaded document: {file.filename}, {len(chunks)} chunks")
+        
+        return {
+            "success": True,
+            "document_ids": doc_ids,
+            "num_chunks": len(chunks),
+            "metadata": base_metadata
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading document: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload document: {str(e)}")
+
+
+@app.get("/api/knowledge/documents", tags=["Knowledge Base (Phase 2)"])
+async def list_documents(
+    limit: int = 20,
+    offset: int = 0,
+    category: Optional[str] = None
+):
+    """
+    List documents in the knowledge base
+    """
+    if not vector_store:
+        raise HTTPException(status_code=503, detail="Vector store not available")
+    
+    try:
+        filter_conditions = {}
+        if category:
+            filter_conditions['category'] = category
+        
+        documents = vector_store.list_documents(
+            limit=limit,
+            offset=offset,
+            filter_conditions=filter_conditions
+        )
+        
+        # Get collection info
+        collection_info = vector_store.get_collection_info()
+        
+        return {
+            "documents": documents,
+            "total_vectors": collection_info.get("vectors_count", 0),
+            "limit": limit,
+            "offset": offset
+        }
+        
+    except Exception as e:
+        logger.error(f"Error listing documents: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
+
+
+@app.get("/api/knowledge/search", tags=["Knowledge Base (Phase 2)"])
+async def search_knowledge_base(
+    query: str,
+    limit: int = 10,
+    category: Optional[str] = None
+):
+    """
+    Search the knowledge base using semantic search
+    """
+    if not vector_store:
+        raise HTTPException(status_code=503, detail="Vector store not available")
+    
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    
+    try:
+        filter_conditions = {}
+        if category:
+            filter_conditions['category'] = category
+        
+        results = vector_store.search(
+            query=query,
+            limit=limit,
+            score_threshold=0.3,  # Minimum similarity score
+            filter_conditions=filter_conditions
+        )
+        
+        logger.info(f"Search query: '{query}', found {len(results)} results")
+        
+        return {
+            "query": query,
+            "results": results,
+            "count": len(results)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error searching knowledge base: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+
+@app.delete("/api/knowledge/documents/{doc_id}", tags=["Knowledge Base (Phase 2)"])
+async def delete_document(doc_id: str):
+    """
+    Delete a document from the knowledge base
+    """
+    if not vector_store:
+        raise HTTPException(status_code=503, detail="Vector store not available")
+    
+    try:
+        success = vector_store.delete_document(doc_id)
+        
+        if success:
+            logger.info(f"Deleted document: {doc_id}")
+            return {"success": True, "message": "Document deleted successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Document not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting document: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
+
+
+@app.get("/api/knowledge/stats", tags=["Knowledge Base (Phase 2)"])
+async def get_knowledge_base_stats():
+    """
+    Get knowledge base statistics
+    """
+    if not vector_store:
+        raise HTTPException(status_code=503, detail="Vector store not available")
+
+    try:
+        collection_info = vector_store.get_collection_info()
+
+        return {
+            "collection_name": collection_info.get("collection_name", ""),
+            "total_vectors": collection_info.get("vectors_count", 0),
+            "total_documents": collection_info.get("points_count", 0),
+            "status": collection_info.get("status", "unknown")
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting knowledge base stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
+
+
+# ============================================================================
+# Phase 2 - Task 10: Advanced RAG Search Endpoints
+# ============================================================================
+
+@app.get("/api/knowledge/hybrid-search", tags=["Knowledge Base (Phase 2)"])
+async def hybrid_search(
+    query: str,
+    top_k: int = 10,
+    use_reranking: bool = True,
+    category: Optional[str] = None
+):
+    """
+    Perform hybrid search combining vector search and BM25 keyword search
+
+    Args:
+        query: Search query
+        top_k: Number of results to return
+        use_reranking: Whether to apply cross-encoder reranking
+        category: Optional category filter
+
+    Returns:
+        Search results with relevance scores
+    """
+    if not rag_service:
+        raise HTTPException(status_code=503, detail="RAG service not available")
+
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    try:
+        filter_conditions = {}
+        if category:
+            filter_conditions['category'] = category
+
+        results = rag_service.hybrid_search(
+            query=query,
+            top_k=top_k,
+            use_reranking=use_reranking,
+            filter_conditions=filter_conditions
+        )
+
+        logger.info(f"Hybrid search query: '{query}', found {len(results)} results")
+
+        return {
+            "query": query,
+            "results": results,
+            "count": len(results),
+            "search_type": "hybrid" + (" + reranking" if use_reranking else "")
+        }
+
+    except Exception as e:
+        logger.error(f"Error in hybrid search: {e}")
+        raise HTTPException(status_code=500, detail=f"Hybrid search failed: {str(e)}")
+
+
+@app.get("/api/knowledge/rag-context", tags=["Knowledge Base (Phase 2)"])
+async def get_rag_context(
+    query: str,
+    top_k: int = 5,
+    max_context_length: int = 2000,
+    category: Optional[str] = None
+):
+    """
+    Build RAG context for a query by retrieving relevant documents
+
+    Args:
+        query: User query
+        top_k: Number of source documents to retrieve
+        max_context_length: Maximum total character length of context
+        category: Optional category filter
+
+    Returns:
+        Assembled context with source documents
+    """
+    if not rag_service:
+        raise HTTPException(status_code=503, detail="RAG service not available")
+
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    try:
+        filter_conditions = {}
+        if category:
+            filter_conditions['category'] = category
+
+        context_data = rag_service.build_context(
+            query=query,
+            top_k=top_k,
+            max_context_length=max_context_length,
+            filter_conditions=filter_conditions
+        )
+
+        logger.info(f"RAG context built for query: '{query}', {context_data['num_sources']} sources")
+
+        return context_data
+
+    except Exception as e:
+        logger.error(f"Error building RAG context: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to build context: {str(e)}")
+
+
+@app.post("/api/knowledge/rag-answer", tags=["Knowledge Base (Phase 2)"])
+async def get_rag_answer(request: dict):
+    """
+    Get an LLM answer using RAG (Retrieval-Augmented Generation)
+
+    Request body:
+        query: User question
+        top_k: Number of source documents (default: 5)
+        category: Optional category filter
+
+    Returns:
+        Answer with sources and context
+    """
+    if not rag_service:
+        raise HTTPException(status_code=503, detail="RAG service not available")
+
+    query = request.get("query", "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    try:
+        top_k = request.get("top_k", 5)
+        category = request.get("category")
+
+        filter_conditions = {}
+        if category:
+            filter_conditions['category'] = category
+
+        # Build context with RAG
+        rag_result = rag_service.get_answer_with_sources(
+            query=query,
+            llm_client=None,  # Not using LLM integration yet
+            top_k=top_k,
+            filter_conditions=filter_conditions
+        )
+
+        logger.info(f"RAG answer generated for query: '{query}'")
+
+        return {
+            "query": rag_result['query'],
+            "context": rag_result['context'],
+            "sources": rag_result['sources'],
+            "prompt": rag_result['prompt'],
+            "num_sources": rag_result['num_sources'],
+            "note": "LLM integration pending - returning context and prompt for now"
+        }
+
+    except Exception as e:
+        logger.error(f"Error generating RAG answer: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate answer: {str(e)}")
+
+
+@app.post("/api/knowledge/refresh-index", tags=["Knowledge Base (Phase 2)"])
+async def refresh_bm25_index():
+    """
+    Refresh the BM25 index for hybrid search
+
+    This should be called after uploading new documents to enable BM25 search
+    """
+    if not rag_service:
+        raise HTTPException(status_code=503, detail="RAG service not available")
+
+    try:
+        success = rag_service.refresh_bm25_index()
+
+        if success:
+            logger.info("BM25 index refreshed successfully")
+            return {
+                "success": True,
+                "message": "BM25 index refreshed successfully"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to refresh index")
+
+    except Exception as e:
+        logger.error(f"Error refreshing BM25 index: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to refresh index: {str(e)}")

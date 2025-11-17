@@ -7,7 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 import os
 
-UPLOAD_DIRECTORY = "/uploads"
+# Shared volume path for file uploads
+UPLOAD_DIRECTORY = "/var/uploads"
+SHARED_VOLUME_PATH = UPLOAD_DIRECTORY  # Alias for compatibility
 
 app = FastAPI(
     title="File Service",

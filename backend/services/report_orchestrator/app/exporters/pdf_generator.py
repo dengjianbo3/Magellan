@@ -1,0 +1,556 @@
+"""
+PDF Report Generator
+PDF报告生成器
+
+Uses ReportLab to generate professional investment analysis reports in PDF format.
+使用ReportLab生成专业的投资分析报告PDF格式。
+"""
+
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, PageBreak,
+    Table, TableStyle, Image as RLImage
+)
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from datetime import datetime
+from typing import Dict, Any, List, Optional
+import os
+
+
+class PDFReportGenerator:
+    """
+    PDF报告生成器
+
+    Features:
+    - 中英文支持
+    - 专业排版
+    - 多章节结构
+    - 表格和列表
+    - 图表嵌入（预留）
+    """
+
+    def __init__(self, language: str = "zh"):
+        """
+        初始化PDF生成器
+
+        Args:
+            language: 语言 ("zh" 中文, "en" 英文)
+        """
+        self.language = language
+        self.page_size = A4
+        self.styles = self._setup_styles()
+
+    def _setup_styles(self) -> Dict[str, ParagraphStyle]:
+        """设置样式"""
+        styles = getSampleStyleSheet()
+
+        # 标题样式
+        styles.add(ParagraphStyle(
+            name='ReportTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#1a1a1a'),
+            spaceAfter=30,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        ))
+
+        # 章节标题
+        styles.add(ParagraphStyle(
+            name='ChapterTitle',
+            parent=styles['Heading2'],
+            fontSize=18,
+            textColor=colors.HexColor('#2c3e50'),
+            spaceBefore=20,
+            spaceAfter=12,
+            fontName='Helvetica-Bold'
+        ))
+
+        # 小节标题
+        styles.add(ParagraphStyle(
+            name='SectionTitle',
+            parent=styles['Heading3'],
+            fontSize=14,
+            textColor=colors.HexColor('#34495e'),
+            spaceBefore=12,
+            spaceAfter=6,
+            fontName='Helvetica-Bold'
+        ))
+
+        # 正文样式
+        styles.add(ParagraphStyle(
+            name='BodyText',
+            parent=styles['Normal'],
+            fontSize=11,
+            leading=16,
+            textColor=colors.HexColor('#2c3e50'),
+            alignment=TA_JUSTIFY,
+            spaceAfter=10
+        ))
+
+        # 重点文本
+        styles.add(ParagraphStyle(
+            name='Highlight',
+            parent=styles['BodyText'],
+            textColor=colors.HexColor('#e74c3c'),
+            fontName='Helvetica-Bold'
+        ))
+
+        return styles
+
+    def generate_report(
+        self,
+        report_data: Dict[str, Any],
+        output_path: str
+    ) -> str:
+        """
+        生成完整PDF报告
+
+        Args:
+            report_data: 报告数据
+            output_path: 输出文件路径
+
+        Returns:
+            生成的PDF文件路径
+        """
+        # 创建PDF文档
+        doc = SimpleDocTemplate(
+            output_path,
+            pagesize=self.page_size,
+            rightMargin=0.75*inch,
+            leftMargin=0.75*inch,
+            topMargin=0.75*inch,
+            bottomMargin=0.75*inch
+        )
+
+        # 构建文档内容
+        story = []
+
+        # 1. 封面
+        story.extend(self._build_cover_page(report_data))
+        story.append(PageBreak())
+
+        # 2. 目录（简化版）
+        story.extend(self._build_table_of_contents(report_data))
+        story.append(PageBreak())
+
+        # 3. 执行摘要
+        if report_data.get('preliminary_im'):
+            story.extend(self._build_executive_summary(report_data['preliminary_im']))
+            story.append(PageBreak())
+
+        # 4. 财务分析
+        if report_data.get('preliminary_im', {}).get('financial_highlights'):
+            story.extend(self._build_financial_section(report_data['preliminary_im']))
+            story.append(PageBreak())
+
+        # 5. 市场分析
+        if report_data.get('market_analysis'):
+            story.extend(self._build_market_section(report_data['market_analysis']))
+            story.append(PageBreak())
+
+        # 6. 团队分析
+        if report_data.get('team_analysis'):
+            story.extend(self._build_team_section(report_data['team_analysis']))
+            story.append(PageBreak())
+
+        # 7. 风险评估（从preliminary_im中提取）
+        if report_data.get('preliminary_im', {}).get('risks'):
+            story.extend(self._build_risk_section(report_data['preliminary_im']))
+            story.append(PageBreak())
+
+        # 8. 结论和建议
+        if report_data.get('preliminary_im'):
+            story.extend(self._build_conclusion(report_data['preliminary_im']))
+
+        # 生成PDF
+        doc.build(story)
+
+        return output_path
+
+    def _build_cover_page(self, report_data: Dict[str, Any]) -> List:
+        """构建封面"""
+        story = []
+
+        # 添加空白
+        story.append(Spacer(1, 2*inch))
+
+        # 报告标题
+        if self.language == "en":
+            title = f"Investment Analysis Report"
+            subtitle = f"{report_data.get('company_name', 'Company Name')}"
+        else:
+            title = "投资尽职调查报告"
+            subtitle = report_data.get('company_name', '公司名称')
+
+        story.append(Paragraph(title, self.styles['ReportTitle']))
+        story.append(Spacer(1, 0.3*inch))
+        story.append(Paragraph(f"<b>{subtitle}</b>", self.styles['ChapterTitle']))
+
+        # 日期
+        story.append(Spacer(1, 1*inch))
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        if self.language == "en":
+            date_text = f"Report Date: {date_str}"
+        else:
+            date_text = f"报告日期: {date_str}"
+        story.append(Paragraph(date_text, self.styles['BodyText']))
+
+        # 生成信息
+        story.append(Spacer(1, 0.5*inch))
+        if self.language == "en":
+            gen_text = "Generated by Magellan AI Investment Analysis Platform"
+        else:
+            gen_text = "由 Magellan AI 投资分析平台生成"
+        story.append(Paragraph(gen_text, self.styles['BodyText']))
+
+        return story
+
+    def _build_table_of_contents(self, report_data: Dict[str, Any]) -> List:
+        """构建目录"""
+        story = []
+
+        if self.language == "en":
+            story.append(Paragraph("Table of Contents", self.styles['ChapterTitle']))
+        else:
+            story.append(Paragraph("目录", self.styles['ChapterTitle']))
+
+        story.append(Spacer(1, 0.3*inch))
+
+        # 章节列表
+        sections = []
+        if self.language == "en":
+            sections = [
+                "1. Executive Summary",
+                "2. Financial Analysis",
+                "3. Market Analysis",
+                "4. Team Assessment",
+                "5. Risk Evaluation",
+                "6. Conclusion and Recommendations"
+            ]
+        else:
+            sections = [
+                "1. 执行摘要",
+                "2. 财务分析",
+                "3. 市场分析",
+                "4. 团队评估",
+                "5. 风险评估",
+                "6. 结论与建议"
+            ]
+
+        for section in sections:
+            story.append(Paragraph(section, self.styles['BodyText']))
+            story.append(Spacer(1, 0.1*inch))
+
+        return story
+
+    def _build_executive_summary(self, im_data: Dict[str, Any]) -> List:
+        """构建执行摘要"""
+        story = []
+
+        if self.language == "en":
+            story.append(Paragraph("1. Executive Summary", self.styles['ChapterTitle']))
+        else:
+            story.append(Paragraph("1. 执行摘要", self.styles['ChapterTitle']))
+
+        story.append(Spacer(1, 0.2*inch))
+
+        # 投资建议
+        if im_data.get('investment_recommendation'):
+            if self.language == "en":
+                story.append(Paragraph("Investment Recommendation", self.styles['SectionTitle']))
+            else:
+                story.append(Paragraph("投资建议", self.styles['SectionTitle']))
+
+            rec_text = str(im_data['investment_recommendation'])
+            story.append(Paragraph(rec_text, self.styles['BodyText']))
+            story.append(Spacer(1, 0.15*inch))
+
+        # 关键发现
+        if im_data.get('key_findings'):
+            if self.language == "en":
+                story.append(Paragraph("Key Findings", self.styles['SectionTitle']))
+            else:
+                story.append(Paragraph("关键发现", self.styles['SectionTitle']))
+
+            findings = im_data['key_findings']
+            if isinstance(findings, list):
+                for finding in findings:
+                    story.append(Paragraph(f"• {finding}", self.styles['BodyText']))
+            else:
+                story.append(Paragraph(str(findings), self.styles['BodyText']))
+            story.append(Spacer(1, 0.15*inch))
+
+        # 投资亮点
+        if im_data.get('investment_highlights'):
+            if self.language == "en":
+                story.append(Paragraph("Investment Highlights", self.styles['SectionTitle']))
+            else:
+                story.append(Paragraph("投资亮点", self.styles['SectionTitle']))
+
+            highlights = im_data['investment_highlights']
+            if isinstance(highlights, list):
+                for hl in highlights:
+                    story.append(Paragraph(f"• {hl}", self.styles['BodyText']))
+            else:
+                story.append(Paragraph(str(highlights), self.styles['BodyText']))
+
+        return story
+
+    def _build_financial_section(self, im_data: Dict[str, Any]) -> List:
+        """构建财务分析章节"""
+        story = []
+
+        if self.language == "en":
+            story.append(Paragraph("2. Financial Analysis", self.styles['ChapterTitle']))
+        else:
+            story.append(Paragraph("2. 财务分析", self.styles['ChapterTitle']))
+
+        story.append(Spacer(1, 0.2*inch))
+
+        fin_data = im_data.get('financial_highlights', {})
+
+        # 财务亮点
+        if fin_data:
+            if self.language == "en":
+                story.append(Paragraph("Financial Highlights", self.styles['SectionTitle']))
+            else:
+                story.append(Paragraph("财务亮点", self.styles['SectionTitle']))
+
+            # 创建财务指标表格
+            table_data = []
+            if self.language == "en":
+                table_data.append(['Metric', 'Value'])
+            else:
+                table_data.append(['指标', '数值'])
+
+            for key, value in fin_data.items():
+                table_data.append([str(key), str(value)])
+
+            table = Table(table_data, colWidths=[3*inch, 3*inch])
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498db')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+
+            story.append(table)
+            story.append(Spacer(1, 0.2*inch))
+
+        # 财务分析
+        if im_data.get('financial_analysis'):
+            if self.language == "en":
+                story.append(Paragraph("Analysis", self.styles['SectionTitle']))
+            else:
+                story.append(Paragraph("分析", self.styles['SectionTitle']))
+
+            story.append(Paragraph(str(im_data['financial_analysis']), self.styles['BodyText']))
+
+        return story
+
+    def _build_market_section(self, market_data: Dict[str, Any]) -> List:
+        """构建市场分析章节"""
+        story = []
+
+        if self.language == "en":
+            story.append(Paragraph("3. Market Analysis", self.styles['ChapterTitle']))
+        else:
+            story.append(Paragraph("3. 市场分析", self.styles['ChapterTitle']))
+
+        story.append(Spacer(1, 0.2*inch))
+
+        # 市场规模
+        if market_data.get('market_size_analysis'):
+            if self.language == "en":
+                story.append(Paragraph("Market Size", self.styles['SectionTitle']))
+            else:
+                story.append(Paragraph("市场规模", self.styles['SectionTitle']))
+
+            story.append(Paragraph(str(market_data['market_size_analysis']), self.styles['BodyText']))
+            story.append(Spacer(1, 0.15*inch))
+
+        # 竞争格局
+        if market_data.get('competitive_landscape'):
+            if self.language == "en":
+                story.append(Paragraph("Competitive Landscape", self.styles['SectionTitle']))
+            else:
+                story.append(Paragraph("竞争格局", self.styles['SectionTitle']))
+
+            story.append(Paragraph(str(market_data['competitive_landscape']), self.styles['BodyText']))
+            story.append(Spacer(1, 0.15*inch))
+
+        # 市场趋势
+        if market_data.get('market_trends'):
+            if self.language == "en":
+                story.append(Paragraph("Market Trends", self.styles['SectionTitle']))
+            else:
+                story.append(Paragraph("市场趋势", self.styles['SectionTitle']))
+
+            trends = market_data['market_trends']
+            if isinstance(trends, list):
+                for trend in trends:
+                    story.append(Paragraph(f"• {trend}", self.styles['BodyText']))
+            else:
+                story.append(Paragraph(str(trends), self.styles['BodyText']))
+
+        return story
+
+    def _build_team_section(self, team_data: Dict[str, Any]) -> List:
+        """构建团队分析章节"""
+        story = []
+
+        if self.language == "en":
+            story.append(Paragraph("4. Team Assessment", self.styles['ChapterTitle']))
+        else:
+            story.append(Paragraph("4. 团队评估", self.styles['ChapterTitle']))
+
+        story.append(Spacer(1, 0.2*inch))
+
+        # 团队评分
+        if team_data.get('experience_match_score'):
+            if self.language == "en":
+                score_text = f"Experience Match Score: {team_data['experience_match_score']}/10"
+            else:
+                score_text = f"经验匹配度评分: {team_data['experience_match_score']}/10"
+
+            story.append(Paragraph(score_text, self.styles['Highlight']))
+            story.append(Spacer(1, 0.15*inch))
+
+        # 团队优势
+        if team_data.get('strengths'):
+            if self.language == "en":
+                story.append(Paragraph("Team Strengths", self.styles['SectionTitle']))
+            else:
+                story.append(Paragraph("团队优势", self.styles['SectionTitle']))
+
+            strengths = team_data['strengths']
+            if isinstance(strengths, list):
+                for strength in strengths:
+                    story.append(Paragraph(f"• {strength}", self.styles['BodyText']))
+            else:
+                story.append(Paragraph(str(strengths), self.styles['BodyText']))
+            story.append(Spacer(1, 0.15*inch))
+
+        # 改进建议
+        if team_data.get('recommendations'):
+            if self.language == "en":
+                story.append(Paragraph("Recommendations", self.styles['SectionTitle']))
+            else:
+                story.append(Paragraph("改进建议", self.styles['SectionTitle']))
+
+            recs = team_data['recommendations']
+            if isinstance(recs, list):
+                for rec in recs:
+                    story.append(Paragraph(f"• {rec}", self.styles['BodyText']))
+            else:
+                story.append(Paragraph(str(recs), self.styles['BodyText']))
+
+        return story
+
+    def _build_risk_section(self, im_data: Dict[str, Any]) -> List:
+        """构建风险评估章节"""
+        story = []
+
+        if self.language == "en":
+            story.append(Paragraph("5. Risk Evaluation", self.styles['ChapterTitle']))
+        else:
+            story.append(Paragraph("5. 风险评估", self.styles['ChapterTitle']))
+
+        story.append(Spacer(1, 0.2*inch))
+
+        risks = im_data.get('risks', [])
+        if isinstance(risks, list):
+            for risk in risks:
+                if isinstance(risk, dict):
+                    risk_name = risk.get('name', 'Unknown Risk')
+                    risk_level = risk.get('level', 'Unknown')
+                    risk_desc = risk.get('description', '')
+
+                    story.append(Paragraph(f"<b>{risk_name}</b> ({risk_level})", self.styles['SectionTitle']))
+                    if risk_desc:
+                        story.append(Paragraph(risk_desc, self.styles['BodyText']))
+                    story.append(Spacer(1, 0.1*inch))
+                else:
+                    story.append(Paragraph(f"• {risk}", self.styles['BodyText']))
+        else:
+            story.append(Paragraph(str(risks), self.styles['BodyText']))
+
+        return story
+
+    def _build_conclusion(self, im_data: Dict[str, Any]) -> List:
+        """构建结论章节"""
+        story = []
+
+        if self.language == "en":
+            story.append(Paragraph("6. Conclusion and Recommendations", self.styles['ChapterTitle']))
+        else:
+            story.append(Paragraph("6. 结论与建议", self.styles['ChapterTitle']))
+
+        story.append(Spacer(1, 0.2*inch))
+
+        # 最终建议
+        if im_data.get('final_recommendation'):
+            if self.language == "en":
+                story.append(Paragraph("Final Recommendation", self.styles['SectionTitle']))
+            else:
+                story.append(Paragraph("最终建议", self.styles['SectionTitle']))
+
+            story.append(Paragraph(str(im_data['final_recommendation']), self.styles['BodyText']))
+            story.append(Spacer(1, 0.15*inch))
+
+        # 下一步行动
+        if im_data.get('next_steps'):
+            if self.language == "en":
+                story.append(Paragraph("Next Steps", self.styles['SectionTitle']))
+            else:
+                story.append(Paragraph("下一步行动", self.styles['SectionTitle']))
+
+            next_steps = im_data['next_steps']
+            if isinstance(next_steps, list):
+                for step in next_steps:
+                    story.append(Paragraph(f"• {step}", self.styles['BodyText']))
+            else:
+                story.append(Paragraph(str(next_steps), self.styles['BodyText']))
+
+        # 免责声明
+        story.append(Spacer(1, 0.3*inch))
+        if self.language == "en":
+            disclaimer = ("This report is generated by AI and should be used for reference only. "
+                        "Please conduct thorough due diligence before making investment decisions.")
+        else:
+            disclaimer = "本报告由AI生成，仅供参考。投资决策前请进行全面的尽职调查。"
+
+        story.append(Paragraph(f"<i>{disclaimer}</i>", self.styles['BodyText']))
+
+        return story
+
+
+# 便捷函数
+def generate_pdf_report(
+    report_data: Dict[str, Any],
+    output_path: str,
+    language: str = "zh"
+) -> str:
+    """
+    生成PDF报告的便捷函数
+
+    Args:
+        report_data: 报告数据
+        output_path: 输出文件路径
+        language: 语言设置
+
+    Returns:
+        生成的PDF文件路径
+    """
+    generator = PDFReportGenerator(language=language)
+    return generator.generate_report(report_data, output_path)

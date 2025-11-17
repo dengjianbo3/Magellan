@@ -56,11 +56,15 @@ services:
       - ./backend/services/report_orchestrator/app:/usr/src/app/app
     networks:
       - default
+    depends_on:
+      redis:
+        condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
       - PUBLIC_DATA_URL=http://external_data_service:8006
       - LLM_GATEWAY_URL=http://llm_gateway:8003
       - USER_SERVICE_URL=http://user_service:8008
+      - REDIS_URL=redis://redis:6379
       - PYTHONUNBUFFERED=1
 
   # Service for managing user personas
@@ -116,12 +120,44 @@ services:
   # following the same pattern.
 
   # --- Infrastructure Dependencies ---
+
+  # Redis for session and report persistence
+  redis:
+    image: redis:7-alpine
+    container_name: magellan-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --appendfsync everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - default
+
   chroma:
     image: chromadb/chroma
     ports:
       - "8011:8000"
     volumes:
       - ./chroma_data:/chroma/.chroma/index
+
+  # Qdrant Vector Database (Phase 2 - Knowledge Base)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: magellan-qdrant
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC API
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    networks:
+      - default
 
   # PostgreSQL Database (Temporarily disabled due to network issues)
   # postgres_db:
@@ -145,3 +181,5 @@ services:
 volumes:
   # postgres_data:
   uploads_volume:
+  redis_data:
+  qdrant_storage:

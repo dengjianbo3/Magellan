@@ -9,6 +9,8 @@ import ReportsView from './views/ReportsView.vue';
 import AgentsView from './views/AgentsView.vue';
 import KnowledgeView from './views/KnowledgeView.vue';
 import SettingsView from './views/SettingsView.vue';
+import ToastContainer from './components/layout/ToastContainer.vue';
+import OfflineBanner from './components/layout/OfflineBanner.vue';
 
 const activeTab = ref('dashboard');
 const showAgentChat = ref(false);
@@ -41,6 +43,12 @@ const handleAnalysisStart = (formData) => {
 </script>
 
 <template>
+  <!-- Offline Banner (Global) -->
+  <OfflineBanner />
+
+  <!-- Toast Container (Global) -->
+  <ToastContainer />
+
   <MainLayout
     :active-tab="activeTab"
     user-name="张伟"

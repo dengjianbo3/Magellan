@@ -40,20 +40,35 @@
         <div>
           <h1 class="text-2xl font-bold text-text-primary mb-1">Knowledge Base</h1>
           <p class="text-sm text-text-secondary">
-            {{ documents.filter(d => selectedCategory === 'all' || d.category === selectedCategory).length }} documents
+            {{ searchMode ? `${searchResults.length} search results` : `${filteredDocuments.length} documents` }}
           </p>
         </div>
         <div class="flex items-center gap-3">
           <div class="relative">
             <input
               v-model="searchQuery"
+              @keyup.enter="performSearch"
               type="text"
               placeholder="Search documents..."
-              class="w-64 px-4 py-2 pl-10 rounded-lg bg-surface border border-border-color text-text-primary placeholder-text-secondary focus:outline-none focus:border-primary transition-colors"
+              class="w-64 px-4 py-2 pl-10 pr-20 rounded-lg bg-surface border border-border-color text-text-primary placeholder-text-secondary focus:outline-none focus:border-primary transition-colors"
             />
             <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary">
               search
             </span>
+            <button
+              v-if="searchMode"
+              @click="clearSearch"
+              class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded bg-accent-red/20 text-accent-red hover:bg-accent-red/30 transition-colors"
+            >
+              Clear
+            </button>
+            <button
+              v-else-if="searchQuery"
+              @click="performSearch"
+              class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
+            >
+              Search
+            </button>
           </div>
           <button
             @click="showUploadModal = true"
@@ -81,50 +96,40 @@
             </thead>
             <tbody>
               <tr
-                v-for="doc in filteredDocuments"
+                v-for="doc in searchMode ? searchResults : filteredDocuments"
                 :key="doc.id"
                 class="border-t border-border-color hover:bg-background-dark transition-colors"
               >
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
-                      <span class="material-symbols-outlined text-primary">{{ getFileIcon(doc.type) }}</span>
+                      <span class="material-symbols-outlined text-primary">{{ getFileIcon(doc.metadata?.file_type) }}</span>
                     </div>
                     <div>
-                      <p class="font-semibold text-text-primary text-sm">{{ doc.name }}</p>
-                      <p class="text-xs text-text-secondary">{{ doc.description }}</p>
+                      <p class="font-semibold text-text-primary text-sm">{{ doc.metadata?.title || doc.metadata?.filename || 'Untitled' }}</p>
+                      <p class="text-xs text-text-secondary">{{ doc.text ? doc.text.substring(0, 60) + '...' : 'No description' }}</p>
                     </div>
                   </div>
                 </td>
                 <td class="px-6 py-4">
                   <span class="text-xs px-2 py-1 rounded bg-surface-light text-text-secondary uppercase">
-                    {{ doc.type }}
+                    {{ doc.metadata?.file_type || 'unknown' }}
                   </span>
                 </td>
-                <td class="px-6 py-4 text-sm text-text-secondary">{{ doc.size }}</td>
-                <td class="px-6 py-4 text-sm text-text-secondary">{{ doc.uploadedAt }}</td>
+                <td class="px-6 py-4 text-sm text-text-secondary">{{ formatFileSize(doc.text?.length) }}</td>
+                <td class="px-6 py-4 text-sm text-text-secondary">{{ formatDate(doc.metadata?.created_at) }}</td>
                 <td class="px-6 py-4">
-                  <span
-                    :class="[
-                      'text-xs px-2 py-1 rounded font-semibold',
-                      doc.status === 'processed' ? 'bg-accent-green/20 text-accent-green' :
-                      doc.status === 'processing' ? 'bg-accent-yellow/20 text-accent-yellow' :
-                      'bg-accent-red/20 text-accent-red'
-                    ]"
-                  >
-                    {{ doc.status }}
+                  <span v-if="searchMode && doc.score" class="text-xs px-2 py-1 rounded font-semibold bg-primary/20 text-primary">
+                    {{ (doc.score * 100).toFixed(0) }}% match
+                  </span>
+                  <span v-else class="text-xs px-2 py-1 rounded font-semibold bg-accent-green/20 text-accent-green">
+                    processed
                   </span>
                 </td>
                 <td class="px-6 py-4">
                   <div class="flex items-center justify-end gap-2">
-                    <button class="p-2 rounded hover:bg-surface transition-colors" title="View">
-                      <span class="material-symbols-outlined text-sm text-text-secondary">visibility</span>
-                    </button>
-                    <button class="p-2 rounded hover:bg-surface transition-colors" title="Download">
-                      <span class="material-symbols-outlined text-sm text-text-secondary">download</span>
-                    </button>
-                    <button class="p-2 rounded hover:bg-surface transition-colors" title="Delete">
-                      <span class="material-symbols-outlined text-sm text-text-secondary">delete</span>
+                    <button @click="confirmDelete(doc)" class="p-2 rounded hover:bg-surface transition-colors" title="Delete">
+                      <span class="material-symbols-outlined text-sm text-accent-red">delete</span>
                     </button>
                   </div>
                 </td>
@@ -167,6 +172,17 @@
         </div>
 
         <div class="space-y-6">
+          <!-- Title Input -->
+          <div>
+            <label class="block text-sm font-semibold text-text-primary mb-2">Title (Optional)</label>
+            <input
+              v-model="uploadForm.title"
+              type="text"
+              placeholder="Document title"
+              class="w-full px-4 py-3 rounded-lg bg-background-dark border border-border-color text-text-primary placeholder-text-secondary focus:outline-none focus:border-primary transition-colors"
+            />
+          </div>
+
           <!-- Category Selection -->
           <div>
             <label class="block text-sm font-semibold text-text-primary mb-2">Category</label>
@@ -232,23 +248,61 @@
           <div class="flex items-center gap-3 pt-4">
             <button
               @click="showUploadModal = false"
-              class="flex-1 px-4 py-3 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors font-semibold"
+              :disabled="uploading"
+              class="flex-1 px-4 py-3 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
             <button
               @click="uploadFiles"
-              :disabled="uploadForm.files.length === 0"
+              :disabled="uploadForm.files.length === 0 || uploading"
               :class="[
-                'flex-1 px-4 py-3 rounded-lg font-semibold transition-colors',
-                uploadForm.files.length > 0
+                'flex-1 px-4 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2',
+                uploadForm.files.length > 0 && !uploading
                   ? 'bg-primary text-background-dark hover:bg-primary/90'
                   : 'bg-surface text-text-secondary cursor-not-allowed'
               ]"
             >
-              Upload {{ uploadForm.files.length }} file{{ uploadForm.files.length !== 1 ? 's' : '' }}
+              <span v-if="uploading" class="material-symbols-outlined animate-spin">progress_activity</span>
+              <span v-else>Upload {{ uploadForm.files.length }} file{{ uploadForm.files.length !== 1 ? 's' : '' }}</span>
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete Confirmation Dialog -->
+    <div
+      v-if="showDeleteConfirm"
+      class="fixed inset-0 bg-background-dark/80 flex items-center justify-center z-50"
+      @click.self="cancelDelete"
+    >
+      <div class="bg-surface border border-border-color rounded-lg p-6 max-w-md w-full mx-4">
+        <div class="flex items-start gap-4 mb-6">
+          <div class="w-12 h-12 rounded-lg bg-accent-red/20 flex items-center justify-center flex-shrink-0">
+            <span class="material-symbols-outlined text-accent-red text-2xl">warning</span>
+          </div>
+          <div>
+            <h2 class="text-xl font-bold text-text-primary mb-2">Delete Document</h2>
+            <p class="text-sm text-text-secondary">
+              Are you sure you want to delete "{{ documentToDelete?.metadata?.title || documentToDelete?.metadata?.filename }}"? This action cannot be undone.
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button
+            @click="cancelDelete"
+            class="flex-1 px-4 py-3 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors font-semibold"
+          >
+            Cancel
+          </button>
+          <button
+            @click="deleteDocument"
+            class="flex-1 px-4 py-3 rounded-lg bg-accent-red text-white hover:bg-accent-red/90 transition-colors font-semibold"
+          >
+            Delete
+          </button>
         </div>
       </div>
     </div>
@@ -256,96 +310,89 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import { useToast } from '../composables/useToast';
+
+const { success, error, warning } = useToast();
 
 const selectedCategory = ref('all');
 const searchQuery = ref('');
 const showUploadModal = ref(false);
+const showDeleteConfirm = ref(false);
 const fileInput = ref(null);
+const documentToDelete = ref(null);
+const loading = ref(false);
+const uploading = ref(false);
+const searchMode = ref(false);
+const searching = ref(false);
+const searchResults = ref([]);
 
 const uploadForm = ref({
-  category: 'financial',
+  category: 'general',
+  title: '',
   files: []
 });
 
 const categories = ref([
-  { id: 'all', name: 'All Documents', icon: 'folder', count: 24 },
-  { id: 'financial', name: 'Financial Reports', icon: 'account_balance', count: 12 },
-  { id: 'market', name: 'Market Research', icon: 'trending_up', count: 8 },
-  { id: 'legal', name: 'Legal Documents', icon: 'gavel', count: 3 },
-  { id: 'other', name: 'Other', icon: 'description', count: 1 }
+  { id: 'all', name: 'All Documents', icon: 'folder', count: 0 },
+  { id: 'general', name: 'General', icon: 'description', count: 0 },
+  { id: 'financial', name: 'Financial Reports', icon: 'account_balance', count: 0 },
+  { id: 'market', name: 'Market Research', icon: 'trending_up', count: 0 },
+  { id: 'legal', name: 'Legal Documents', icon: 'gavel', count: 0 },
+  { id: 'technical', name: 'Technical Docs', icon: 'code', count: 0 }
 ]);
 
-const documents = ref([
-  {
-    id: 1,
-    name: 'Tesla Q3 2024 10-K Filing',
-    description: 'Annual financial report',
-    type: 'pdf',
-    size: '2.4 MB',
-    uploadedAt: '2 days ago',
-    status: 'processed',
-    category: 'financial'
-  },
-  {
-    id: 2,
-    name: 'EV Market Analysis Report',
-    description: 'Comprehensive market research',
-    type: 'docx',
-    size: '1.8 MB',
-    uploadedAt: '5 days ago',
-    status: 'processed',
-    category: 'market'
-  },
-  {
-    id: 3,
-    name: 'Competitor Landscape Data',
-    description: 'Market share and competitor analysis',
-    type: 'xlsx',
-    size: '890 KB',
-    uploadedAt: '1 week ago',
-    status: 'processed',
-    category: 'market'
-  },
-  {
-    id: 4,
-    name: 'Investment Agreement Template',
-    description: 'Standard investment terms',
-    type: 'pdf',
-    size: '420 KB',
-    uploadedAt: '2 weeks ago',
-    status: 'processed',
-    category: 'legal'
-  }
-]);
+const documents = ref([]);
+const stats = ref(null);
 
 const filteredDocuments = computed(() => {
   let filtered = documents.value;
 
   if (selectedCategory.value !== 'all') {
-    filtered = filtered.filter(d => d.category === selectedCategory.value);
+    filtered = filtered.filter(d => d.metadata?.category === selectedCategory.value);
   }
 
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase();
     filtered = filtered.filter(d =>
-      d.name.toLowerCase().includes(query) ||
-      d.description.toLowerCase().includes(query)
+      d.metadata?.title?.toLowerCase().includes(query) ||
+      d.metadata?.filename?.toLowerCase().includes(query) ||
+      d.text?.toLowerCase().includes(query)
     );
   }
 
   return filtered;
 });
 
-const getFileIcon = (type) => {
+const getFileIcon = (fileType) => {
   const icons = {
     pdf: 'picture_as_pdf',
     docx: 'description',
-    xlsx: 'table_chart',
-    csv: 'table_view',
+    doc: 'description',
     txt: 'article'
   };
-  return icons[type] || 'description';
+  return icons[fileType] || 'description';
+};
+
+const formatFileSize = (bytes) => {
+  if (!bytes) return 'Unknown';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+};
+
+const formatDate = (dateString) => {
+  if (!dateString) return 'Unknown';
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+  return date.toLocaleDateString();
 };
 
 const triggerFileUpload = () => {
@@ -361,15 +408,174 @@ const removeFile = (index) => {
   uploadForm.value.files.splice(index, 1);
 };
 
-const formatFileSize = (bytes) => {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+const fetchDocuments = async () => {
+  loading.value = true;
+  try {
+    const response = await fetch('http://localhost:8000/api/knowledge/documents?limit=100');
+    if (!response.ok) throw new Error('Failed to fetch documents');
+
+    const data = await response.json();
+    documents.value = data.documents || [];
+
+    // Update category counts
+    updateCategoryCounts();
+  } catch (err) {
+    console.error('Error fetching documents:', err);
+    error('Failed to load documents');
+  } finally {
+    loading.value = false;
+  }
 };
 
-const uploadFiles = () => {
-  console.log('Uploading files:', uploadForm.value);
-  showUploadModal.value = false;
-  uploadForm.value.files = [];
+const fetchStats = async () => {
+  try {
+    const response = await fetch('http://localhost:8000/api/knowledge/stats');
+    if (!response.ok) throw new Error('Failed to fetch stats');
+
+    stats.value = await response.json();
+    categories.value[0].count = stats.value.total_documents || 0;
+  } catch (err) {
+    console.error('Error fetching stats:', err);
+  }
 };
+
+const updateCategoryCounts = () => {
+  const counts = {};
+  documents.value.forEach(doc => {
+    const category = doc.metadata?.category || 'general';
+    counts[category] = (counts[category] || 0) + 1;
+  });
+
+  categories.value.forEach(cat => {
+    if (cat.id === 'all') {
+      cat.count = documents.value.length;
+    } else {
+      cat.count = counts[cat.id] || 0;
+    }
+  });
+};
+
+const uploadFiles = async () => {
+  if (uploadForm.value.files.length === 0) return;
+
+  uploading.value = true;
+
+  try {
+    for (const file of uploadForm.value.files) {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('category', uploadForm.value.category);
+      formData.append('title', uploadForm.value.title || file.name);
+
+      const response = await fetch('http://localhost:8000/api/knowledge/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Upload failed');
+      }
+
+      const result = await response.json();
+      console.log('Upload result:', result);
+    }
+
+    success(`Successfully uploaded ${uploadForm.value.files.length} file(s)`);
+
+    // Refresh BM25 index after upload
+    try {
+      await fetch('http://localhost:8000/api/knowledge/refresh-index', {
+        method: 'POST'
+      });
+    } catch (err) {
+      console.warn('Failed to refresh index:', err);
+    }
+
+    // Reset form and reload documents
+    uploadForm.value.files = [];
+    uploadForm.value.title = '';
+    showUploadModal.value = false;
+
+    await fetchDocuments();
+    await fetchStats();
+  } catch (err) {
+    console.error('Error uploading files:', err);
+    error(err.message || 'Failed to upload files');
+  } finally {
+    uploading.value = false;
+  }
+};
+
+const confirmDelete = (doc) => {
+  documentToDelete.value = doc;
+  showDeleteConfirm.value = true;
+};
+
+const cancelDelete = () => {
+  documentToDelete.value = null;
+  showDeleteConfirm.value = false;
+};
+
+const deleteDocument = async () => {
+  if (!documentToDelete.value) return;
+
+  try {
+    const response = await fetch(
+      `http://localhost:8000/api/knowledge/documents/${documentToDelete.value.id}`,
+      { method: 'DELETE' }
+    );
+
+    if (!response.ok) throw new Error('Failed to delete document');
+
+    success('Document deleted successfully');
+
+    await fetchDocuments();
+    await fetchStats();
+  } catch (err) {
+    console.error('Error deleting document:', err);
+    error('Failed to delete document');
+  } finally {
+    cancelDelete();
+  }
+};
+
+const performSearch = async () => {
+  if (!searchQuery.value.trim()) {
+    clearSearch();
+    return;
+  }
+
+  searching.value = true;
+  try {
+    const categoryParam = selectedCategory.value !== 'all' ? `&category=${selectedCategory.value}` : '';
+    const response = await fetch(
+      `http://localhost:8000/api/knowledge/hybrid-search?query=${encodeURIComponent(searchQuery.value)}&top_k=20&use_reranking=true${categoryParam}`
+    );
+
+    if (!response.ok) throw new Error('Search failed');
+
+    const data = await response.json();
+    searchResults.value = data.results || [];
+    searchMode.value = true;
+
+    success(`Found ${searchResults.value.length} results`);
+  } catch (err) {
+    console.error('Error searching:', err);
+    error('Search failed');
+  } finally {
+    searching.value = false;
+  }
+};
+
+const clearSearch = () => {
+  searchMode.value = false;
+  searchQuery.value = '';
+  searchResults.value = [];
+};
+
+onMounted(() => {
+  fetchDocuments();
+  fetchStats();
+});
 </script>

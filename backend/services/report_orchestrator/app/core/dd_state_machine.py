@@ -66,6 +66,7 @@ class DDStateMachine:
         self.bp_file_content = bp_file_content
         self.bp_filename = bp_filename
         self.websocket: Optional[WebSocket] = None
+        self._websocket_lock = asyncio.Lock()  # V5: Lock for WebSocket send operations
 
         # V5: Store frontend configuration
         self.project_name = project_name or f"{company_name} DD Analysis"
@@ -479,10 +480,26 @@ class DDStateMachine:
 
             # Wait for all running tasks
             if tasks:
-                results = await asyncio.gather(*[task for _, task in tasks])
+                results = await asyncio.gather(*[task for _, task in tasks], return_exceptions=True)
 
                 # Process results
                 for (task_type, _), result in zip(tasks, results):
+                    # Check if result is an exception
+                    if isinstance(result, Exception):
+                        print(f"[DD_WORKFLOW] Task {task_type} failed with exception: {result}")
+                        if task_type == 'tdd':
+                            tdd_step.status = "error"
+                            tdd_step.error_message = str(result)
+                            tdd_step.result = "团队分析失败"
+                            await self._send_progress_update(tdd_step)
+                        elif task_type == 'mdd':
+                            mdd_step.status = "error"
+                            mdd_step.error_message = str(result)
+                            mdd_step.result = "市场分析失败"
+                            await self._send_progress_update(mdd_step)
+                        continue
+
+                    # Process successful results
                     if task_type == 'tdd':
                         self.context.team_analysis = result
                         tdd_step.status = "success"
@@ -729,7 +746,7 @@ class DDStateMachine:
                 print(f"[DEBUG] Failed to send error message via WebSocket: {e}", flush=True)
     
     async def _send_progress_update(self, step: DDStep, final: bool = False):
-        """Send progress update via WebSocket"""
+        """Send progress update via WebSocket with lock protection"""
         if not self.websocket:
             return
 
@@ -751,10 +768,12 @@ class DDStateMachine:
             all_steps=list(self.steps.values())
         )
 
-        try:
-            await self.websocket.send_json(message.dict())
-        except Exception as e:
-            print(f"[DEBUG] Failed to send progress update: {e}", flush=True)
+        # V5: Use lock to prevent race conditions when sending from parallel tasks
+        async with self._websocket_lock:
+            try:
+                await self.websocket.send_json(message.dict())
+            except Exception as e:
+                print(f"[DEBUG] Failed to send progress update: {e}", flush=True)
     
     async def _send_hitl_message(self, step: DDStep, preliminary_im: PreliminaryIM):
         """Send HITL review message"""
@@ -785,14 +804,16 @@ class DDStateMachine:
             "message": "初步投资备忘录已生成，请审核并提供反馈"
         }
 
-        try:
-            print(f"[HITL] Sending HITL message with report for session {self.context.session_id}", flush=True)
-            await self.websocket.send_json(message_dict)
-            print(f"[HITL] ✅ HITL message sent successfully!", flush=True)
-        except Exception as e:
-            print(f"[HITL] ❌ Failed to send HITL message: {e}", flush=True)
-            import traceback
-            traceback.print_exc()
+        # V5: Use lock to prevent race conditions
+        async with self._websocket_lock:
+            try:
+                print(f"[HITL] Sending HITL message with report for session {self.context.session_id}", flush=True)
+                await self.websocket.send_json(message_dict)
+                print(f"[HITL] ✅ HITL message sent successfully!", flush=True)
+            except Exception as e:
+                print(f"[HITL] ❌ Failed to send HITL message: {e}", flush=True)
+                import traceback
+                traceback.print_exc()
     
     async def _search_company_info(self, company_name: str) -> "BPStructuredData":
         """

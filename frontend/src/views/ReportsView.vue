@@ -100,8 +100,41 @@
             <span class="material-symbols-outlined text-sm">visibility</span>
             {{ t('reports.card.view') }}
           </button>
-          <button class="px-3 py-2 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors">
+          <button
+            @click.stop="showExportMenu(report.id)"
+            class="px-3 py-2 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors relative"
+            title="导出报告"
+          >
             <span class="material-symbols-outlined text-sm">download</span>
+
+            <!-- Export Menu Dropdown -->
+            <div
+              v-if="exportMenuReportId === report.id"
+              @click.stop
+              class="absolute right-0 top-full mt-2 w-48 bg-surface border border-border-color rounded-lg shadow-lg py-2 z-10"
+            >
+              <button
+                @click="exportReport(report.id, 'pdf')"
+                class="w-full px-4 py-2 text-left text-sm text-text-primary hover:bg-background-dark transition-colors flex items-center gap-2"
+              >
+                <span class="material-symbols-outlined text-sm text-accent-red">picture_as_pdf</span>
+                导出为 PDF
+              </button>
+              <button
+                @click="exportReport(report.id, 'word')"
+                class="w-full px-4 py-2 text-left text-sm text-text-primary hover:bg-background-dark transition-colors flex items-center gap-2"
+              >
+                <span class="material-symbols-outlined text-sm text-accent-blue">description</span>
+                导出为 Word
+              </button>
+              <button
+                @click="exportReport(report.id, 'excel')"
+                class="w-full px-4 py-2 text-left text-sm text-text-primary hover:bg-background-dark transition-colors flex items-center gap-2"
+              >
+                <span class="material-symbols-outlined text-sm text-accent-green">table_chart</span>
+                导出为 Excel
+              </button>
+            </div>
           </button>
           <button class="px-3 py-2 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors">
             <span class="material-symbols-outlined text-sm">share</span>
@@ -226,6 +259,118 @@
             </div>
           </div>
         </div>
+
+        <!-- Visual Analytics / Charts -->
+        <div class="bg-surface border border-border-color rounded-lg p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-bold text-text-primary">数据可视化</h2>
+            <button
+              @click="refreshCharts"
+              class="px-3 py-1 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors text-sm flex items-center gap-1"
+            >
+              <span class="material-symbols-outlined text-sm">refresh</span>
+              刷新
+            </button>
+          </div>
+
+          <!-- Chart Tabs -->
+          <div class="flex gap-2 mb-4 border-b border-border-color">
+            <button
+              v-for="tab in chartTabs"
+              :key="tab.id"
+              @click="activeChartTab = tab.id"
+              :class="[
+                'px-4 py-2 text-sm font-semibold transition-colors border-b-2',
+                activeChartTab === tab.id
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-text-secondary hover:text-text-primary'
+              ]"
+            >
+              {{ tab.label }}
+            </button>
+          </div>
+
+          <!-- Financial Charts -->
+          <div v-if="activeChartTab === 'financial'" class="space-y-4">
+            <div class="grid grid-cols-1 gap-4">
+              <div class="bg-background-dark rounded-lg p-4">
+                <h3 class="text-sm font-semibold text-text-primary mb-3">收入趋势</h3>
+                <img
+                  :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/revenue?language=${currentLanguage}`"
+                  alt="Revenue Chart"
+                  class="w-full rounded-lg"
+                  @error="handleChartError"
+                />
+              </div>
+              <div class="bg-background-dark rounded-lg p-4">
+                <h3 class="text-sm font-semibold text-text-primary mb-3">利润率趋势</h3>
+                <img
+                  :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/profit?language=${currentLanguage}`"
+                  alt="Profit Chart"
+                  class="w-full rounded-lg"
+                  @error="handleChartError"
+                />
+              </div>
+              <div class="bg-background-dark rounded-lg p-4">
+                <h3 class="text-sm font-semibold text-text-primary mb-3">财务健康度</h3>
+                <img
+                  :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/financial_health?language=${currentLanguage}`"
+                  alt="Financial Health Chart"
+                  class="w-full rounded-lg"
+                  @error="handleChartError"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Market Charts -->
+          <div v-if="activeChartTab === 'market'" class="space-y-4">
+            <div class="grid grid-cols-1 gap-4">
+              <div class="bg-background-dark rounded-lg p-4">
+                <h3 class="text-sm font-semibold text-text-primary mb-3">市场份额分布</h3>
+                <img
+                  :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/market_share?language=${currentLanguage}`"
+                  alt="Market Share Chart"
+                  class="w-full rounded-lg"
+                  @error="handleChartError"
+                />
+              </div>
+              <div class="bg-background-dark rounded-lg p-4">
+                <h3 class="text-sm font-semibold text-text-primary mb-3">市场增长趋势</h3>
+                <img
+                  :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/market_growth?language=${currentLanguage}`"
+                  alt="Market Growth Chart"
+                  class="w-full rounded-lg"
+                  @error="handleChartError"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Team & Risk Charts -->
+          <div v-if="activeChartTab === 'team_risk'" class="space-y-4">
+            <div class="grid grid-cols-1 gap-4">
+              <div class="bg-background-dark rounded-lg p-4">
+                <h3 class="text-sm font-semibold text-text-primary mb-3">团队能力雷达图</h3>
+                <img
+                  :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/team_radar?language=${currentLanguage}`"
+                  alt="Team Radar Chart"
+                  class="w-full rounded-lg"
+                  @error="handleChartError"
+                />
+              </div>
+              <div class="bg-background-dark rounded-lg p-4">
+                <h3 class="text-sm font-semibold text-text-primary mb-3">风险评估矩阵</h3>
+                <img
+                  :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/risk_matrix?language=${currentLanguage}`"
+                  alt="Risk Matrix Chart"
+                  class="w-full rounded-lg"
+                  @error="handleChartError"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Sidebar -->
@@ -261,10 +406,33 @@
         <div class="bg-surface border border-border-color rounded-lg p-4">
           <h3 class="font-bold text-text-primary mb-3">操作</h3>
           <div class="space-y-2">
-            <button class="w-full px-4 py-2 rounded-lg bg-primary text-background-dark hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
-              <span class="material-symbols-outlined">download</span>
-              导出报告
-            </button>
+            <div class="space-y-2">
+              <p class="text-xs text-text-secondary mb-2">导出报告</p>
+              <button
+                @click="exportReport(selectedReport.id, 'pdf')"
+                :disabled="exportLoading"
+                class="w-full px-4 py-2 rounded-lg bg-primary text-background-dark hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span class="material-symbols-outlined text-sm">picture_as_pdf</span>
+                {{ exportLoading ? '导出中...' : '导出为 PDF' }}
+              </button>
+              <button
+                @click="exportReport(selectedReport.id, 'word')"
+                :disabled="exportLoading"
+                class="w-full px-4 py-2 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span class="material-symbols-outlined text-sm">description</span>
+                {{ exportLoading ? '导出中...' : '导出为 Word' }}
+              </button>
+              <button
+                @click="exportReport(selectedReport.id, 'excel')"
+                :disabled="exportLoading"
+                class="w-full px-4 py-2 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span class="material-symbols-outlined text-sm">table_chart</span>
+                {{ exportLoading ? '导出中...' : '导出为 Excel' }}
+              </button>
+            </div>
             <button class="w-full px-4 py-2 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors flex items-center justify-center gap-2">
               <span class="material-symbols-outlined">share</span>
               分享报告
@@ -336,6 +504,20 @@ const error = ref(null);
 const selectedReport = ref(null); // For viewing report details
 const showDeleteConfirm = ref(false); // Delete confirmation dialog
 const reportToDelete = ref(null); // Report being deleted
+const exportMenuReportId = ref(null); // Track which report's export menu is open
+const exportLoading = ref(false); // Track export operation state
+
+// Chart-related state
+const activeChartTab = ref('financial'); // Default active tab
+const chartTabs = [
+  { id: 'financial', label: '财务分析' },
+  { id: 'market', label: '市场分析' },
+  { id: 'team_risk', label: '团队与风险' }
+];
+const currentLanguage = computed(() => {
+  const lang = localStorage.getItem('language') || 'zh';
+  return lang.startsWith('zh') ? 'zh' : 'en';
+});
 
 const reports = computed(() => reportsData.value.map(report => {
   // Convert backend report format to display format
@@ -457,6 +639,100 @@ const deleteReport = async () => {
     console.error('[ReportsView] Failed to delete report:', err);
     alert('删除报告失败: ' + err.message);
   }
+};
+
+// Export functions
+const showExportMenu = (reportId) => {
+  // Toggle menu for this report
+  if (exportMenuReportId.value === reportId) {
+    exportMenuReportId.value = null;
+  } else {
+    exportMenuReportId.value = reportId;
+  }
+};
+
+const exportReport = async (reportId, format) => {
+  try {
+    exportLoading.value = true;
+    exportMenuReportId.value = null; // Close menu
+
+    // Get language setting
+    const language = localStorage.getItem('language') || 'zh';
+    const langParam = language.startsWith('zh') ? 'zh' : 'en';
+
+    // Call export API
+    const url = `http://localhost:8000/api/reports/${reportId}/export/${format}?language=${langParam}`;
+    console.log(`[ReportsView] Exporting report ${reportId} as ${format}, language=${langParam}`);
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Failed to export report: ${response.statusText}`);
+    }
+
+    // Get filename from Content-Disposition header
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = `report_${reportId}.${format === 'word' ? 'docx' : format === 'excel' ? 'xlsx' : 'pdf'}`;
+
+    if (contentDisposition) {
+      const matches = /filename="([^"]+)"/.exec(contentDisposition);
+      if (matches && matches[1]) {
+        filename = matches[1];
+      }
+    }
+
+    // Download file
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(downloadUrl);
+    document.body.removeChild(a);
+
+    console.log(`[ReportsView] Successfully exported report as ${format}: ${filename}`);
+    alert(`报告已成功导出为 ${format.toUpperCase()} 格式！`);
+
+  } catch (err) {
+    console.error('[ReportsView] Failed to export report:', err);
+    alert(`导出报告失败: ${err.message}`);
+  } finally {
+    exportLoading.value = false;
+  }
+};
+
+// Close export menu when clicking outside
+document.addEventListener('click', () => {
+  if (exportMenuReportId.value !== null) {
+    exportMenuReportId.value = null;
+  }
+});
+
+// Chart functions
+const refreshCharts = () => {
+  // Force reload charts by updating a timestamp query parameter
+  const timestamp = Date.now();
+  const charts = document.querySelectorAll('img[alt*="Chart"]');
+  charts.forEach(img => {
+    const src = img.getAttribute('src');
+    if (src) {
+      // Add or update timestamp parameter
+      const url = new URL(src, window.location.origin);
+      url.searchParams.set('t', timestamp.toString());
+      img.setAttribute('src', url.toString());
+    }
+  });
+};
+
+const handleChartError = (event) => {
+  console.error('[ReportsView] Chart loading error:', event.target.src);
+  // You could set a placeholder image or error message here
+  event.target.alt = '图表加载失败';
+  event.target.style.backgroundColor = '#374151';
+  event.target.style.padding = '40px';
+  event.target.style.textAlign = 'center';
 };
 
 onMounted(() => {

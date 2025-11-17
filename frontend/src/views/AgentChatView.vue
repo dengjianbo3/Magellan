@@ -56,20 +56,29 @@
         <!-- DD Analysis Steps -->
         <div v-for="step in analysisSteps" :key="step.id" class="space-y-2">
           <!-- Step Header -->
-          <div class="flex items-center gap-3 p-4 rounded-lg bg-background-dark border border-border-color">
+          <div
+            :class="[
+              'flex items-center gap-3 p-4 rounded-lg border transition-all duration-300',
+              step.status === 'success' ? 'bg-accent-green/5 border-accent-green/30' :
+              step.status === 'error' ? 'bg-accent-red/5 border-accent-red/30' :
+              step.status === 'running' ? 'bg-primary/5 border-primary/30 shadow-lg shadow-primary/10' :
+              step.status === 'skipped' ? 'bg-surface border-border-color opacity-60' :
+              'bg-background-dark border-border-color'
+            ]"
+          >
             <div
               :class="[
-                'w-8 h-8 rounded-full flex items-center justify-center',
-                step.status === 'success' ? 'bg-accent-green/20' :
-                step.status === 'error' ? 'bg-accent-red/20' :
-                step.status === 'running' ? 'bg-primary/20' :
+                'w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300',
+                step.status === 'success' ? 'bg-accent-green/20 ring-2 ring-accent-green/30' :
+                step.status === 'error' ? 'bg-accent-red/20 ring-2 ring-accent-red/30' :
+                step.status === 'running' ? 'bg-primary/20 ring-2 ring-primary/30 animate-pulse' :
                 step.status === 'skipped' ? 'bg-text-secondary/10' :
                 'bg-surface-light'
               ]"
             >
               <span
                 :class="[
-                  'material-symbols-outlined text-lg',
+                  'material-symbols-outlined text-xl',
                   step.status === 'success' ? 'text-accent-green' :
                   step.status === 'error' ? 'text-accent-red' :
                   step.status === 'running' ? 'text-primary animate-spin' :
@@ -87,15 +96,29 @@
               </span>
             </div>
             <div class="flex-1">
-              <h4 :class="[
-                'font-semibold',
-                step.status === 'skipped' ? 'text-text-secondary line-through' : 'text-text-primary'
-              ]">{{ step.title }}</h4>
-              <p v-if="step.status === 'running'" class="text-xs text-text-secondary mt-1">
+              <div class="flex items-center justify-between">
+                <h4 :class="[
+                  'font-semibold',
+                  step.status === 'skipped' ? 'text-text-secondary line-through' : 'text-text-primary'
+                ]">{{ step.title }}</h4>
+                <span v-if="step.status === 'success'" class="text-xs text-accent-green font-semibold flex items-center gap-1">
+                  <span class="material-symbols-outlined text-sm">done</span>
+                  完成
+                </span>
+                <span v-else-if="step.status === 'running'" class="text-xs text-primary font-semibold flex items-center gap-1 animate-pulse">
+                  <span class="material-symbols-outlined text-sm">autorenew</span>
+                  执行中
+                </span>
+              </div>
+              <p v-if="step.status === 'running'" class="text-xs text-text-secondary mt-1 flex items-center gap-1">
+                <span class="inline-block w-1 h-1 bg-primary rounded-full animate-ping"></span>
                 {{ t('common.loading') }}
               </p>
               <p v-if="step.status === 'skipped'" class="text-xs text-text-secondary mt-1">
                 已跳过
+              </p>
+              <p v-if="step.status === 'success'" class="text-xs text-accent-green mt-1">
+                执行完成
               </p>
             </div>
           </div>
@@ -243,17 +266,70 @@
               <span class="text-sm font-semibold text-text-primary">{{ t('agentChat.overallProgress') }}</span>
               <span class="text-sm font-semibold text-primary">{{ overallProgress }}%</span>
             </div>
-            <div class="w-full h-2 bg-background-dark rounded-full overflow-hidden">
+            <div class="w-full h-3 bg-background-dark rounded-full overflow-hidden relative">
               <div
-                class="h-full bg-primary transition-all duration-300"
+                class="h-full bg-gradient-to-r from-primary to-accent-blue transition-all duration-500 ease-out relative overflow-hidden"
                 :style="{ width: overallProgress + '%' }"
-              ></div>
+              >
+                <!-- Animated shimmer effect -->
+                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+              </div>
             </div>
           </div>
 
-          <!-- Step Summary -->
-          <div class="text-xs text-text-secondary">
-            {{ completedSteps }} / {{ totalSteps }} {{ t('agentChat.taskStatus.completed') }}
+          <!-- Step Summary with Icons -->
+          <div class="grid grid-cols-2 gap-3 text-xs">
+            <div class="flex items-center gap-2 p-2 rounded-lg bg-accent-green/10">
+              <span class="material-symbols-outlined text-sm text-accent-green">check_circle</span>
+              <div>
+                <div class="font-semibold text-accent-green">{{ completedSteps }}</div>
+                <div class="text-text-secondary">已完成</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 p-2 rounded-lg bg-accent-yellow/10">
+              <span class="material-symbols-outlined text-sm text-accent-yellow">pending</span>
+              <div>
+                <div class="font-semibold text-accent-yellow">{{ pendingSteps }}</div>
+                <div class="text-text-secondary">待处理</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Time Estimates -->
+          <div class="space-y-2 pt-2 border-t border-border-color">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-text-secondary flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm">schedule</span>
+                已用时间
+              </span>
+              <span class="font-semibold text-text-primary">{{ elapsedTime }}</span>
+            </div>
+            <div v-if="analysisStatus === 'in_progress' && overallProgress > 0 && overallProgress < 100" class="flex items-center justify-between text-xs">
+              <span class="text-text-secondary flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm">hourglass_empty</span>
+                预计剩余
+              </span>
+              <span class="font-semibold text-primary">{{ estimatedTimeRemaining }}</span>
+            </div>
+            <div v-if="analysisStatus === 'completed'" class="flex items-center justify-between text-xs">
+              <span class="text-text-secondary flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm">timer</span>
+                总用时
+              </span>
+              <span class="font-semibold text-accent-green">{{ elapsedTime }}</span>
+            </div>
+          </div>
+
+          <!-- Current Step Info -->
+          <div v-if="currentRunningStep" class="pt-2 border-t border-border-color">
+            <div class="text-xs text-text-secondary mb-2">当前步骤</div>
+            <div class="flex items-start gap-2 p-2 rounded-lg bg-primary/10 border border-primary/20">
+              <span class="material-symbols-outlined text-sm text-primary animate-spin">progress_activity</span>
+              <div class="flex-1 text-xs">
+                <div class="font-semibold text-text-primary">{{ currentRunningStep.title }}</div>
+                <div class="text-text-secondary mt-1">正在执行中...</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -283,9 +359,11 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useLanguage } from '../composables/useLanguage';
+import { useToast } from '../composables/useToast';
 import { DDAnalysisService } from '../services/ddAnalysisService';
 
 const { t } = useLanguage();
+const { success, error, warning, info } = useToast();
 const props = defineProps({
   analysisConfig: {
     type: Object,
@@ -305,6 +383,11 @@ const sessionId = ref('');
 const reportSaved = ref(false);
 const preliminaryReport = ref(null); // Store the preliminary IM for HITL review
 const isReconnecting = ref(false); // Track reconnection state
+
+// Time tracking
+const startTimeMs = ref(Date.now());
+const currentTime = ref(Date.now());
+let timeUpdateInterval = null;
 
 // Computed
 const projectName = computed(() => props.analysisConfig?.projectName || 'Investment Analysis');
@@ -329,12 +412,50 @@ const analysisStatusText = computed(() => {
 
 const totalSteps = computed(() => analysisSteps.value.length);
 const completedSteps = computed(() => analysisSteps.value.filter(s => s.status === 'success').length);
+const pendingSteps = computed(() => analysisSteps.value.filter(s => s.status === 'pending' || s.status === 'running').length);
 const overallProgress = computed(() => {
   if (totalSteps.value === 0) return 0;
   return Math.round((completedSteps.value / totalSteps.value) * 100);
 });
 
+const currentRunningStep = computed(() => {
+  return analysisSteps.value.find(s => s.status === 'running');
+});
+
 const selectedAgentsCount = computed(() => props.analysisConfig?.selectedAgents?.length || 0);
+
+// Time formatting helpers
+const formatTime = (ms) => {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+
+  if (hours > 0) {
+    return `${hours}小时${minutes % 60}分钟`;
+  } else if (minutes > 0) {
+    return `${minutes}分${seconds % 60}秒`;
+  } else {
+    return `${seconds}秒`;
+  }
+};
+
+const elapsedTime = computed(() => {
+  const elapsed = currentTime.value - startTimeMs.value;
+  return formatTime(elapsed);
+});
+
+const estimatedTimeRemaining = computed(() => {
+  if (completedSteps.value === 0 || overallProgress.value === 0) {
+    return '计算中...';
+  }
+
+  const elapsed = currentTime.value - startTimeMs.value;
+  const avgTimePerStep = elapsed / completedSteps.value;
+  const remainingSteps = totalSteps.value - completedSteps.value;
+  const estimatedRemaining = avgTimePerStep * remainingSteps;
+
+  return formatTime(estimatedRemaining);
+});
 
 // Methods
 const scrollToBottom = async () => {
@@ -421,6 +542,7 @@ const handleDDMessage = (data) => {
       result: '初步分析已完成，生成了初步报告和关键问题。'
     });
 
+    success('初步分析完成！请查看并保存报告');
     scrollToBottom();
   } else if (data.status === 'completed') {
     analysisStatus.value = 'completed';
@@ -431,10 +553,12 @@ const handleDDMessage = (data) => {
       status: step.status === 'running' ? 'success' : step.status
     }));
 
+    success('分析已全部完成！');
     scrollToBottom();
   } else if (data.status === 'error') {
     analysisStatus.value = 'error';
     errorMessage.value = data.message || '分析过程中出现错误';
+    error('分析出错: ' + (data.message || '未知错误'));
     scrollToBottom();
   }
 };
@@ -470,6 +594,8 @@ const saveReport = async () => {
 
     console.log('[AgentChat] Saving report:', reportData);
 
+    info('正在保存报告...');
+
     // Call backend API to save report
     const response = await fetch('http://localhost:8000/api/reports', {
       method: 'POST',
@@ -488,14 +614,15 @@ const saveReport = async () => {
 
     // Mark as saved
     reportSaved.value = true;
+    success('报告保存成功！即将返回列表页...');
 
     // Navigate back to reports view after a delay
     setTimeout(() => {
       emit('back');
     }, 1500);
-  } catch (error) {
-    console.error('[AgentChat] Failed to save report:', error);
-    alert('保存报告失败: ' + error.message);
+  } catch (err) {
+    console.error('[AgentChat] Failed to save report:', err);
+    error('保存报告失败: ' + err.message);
   }
 };
 
@@ -503,14 +630,21 @@ const saveReport = async () => {
 onMounted(async () => {
   console.log('[AgentChat] Starting DD analysis with config:', props.analysisConfig);
 
+  // Start time tracking
+  startTimeMs.value = Date.now();
+  timeUpdateInterval = setInterval(() => {
+    currentTime.value = Date.now();
+  }, 1000); // Update every second
+
   // Setup message handler
   ddService.onMessage(handleDDMessage);
 
   // Setup error handler
-  ddService.onError((error) => {
-    console.error('[AgentChat] WebSocket error:', error);
+  ddService.onError((err) => {
+    console.error('[AgentChat] WebSocket error:', err);
     analysisStatus.value = 'error';
     errorMessage.value = '连接错误';
+    error('分析连接出错，请检查网络连接后重试');
   });
 
   // Setup close handler
@@ -520,6 +654,7 @@ onMounted(async () => {
     // If not a normal closure and analysis not completed, show reconnecting status
     if (event.code !== 1000 && analysisStatus.value !== 'completed' && analysisStatus.value !== 'hitl_review') {
       isReconnecting.value = true;
+      warning('连接已断开，正在尝试重新连接...', 0); // Keep warning visible
       console.log('[AgentChat] Connection lost, attempting to reconnect...');
     }
   });
@@ -528,6 +663,7 @@ onMounted(async () => {
   ddService.onMessage((data) => {
     if (isReconnecting.value && data) {
       isReconnecting.value = false;
+      success('重新连接成功，分析继续进行');
       console.log('[AgentChat] Reconnected successfully');
     }
   });
@@ -535,14 +671,37 @@ onMounted(async () => {
   // Start analysis
   try {
     await ddService.startAnalysis(props.analysisConfig);
-  } catch (error) {
-    console.error('[AgentChat] Failed to start analysis:', error);
+    info('分析已启动，AI团队正在工作中...');
+  } catch (err) {
+    console.error('[AgentChat] Failed to start analysis:', err);
     analysisStatus.value = 'error';
-    errorMessage.value = '启动分析失败: ' + error.message;
+    errorMessage.value = '启动分析失败: ' + err.message;
+    error('无法启动分析: ' + err.message);
   }
 });
 
 onUnmounted(() => {
+  // Stop time tracking
+  if (timeUpdateInterval) {
+    clearInterval(timeUpdateInterval);
+    timeUpdateInterval = null;
+  }
+
   ddService.close();
 });
 </script>
+
+<style scoped>
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+</style>
