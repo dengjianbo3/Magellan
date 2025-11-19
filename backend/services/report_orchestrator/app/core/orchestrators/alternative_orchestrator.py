@@ -21,6 +21,7 @@ from ..quick_agents import (
     TokenomicsAgent,
     CommunityActivityAgent
 )
+from ...agents.crypto_analyst_agent import CryptoAnalystAgent
 
 
 class AlternativeInvestmentOrchestrator(BaseOrchestrator):
@@ -62,6 +63,10 @@ class AlternativeInvestmentOrchestrator(BaseOrchestrator):
             "tech_analyst": TechFoundationAgent(web_search_url=self.WEB_SEARCH_URL),
             "tokenomics_expert": TokenomicsAgent(web_search_url=self.WEB_SEARCH_URL),
             "community_analyzer": CommunityActivityAgent(web_search_url=self.WEB_SEARCH_URL),
+            "crypto_analyst": CryptoAnalystAgent(
+                web_search_url=self.WEB_SEARCH_URL,
+                llm_gateway_url=self.LLM_GATEWAY_URL
+            ),
         }
 
     async def _validate_target(self) -> bool:
