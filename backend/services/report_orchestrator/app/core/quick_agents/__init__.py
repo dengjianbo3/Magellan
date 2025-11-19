@@ -28,6 +28,9 @@ from .trend_analysis_agent import TrendAnalysisAgent
 from .opportunity_scan_agent import OpportunityScanAgent
 from .industry_researcher_agent import IndustryResearcherAgent
 
+# Data Fetching Agents (数据获取)
+from .data_fetcher_agent import DataFetcherAgent
+
 __all__ = [
     # Early Stage
     "TeamQuickAgent",
@@ -51,4 +54,6 @@ __all__ = [
     "TrendAnalysisAgent",
     "OpportunityScanAgent",
     "IndustryResearcherAgent",
+    # Data Fetching
+    "DataFetcherAgent",
 ]
