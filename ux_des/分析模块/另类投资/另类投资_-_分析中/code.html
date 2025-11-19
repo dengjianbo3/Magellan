@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Magellan - Analysis in Progress</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#135bec",
+              "background-light": "#f6f6f8",
+              "background-dark": "#101622",
+            },
+            fontFamily: {
+              "display": ["Manrope", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings:
+            'FILL' 0,
+            'wght' 400,
+            'GRAD' 0,
+            'opsz' 24
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-[#e0e0e0]">
+<div class="relative flex min-h-screen w-full">
+<!-- SideNavBar -->
+<aside class="sticky top-0 flex h-screen w-64 flex-col gap-8 border-r border-white/10 bg-background-dark/50 p-6 backdrop-blur-xl">
+<div class="flex items-center gap-3">
+<div class="aspect-square size-10 rounded-full bg-cover bg-center bg-no-repeat" data-alt="Magellan brand logo" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuCcXWu1SATp0X5AJdKKQQMEtz6Bfe-fWYbwmwmULr2-NMsDWoZoBuma0XFJfopDPZ840iKE8fZ-TA3VO_8jRei_92IzGWTu6jM2Q_71j1Woa5-Uqf1rpmZGSAe7EaxqJMyY43cW1GNa8iNPrwqJ0xCOGEkwHI4kr2I7l3O3Nr64wAjojulKpm6Tp8edPEBodF5ocMFvfVM74ZAmjo9a3wtOkRbwgNqJ7Jm3AK2qWJ9nSxQOup-8qk3hpDLDfwlR6tGJWWxdxBzah54K");'></div>
+<div class="flex flex-col">
+<h1 class="text-base font-bold text-white">Magellan</h1>
+<p class="text-sm font-normal text-white/60">AI Investment Analysis</p>
+</div>
+</div>
+<nav class="flex flex-col gap-2">
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<p class="text-sm font-medium leading-normal">Dashboard</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg bg-primary/20 px-3 py-2 text-primary transition-colors" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">folder</span>
+<p class="text-sm font-medium leading-normal">Projects</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white" href="#">
+<span class="material-symbols-outlined">leaderboard</span>
+<p class="text-sm font-medium leading-normal">Reports</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white" href="#">
+<span class="material-symbols-outlined">settings</span>
+<p class="text-sm font-medium leading-normal">Settings</p>
+</a>
+</nav>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 overflow-y-auto p-8">
+<div class="mx-auto max-w-7xl">
+<!-- PageHeading -->
+<div class="mb-8 flex flex-wrap items-start justify-between gap-4">
+<div class="flex flex-col gap-2">
+<p class="text-4xl font-black leading-tight tracking-[-0.033em] text-white">Analysis: Project SolarWind</p>
+<p class="text-base font-normal leading-normal text-white/60">Real-time AI Agent analysis in progress</p>
+</div>
+</div>
+<!-- Main Grid Layout -->
+<div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+<!-- Left Column -->
+<div class="flex flex-col gap-6 lg:col-span-2">
+<!-- Stats & Progress -->
+<div class="rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+<div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+<div class="flex flex-col gap-2">
+<p class="text-base font-medium text-white/80">Overall Progress</p>
+<p class="text-3xl font-bold tracking-light text-white">65%</p>
+</div>
+<div class="flex flex-col gap-2">
+<p class="text-base font-medium text-white/80">Estimated Time Remaining</p>
+<p class="text-3xl font-bold tracking-light text-white">2h 45m</p>
+</div>
+</div>
+<div class="mt-6 flex flex-col gap-3">
+<div class="flex justify-between gap-6">
+<p class="text-base font-medium text-white">Overall Analysis Completion</p>
+<p class="text-sm font-normal text-white/80">65%</p>
+</div>
+<div class="h-2 rounded-full bg-black/30">
+<div class="h-2 rounded-full bg-primary" style="width: 65%;"></div>
+</div>
+</div>
+</div>
+<!-- Live Agent Status -->
+<div class="rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+<h2 class="text-[22px] font-bold leading-tight tracking-[-0.015em] text-white">Live Agent Status</h2>
+<div class="mt-4 flex flex-col gap-3">
+<!-- Agent Item -->
+<div class="flex items-center justify-between rounded-lg border border-transparent bg-black/20 p-4 transition-all hover:border-white/10">
+<div class="flex items-center gap-4">
+<div class="grid size-10 place-content-center rounded-lg bg-primary/20 text-primary">
+<span class="material-symbols-outlined">monitoring</span>
+</div>
+<div class="flex flex-col">
+<p class="font-semibold text-white">Financial Model Validation</p>
+<p class="text-sm text-white/60">Cross-referencing P&amp;L statements...</p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="relative flex h-2 w-2">
+<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
+<span class="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
+</span>
+<p class="text-sm font-medium text-green-400">Running</p>
+</div>
+</div>
+<!-- Agent Item -->
+<div class="flex items-center justify-between rounded-lg border border-transparent bg-black/20 p-4 transition-all hover:border-white/10">
+<div class="flex items-center gap-4">
+<div class="grid size-10 place-content-center rounded-lg bg-primary/20 text-primary">
+<span class="material-symbols-outlined">travel_explore</span>
+</div>
+<div class="flex flex-col">
+<p class="font-semibold text-white">Market Research Agent</p>
+<p class="text-sm text-white/60">Analyzing competitor landscape...</p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="relative flex h-2 w-2">
+<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
+<span class="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
+</span>
+<p class="text-sm font-medium text-green-400">Running</p>
+</div>
+</div>
+<!-- Agent Item -->
+<div class="flex items-center justify-between rounded-lg border border-transparent bg-black/20 p-4 transition-all hover:border-white/10">
+<div class="flex items-center gap-4">
+<div class="grid size-10 place-content-center rounded-lg bg-primary/20 text-primary">
+<span class="material-symbols-outlined">gavel</span>
+</div>
+<div class="flex flex-col">
+<p class="font-semibold text-white">Legal &amp; Compliance Check</p>
+<p class="text-sm text-white/60">Fetching regulatory filings...</p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<div class="h-2.5 w-2.5 animate-spin rounded-full border-2 border-primary border-r-transparent"></div>
+<p class="text-sm font-medium text-white/60">Fetching Data</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column -->
+<div class="flex flex-col gap-6 lg:col-span-1">
+<!-- Analysis Timeline -->
+<div class="rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+<h2 class="mb-4 text-lg font-bold leading-tight text-white">Analysis Timeline</h2>
+<div class="relative flex flex-col gap-6 border-l-2 border-white/10 pl-6">
+<!-- Step 1: Completed -->
+<div class="flex items-start gap-4">
+<div class="absolute -left-[13px] mt-1 grid size-6 place-content-center rounded-full bg-green-500 text-background-dark">
+<span class="material-symbols-outlined text-base">check</span>
+</div>
+<div>
+<p class="font-semibold text-white">Data Ingestion &amp; Prep</p>
+<p class="text-sm text-white/60">Completed</p>
+</div>
+</div>
+<!-- Step 2: In Progress -->
+<div class="flex items-start gap-4">
+<div class="absolute -left-[13px] mt-1 grid size-6 place-content-center rounded-full bg-primary text-white">
+<div class="h-2 w-2 animate-pulse rounded-full bg-white"></div>
+</div>
+<div>
+<p class="font-semibold text-primary">Financial Viability Check</p>
+<p class="text-sm text-primary/80">In Progress</p>
+</div>
+</div>
+<!-- Step 3: Upcoming -->
+<div class="flex items-start gap-4">
+<div class="absolute -left-[13px] mt-1 grid size-6 place-content-center rounded-full border-2 border-white/20 bg-background-dark"></div>
+<div>
+<p class="font-semibold text-white/40">Market &amp; Competitor Analysis</p>
+<p class="text-sm text-white/40">Pending</p>
+</div>
+</div>
+<!-- Step 4: Upcoming -->
+<div class="flex items-start gap-4">
+<div class="absolute -left-[13px] mt-1 grid size-6 place-content-center rounded-full border-2 border-white/20 bg-background-dark"></div>
+<div>
+<p class="font-semibold text-white/40">Legal &amp; Compliance Review</p>
+<p class="text-sm text-white/40">Pending</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Key Findings -->
+<div class="rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+<h2 class="mb-4 text-lg font-bold leading-tight text-white">Key Findings</h2>
+<div class="flex flex-col gap-3">
+<div class="flex gap-3 rounded-lg bg-black/20 p-3">
+<span class="material-symbols-outlined mt-1 text-yellow-400">warning</span>
+<div>
+<p class="font-medium text-yellow-400">Risk Alert</p>
+<p class="text-sm text-white/80">High market volatility detected in comparable renewable energy assets.</p>
+</div>
+</div>
+<div class="flex gap-3 rounded-lg bg-black/20 p-3">
+<span class="material-symbols-outlined mt-1 text-primary">lightbulb</span>
+<div>
+<p class="font-medium text-primary">Key Finding</p>
+<p class="text-sm text-white/80">Identified 3 previously unlisted competitors in the european market.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

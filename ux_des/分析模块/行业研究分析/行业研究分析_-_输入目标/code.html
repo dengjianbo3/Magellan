@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Magellan - 定义研究目标</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#3B82F6", //科技蓝
+              "background-light": "#f6f6f8",
+              "background-dark": "#111827", // 炭灰色
+            },
+            fontFamily: {
+              "display": ["Manrope", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.5rem", "lg": "0.75rem", "xl": "1rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+</head>
+<body class="font-display bg-background-light dark:bg-background-dark text-gray-900 dark:text-gray-100 antialiased">
+<div class="relative flex min-h-screen w-full">
+<!-- SideNavBar -->
+<aside class="flex w-64 flex-col bg-gray-50/50 dark:bg-gray-900/50 p-4 border-r border-gray-200 dark:border-gray-800">
+<div class="flex flex-col gap-4">
+<div class="flex items-center gap-3 px-2">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" data-alt="Magellan's brand logo, an abstract representation of a compass" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuCS4-tf5hMkXjcI40qPhzx0hl5uvmIjmtgt_QyTOc_uzcqdzOP_kT3FfBd_1--Np4vpHjr4oW0PdqRBEp4oY3tv1vFqbg51jXuSZgq3yYopmug1uq-z4mJuanr6xFTPPrGZ6SPuG8f87nlMXBAEXNsVzfukUtFBWx1FsbKzbbEr8LzTSVdheRmqNoP1YcIOMZX-HCPYoa_rahffJYTAokkbIT2pwPSPUbHXO_QNz9zwaFJur1bO16fsD1LVBPADeBIN94F79jRFtraw");'></div>
+<div class="flex flex-col">
+<h1 class="text-gray-900 dark:text-white text-base font-bold leading-normal">Magellan</h1>
+<p class="text-gray-500 dark:text-gray-400 text-sm font-normal leading-normal">AI Investment Analysis</p>
+</div>
+</div>
+<nav class="flex flex-col gap-2 mt-4">
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-primary/20 text-primary" href="#">
+<span class="material-symbols-outlined text-xl">pie_chart</span>
+<p class="text-sm font-semibold leading-normal">行业研究</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800" href="#">
+<span class="material-symbols-outlined text-xl">business_center</span>
+<p class="text-sm font-medium leading-normal">公司分析</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800" href="#">
+<span class="material-symbols-outlined text-xl">monitoring</span>
+<p class="text-sm font-medium leading-normal">项目跟踪</p>
+</a>
+</nav>
+</div>
+<div class="mt-auto flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800" href="#">
+<span class="material-symbols-outlined text-xl">settings</span>
+<p class="text-sm font-medium leading-normal">设置</p>
+</a>
+<div class="flex items-center gap-3 p-2 mt-2">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" data-alt="User profile avatar image" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBbam-1Kg4xafTrcbKElf7vrFf0QAsHhO_k5DZeTEG7ippzqCK0XW6quRN5Ku3vV_sT5DLnm631blG56vgGAgPgb3HxFDeYCKrazuSsjJDr8adUJ93NnjDUJxDfdzOy61CR3FROi3t1etTvyZwx9PKVO9WQLTmVS8C-rn5q--rNAILtAcGP80KldmIXDrehhqzRXER45RHBH2rinlJu_3mTSrPr9xau3EjuNBwhmkn1Cdo956orHx88D2QMKx57uKjGWkyGR9MKUgh7");'></div>
+<div class="flex flex-col">
+<p class="text-gray-900 dark:text-white text-sm font-semibold">分析师</p>
+<p class="text-gray-500 dark:text-gray-400 text-xs">user@magellan.ai</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 flex justify-center p-6 lg:p-10">
+<div class="w-full max-w-4xl mx-auto flex flex-col gap-8">
+<!-- PageHeading -->
+<div class="flex flex-wrap justify-between gap-4">
+<div class="flex flex-col gap-2">
+<h1 class="text-gray-900 dark:text-white text-3xl font-black tracking-tight">定义您的研究目标</h1>
+<p class="text-gray-500 dark:text-gray-400 text-base font-normal leading-normal">提供关键参数以生成您的行业分析报告。</p>
+</div>
+</div>
+<!-- Form Container with Glassmorphism -->
+<div class="w-full bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl border border-gray-200 dark:border-gray-800 rounded-xl shadow-lg p-6 lg:p-8">
+<form class="flex flex-col gap-6">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Industry Name -->
+<label class="flex flex-col gap-2">
+<p class="text-gray-900 dark:text-white text-sm font-medium leading-normal">行业名称</p>
+<input class="form-input w-full rounded-lg text-gray-900 dark:text-white border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800/50 focus:ring-2 focus:ring-primary focus:border-primary h-12 placeholder:text-gray-400 dark:placeholder:text-gray-500 px-4 text-base" placeholder="例如, 人工智能芯片" type="text"/>
+</label>
+<!-- Research Scope -->
+<label class="flex flex-col gap-2">
+<p class="text-gray-900 dark:text-white text-sm font-medium leading-normal">研究范围</p>
+<select class="form-select w-full rounded-lg text-gray-900 dark:text-white border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800/50 focus:ring-2 focus:ring-primary focus:border-primary h-12 px-4 text-base">
+<option value="">请选择一个或多个区域</option>
+<option value="global">全球</option>
+<option value="north_america">北美</option>
+<option value="europe">欧洲</option>
+<option value="asia_pacific">亚太地区</option>
+</select>
+</label>
+</div>
+<!-- Main Products/Services -->
+<label class="flex flex-col gap-2">
+<p class="text-gray-900 dark:text-white text-sm font-medium leading-normal">主要产品/服务</p>
+<textarea class="form-textarea w-full rounded-lg text-gray-900 dark:text-white border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800/50 focus:ring-2 focus:ring-primary focus:border-primary min-h-28 placeholder:text-gray-400 dark:placeholder:text-gray-500 p-4 text-base" placeholder="例如, GPU, TPU, AI 加速器"></textarea>
+</label>
+<!-- Market Size -->
+<div class="flex flex-col gap-2">
+<p class="text-gray-900 dark:text-white text-sm font-medium leading-normal">市场规模 (十亿美元)</p>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<label class="flex flex-col gap-1">
+<span class="text-xs text-gray-500 dark:text-gray-400">最小规模</span>
+<input class="form-input w-full rounded-lg text-gray-900 dark:text-white border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800/50 focus:ring-2 focus:ring-primary focus:border-primary h-12 placeholder:text-gray-400 dark:placeholder:text-gray-500 px-4 text-base" placeholder="例如, 50" type="number"/>
+</label>
+<label class="flex flex-col gap-1">
+<span class="text-xs text-gray-500 dark:text-gray-400">最大规模</span>
+<input class="form-input w-full rounded-lg text-gray-900 dark:text-white border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800/50 focus:ring-2 focus:ring-primary focus:border-primary h-12 placeholder:text-gray-400 dark:placeholder:text-gray-500 px-4 text-base" placeholder="例如, 200" type="number"/>
+</label>
+</div>
+</div>
+<!-- Key Players -->
+<div class="flex flex-col gap-2">
+<p class="text-gray-900 dark:text-white text-sm font-medium leading-normal">关键参与者</p>
+<div class="flex flex-col gap-3 p-3 min-h-24 rounded-lg border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800/50 border">
+<div class="flex flex-wrap gap-2">
+<span class="flex items-center gap-1.5 bg-primary/20 text-primary text-sm font-medium px-2.5 py-1 rounded-full">
+                                        NVIDIA
+                                        <button class="text-primary/70 hover:text-primary" type="button">
+<span class="material-symbols-outlined text-base">close</span>
+</button>
+</span>
+<span class="flex items-center gap-1.5 bg-primary/20 text-primary text-sm font-medium px-2.5 py-1 rounded-full">
+                                        Intel
+                                        <button class="text-primary/70 hover:text-primary" type="button">
+<span class="material-symbols-outlined text-base">close</span>
+</button>
+</span>
+</div>
+<input class="form-input w-full bg-transparent border-none focus:ring-0 p-1 text-base placeholder:text-gray-400 dark:placeholder:text-gray-500" placeholder="例如, Google (输入后按回车)" type="text"/>
+</div>
+</div>
+<!-- Action Buttons -->
+<div class="flex items-center justify-end gap-4 pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
+<button class="px-6 py-2.5 text-sm font-semibold text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700" type="button">清除</button>
+<button class="flex items-center justify-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-background-dark focus:ring-primary" type="submit">
+<span class="material-symbols-outlined text-xl">auto_awesome</span>
+                                开始分析
+                            </button>
+</div>
+</form>
+</div>
+</div>
+</main>
+</div>
+</body></html>

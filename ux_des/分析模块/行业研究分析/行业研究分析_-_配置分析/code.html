@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Magellan - Configure Analysis</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.fill {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .form-checkbox:checked, .form-radio:checked {
+            background-color: #135bec;
+            border-color: #135bec;
+        }
+        details > summary::-webkit-details-marker {
+            display: none;
+        }
+    </style>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#135bec",
+              "background-light": "#f6f6f8",
+              "background-dark": "#101622",
+            },
+            fontFamily: {
+              "display": ["Manrope", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+</head>
+<body class="font-display bg-background-light dark:bg-background-dark">
+<div class="relative flex min-h-screen w-full">
+<!-- SideNavBar -->
+<aside class="sticky top-0 h-screen w-64 shrink-0 flex flex-col p-4 border-r border-white/10 backdrop-blur-lg bg-white/5">
+<div class="flex flex-col gap-4">
+<div class="flex items-center gap-3 px-3 py-2">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" data-alt="Magellan brand logo with abstract blue shapes" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBZPDRqgMXcJITbeeN5LBVR5ubHJykR_J_QhzoxlN3x9tNx7wDUyddtULKIm-4Dmqla8-OqU3i2OeMi7vRAs9acdxSGbTlvogCdQMi3evngEsBc3NYG2GaXZ350KmFOdGruc6lFPrG_1u5wE0uZ1NdJ4gBSbV3JiCuR-Nl30fEmVwmUm9sbixki5sZVkEUq0L77_vo-m3HXkQbAQMu6px3wKv8v5bpfyIwXgbI5ZrI6lHBYADNgxcaXg0NGj0UCCj3R37Qnhnv397sg");'></div>
+<div class="flex flex-col">
+<h1 class="text-white text-base font-bold leading-normal">Magellan</h1>
+<p class="text-white/60 text-sm font-normal leading-normal">AI Investment Analysis</p>
+</div>
+</div>
+<nav class="flex flex-col gap-2 mt-4">
+<a class="flex items-center gap-3 px-3 py-2 text-white/60 hover:text-white hover:bg-white/10 rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined text-2xl">dashboard</span>
+<p class="text-sm font-medium leading-normal">Dashboard</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-primary text-white" href="#">
+<span class="material-symbols-outlined text-2xl fill">add_box</span>
+<p class="text-sm font-medium leading-normal">Configure Analysis</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-white/60 hover:text-white hover:bg-white/10 rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined text-2xl">history</span>
+<p class="text-sm font-medium leading-normal">Report History</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-white/60 hover:text-white hover:bg-white/10 rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined text-2xl">description</span>
+<p class="text-sm font-medium leading-normal">My Templates</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-white/60 hover:text-white hover:bg-white/10 rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined text-2xl">settings</span>
+<p class="text-sm font-medium leading-normal">Settings</p>
+</a>
+</nav>
+</div>
+<div class="mt-auto">
+<div class="flex items-center gap-3 p-3 border border-white/10 rounded-lg bg-white/5">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" data-alt="User avatar with a gradient background" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuB5f9gXUgNq04WGQUnSD-4qb9_rM-4szcjaORuQHYYIfDRavO6Z1ab3SC8-vOO2CXw371gQdxatSmj7XF2g1ZOBrrME20d36uTP_OxdJVUAA9-sHfylxywrFF6ntsYfcgHQT7gHPcEJBt-e7NgMPEaUi7eZw_4C7sKRWIS8fpduRMCHY85LN1QqFs-_7JmxoD6vVDbJ7L_k9UNdBKqxgoZCxBDBGSuifHTnDLJL6pdiIs0ZhVAfe8D2C2qPwLQJ1MsxQ8ZifmA2dX_n");'></div>
+<div class="flex flex-col">
+<p class="text-white text-sm font-medium leading-normal">Alex Chen</p>
+<p class="text-white/60 text-xs font-normal leading-normal">Analyst</p>
+</div>
+<button class="ml-auto text-white/60 hover:text-white">
+<span class="material-symbols-outlined text-2xl">logout</span>
+</button>
+</div>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 p-8 overflow-y-auto">
+<div class="mx-auto max-w-4xl">
+<!-- PageHeading -->
+<div class="flex flex-wrap justify-between gap-3 mb-8">
+<div class="flex flex-col gap-2">
+<p class="text-white text-4xl font-black leading-tight tracking-[-0.033em]">Configure Industry Analysis</p>
+<p class="text-white/60 text-base font-normal leading-normal">Define the parameters for your AI-driven research report</p>
+</div>
+</div>
+<!-- Form sections -->
+<div class="flex flex-col gap-6">
+<!-- Section: Define Your Research Scope -->
+<div class="border border-white/10 rounded-xl bg-white/[.03] backdrop-blur-xl">
+<h2 class="text-white text-[22px] font-bold leading-tight tracking-[-0.015em] px-6 pt-5 pb-3">Define Your Research Scope</h2>
+<div class="px-6 pb-6">
+<label class="flex flex-col">
+<p class="text-white text-base font-medium leading-normal pb-2">Industry/Topic to Analyze</p>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-white/20 bg-black/20 focus:border-primary h-14 placeholder:text-white/40 p-[15px] text-base font-normal leading-normal" placeholder="e.g., 'Global Electric Vehicle Market'" value=""/>
+</label>
+</div>
+</div>
+<!-- Section: Accordions for detailed configuration -->
+<div class="border border-white/10 rounded-xl bg-white/[.03] backdrop-blur-xl p-2">
+<div class="flex flex-col gap-2">
+<details class="flex flex-col rounded-lg bg-black/20 px-4 py-2 group" open="">
+<summary class="flex cursor-pointer items-center justify-between gap-6 py-2">
+<p class="text-white text-sm font-medium leading-normal">Select Research Methodologies</p>
+<span class="material-symbols-outlined text-white/80 group-open:rotate-180 transition-transform">expand_more</span>
+</summary>
+<div class="grid grid-cols-2 gap-4 pt-4 pb-2">
+<label class="flex items-center gap-3 cursor-pointer"><input checked="" class="form-checkbox size-4 rounded bg-white/20 border-white/30 text-primary focus:ring-primary/50" type="checkbox"/><span class="text-white/80 text-sm">SWOT Analysis</span></label>
+<label class="flex items-center gap-3 cursor-pointer"><input checked="" class="form-checkbox size-4 rounded bg-white/20 border-white/30 text-primary focus:ring-primary/50" type="checkbox"/><span class="text-white/80 text-sm">Porter's Five Forces</span></label>
+<label class="flex items-center gap-3 cursor-pointer"><input class="form-checkbox size-4 rounded bg-white/20 border-white/30 text-primary focus:ring-primary/50" type="checkbox"/><span class="text-white/80 text-sm">PESTLE Analysis</span></label>
+<label class="flex items-center gap-3 cursor-pointer"><input class="form-checkbox size-4 rounded bg-white/20 border-white/30 text-primary focus:ring-primary/50" type="checkbox"/><span class="text-white/80 text-sm">Value Chain Analysis</span></label>
+</div>
+</details>
+<details class="flex flex-col rounded-lg bg-black/20 px-4 py-2 group">
+<summary class="flex cursor-pointer items-center justify-between gap-6 py-2">
+<p class="text-white text-sm font-medium leading-normal">Set Data Source Preferences</p>
+<span class="material-symbols-outlined text-white/80 group-open:rotate-180 transition-transform">expand_more</span>
+</summary>
+<div class="pt-4 pb-2 flex flex-col gap-3">
+<p class="text-white/80 text-sm">Prioritize data types for analysis. The AI will weigh these sources more heavily.</p>
+<div class="flex flex-wrap gap-2">
+<span class="flex items-center gap-2 rounded-full bg-primary/20 px-3 py-1 text-sm text-primary">Financial Filings</span>
+<span class="flex items-center gap-2 rounded-full bg-primary/20 px-3 py-1 text-sm text-primary">Market Reports</span>
+<span class="flex items-center gap-2 rounded-full bg-primary/20 px-3 py-1 text-sm text-primary">News Articles</span>
+<span class="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-sm text-white/70">Social Media Sentiment</span>
+<span class="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-sm text-white/70">Academic Journals</span>
+</div>
+</div>
+</details>
+<details class="flex flex-col rounded-lg bg-black/20 px-4 py-2 group">
+<summary class="flex cursor-pointer items-center justify-between gap-6 py-2">
+<p class="text-white text-sm font-medium leading-normal">Choose Predictive Models</p>
+<span class="material-symbols-outlined text-white/80 group-open:rotate-180 transition-transform">expand_more</span>
+</summary>
+<div class="pt-4 pb-2 flex flex-col gap-4">
+<label class="flex items-center gap-3 cursor-pointer"><input checked="" class="form-radio size-4 bg-white/20 border-white/30 text-primary focus:ring-primary/50" name="model" type="radio"/><span class="text-white/80 text-sm">Linear Regression (Recommended)</span></label>
+<label class="flex items-center gap-3 cursor-pointer"><input class="form-radio size-4 bg-white/20 border-white/30 text-primary focus:ring-primary/50" name="model" type="radio"/><span class="text-white/80 text-sm">ARIMA Model</span></label>
+<label class="flex items-center gap-3 cursor-pointer"><input class="form-radio size-4 bg-white/20 border-white/30 text-primary focus:ring-primary/50" name="model" type="radio"/><span class="text-white/80 text-sm">Neural Network Forecasting</span></label>
+</div>
+</details>
+<details class="flex flex-col rounded-lg bg-black/20 px-4 py-2 group">
+<summary class="flex cursor-pointer items-center justify-between gap-6 py-2">
+<p class="text-white text-sm font-medium leading-normal">Define Competitive Analysis Focus</p>
+<span class="material-symbols-outlined text-white/80 group-open:rotate-180 transition-transform">expand_more</span>
+</summary>
+<div class="grid grid-cols-2 gap-4 pt-4 pb-2">
+<label class="flex items-center gap-3 cursor-pointer"><input checked="" class="form-checkbox size-4 rounded bg-white/20 border-white/30 text-primary focus:ring-primary/50" type="checkbox"/><span class="text-white/80 text-sm">Market Share Analysis</span></label>
+<label class="flex items-center gap-3 cursor-pointer"><input class="form-checkbox size-4 rounded bg-white/20 border-white/30 text-primary focus:ring-primary/50" type="checkbox"/><span class="text-white/80 text-sm">Product Innovation</span></label>
+<label class="flex items-center gap-3 cursor-pointer"><input checked="" class="form-checkbox size-4 rounded bg-white/20 border-white/30 text-primary focus:ring-primary/50" type="checkbox"/><span class="text-white/80 text-sm">Pricing Strategy</span></label>
+<label class="flex items-center gap-3 cursor-pointer"><input class="form-checkbox size-4 rounded bg-white/20 border-white/30 text-primary focus:ring-primary/50" type="checkbox"/><span class="text-white/80 text-sm">Supply Chain Analysis</span></label>
+</div>
+</details>
+</div>
+</div>
+<!-- Action Buttons -->
+<div class="flex items-center justify-end gap-4 mt-4">
+<button class="flex items-center justify-center gap-2 rounded-lg bg-white/10 px-6 py-3 text-sm font-semibold text-white hover:bg-white/20 transition-colors">
+<span class="material-symbols-outlined text-xl">bookmark</span>
+                            Save as Template
+                        </button>
+<button class="flex items-center justify-center gap-2 rounded-lg bg-primary px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-primary/30 hover:bg-primary/90 transition-colors">
+<span class="material-symbols-outlined text-xl">auto_awesome</span>
+                            Generate Report
+                        </button>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

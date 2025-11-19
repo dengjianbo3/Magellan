@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import MainLayout from './components/layout/MainLayout.vue';
 import DashboardView from './views/DashboardView.vue';
 import AnalysisView from './views/AnalysisView.vue';
+import AnalysisWizardView from './views/AnalysisWizardView.vue';
 import AgentChatView from './views/AgentChatView.vue';
 import RoundtableView from './views/RoundtableView.vue';
 import ReportsView from './views/ReportsView.vue';
@@ -14,21 +15,25 @@ import OfflineBanner from './components/layout/OfflineBanner.vue';
 
 const activeTab = ref('dashboard');
 const showAgentChat = ref(false);
+const showAnalysisWizard = ref(false);
 
 const handleNavigate = (tabId) => {
   activeTab.value = tabId;
   showAgentChat.value = false;
+  showAnalysisWizard.value = false;
 };
 
 const handleStartAnalysis = () => {
-  activeTab.value = 'analysis';
+  // 启动新的分析向导 V2
+  showAnalysisWizard.value = true;
   showAgentChat.value = false;
-  console.log('Starting new analysis...');
+  console.log('Starting new analysis wizard V2...');
 };
 
 const handleCancelAnalysis = () => {
   activeTab.value = 'dashboard';
   showAgentChat.value = false;
+  showAnalysisWizard.value = false;
 };
 
 const analysisFormData = ref(null);
@@ -56,8 +61,11 @@ const handleAnalysisStart = (formData) => {
     @navigate="handleNavigate"
     @start-analysis="handleStartAnalysis"
   >
+    <!-- Analysis Wizard V2 (Full Screen) -->
+    <AnalysisWizardView v-if="showAnalysisWizard" @back="showAnalysisWizard = false" />
+
     <!-- Agent Chat View (Full Screen) -->
-    <AgentChatView v-if="showAgentChat" :analysis-config="analysisFormData" @back="showAgentChat = false" />
+    <AgentChatView v-else-if="showAgentChat" :analysis-config="analysisFormData" @back="showAgentChat = false" />
 
     <!-- Dashboard View -->
     <DashboardView v-else-if="activeTab === 'dashboard'" @navigate="handleNavigate" />
@@ -65,11 +73,10 @@ const handleAnalysisStart = (formData) => {
     <!-- Reports View -->
     <ReportsView v-else-if="activeTab === 'reports'" />
 
-    <!-- Analysis View -->
-    <AnalysisView
+    <!-- Analysis View - 使用新的 Wizard V2 -->
+    <AnalysisWizardView
       v-else-if="activeTab === 'analysis'"
-      @cancel="handleCancelAnalysis"
-      @start-analysis="handleAnalysisStart"
+      @back="activeTab = 'dashboard'"
     />
 
     <!-- Roundtable Discussion View -->
