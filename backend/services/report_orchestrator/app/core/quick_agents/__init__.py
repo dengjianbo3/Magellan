@@ -26,6 +26,7 @@ from .market_size_agent import MarketSizeAgent
 from .competition_landscape_agent import CompetitionLandscapeAgent
 from .trend_analysis_agent import TrendAnalysisAgent
 from .opportunity_scan_agent import OpportunityScanAgent
+from .industry_researcher_agent import IndustryResearcherAgent
 
 __all__ = [
     # Early Stage
@@ -49,4 +50,5 @@ __all__ = [
     "CompetitionLandscapeAgent",
     "TrendAnalysisAgent",
     "OpportunityScanAgent",
+    "IndustryResearcherAgent",
 ]

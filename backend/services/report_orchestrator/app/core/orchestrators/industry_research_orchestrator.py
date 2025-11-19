@@ -20,7 +20,8 @@ from ..quick_agents import (
     MarketSizeAgent,
     CompetitionLandscapeAgent,
     TrendAnalysisAgent,
-    OpportunityScanAgent
+    OpportunityScanAgent,
+    IndustryResearcherAgent
 )
 
 
@@ -64,6 +65,7 @@ class IndustryResearchOrchestrator(BaseOrchestrator):
             "competition_analyst": CompetitionLandscapeAgent(web_search_url=self.WEB_SEARCH_URL),
             "trend_researcher": TrendAnalysisAgent(web_search_url=self.WEB_SEARCH_URL),
             "opportunity_scanner": OpportunityScanAgent(web_search_url=self.WEB_SEARCH_URL),
+            "industry_researcher": IndustryResearcherAgent(web_search_url=self.WEB_SEARCH_URL),
         }
 
     async def _validate_target(self) -> bool:
