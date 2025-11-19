@@ -349,5 +349,6 @@ class EarlyStageInvestmentOrchestrator(BaseOrchestrator):
                     "市场规模数据验证",
                     "竞品分析"
                 ] if recommendation == "FURTHER_DD" else []
-            }
+            },
+            "is_mock": True
         }

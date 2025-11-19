@@ -192,7 +192,8 @@ class IndustryResearchOrchestrator(BaseOrchestrator):
                 ] if recommendation != RecommendationType.PASS else [
                     "寻找替代赛道"
                 ]
-            }
+            },
+            is_mock=True
         )
 
     async def _synthesize_final_report(self) -> Dict[str, Any]:
@@ -235,5 +236,6 @@ class IndustryResearchOrchestrator(BaseOrchestrator):
                 "细分赛道A的头部公司",
                 "垂直领域B的创新企业",
                 "上下游产业链关键环节"
-            ]
+            ],
+            "is_mock": True
         }

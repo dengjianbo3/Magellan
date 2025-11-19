@@ -196,7 +196,8 @@ class AlternativeInvestmentOrchestrator(BaseOrchestrator):
                     "竞品对比",
                     "风险控制策略"
                 ] if recommendation != RecommendationType.PASS else []
-            }
+            },
+            is_mock=True
         )
 
     async def _synthesize_final_report(self) -> Dict[str, Any]:
@@ -229,5 +230,6 @@ class AlternativeInvestmentOrchestrator(BaseOrchestrator):
                     "score": 0.45,
                     "summary": "高风险项目,市场波动大,监管不确定"
                 }
-            }
+            },
+            "is_mock": True
         }

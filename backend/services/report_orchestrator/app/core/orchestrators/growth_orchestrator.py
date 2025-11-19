@@ -188,7 +188,8 @@ class GrowthInvestmentOrchestrator(BaseOrchestrator):
                     "竞争优势验证",
                     "管理团队访谈"
                 ] if recommendation != RecommendationType.PASS else []
-            }
+            },
+            is_mock=True
         )
 
     async def _synthesize_final_report(self) -> Dict[str, Any]:
@@ -234,5 +235,6 @@ class GrowthInvestmentOrchestrator(BaseOrchestrator):
                 "财务建模和估值分析",
                 "管理团队尽调",
                 "客户访谈"
-            ]
+            ],
+            "is_mock": True
         }

@@ -182,7 +182,8 @@ class PublicMarketInvestmentOrchestrator(BaseOrchestrator):
                     "行业对比",
                     "市场时机把握"
                 ] if recommendation != RecommendationType.PASS else []
-            }
+            },
+            is_mock=True
         )
 
     async def _synthesize_final_report(self) -> Dict[str, Any]:
@@ -209,5 +210,6 @@ class PublicMarketInvestmentOrchestrator(BaseOrchestrator):
                     "score": 0.70,
                     "summary": "突破关键阻力位,趋势向好"
                 }
-            }
+            },
+            "is_mock": True
         }
