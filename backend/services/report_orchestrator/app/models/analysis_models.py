@@ -106,6 +106,12 @@ class AnalysisConfig(BaseModel):
     data_sources: List[str] = Field(default_factory=list)
     language: str = Field("zh", description="报告语言")
 
+    # 场景专属参数 (支持各场景的特定配置)
+    scenario_params: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="场景特定参数,如早期投资的priority/risk_appetite、成长期的growth_model等"
+    )
+
 
 class UserPreferences(BaseModel):
     """用户投资偏好"""

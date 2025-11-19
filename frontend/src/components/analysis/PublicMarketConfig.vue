@@ -243,8 +243,23 @@ function handleStartAnalysis() {
     return;
   }
 
-  console.log('[PublicMarketConfig] Starting analysis with config:', config.value);
-  emit('config-complete', config.value);
+  // 构建符合后端AnalysisConfig schema的配置对象
+  const analysisConfig = {
+    depth: 'standard',
+    data_sources: config.value.data_sources || [],
+    language: 'zh',
+    // 场景专属参数放入scenario_params
+    scenario_params: {
+      agent_weights: config.value.agent_weights,
+      risk_appetite: config.value.risk_appetite,
+      max_drawdown: config.value.max_drawdown,
+      target_return: config.value.target_return,
+      time_horizon: config.value.time_horizon
+    }
+  };
+
+  console.log('[PublicMarketConfig] Starting analysis with config:', analysisConfig);
+  emit('config-complete', analysisConfig);
 }
 </script>
 

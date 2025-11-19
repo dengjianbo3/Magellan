@@ -1,91 +1,97 @@
 <template>
-  <div class="max-w-7xl mx-auto">
-    <!-- Page Header -->
-    <div class="mb-6">
-      <h1 class="text-3xl font-bold text-text-primary mb-2">{{ t('roundtable.title') }}</h1>
-      <p class="text-text-secondary">{{ t('roundtable.subtitle') }}</p>
-    </div>
-
+  <div class="max-w-7xl mx-auto h-full flex flex-col">
     <!-- Start Discussion Panel -->
-    <div v-if="!isDiscussionActive" class="bg-surface border border-border-color rounded-lg p-8">
-      <div class="max-w-2xl mx-auto">
-        <h2 class="text-xl font-bold text-text-primary mb-6">{{ t('roundtable.startPanel.title') }}</h2>
+    <div v-if="!isDiscussionActive" class="glass-panel rounded-2xl p-12 flex-1 flex justify-center overflow-y-auto">
+      <div class="max-w-2xl w-full">
+        <h2 class="text-2xl font-bold text-white mb-8 flex items-center gap-3">
+            <span class="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
+                <span class="material-symbols-outlined">forum</span>
+            </span>
+            {{ t('roundtable.startPanel.title') }}
+        </h2>
 
-        <div class="space-y-6">
+        <div class="space-y-8">
           <!-- Topic Input -->
           <div>
-            <label class="block text-sm font-semibold text-text-primary mb-2">
-              {{ t('roundtable.startPanel.topicLabel') }} <span class="text-accent-red">*</span>
+            <label class="block text-sm font-bold text-text-secondary mb-2 uppercase tracking-wider">
+              {{ t('roundtable.startPanel.topicLabel') }} <span class="text-rose-500">*</span>
             </label>
             <input
               v-model="discussionTopic"
               type="text"
               :placeholder="t('roundtable.startPanel.topicPlaceholder')"
-              class="w-full px-4 py-3 rounded-lg bg-background-dark border border-border-color text-text-primary placeholder-text-secondary focus:outline-none focus:border-primary transition-colors"
+              class="w-full px-6 py-4 rounded-xl bg-black/30 border border-white/10 text-white placeholder-text-secondary focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all text-lg"
             />
           </div>
 
           <!-- Experts Selection -->
           <div>
-            <label class="block text-sm font-semibold text-text-primary mb-3">
+            <label class="block text-sm font-bold text-text-secondary mb-3 uppercase tracking-wider">
               {{ t('roundtable.startPanel.expertsLabel') }} ({{ selectedExperts.length }} {{ t('roundtable.startPanel.expertsSelected') }})
             </label>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div
                 v-for="expert in availableExperts"
                 :key="expert.id"
                 @click="toggleExpert(expert.id)"
                 :class="[
-                  'p-4 rounded-lg border-2 transition-all cursor-pointer',
+                  'p-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 group',
                   selectedExperts.includes(expert.id)
-                    ? 'border-primary bg-primary/10'
-                    : 'border-border-color hover:border-primary/50'
+                    ? 'border-primary bg-primary/10 shadow-[0_0_15px_rgba(56,189,248,0.15)]'
+                    : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
                 ]"
               >
-                <div class="flex items-start gap-3">
-                  <div class="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
-                    <span class="material-symbols-outlined text-primary">{{ expert.icon }}</span>
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <h4 class="font-semibold text-text-primary text-sm mb-1">{{ expert.name }}</h4>
-                    <p class="text-xs text-text-secondary">{{ expert.description }}</p>
-                  </div>
+                <div :class="[
+                    'w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors',
+                    selectedExperts.includes(expert.id) ? 'bg-primary text-background-dark' : 'bg-white/10 text-text-secondary group-hover:text-white'
+                ]">
+                  <span class="material-symbols-outlined text-2xl">{{ expert.icon }}</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <h4 :class="['font-bold text-sm mb-1', selectedExperts.includes(expert.id) ? 'text-white' : 'text-text-primary']">{{ expert.name }}</h4>
+                  <p class="text-xs text-text-secondary line-clamp-1">{{ expert.description }}</p>
+                </div>
+                <div v-if="selectedExperts.includes(expert.id)" class="text-primary animate-fade-in">
+                    <span class="material-symbols-outlined">check_circle</span>
                 </div>
               </div>
             </div>
           </div>
 
           <!-- Discussion Settings -->
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-2 gap-6">
             <div>
-              <label class="block text-sm font-semibold text-text-primary mb-2">
+              <label class="block text-sm font-bold text-text-secondary mb-2 uppercase tracking-wider">
                 {{ t('roundtable.startPanel.roundsLabel') }}
               </label>
-              <select
-                v-model="maxRounds"
-                class="w-full px-4 py-3 rounded-lg bg-background-dark border border-border-color text-text-primary focus:outline-none focus:border-primary transition-colors"
-              >
-                <option :value="3">3 {{ t('roundtable.startPanel.rounds') }}</option>
-                <option :value="5">5 {{ t('roundtable.startPanel.rounds') }}</option>
-                <option :value="8">8 {{ t('roundtable.startPanel.rounds') }}</option>
-                <option :value="10">10 {{ t('roundtable.startPanel.rounds') }}</option>
-              </select>
+              <div class="relative">
+                <select
+                    v-model="maxRounds"
+                    class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all appearance-none cursor-pointer"
+                >
+                    <option :value="3">3 {{ t('roundtable.startPanel.rounds') }}</option>
+                    <option :value="5">5 {{ t('roundtable.startPanel.rounds') }}</option>
+                    <option :value="8">8 {{ t('roundtable.startPanel.rounds') }}</option>
+                    <option :value="10">10 {{ t('roundtable.startPanel.rounds') }}</option>
+                </select>
+                <span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none">expand_more</span>
+              </div>
             </div>
           </div>
 
           <!-- Start Button -->
-          <div class="flex gap-3 pt-4">
+          <div class="pt-6">
             <button
               @click="startDiscussion"
               :disabled="!canStartDiscussion"
               :class="[
-                'flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all',
+                'w-full flex items-center justify-center gap-3 px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300',
                 canStartDiscussion
-                  ? 'bg-primary text-background-dark hover:bg-primary/90'
-                  : 'bg-surface text-text-secondary cursor-not-allowed'
+                  ? 'bg-gradient-to-r from-primary to-primary-dark text-white shadow-glow hover:shadow-glow-lg hover:-translate-y-1'
+                  : 'bg-white/10 text-text-secondary cursor-not-allowed'
               ]"
             >
-              <span class="material-symbols-outlined">rocket_launch</span>
+              <span class="material-symbols-outlined text-2xl">rocket_launch</span>
               {{ t('roundtable.startPanel.startButton') }}
             </button>
           </div>
@@ -94,66 +100,68 @@
     </div>
 
     <!-- Active Discussion View -->
-    <div v-else class="flex gap-6" style="height: calc(100vh - 180px);">
+    <div v-else class="flex gap-8 flex-1 min-h-0">
       <!-- Left Sidebar: Experts Panel -->
-      <div class="w-80 flex-shrink-0 space-y-4 overflow-y-auto">
+      <div class="w-80 flex-shrink-0 flex flex-col gap-6">
         <!-- Discussion Info -->
-        <div class="bg-surface border border-border-color rounded-lg p-4">
-          <h3 class="text-sm font-semibold text-text-primary mb-3">{{ t('roundtable.discussion.progress') }}</h3>
-          <div class="space-y-2">
-            <div class="flex justify-between text-sm">
-              <span class="text-text-secondary">{{ t('roundtable.discussion.currentRound') }}</span>
-              <span class="text-text-primary font-semibold">{{ currentRound }} / {{ maxRounds }}</span>
+        <div class="glass-panel rounded-2xl p-6">
+          <h3 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-4">{{ t('roundtable.discussion.progress') }}</h3>
+          <div class="space-y-4">
+            <div>
+                <div class="flex justify-between text-sm mb-2">
+                <span class="text-text-secondary font-medium">{{ t('roundtable.discussion.currentRound') }}</span>
+                <span class="text-white font-bold">{{ currentRound }} / {{ maxRounds }}</span>
+                </div>
+                <div class="w-full bg-black/30 rounded-full h-2 overflow-hidden border border-white/5">
+                <div
+                    class="bg-gradient-to-r from-primary to-accent-cyan rounded-full h-full transition-all duration-500 relative"
+                    :style="{ width: (currentRound / maxRounds * 100) + '%' }"
+                >
+                    <div class="absolute inset-0 bg-white/20 animate-pulse"></div>
+                </div>
+                </div>
             </div>
-            <div class="w-full bg-background-dark rounded-full h-2">
-              <div
-                class="bg-primary rounded-full h-2 transition-all"
-                :style="{ width: (currentRound / maxRounds * 100) + '%' }"
-              ></div>
-            </div>
-            <div class="flex justify-between text-sm">
+            <div class="flex justify-between text-sm pt-2 border-t border-white/5">
               <span class="text-text-secondary">{{ t('roundtable.discussion.messageCount') }}</span>
-              <span class="text-text-primary font-semibold">{{ messages.length }}</span>
+              <span class="text-white font-bold">{{ messages.length }}</span>
             </div>
           </div>
         </div>
 
         <!-- Active Experts -->
-        <div class="bg-surface border border-border-color rounded-lg p-4">
-          <h3 class="text-sm font-semibold text-text-primary mb-3">{{ t('roundtable.discussion.participants') }}</h3>
-          <div class="space-y-2">
+        <div class="glass-panel rounded-2xl p-6 flex-1 overflow-y-auto">
+          <h3 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-4">{{ t('roundtable.discussion.participants') }}</h3>
+          <div class="space-y-3">
             <div
               v-for="expert in activeExpertsList"
               :key="expert.id"
-              class="flex items-center gap-3 p-2 rounded-lg bg-background-dark"
+              class="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5"
             >
-              <div class="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
-                <span class="material-symbols-outlined text-primary text-sm">{{ expert.icon }}</span>
+              <div class="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0 text-primary">
+                <span class="material-symbols-outlined text-lg">{{ expert.icon }}</span>
               </div>
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-semibold text-text-primary truncate">{{ expert.name }}</p>
-                <p class="text-xs text-text-secondary truncate">{{ expert.role }}</p>
+                <p class="text-sm font-bold text-white truncate">{{ expert.name }}</p>
+                <p class="text-xs text-text-secondary truncate font-medium">{{ expert.role }}</p>
               </div>
-              <span
-                :class="[
-                  'w-2 h-2 rounded-full',
-                  expert.isActive ? 'bg-accent-green animate-pulse' : 'bg-text-secondary'
-                ]"
-              ></span>
+              <div v-if="expert.isActive" class="relative w-2 h-2">
+                   <span class="absolute inset-0 rounded-full bg-emerald-500 animate-ping opacity-75"></span>
+                   <span class="relative inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+              </div>
             </div>
           </div>
         </div>
 
         <!-- Control Buttons -->
-        <div class="space-y-2">
+        <div class="space-y-3">
           <button
             @click="generateMeetingSummary"
             :disabled="isGeneratingSummary || messages.length === 0"
             :class="[
-              'w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-semibold',
+              'w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-all font-bold border',
               isGeneratingSummary || messages.length === 0
-                ? 'bg-surface text-text-secondary cursor-not-allowed'
-                : 'bg-primary/20 text-primary hover:bg-primary/30'
+                ? 'bg-white/5 border-white/5 text-text-secondary cursor-not-allowed'
+                : 'bg-primary/10 border-primary/30 text-primary hover:bg-primary/20 hover:shadow-glow-sm'
             ]"
           >
             <span class="material-symbols-outlined" :class="{ 'animate-spin': isGeneratingSummary }">
@@ -161,36 +169,41 @@
             </span>
             {{ isGeneratingSummary ? '生成中...' : '生成会议纪要' }}
           </button>
-          <button
-            @click="stopDiscussion"
-            class="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-accent-red/20 text-accent-red hover:bg-accent-red/30 transition-colors text-sm font-semibold"
-          >
-            <span class="material-symbols-outlined">stop</span>
-            {{ t('roundtable.discussion.stopButton') }}
-          </button>
-          <button
-            @click="exportDiscussion"
-            class="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border-color text-text-primary hover:bg-surface transition-colors text-sm font-semibold"
-          >
-            <span class="material-symbols-outlined">download</span>
-            {{ t('roundtable.discussion.exportButton') }}
-          </button>
+          <div class="grid grid-cols-2 gap-3">
+              <button
+                @click="stopDiscussion"
+                class="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 hover:bg-rose-500/20 transition-colors font-bold"
+              >
+                <span class="material-symbols-outlined">stop</span>
+                停止
+              </button>
+              <button
+                @click="exportDiscussion"
+                class="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-text-primary hover:bg-white/10 transition-colors font-bold"
+              >
+                <span class="material-symbols-outlined">download</span>
+                导出
+              </button>
+          </div>
         </div>
       </div>
 
       <!-- Main Discussion Area -->
-      <div class="flex-1 bg-surface border border-border-color rounded-lg overflow-hidden flex flex-col">
+      <div class="flex-1 glass-panel rounded-2xl overflow-hidden flex flex-col relative">
         <!-- Discussion Header -->
-        <div class="px-6 py-4 border-b border-border-color bg-background-dark flex-shrink-0">
+        <div class="px-8 py-5 border-b border-white/10 bg-white/5 backdrop-blur-md flex-shrink-0">
           <div class="flex items-center justify-between">
             <div class="flex-1 min-w-0">
-              <h2 class="text-xl font-bold text-text-primary truncate">{{ discussionTopic }}</h2>
-              <p class="text-sm text-text-secondary mt-1">{{ t('roundtable.discussion.startedAt') }} {{ startTime }}</p>
+              <h2 class="text-xl font-bold text-white truncate">{{ discussionTopic }}</h2>
+              <p class="text-xs text-text-secondary mt-1 font-mono flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  {{ t('roundtable.discussion.startedAt') }} {{ startTime }}
+              </p>
             </div>
             <span
               :class="[
-                'text-sm px-3 py-1 rounded-full font-semibold ml-4',
-                discussionStatus === 'running' ? 'bg-accent-green/20 text-accent-green' : 'bg-surface text-text-secondary'
+                'text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider border shadow-[0_0_10px_rgba(0,0,0,0.2)]',
+                discussionStatus === 'running' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-white/10 text-text-secondary border-white/10'
               ]"
             >
               {{ discussionStatus === 'running' ? t('roundtable.discussion.status.running') : t('roundtable.discussion.status.completed') }}
@@ -199,57 +212,60 @@
         </div>
 
         <!-- Reconnecting Banner -->
-        <div v-if="isReconnecting" class="px-6 py-3 bg-accent-yellow/10 border-b border-accent-yellow/30 flex-shrink-0">
-          <div class="flex items-center gap-2 text-accent-yellow">
+        <div v-if="isReconnecting" class="px-6 py-3 bg-amber-500/20 border-b border-amber-500/30 flex-shrink-0 backdrop-blur-md z-10">
+          <div class="flex items-center gap-3 text-amber-300 justify-center">
             <span class="material-symbols-outlined animate-spin">sync</span>
-            <span class="text-sm font-semibold">连接断开，正在尝试重新连接...</span>
+            <span class="text-sm font-bold">连接断开，正在尝试重新连接...</span>
           </div>
         </div>
 
-        <!-- Messages Container - 固定高度，内部滚动 -->
-        <div ref="messagesContainer" class="flex-1 overflow-y-auto p-6 space-y-4" style="min-height: 0;">
-          <div v-for="message in messages" :key="message.id">
+        <!-- Messages Container -->
+        <div ref="messagesContainer" class="flex-1 overflow-y-auto p-8 space-y-6 scroll-smooth">
+          <div v-for="message in messages" :key="message.id" class="animate-fade-in">
             <!-- System Message -->
-            <div v-if="message.type === 'system'" class="flex justify-center">
-              <div class="px-4 py-2 rounded-full bg-surface border border-border-color text-xs text-text-secondary">
-                <span class="material-symbols-outlined text-xs align-middle mr-1">info</span>
+            <div v-if="message.type === 'system'" class="flex justify-center py-2">
+              <div class="px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-text-secondary flex items-center gap-2">
+                <span class="material-symbols-outlined text-sm">info</span>
                 {{ message.content }}
               </div>
             </div>
 
             <!-- Agent Message -->
-            <div v-else-if="message.type === 'agent_message'" class="flex gap-4">
-              <div class="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
-                <span class="material-symbols-outlined text-primary text-lg">{{ getExpertIcon(message.sender) }}</span>
+            <div v-else-if="message.type === 'agent_message'" class="flex gap-5 group">
+              <div class="w-12 h-12 rounded-xl bg-black/30 border border-white/10 flex items-center justify-center flex-shrink-0 shadow-lg self-start mt-1">
+                <span class="material-symbols-outlined text-primary text-2xl">{{ getExpertIcon(message.sender) }}</span>
               </div>
-              <div class="flex-1">
-                <div class="flex items-center gap-2 mb-2">
-                  <span class="font-semibold text-text-primary">{{ message.sender }}</span>
-                  <span class="text-xs text-text-secondary">{{ formatTime(message.timestamp) }}</span>
+              <div class="flex-1 max-w-4xl">
+                <div class="flex items-baseline gap-3 mb-2">
+                  <span class="font-bold text-white text-base">{{ message.sender }}</span>
+                  <span class="text-xs text-text-secondary font-mono">{{ formatTime(message.timestamp) }}</span>
                   <span
                     v-if="message.message_type !== 'broadcast'"
-                    class="text-xs px-2 py-0.5 rounded bg-primary/20 text-primary"
+                    class="text-[10px] px-2 py-0.5 rounded bg-primary/20 text-primary font-bold uppercase tracking-wide border border-primary/20"
                   >
                     {{ getMessageTypeLabel(message.message_type) }}
                   </span>
                 </div>
-                <div class="bg-background-dark border border-border-color rounded-lg p-4">
-                  <div class="prose prose-sm max-w-none text-text-primary" v-html="formatMeetingMinutes(message.content)"></div>
+                <div class="glass-card p-5 rounded-2xl rounded-tl-none border border-white/10 bg-white/5 text-text-primary leading-relaxed shadow-md relative">
+                  <div class="prose prose-invert prose-sm max-w-none" v-html="formatMeetingMinutes(message.content)"></div>
+                  
+                  <!-- Decorative corner -->
+                  <div class="absolute -top-[1px] -left-[1px] w-4 h-4 border-t border-l border-white/20 rounded-tl-none pointer-events-none"></div>
                 </div>
               </div>
             </div>
 
             <!-- Thinking Indicator -->
-            <div v-else-if="message.type === 'thinking'" class="flex gap-4">
-              <div class="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
-                <span class="material-symbols-outlined text-primary text-lg animate-pulse">psychology</span>
+            <div v-else-if="message.type === 'thinking'" class="flex gap-5">
+              <div class="w-12 h-12 rounded-xl bg-black/30 border border-white/10 flex items-center justify-center flex-shrink-0 shadow-lg self-start mt-1 opacity-70">
+                <span class="material-symbols-outlined text-primary text-2xl animate-pulse">psychology</span>
               </div>
               <div class="flex-1">
                 <div class="flex items-center gap-2 mb-2">
-                  <span class="font-semibold text-text-primary">{{ message.agent }}</span>
-                  <span class="text-xs text-text-secondary">正在思考...</span>
+                  <span class="font-bold text-text-secondary text-sm">{{ message.agent }}</span>
+                  <span class="text-xs text-text-secondary opacity-70">正在思考...</span>
                 </div>
-                <div class="bg-background-dark border border-border-color rounded-lg p-4">
+                <div class="inline-block px-5 py-4 rounded-2xl rounded-tl-none bg-white/5 border border-white/5">
                   <div class="flex items-center gap-2">
                     <div class="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
                     <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
@@ -260,35 +276,42 @@
             </div>
 
             <!-- Summary / Meeting Minutes -->
-            <div v-else-if="message.type === 'summary' || message.type === 'meeting_minutes'" class="mt-6">
-              <div class="bg-primary/10 border border-primary rounded-lg p-6">
-                <div class="flex items-center justify-between mb-4">
-                  <div class="flex items-center gap-2">
-                    <span class="material-symbols-outlined text-primary">summarize</span>
-                    <h3 class="text-lg font-bold text-text-primary">
-                      {{ message.type === 'meeting_minutes' ? '会议纪要' : t('roundtable.summary.title') }}
-                    </h3>
-                  </div>
-                  <button
-                    @click="exportMeetingMinutes(message.content)"
-                    class="flex items-center gap-1 px-3 py-1 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors text-xs font-semibold"
-                  >
-                    <span class="material-symbols-outlined text-sm">download</span>
-                    导出
-                  </button>
-                </div>
-                <div class="prose prose-sm max-w-none text-text-primary">
-                  <div v-html="formatMeetingMinutes(message.content)" class="whitespace-pre-wrap"></div>
+            <div v-else-if="message.type === 'summary' || message.type === 'meeting_minutes'" class="my-8">
+              <div class="glass-panel border border-primary/30 bg-primary/5 rounded-2xl p-8 relative overflow-hidden">
+                <!-- Background decoration -->
+                <div class="absolute top-0 right-0 w-64 h-64 bg-primary/10 blur-[80px] rounded-full pointer-events-none"></div>
+                
+                <div class="relative z-10">
+                    <div class="flex items-center justify-between mb-6 pb-4 border-b border-white/10">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 rounded-lg bg-primary/20 text-primary">
+                            <span class="material-symbols-outlined text-2xl">summarize</span>
+                        </div>
+                        <h3 class="text-xl font-bold text-white">
+                        {{ message.type === 'meeting_minutes' ? '会议纪要' : t('roundtable.summary.title') }}
+                        </h3>
+                    </div>
+                    <button
+                        @click="exportMeetingMinutes(message.content)"
+                        class="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors text-xs font-bold"
+                    >
+                        <span class="material-symbols-outlined text-sm">download</span>
+                        导出
+                    </button>
+                    </div>
+                    <div class="prose prose-invert prose-sm max-w-none">
+                        <div v-html="formatMeetingMinutes(message.content)"></div>
+                    </div>
                 </div>
               </div>
             </div>
           </div>
 
           <!-- Loading indicator -->
-          <div v-if="isConnecting" class="flex justify-center py-8">
+          <div v-if="isConnecting" class="flex justify-center py-12">
             <div class="text-center">
-              <div class="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mx-auto mb-4"></div>
-              <p class="text-text-secondary">{{ t('roundtable.discussion.connecting') }}</p>
+              <div class="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mx-auto mb-4 shadow-[0_0_20px_rgba(56,189,248,0.4)]"></div>
+              <p class="text-primary font-bold animate-pulse">{{ t('roundtable.discussion.connecting') }}</p>
             </div>
           </div>
         </div>
@@ -354,7 +377,16 @@ const canStartDiscussion = computed(() => {
 });
 
 const activeExpertsList = computed(() => {
-  return availableExperts.value.filter(e => selectedExperts.value.includes(e.id));
+  // Use selectedExperts to filter and map to full objects
+  // Also check if they are currently 'speaking' (thinking) or active
+  // For simplicity in this UI, 'isActive' is just checking if they exist in selection
+  // Real app might track who is currently typing
+  return availableExperts.value
+    .filter(e => selectedExperts.value.includes(e.id))
+    .map(e => ({
+        ...e,
+        isActive: messages.value.some(m => m.type === 'thinking' && m.agent === e.name) // Simple check
+    }));
 });
 
 // Methods

@@ -1,32 +1,36 @@
 <template>
-  <div class="flex h-full gap-6">
+  <div class="flex h-full gap-8 p-2">
     <!-- Back Button -->
     <button
       @click="$emit('back')"
-      class="absolute top-4 left-4 z-10 px-4 py-2 rounded-lg bg-surface border border-border-color text-text-primary hover:bg-background-dark transition-colors flex items-center gap-2"
+      class="absolute top-6 left-6 z-50 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-text-primary transition-all duration-300 flex items-center gap-2 backdrop-blur-md hover:shadow-glow-sm"
     >
       <span class="material-symbols-outlined">arrow_back</span>
       {{ t('common.back') }}
     </button>
 
     <!-- Main Content Area -->
-    <div class="flex-1 flex flex-col bg-surface border border-border-color rounded-lg overflow-hidden mt-12">
+    <div class="flex-1 flex flex-col glass-panel rounded-2xl overflow-hidden relative z-10">
       <!-- Header -->
-      <div class="px-6 py-4 border-b border-border-color bg-background-dark">
+      <div class="px-8 py-5 border-b border-white/10 bg-white/5 backdrop-blur-md">
         <div class="flex items-center justify-between">
           <div>
-            <h2 class="text-xl font-bold text-text-primary">{{ projectName }}</h2>
-            <p class="text-sm text-text-secondary mt-1">
-              {{ analysisType }} • {{ t('agentChat.started') }} {{ startTime }}
+            <h2 class="text-2xl font-display font-bold text-white tracking-tight pl-12">{{ projectName }}</h2>
+            <p class="text-sm text-text-secondary mt-1 pl-12 flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary text-sm">analytics</span>
+              {{ analysisType }} 
+              <span class="text-white/20">•</span> 
+              <span class="material-symbols-outlined text-accent-violet text-sm">schedule</span>
+              {{ t('agentChat.started') }} {{ startTime }}
             </p>
           </div>
           <div class="flex items-center gap-3">
             <span
               :class="[
-                'text-sm px-3 py-1 rounded-full font-semibold',
-                analysisStatus === 'completed' ? 'bg-accent-green/20 text-accent-green' :
-                analysisStatus === 'error' ? 'bg-accent-red/20 text-accent-red' :
-                'bg-accent-yellow/20 text-accent-yellow'
+                'text-xs px-3 py-1.5 rounded-full font-bold uppercase tracking-wider border shadow-[0_0_10px_rgba(0,0,0,0.2)]',
+                analysisStatus === 'completed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' :
+                analysisStatus === 'error' ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' :
+                'bg-amber-500/10 text-amber-400 border-amber-500/30'
               ]"
             >
               {{ analysisStatusText }}
@@ -36,54 +40,53 @@
       </div>
 
       <!-- Messages/Steps Container -->
-      <div ref="messagesContainer" class="flex-1 overflow-y-auto p-6 space-y-4">
+      <div ref="messagesContainer" class="flex-1 overflow-y-auto p-8 space-y-6 scroll-smooth">
         <!-- Reconnecting Banner -->
-        <div v-if="isReconnecting" class="flex justify-center sticky top-0 z-10">
-          <div class="px-6 py-3 rounded-lg bg-accent-yellow/20 border border-accent-yellow text-accent-yellow font-semibold flex items-center gap-2 animate-pulse">
+        <div v-if="isReconnecting" class="flex justify-center sticky top-0 z-20">
+          <div class="px-6 py-3 rounded-xl bg-amber-500/20 border border-amber-500/50 text-amber-300 font-bold flex items-center gap-3 animate-pulse shadow-lg backdrop-blur-md">
             <span class="material-symbols-outlined animate-spin">sync</span>
-            正在重新连接服务器...
+            {{ t('roundtable.discussion.connecting') }}
           </div>
         </div>
 
         <!-- System Start Message -->
-        <div class="flex justify-center">
-          <div class="px-4 py-2 rounded-full bg-surface border border-border-color text-xs text-text-secondary">
-            <span class="material-symbols-outlined text-xs align-middle mr-1">info</span>
+        <div class="flex justify-center my-4">
+          <div class="px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-text-secondary flex items-center gap-2">
+            <span class="w-2 h-2 bg-primary rounded-full animate-ping"></span>
             {{ t('agentChat.analysisProgress') }}...
           </div>
         </div>
 
         <!-- DD Analysis Steps -->
-        <div v-for="step in analysisSteps" :key="step.id" class="space-y-2">
+        <div v-for="step in analysisSteps" :key="step.id" class="space-y-2 group animate-fade-in">
           <!-- Step Header -->
           <div
             :class="[
-              'flex items-center gap-3 p-4 rounded-lg border transition-all duration-300',
-              step.status === 'success' ? 'bg-accent-green/5 border-accent-green/30' :
-              step.status === 'error' ? 'bg-accent-red/5 border-accent-red/30' :
-              step.status === 'running' ? 'bg-primary/5 border-primary/30 shadow-lg shadow-primary/10' :
-              step.status === 'skipped' ? 'bg-surface border-border-color opacity-60' :
-              'bg-background-dark border-border-color'
+              'flex items-center gap-4 p-5 rounded-xl border transition-all duration-500 relative overflow-hidden',
+              step.status === 'success' ? 'bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10' :
+              step.status === 'error' ? 'bg-rose-500/5 border-rose-500/20' :
+              step.status === 'running' ? 'bg-primary/10 border-primary/30 shadow-[0_0_15px_rgba(56,189,248,0.15)]' :
+              step.status === 'skipped' ? 'bg-white/5 border-white/5 opacity-50' :
+              'bg-white/5 border-white/5 hover:bg-white/10'
             ]"
           >
+             <!-- Active Indicator Line -->
+             <div v-if="step.status === 'running'" class="absolute left-0 top-0 bottom-0 w-1 bg-primary shadow-[0_0_8px_rgba(56,189,248,0.8)]"></div>
+
             <div
               :class="[
-                'w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300',
-                step.status === 'success' ? 'bg-accent-green/20 ring-2 ring-accent-green/30' :
-                step.status === 'error' ? 'bg-accent-red/20 ring-2 ring-accent-red/30' :
-                step.status === 'running' ? 'bg-primary/20 ring-2 ring-primary/30 animate-pulse' :
-                step.status === 'skipped' ? 'bg-text-secondary/10' :
-                'bg-surface-light'
+                'w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-500 shadow-lg backdrop-blur-sm',
+                step.status === 'success' ? 'bg-emerald-500/20 text-emerald-400' :
+                step.status === 'error' ? 'bg-rose-500/20 text-rose-400' :
+                step.status === 'running' ? 'bg-primary/20 text-primary scale-110' :
+                step.status === 'skipped' ? 'bg-white/5 text-text-secondary' :
+                'bg-white/5 text-text-secondary group-hover:bg-white/10 group-hover:text-white'
               ]"
             >
               <span
                 :class="[
-                  'material-symbols-outlined text-xl',
-                  step.status === 'success' ? 'text-accent-green' :
-                  step.status === 'error' ? 'text-accent-red' :
-                  step.status === 'running' ? 'text-primary animate-spin' :
-                  step.status === 'skipped' ? 'text-text-secondary' :
-                  'text-text-secondary'
+                  'material-symbols-outlined text-2xl',
+                  step.status === 'running' ? 'animate-spin' : ''
                 ]"
               >
                 {{
@@ -98,139 +101,146 @@
             <div class="flex-1">
               <div class="flex items-center justify-between">
                 <h4 :class="[
-                  'font-semibold',
-                  step.status === 'skipped' ? 'text-text-secondary line-through' : 'text-text-primary'
+                  'text-base font-bold tracking-wide',
+                  step.status === 'skipped' ? 'text-text-secondary line-through' : 'text-white'
                 ]">{{ step.title }}</h4>
-                <span v-if="step.status === 'success'" class="text-xs text-accent-green font-semibold flex items-center gap-1">
+                <span v-if="step.status === 'success'" class="text-xs text-emerald-400 font-bold uppercase tracking-wider flex items-center gap-1 bg-emerald-500/10 px-2 py-1 rounded">
                   <span class="material-symbols-outlined text-sm">done</span>
-                  完成
+                  {{ t('agentChat.taskStatus.completed') }}
                 </span>
-                <span v-else-if="step.status === 'running'" class="text-xs text-primary font-semibold flex items-center gap-1 animate-pulse">
+                <span v-else-if="step.status === 'running'" class="text-xs text-primary font-bold uppercase tracking-wider flex items-center gap-1 animate-pulse bg-primary/10 px-2 py-1 rounded">
                   <span class="material-symbols-outlined text-sm">autorenew</span>
-                  执行中
+                  {{ t('agentChat.taskStatus.inProgress') }}
                 </span>
               </div>
-              <p v-if="step.status === 'running'" class="text-xs text-text-secondary mt-1 flex items-center gap-1">
-                <span class="inline-block w-1 h-1 bg-primary rounded-full animate-ping"></span>
-                {{ t('common.loading') }}
+              <p v-if="step.status === 'running'" class="text-xs text-primary/80 mt-1 font-medium">
+                {{ t('sidebar.processing') }}
               </p>
               <p v-if="step.status === 'skipped'" class="text-xs text-text-secondary mt-1">
-                已跳过
-              </p>
-              <p v-if="step.status === 'success'" class="text-xs text-accent-green mt-1">
-                执行完成
+                Skipped
               </p>
             </div>
           </div>
 
           <!-- Step Result -->
-          <div v-if="step.result" class="ml-11 p-4 rounded-lg bg-surface border border-border-color">
-            <p class="text-sm text-text-primary whitespace-pre-wrap">{{ step.result }}</p>
+          <div v-if="step.result" class="ml-16 p-5 rounded-xl bg-white/5 border border-white/10 text-text-primary/90 text-sm leading-relaxed shadow-inner">
+            <p class="whitespace-pre-wrap font-mono text-xs md:text-sm">{{ step.result }}</p>
           </div>
 
           <!-- HITL Options (if any) -->
-          <div v-if="step.options && step.options.length > 0" class="ml-11 space-y-2">
-            <p class="text-sm font-semibold text-text-primary mb-2">请选择：</p>
+          <div v-if="step.options && step.options.length > 0" class="ml-16 space-y-3 animate-fade-in">
+            <p class="text-sm font-bold text-primary mb-2 uppercase tracking-wider flex items-center gap-2">
+               <span class="material-symbols-outlined text-base">touch_app</span>
+               {{ t('hitl.actionRequired') }}
+            </p>
             <button
               v-for="(option, index) in step.options"
               :key="index"
               @click="selectOption(step, option)"
-              class="w-full p-3 rounded-lg bg-surface border border-border-color hover:border-primary transition-colors text-left"
+              class="w-full p-4 rounded-xl bg-white/5 border border-white/10 hover:border-primary/50 hover:bg-primary/5 transition-all duration-300 text-left group relative overflow-hidden"
             >
-              <p class="font-semibold text-text-primary">{{ option.ticker || option.name }}</p>
-              <p class="text-xs text-text-secondary mt-1">{{ option.company_name || option.description }}</p>
+              <div class="absolute left-0 top-0 bottom-0 w-1 bg-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <p class="font-bold text-white group-hover:text-primary transition-colors">{{ option.ticker || option.name }}</p>
+              <p class="text-xs text-text-secondary mt-1 group-hover:text-text-primary">{{ option.company_name || option.description }}</p>
             </button>
           </div>
         </div>
 
         <!-- HITL Review Section -->
-        <div v-if="analysisStatus === 'hitl_review' && preliminaryReport" class="space-y-4">
+        <div v-if="analysisStatus === 'hitl_review' && preliminaryReport" class="space-y-6 animate-fade-in">
           <!-- HITL Header -->
           <div class="flex justify-center">
-            <div class="px-6 py-3 rounded-lg bg-accent-yellow/20 text-accent-yellow font-semibold flex items-center gap-2">
+            <div class="px-8 py-4 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 text-amber-300 font-bold flex items-center gap-3 shadow-lg">
               <span class="material-symbols-outlined">pending</span>
-              初步分析完成，请审核并回答关键问题
+              {{ t('hitl.requiredTitle') }}
             </div>
           </div>
 
           <!-- Preliminary Report Summary -->
-          <div class="p-6 rounded-lg bg-background-dark border border-border-color">
-            <h3 class="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
-              <span class="material-symbols-outlined text-primary">description</span>
-              初步投资备忘录
+          <div class="p-8 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md">
+            <h3 class="text-xl font-display font-bold text-white mb-6 flex items-center gap-3">
+              <span class="material-symbols-outlined text-primary text-3xl">description</span>
+              {{ t('report.preliminaryMemo') }}
             </h3>
 
-            <!-- Company Info -->
-            <div v-if="preliminaryReport.company_info" class="mb-4 p-4 rounded-lg bg-surface">
-              <h4 class="font-semibold text-text-primary mb-2">公司信息</h4>
-              <div class="text-sm text-text-secondary space-y-1">
-                <p><strong>公司名称:</strong> {{ preliminaryReport.company_info.name || companyName }}</p>
-                <p v-if="preliminaryReport.company_info.industry"><strong>行业:</strong> {{ preliminaryReport.company_info.industry }}</p>
-                <p v-if="preliminaryReport.company_info.stage"><strong>阶段:</strong> {{ preliminaryReport.company_info.stage }}</p>
-              </div>
-            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Company Info -->
+                <div v-if="preliminaryReport.company_info" class="p-5 rounded-xl bg-black/20 border border-white/5">
+                  <h4 class="font-bold text-white mb-4 border-b border-white/10 pb-2">{{ t('report.companyInfo') }}</h4>
+                  <div class="text-sm text-text-secondary space-y-2">
+                    <p class="flex justify-between"><span>{{ t('report.name') }}:</span> <strong class="text-text-primary">{{ preliminaryReport.company_info.name || companyName }}</strong></p>
+                    <p v-if="preliminaryReport.company_info.industry" class="flex justify-between"><span>{{ t('report.industry') }}:</span> <span class="text-text-primary">{{ preliminaryReport.company_info.industry }}</span></p>
+                    <p v-if="preliminaryReport.company_info.stage" class="flex justify-between"><span>{{ t('report.stage') }}:</span> <span class="text-text-primary">{{ preliminaryReport.company_info.stage }}</span></p>
+                  </div>
+                </div>
 
-            <!-- Team Analysis -->
-            <div v-if="preliminaryReport.team_section" class="mb-4 p-4 rounded-lg bg-surface">
-              <h4 class="font-semibold text-text-primary mb-2">团队评估</h4>
-              <p class="text-sm text-text-secondary">{{ preliminaryReport.team_section.summary || '团队分析已完成' }}</p>
+                <!-- Team Analysis -->
+                <div v-if="preliminaryReport.team_section" class="p-5 rounded-xl bg-black/20 border border-white/5">
+                  <h4 class="font-bold text-white mb-4 border-b border-white/10 pb-2">{{ t('report.teamAssessment') }}</h4>
+                  <p class="text-sm text-text-secondary leading-relaxed">{{ preliminaryReport.team_section.summary || t('report.teamAnalysisCompleted') }}</p>
+                </div>
             </div>
-
+            
             <!-- Market Analysis -->
-            <div v-if="preliminaryReport.market_section" class="mb-4 p-4 rounded-lg bg-surface">
-              <h4 class="font-semibold text-text-primary mb-2">市场分析</h4>
-              <p class="text-sm text-text-secondary">{{ preliminaryReport.market_section.summary || '市场分析已完成' }}</p>
+            <div v-if="preliminaryReport.market_section" class="mt-6 p-5 rounded-xl bg-black/20 border border-white/5">
+              <h4 class="font-bold text-white mb-4 border-b border-white/10 pb-2">{{ t('report.marketAnalysis') }}</h4>
+              <p class="text-sm text-text-secondary leading-relaxed">{{ preliminaryReport.market_section.summary || t('report.marketAnalysisCompleted') }}</p>
             </div>
           </div>
 
           <!-- DD Questions -->
-          <div v-if="preliminaryReport.dd_questions && preliminaryReport.dd_questions.length > 0" class="p-6 rounded-lg bg-background-dark border border-primary/30">
-            <h3 class="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
-              <span class="material-symbols-outlined text-primary">help</span>
-              关键尽职调查问题 ({{ preliminaryReport.dd_questions.length }})
+          <div v-if="preliminaryReport.dd_questions && preliminaryReport.dd_questions.length > 0" class="p-8 rounded-2xl bg-primary/5 border border-primary/20">
+            <h3 class="text-xl font-display font-bold text-white mb-6 flex items-center gap-3">
+              <span class="material-symbols-outlined text-primary text-3xl">help</span>
+              {{ t('hitl.keyQuestions') }} ({{ preliminaryReport.dd_questions.length }})
             </h3>
 
-            <div class="space-y-4">
+            <div class="space-y-6">
               <div
                 v-for="(question, index) in preliminaryReport.dd_questions"
                 :key="index"
-                class="p-4 rounded-lg bg-surface border border-border-color"
+                class="p-6 rounded-xl bg-background-dark border border-white/10 hover:border-primary/30 transition-colors group"
               >
-                <div class="flex items-start gap-3 mb-3">
-                  <div class="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                    <span class="text-primary font-bold text-sm">{{ index + 1 }}</span>
+                <div class="flex items-start gap-4 mb-4">
+                  <div class="w-8 h-8 rounded-lg bg-primary/20 text-primary font-bold flex items-center justify-center flex-shrink-0 border border-primary/20">
+                    {{ index + 1 }}
                   </div>
                   <div class="flex-1">
-                    <p class="font-semibold text-text-primary mb-1">{{ question.question || question }}</p>
-                    <p v-if="question.category" class="text-xs text-text-secondary">
-                      分类: {{ question.category }}
+                    <p class="font-bold text-white text-lg mb-2">{{ question.question || question }}</p>
+                    <p v-if="question.category" class="text-xs font-bold uppercase tracking-wider text-text-secondary bg-white/5 inline-block px-2 py-1 rounded">
+                      {{ question.category }}
                     </p>
                   </div>
                 </div>
 
                 <!-- Answer Input -->
-                <textarea
-                  v-model="question.answer"
-                  rows="3"
-                  placeholder="请输入您的答案或备注..."
-                  class="w-full px-4 py-2 rounded-lg bg-background-dark border border-border-color text-text-primary placeholder-text-secondary focus:outline-none focus:border-primary transition-colors resize-none"
-                ></textarea>
+                <div class="relative">
+                    <textarea
+                    v-model="question.answer"
+                    rows="3"
+                    :placeholder="t('hitl.answerPlaceholder')"
+                    class="w-full px-5 py-3 rounded-xl bg-black/30 border border-white/10 text-text-primary placeholder-text-secondary focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all resize-none shadow-inner"
+                    ></textarea>
+                    <div class="absolute bottom-3 right-3">
+                         <span class="material-symbols-outlined text-text-secondary opacity-50">edit_note</span>
+                    </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
         <!-- Analysis Complete Message -->
-        <div v-if="analysisStatus === 'completed'" class="flex justify-center">
-          <div class="px-6 py-3 rounded-lg bg-accent-green/20 text-accent-green font-semibold flex items-center gap-2">
-            <span class="material-symbols-outlined">check_circle</span>
-            分析已完成！
+        <div v-if="analysisStatus === 'completed'" class="flex justify-center animate-fade-in">
+          <div class="px-8 py-4 rounded-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 text-emerald-300 font-bold flex items-center gap-3 shadow-lg shadow-emerald-500/10">
+            <span class="material-symbols-outlined text-2xl">check_circle</span>
+            {{ t('report.savedSuccess') }}
           </div>
         </div>
 
         <!-- Error Message -->
-        <div v-if="analysisStatus === 'error'" class="flex justify-center">
-          <div class="px-6 py-3 rounded-lg bg-accent-red/20 text-accent-red font-semibold flex items-center gap-2">
+        <div v-if="analysisStatus === 'error'" class="flex justify-center animate-fade-in">
+          <div class="px-8 py-4 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300 font-bold flex items-center gap-3 shadow-lg">
             <span class="material-symbols-outlined">error</span>
             {{ errorMessage }}
           </div>
@@ -238,96 +248,86 @@
       </div>
 
       <!-- Save Report Button (when HITL review or completed) -->
-      <div v-if="analysisStatus === 'hitl_review' || analysisStatus === 'completed'" class="px-6 py-4 border-t border-border-color bg-background-dark">
+      <div v-if="analysisStatus === 'hitl_review' || analysisStatus === 'completed'" class="px-8 py-6 border-t border-white/10 bg-black/20 backdrop-blur-md">
         <button
           @click="saveReport"
           :disabled="reportSaved"
           :class="[
-            'w-full px-6 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2',
+            'w-full px-6 py-4 rounded-xl font-bold text-lg transition-all duration-300 flex items-center justify-center gap-3 shadow-lg',
             reportSaved
-              ? 'bg-surface text-text-secondary cursor-not-allowed'
-              : 'bg-primary text-background-dark hover:bg-primary/90'
+              ? 'bg-white/10 text-text-secondary cursor-not-allowed'
+              : 'bg-gradient-to-r from-primary to-primary-dark text-white hover:shadow-glow hover:-translate-y-1'
           ]"
         >
           <span class="material-symbols-outlined">{{ reportSaved ? 'check' : 'save' }}</span>
-          {{ reportSaved ? '报告已保存' : '保存报告' }}
+          {{ reportSaved ? t('report.savedButton') : t('report.saveButton') }}
         </button>
       </div>
     </div>
 
     <!-- Right Sidebar: Progress Overview -->
-    <div class="w-80 flex-shrink-0 space-y-6 mt-12">
+    <div class="w-80 flex-shrink-0 space-y-6 pt-14">
       <!-- Overall Progress -->
-      <div class="bg-surface border border-border-color rounded-lg p-4">
-        <h3 class="text-lg font-bold text-text-primary mb-4">{{ t('agentChat.analysisProgress') }}</h3>
-        <div class="space-y-4">
+      <div class="glass-panel rounded-xl p-6">
+        <h3 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-6 flex items-center gap-2">
+             <span class="material-symbols-outlined">timelapse</span>
+             {{ t('agentChat.analysisProgress') }}
+        </h3>
+        <div class="space-y-6">
           <div>
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-sm font-semibold text-text-primary">{{ t('agentChat.overallProgress') }}</span>
-              <span class="text-sm font-semibold text-primary">{{ overallProgress }}%</span>
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-sm font-bold text-white">{{ t('agentChat.overallProgress') }}</span>
+              <span class="text-sm font-bold text-primary drop-shadow-md">{{ overallProgress }}%</span>
             </div>
-            <div class="w-full h-3 bg-background-dark rounded-full overflow-hidden relative">
+            <div class="w-full h-2 bg-white/10 rounded-full overflow-hidden relative shadow-inner">
               <div
-                class="h-full bg-gradient-to-r from-primary to-accent-blue transition-all duration-500 ease-out relative overflow-hidden"
+                class="h-full bg-gradient-to-r from-primary via-accent-cyan to-accent-violet transition-all duration-1000 ease-out relative overflow-hidden shadow-[0_0_10px_rgba(56,189,248,0.5)]"
                 :style="{ width: overallProgress + '%' }"
               >
                 <!-- Animated shimmer effect -->
-                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-shimmer"></div>
               </div>
             </div>
           </div>
 
           <!-- Step Summary with Icons -->
-          <div class="grid grid-cols-2 gap-3 text-xs">
-            <div class="flex items-center gap-2 p-2 rounded-lg bg-accent-green/10">
-              <span class="material-symbols-outlined text-sm text-accent-green">check_circle</span>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+              <span class="material-symbols-outlined text-xl text-emerald-400">check_circle</span>
               <div>
-                <div class="font-semibold text-accent-green">{{ completedSteps }}</div>
-                <div class="text-text-secondary">已完成</div>
+                <div class="text-xl font-bold text-emerald-400 leading-none">{{ completedSteps }}</div>
+                <div class="text-[10px] uppercase font-bold text-emerald-500/70 mt-1">{{ t('agentChat.taskStatus.completed') }}</div>
               </div>
             </div>
-            <div class="flex items-center gap-2 p-2 rounded-lg bg-accent-yellow/10">
-              <span class="material-symbols-outlined text-sm text-accent-yellow">pending</span>
+            <div class="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+              <span class="material-symbols-outlined text-xl text-amber-400">pending</span>
               <div>
-                <div class="font-semibold text-accent-yellow">{{ pendingSteps }}</div>
-                <div class="text-text-secondary">待处理</div>
+                <div class="text-xl font-bold text-amber-400 leading-none">{{ pendingSteps }}</div>
+                <div class="text-[10px] uppercase font-bold text-amber-500/70 mt-1">{{ t('agentChat.taskStatus.pending') }}</div>
               </div>
             </div>
           </div>
 
           <!-- Time Estimates -->
-          <div class="space-y-2 pt-2 border-t border-border-color">
+          <div class="space-y-3 pt-4 border-t border-white/10">
             <div class="flex items-center justify-between text-xs">
-              <span class="text-text-secondary flex items-center gap-1">
-                <span class="material-symbols-outlined text-sm">schedule</span>
-                已用时间
-              </span>
-              <span class="font-semibold text-text-primary">{{ elapsedTime }}</span>
+              <span class="text-text-secondary font-medium">{{ t('sidebar.elapsedTime') }}</span>
+              <span class="font-mono font-bold text-white">{{ elapsedTime }}</span>
             </div>
             <div v-if="analysisStatus === 'in_progress' && overallProgress > 0 && overallProgress < 100" class="flex items-center justify-between text-xs">
-              <span class="text-text-secondary flex items-center gap-1">
-                <span class="material-symbols-outlined text-sm">hourglass_empty</span>
-                预计剩余
-              </span>
-              <span class="font-semibold text-primary">{{ estimatedTimeRemaining }}</span>
-            </div>
-            <div v-if="analysisStatus === 'completed'" class="flex items-center justify-between text-xs">
-              <span class="text-text-secondary flex items-center gap-1">
-                <span class="material-symbols-outlined text-sm">timer</span>
-                总用时
-              </span>
-              <span class="font-semibold text-accent-green">{{ elapsedTime }}</span>
+              <span class="text-text-secondary font-medium">{{ t('sidebar.estRemaining') }}</span>
+              <span class="font-mono font-bold text-primary">{{ estimatedTimeRemaining }}</span>
             </div>
           </div>
 
           <!-- Current Step Info -->
-          <div v-if="currentRunningStep" class="pt-2 border-t border-border-color">
-            <div class="text-xs text-text-secondary mb-2">当前步骤</div>
-            <div class="flex items-start gap-2 p-2 rounded-lg bg-primary/10 border border-primary/20">
-              <span class="material-symbols-outlined text-sm text-primary animate-spin">progress_activity</span>
-              <div class="flex-1 text-xs">
-                <div class="font-semibold text-text-primary">{{ currentRunningStep.title }}</div>
-                <div class="text-text-secondary mt-1">正在执行中...</div>
+          <div v-if="currentRunningStep" class="pt-4 border-t border-white/10 animate-fade-in">
+            <div class="text-xs font-bold text-text-secondary uppercase mb-3">{{ t('sidebar.currentAction') }}</div>
+            <div class="flex items-start gap-3 p-3 rounded-lg bg-gradient-to-br from-primary/10 to-transparent border border-primary/20">
+              <span class="material-symbols-outlined text-base text-primary animate-spin mt-0.5">data_usage</span>
+              <div class="flex-1">
+                <div class="text-sm font-bold text-white leading-tight">{{ currentRunningStep.title }}</div>
+                <div class="text-xs text-primary/80 mt-1 font-medium">{{ t('sidebar.processing') }}</div>
               </div>
             </div>
           </div>
@@ -335,20 +335,20 @@
       </div>
 
       <!-- Configuration Info -->
-      <div class="bg-surface border border-border-color rounded-lg p-4">
-        <h3 class="text-lg font-bold text-text-primary mb-4">配置信息</h3>
-        <div class="space-y-2 text-sm">
-          <div>
-            <span class="text-text-secondary">公司:</span>
-            <span class="text-text-primary font-semibold ml-2">{{ companyName }}</span>
+      <div class="glass-panel rounded-xl p-6">
+        <h3 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-4">{{ t('sidebar.configuration') }}</h3>
+        <div class="space-y-3 text-sm">
+          <div class="flex justify-between items-center border-b border-white/5 pb-2">
+            <span class="text-text-secondary">{{ t('sidebar.company') }}</span>
+            <span class="text-white font-bold">{{ companyName }}</span>
           </div>
-          <div>
-            <span class="text-text-secondary">分析类型:</span>
-            <span class="text-text-primary ml-2">{{ analysisType }}</span>
+          <div class="flex justify-between items-center border-b border-white/5 pb-2">
+            <span class="text-text-secondary">{{ t('sidebar.type') }}</span>
+            <span class="text-white font-medium">{{ analysisType }}</span>
           </div>
-          <div v-if="selectedAgentsCount > 0">
-            <span class="text-text-secondary">选中智能体:</span>
-            <span class="text-text-primary ml-2">{{ selectedAgentsCount }}</span>
+          <div v-if="selectedAgentsCount > 0" class="flex justify-between items-center">
+            <span class="text-text-secondary">{{ t('sidebar.agents') }}</span>
+            <span class="bg-white/10 px-2 py-0.5 rounded text-xs font-bold text-white">{{ selectedAgentsCount }} {{ t('sidebar.active') }}</span>
           </div>
         </div>
       </div>

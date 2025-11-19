@@ -164,7 +164,20 @@ function resetConfig() {
 }
 
 function handleGenerate() {
-  emit('config-complete', config.value);
+  // 构建符合后端AnalysisConfig schema的配置对象
+  const analysisConfig = {
+    depth: config.value.depth || 'quick',
+    data_sources: config.value.data_sources || [],
+    language: 'zh',
+    // 场景专属参数放入scenario_params
+    scenario_params: {
+      project_name: config.value.project_name,
+      priority: config.value.priority,
+      risk_appetite: config.value.risk_appetite
+    }
+  };
+
+  emit('config-complete', analysisConfig);
 }
 </script>
 

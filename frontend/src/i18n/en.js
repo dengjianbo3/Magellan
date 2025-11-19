@@ -33,7 +33,8 @@ export default {
     knowledge: 'Knowledge Base',
     settings: 'Settings',
     collapse: 'Collapse',
-    startNewAnalysis: 'Start New Analysis'
+    startNewAnalysis: 'Start New Analysis',
+    brandSubtitle: 'AI INVESTMENT'
   },
 
   // Dashboard
@@ -301,6 +302,65 @@ export default {
       completed: 'Completed',
       inProgress: 'In Progress',
       pending: 'Pending'
+    },
+
+    hitl: {
+      requiredTitle: 'Preliminary Analysis Complete. Please Review.',
+      keyQuestions: 'Key Due Diligence Questions',
+      answerPlaceholder: 'Enter your answer or notes here...',
+      actionRequired: 'Action Required: Select an Option'
+    },
+
+    report: {
+      preliminaryMemo: 'Preliminary Investment Memo',
+      companyInfo: 'Company Info',
+      name: 'Name',
+      industry: 'Industry',
+      stage: 'Stage',
+      teamAssessment: 'Team Assessment',
+      teamAnalysisCompleted: 'Team analysis completed.',
+      marketAnalysis: 'Market Analysis',
+      marketAnalysisCompleted: 'Market analysis completed.',
+      savedSuccess: 'Analysis Completed Successfully!',
+      saveButton: 'Save Analysis Report',
+      savedButton: 'Report Saved',
+      viewFull: 'View Full Report'
+    },
+
+    sidebar: {
+      elapsedTime: 'Elapsed Time',
+      estRemaining: 'Est. Remaining',
+      currentAction: 'Current Action',
+      processing: 'Processing...',
+      configuration: 'Configuration',
+      company: 'Company',
+      type: 'Type',
+      agents: 'Agents',
+      active: 'Active'
+    }
+  },
+
+  // Scenarios (Mock Data Fallback)
+  scenarios: {
+    earlyStage: {
+      name: 'Early Stage VC',
+      description: 'Analyze pre-seed/seed startups focusing on team and market potential.'
+    },
+    growth: {
+      name: 'Growth Equity',
+      description: 'Evaluate scaling companies with established metrics and unit economics.'
+    },
+    publicMarket: {
+      name: 'Public Markets',
+      description: 'Comprehensive analysis of publicly traded securities and reports.'
+    },
+    industryResearch: {
+      name: 'Industry Research',
+      description: 'Deep dive into specific market sectors and competitive landscapes.'
+    },
+    alternative: {
+      name: 'Alternative Assets',
+      description: 'Real estate, crypto, and other non-traditional asset classes.'
     }
   },
 

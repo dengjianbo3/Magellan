@@ -366,8 +366,29 @@ function handleStartAnalysis() {
     return;
   }
 
-  console.log('[GrowthConfig] Starting analysis with config:', config.value);
-  emit('config-complete', config.value);
+  // 构建符合后端AnalysisConfig schema的配置对象
+  const analysisConfig = {
+    depth: 'standard',
+    data_sources: [],
+    language: 'zh',
+    // 场景专属参数放入scenario_params
+    scenario_params: {
+      growth_model: config.value.growth_model,
+      competitive_advantages: config.value.competitive_advantages,
+      competition_intensity: config.value.competition_intensity,
+      market_growth_rate: config.value.market_growth_rate,
+      market_maturity: config.value.market_maturity,
+      key_market_drivers: config.value.key_market_drivers,
+      projection_period: config.value.projection_period,
+      revenue_growth_assumption: config.value.revenue_growth_assumption,
+      profit_margin_target: config.value.profit_margin_target,
+      burn_rate_assumption: config.value.burn_rate_assumption,
+      key_financial_metrics: config.value.key_financial_metrics
+    }
+  };
+
+  console.log('[GrowthConfig] Starting analysis with config:', analysisConfig);
+  emit('config-complete', analysisConfig);
 }
 </script>
 

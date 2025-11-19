@@ -1,39 +1,44 @@
 <template>
-  <div v-if="!selectedReport" class="space-y-6">
+  <div v-if="!selectedReport" class="space-y-8">
     <!-- Page Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-text-primary mb-2">{{ t('reports.title') }}</h1>
-        <p class="text-text-secondary">{{ t('reports.subtitle') }}</p>
+        <h1 class="text-3xl font-display font-bold text-white mb-2 tracking-tight">{{ t('reports.title') }}</h1>
+        <p class="text-text-secondary text-lg">{{ t('reports.subtitle') }}</p>
       </div>
-      <button class="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-background-dark font-semibold hover:bg-primary/90 transition-colors">
-        <span class="material-symbols-outlined">add</span>
+      <button class="group flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-dark text-white font-bold shadow-glow-sm hover:shadow-glow hover:-translate-y-0.5 transition-all duration-300">
+        <span class="material-symbols-outlined group-hover:rotate-90 transition-transform">add</span>
         {{ t('reports.newReport') }}
       </button>
     </div>
 
     <!-- Filters -->
-    <div class="flex items-center gap-4">
-      <select class="px-4 py-2 rounded-lg bg-surface border border-border-color text-text-primary">
-        <option>{{ t('reports.filters.allTypes') }}</option>
-        <option>{{ t('reports.filters.dueDiligence') }}</option>
-        <option>{{ t('reports.filters.marketAnalysis') }}</option>
-        <option>{{ t('reports.filters.financialReview') }}</option>
-      </select>
-      <select class="px-4 py-2 rounded-lg bg-surface border border-border-color text-text-primary">
-        <option>{{ t('reports.filters.allStatus') }}</option>
-        <option>{{ t('reports.filters.completed') }}</option>
-        <option>{{ t('reports.filters.inProgress') }}</option>
-        <option>{{ t('reports.filters.draft') }}</option>
-      </select>
+    <div class="glass-panel rounded-xl p-2 flex items-center gap-4">
+      <div class="flex items-center gap-2 px-2">
+        <select class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:border-primary/50 focus:bg-white/10 outline-none transition-colors cursor-pointer">
+          <option>{{ t('reports.filters.allTypes') }}</option>
+          <option>{{ t('reports.filters.dueDiligence') }}</option>
+          <option>{{ t('reports.filters.marketAnalysis') }}</option>
+          <option>{{ t('reports.filters.financialReview') }}</option>
+        </select>
+        <select class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:border-primary/50 focus:bg-white/10 outline-none transition-colors cursor-pointer">
+          <option>{{ t('reports.filters.allStatus') }}</option>
+          <option>{{ t('reports.filters.completed') }}</option>
+          <option>{{ t('reports.filters.inProgress') }}</option>
+          <option>{{ t('reports.filters.draft') }}</option>
+        </select>
+      </div>
+      
       <div class="flex-1"></div>
-      <div class="relative">
+      
+      <div class="relative group mr-2">
+        <div class="absolute inset-0 bg-primary/20 blur-md rounded-lg opacity-0 group-focus-within:opacity-100 transition-opacity duration-500"></div>
         <input
           type="text"
           :placeholder="t('reports.searchPlaceholder')"
-          class="w-64 px-4 py-2 pl-10 rounded-lg bg-surface border border-border-color text-text-primary placeholder-text-secondary focus:outline-none focus:border-primary transition-colors"
+          class="relative z-10 w-72 px-4 py-2 pl-10 rounded-lg bg-white/5 border border-white/10 text-white placeholder-text-secondary focus:outline-none focus:border-primary/50 focus:bg-surface/50 transition-all duration-300"
         />
-        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary">
+        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary z-20 group-focus-within:text-primary transition-colors">
           search
         </span>
       </div>
@@ -45,106 +50,95 @@
         v-for="report in reports"
         :key="report.id"
         @click="viewReport(report.id)"
-        class="bg-surface border border-border-color rounded-lg p-6 hover:border-primary/50 transition-colors cursor-pointer group"
+        class="glass-card rounded-2xl p-6 cursor-pointer group relative overflow-hidden flex flex-col"
       >
-        <div class="flex items-start justify-between mb-4">
-          <div
-            :class="[
-              'w-12 h-12 rounded-lg flex items-center justify-center',
-              report.status === 'completed' ? 'bg-accent-green/20' :
-              report.status === 'in-progress' ? 'bg-accent-yellow/20' :
-              'bg-surface-light'
-            ]"
-          >
-            <span
+        <!-- Background Gradient on Hover -->
+        <div class="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+
+        <div class="relative z-10 flex-1">
+          <div class="flex items-start justify-between mb-5">
+            <div
               :class="[
-                'material-symbols-outlined text-2xl',
-                report.status === 'completed' ? 'text-accent-green' :
-                report.status === 'in-progress' ? 'text-accent-yellow' :
-                'text-text-secondary'
+                'w-12 h-12 rounded-xl flex items-center justify-center shadow-lg backdrop-blur-sm border transition-transform group-hover:scale-110 duration-300',
+                report.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
+                report.status === 'in-progress' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                'bg-white/5 border-white/10 text-text-secondary'
               ]"
             >
-              article
+              <span class="material-symbols-outlined text-2xl">article</span>
+            </div>
+            <span
+              :class="[
+                'text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider border shadow-[0_0_10px_rgba(0,0,0,0.2)]',
+                report.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' :
+                report.status === 'in-progress' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
+                'bg-white/5 text-text-secondary border-white/10'
+              ]"
+            >
+              {{ report.statusText }}
             </span>
           </div>
-          <span
-            :class="[
-              'text-xs px-3 py-1 rounded-full font-semibold',
-              report.status === 'completed' ? 'bg-accent-green/20 text-accent-green' :
-              report.status === 'in-progress' ? 'bg-accent-yellow/20 text-accent-yellow' :
-              'bg-surface-light text-text-secondary'
-            ]"
-          >
-            {{ report.statusText }}
-          </span>
+
+          <h3 class="text-xl font-bold text-white mb-2 group-hover:text-primary transition-colors line-clamp-2">
+            {{ report.title }}
+          </h3>
+          <p class="text-sm text-text-secondary mb-6 line-clamp-2">{{ report.description }}</p>
+
+          <div class="flex items-center gap-4 text-xs text-text-secondary font-medium mb-6">
+            <span class="flex items-center gap-1.5 bg-white/5 px-2 py-1 rounded-md">
+              <span class="material-symbols-outlined text-sm">calendar_today</span>
+              {{ report.date }}
+            </span>
+            <span class="flex items-center gap-1.5 bg-white/5 px-2 py-1 rounded-md">
+              <span class="material-symbols-outlined text-sm">smart_toy</span>
+              {{ report.agents }} {{ t('reports.card.agents') }}
+            </span>
+          </div>
         </div>
 
-        <h3 class="text-lg font-bold text-text-primary mb-2 group-hover:text-primary transition-colors">
-          {{ report.title }}
-        </h3>
-        <p class="text-sm text-text-secondary mb-4">{{ report.description }}</p>
-
-        <div class="flex items-center gap-4 text-xs text-text-secondary mb-4">
-          <span class="flex items-center gap-1">
-            <span class="material-symbols-outlined text-sm">calendar_today</span>
-            {{ report.date }}
-          </span>
-          <span class="flex items-center gap-1">
-            <span class="material-symbols-outlined text-sm">smart_toy</span>
-            {{ report.agents }} {{ t('reports.card.agents') }}
-          </span>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <button class="flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-primary text-background-dark hover:bg-primary/90 transition-colors text-sm font-semibold">
-            <span class="material-symbols-outlined text-sm">visibility</span>
+        <div class="relative z-10 grid grid-cols-4 gap-2 border-t border-white/10 pt-4">
+          <button class="col-span-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary hover:text-white transition-all font-bold text-sm group/btn">
+            <span class="material-symbols-outlined text-lg group-hover/btn:scale-110 transition-transform">visibility</span>
             {{ t('reports.card.view') }}
           </button>
-          <button
-            @click.stop="showExportMenu(report.id)"
-            class="px-3 py-2 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors relative"
-            title="导出报告"
-          >
-            <span class="material-symbols-outlined text-sm">download</span>
+          
+          <div class="relative group/menu">
+            <button
+              @click.stop="showExportMenu(report.id)"
+              class="w-full flex items-center justify-center px-3 py-2 rounded-lg bg-white/5 text-text-secondary hover:bg-white/10 hover:text-white transition-colors border border-white/5"
+              title="导出"
+            >
+              <span class="material-symbols-outlined text-lg">download</span>
+            </button>
 
             <!-- Export Menu Dropdown -->
             <div
               v-if="exportMenuReportId === report.id"
               @click.stop
-              class="absolute right-0 top-full mt-2 w-48 bg-surface border border-border-color rounded-lg shadow-lg py-2 z-10"
+              class="absolute bottom-full left-0 mb-2 w-48 glass-panel border border-white/10 rounded-xl shadow-xl py-1 z-50 backdrop-blur-xl overflow-hidden animate-fade-in"
             >
-              <button
-                @click="exportReport(report.id, 'pdf')"
-                class="w-full px-4 py-2 text-left text-sm text-text-primary hover:bg-background-dark transition-colors flex items-center gap-2"
-              >
-                <span class="material-symbols-outlined text-sm text-accent-red">picture_as_pdf</span>
-                导出为 PDF
+              <button @click="exportReport(report.id, 'pdf')" class="w-full px-4 py-2.5 text-left text-sm text-text-primary hover:bg-primary/20 hover:text-white transition-colors flex items-center gap-2">
+                <span class="material-symbols-outlined text-base text-rose-400">picture_as_pdf</span> PDF
               </button>
-              <button
-                @click="exportReport(report.id, 'word')"
-                class="w-full px-4 py-2 text-left text-sm text-text-primary hover:bg-background-dark transition-colors flex items-center gap-2"
-              >
-                <span class="material-symbols-outlined text-sm text-accent-blue">description</span>
-                导出为 Word
+              <button @click="exportReport(report.id, 'word')" class="w-full px-4 py-2.5 text-left text-sm text-text-primary hover:bg-primary/20 hover:text-white transition-colors flex items-center gap-2">
+                <span class="material-symbols-outlined text-base text-blue-400">description</span> Word
               </button>
-              <button
-                @click="exportReport(report.id, 'excel')"
-                class="w-full px-4 py-2 text-left text-sm text-text-primary hover:bg-background-dark transition-colors flex items-center gap-2"
-              >
-                <span class="material-symbols-outlined text-sm text-accent-green">table_chart</span>
-                导出为 Excel
+              <button @click="exportReport(report.id, 'excel')" class="w-full px-4 py-2.5 text-left text-sm text-text-primary hover:bg-primary/20 hover:text-white transition-colors flex items-center gap-2">
+                <span class="material-symbols-outlined text-base text-emerald-400">table_chart</span> Excel
               </button>
             </div>
+          </div>
+
+          <button class="flex items-center justify-center px-3 py-2 rounded-lg bg-white/5 text-text-secondary hover:bg-white/10 hover:text-white transition-colors border border-white/5">
+            <span class="material-symbols-outlined text-lg">share</span>
           </button>
-          <button class="px-3 py-2 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors">
-            <span class="material-symbols-outlined text-sm">share</span>
-          </button>
+          
           <button
             @click.stop="confirmDelete(report.id)"
-            class="px-3 py-2 rounded-lg border border-border-color text-accent-red hover:bg-accent-red/10 transition-colors"
-            title="删除报告"
+            class="flex items-center justify-center px-3 py-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white transition-colors border border-rose-500/20"
+            title="删除"
           >
-            <span class="material-symbols-outlined text-sm">delete</span>
+            <span class="material-symbols-outlined text-lg">delete</span>
           </button>
         </div>
       </div>
@@ -152,121 +146,134 @@
   </div>
 
   <!-- Report Detail View -->
-  <div v-else class="space-y-6">
+  <div v-else class="space-y-8 animate-fade-in">
     <!-- Header with Back Button -->
-    <div class="flex items-center gap-4">
+    <div class="flex items-center gap-6">
       <button
         @click="closeReportView"
-        class="px-4 py-2 rounded-lg bg-surface border border-border-color text-text-primary hover:bg-background-dark transition-colors flex items-center gap-2"
+        class="group px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-text-primary transition-all duration-300 flex items-center gap-2"
       >
-        <span class="material-symbols-outlined">arrow_back</span>
-        返回报告列表
+        <span class="material-symbols-outlined group-hover:-translate-x-1 transition-transform">arrow_back</span>
+        返回列表
       </button>
       <div class="flex-1">
-        <h1 class="text-2xl font-bold text-text-primary">{{ selectedReport.project_name }}</h1>
-        <p class="text-sm text-text-secondary">{{ selectedReport.company_name }} • {{ new Date(selectedReport.created_at).toLocaleString('zh-CN') }}</p>
+        <h1 class="text-3xl font-display font-bold text-white tracking-tight">{{ selectedReport.project_name }}</h1>
+        <div class="flex items-center gap-3 mt-2">
+           <span class="px-2 py-0.5 rounded bg-white/10 text-xs font-bold text-text-primary">{{ selectedReport.company_name }}</span>
+           <span class="text-text-secondary text-sm">•</span>
+           <span class="text-text-secondary text-sm font-mono">{{ new Date(selectedReport.created_at).toLocaleString('zh-CN') }}</span>
+        </div>
       </div>
     </div>
 
     <!-- Report Content -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <!-- Main Content -->
-      <div class="lg:col-span-2 space-y-6">
+      <div class="lg:col-span-2 space-y-8">
         <!-- Analysis Steps -->
-        <div class="bg-surface border border-border-color rounded-lg p-6">
-          <h2 class="text-lg font-bold text-text-primary mb-4">分析步骤</h2>
+        <div class="glass-panel rounded-2xl p-6">
+          <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+             <span class="material-symbols-outlined text-primary">checklist</span> 分析步骤
+          </h2>
           <div class="space-y-3">
             <div
               v-for="step in selectedReport.steps"
               :key="step.id"
-              class="flex items-center gap-3 p-3 rounded-lg bg-background-dark"
+              class="flex items-start gap-4 p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors"
             >
               <div
                 :class="[
-                  'w-8 h-8 rounded-full flex items-center justify-center',
-                  step.status === 'success' ? 'bg-accent-green/20' :
-                  step.status === 'error' ? 'bg-accent-red/20' :
-                  step.status === 'skipped' ? 'bg-text-secondary/10' :
-                  'bg-surface-light'
+                  'w-8 h-8 rounded-lg flex items-center justify-center mt-1',
+                  step.status === 'success' ? 'bg-emerald-500/20 text-emerald-400' :
+                  step.status === 'error' ? 'bg-rose-500/20 text-rose-400' :
+                  'bg-white/10 text-text-secondary'
                 ]"
               >
-                <span
-                  :class="[
-                    'material-symbols-outlined text-sm',
-                    step.status === 'success' ? 'text-accent-green' :
-                    step.status === 'error' ? 'text-accent-red' :
-                    step.status === 'skipped' ? 'text-text-secondary' :
-                    'text-text-secondary'
-                  ]"
-                >
-                  {{
-                    step.status === 'success' ? 'check_circle' :
-                    step.status === 'error' ? 'error' :
-                    step.status === 'skipped' ? 'block' :
-                    'radio_button_unchecked'
-                  }}
+                <span class="material-symbols-outlined text-lg">
+                  {{ step.status === 'success' ? 'check_circle' : step.status === 'error' ? 'error' : 'radio_button_unchecked' }}
                 </span>
               </div>
               <div class="flex-1">
-                <p class="font-semibold text-text-primary">{{ step.title }}</p>
-                <p v-if="step.result" class="text-xs text-text-secondary mt-1">{{ step.result }}</p>
+                <p class="font-bold text-text-primary text-sm">{{ step.title }}</p>
+                <p v-if="step.result" class="text-xs text-text-secondary mt-1 leading-relaxed">{{ step.result }}</p>
               </div>
             </div>
           </div>
         </div>
 
         <!-- Preliminary IM -->
-        <div v-if="selectedReport.preliminary_im" class="bg-surface border border-border-color rounded-lg p-6">
-          <h2 class="text-lg font-bold text-text-primary mb-4">投资备忘录</h2>
+        <div v-if="selectedReport.preliminary_im" class="glass-panel rounded-2xl p-6">
+          <h2 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
+            <span class="material-symbols-outlined text-accent-violet">description</span> 投资备忘录
+          </h2>
 
-          <!-- Company Info -->
-          <div v-if="selectedReport.preliminary_im.company_info" class="mb-4 p-4 rounded-lg bg-background-dark">
-            <h3 class="font-semibold text-text-primary mb-2">公司信息</h3>
-            <div class="text-sm text-text-secondary space-y-1">
-              <p><strong>公司名称:</strong> {{ selectedReport.preliminary_im.company_info.name || selectedReport.company_name }}</p>
-              <p v-if="selectedReport.preliminary_im.company_info.industry"><strong>行业:</strong> {{ selectedReport.preliminary_im.company_info.industry }}</p>
-              <p v-if="selectedReport.preliminary_im.company_info.stage"><strong>阶段:</strong> {{ selectedReport.preliminary_im.company_info.stage }}</p>
-            </div>
+          <div class="grid grid-cols-1 gap-6">
+             <!-- Company Info -->
+             <div v-if="selectedReport.preliminary_im.company_info" class="p-5 rounded-xl bg-black/20 border border-white/10">
+               <h3 class="font-bold text-primary mb-3 text-sm uppercase tracking-wider">公司信息</h3>
+               <div class="space-y-2 text-sm">
+                 <div class="flex justify-between border-b border-white/5 pb-2">
+                   <span class="text-text-secondary">名称</span>
+                   <span class="text-white font-semibold">{{ selectedReport.preliminary_im.company_info.name || selectedReport.company_name }}</span>
+                 </div>
+                 <div class="flex justify-between border-b border-white/5 pb-2" v-if="selectedReport.preliminary_im.company_info.industry">
+                   <span class="text-text-secondary">行业</span>
+                   <span class="text-white">{{ selectedReport.preliminary_im.company_info.industry }}</span>
+                 </div>
+                 <div class="flex justify-between" v-if="selectedReport.preliminary_im.company_info.stage">
+                   <span class="text-text-secondary">阶段</span>
+                   <span class="text-white">{{ selectedReport.preliminary_im.company_info.stage }}</span>
+                 </div>
+               </div>
+             </div>
+
+             <!-- Team & Market -->
+             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+               <div v-if="selectedReport.preliminary_im.team_section" class="p-5 rounded-xl bg-black/20 border border-white/10">
+                 <h3 class="font-bold text-primary mb-3 text-sm uppercase tracking-wider">团队评估</h3>
+                 <p class="text-sm text-text-secondary leading-relaxed">{{ selectedReport.preliminary_im.team_section.summary || '团队分析已完成' }}</p>
+               </div>
+
+               <div v-if="selectedReport.preliminary_im.market_section" class="p-5 rounded-xl bg-black/20 border border-white/10">
+                 <h3 class="font-bold text-primary mb-3 text-sm uppercase tracking-wider">市场分析</h3>
+                 <p class="text-sm text-text-secondary leading-relaxed">{{ selectedReport.preliminary_im.market_section.summary || '市场分析已完成' }}</p>
+               </div>
+             </div>
           </div>
 
-          <!-- Team Analysis -->
-          <div v-if="selectedReport.preliminary_im.team_section" class="mb-4 p-4 rounded-lg bg-background-dark">
-            <h3 class="font-semibold text-text-primary mb-2">团队评估</h3>
-            <p class="text-sm text-text-secondary">{{ selectedReport.preliminary_im.team_section.summary || '团队分析已完成' }}</p>
-          </div>
-
-          <!-- Market Analysis -->
-          <div v-if="selectedReport.preliminary_im.market_section" class="mb-4 p-4 rounded-lg bg-background-dark">
-            <h3 class="font-semibold text-text-primary mb-2">市场分析</h3>
-            <p class="text-sm text-text-secondary">{{ selectedReport.preliminary_im.market_section.summary || '市场分析已完成' }}</p>
-          </div>
-
-          <!-- DD Questions & Answers -->
-          <div v-if="selectedReport.preliminary_im.dd_questions && selectedReport.preliminary_im.dd_questions.length > 0" class="mt-4 p-4 rounded-lg bg-background-dark">
-            <h3 class="font-semibold text-text-primary mb-3">关键问题与答案</h3>
-            <div class="space-y-3">
+          <!-- DD Questions -->
+          <div v-if="selectedReport.preliminary_im.dd_questions && selectedReport.preliminary_im.dd_questions.length > 0" class="mt-6 pt-6 border-t border-white/10">
+            <h3 class="font-bold text-white mb-4 text-sm uppercase tracking-wider">关键问题与答案</h3>
+            <div class="space-y-4">
               <div
                 v-for="(question, index) in selectedReport.preliminary_im.dd_questions"
                 :key="index"
-                class="p-3 rounded-lg bg-surface"
+                class="p-4 rounded-xl bg-white/5 border border-white/5"
               >
-                <p class="font-semibold text-text-primary mb-1">{{ index + 1 }}. {{ question.question || question }}</p>
-                <p v-if="question.answer" class="text-sm text-text-secondary mt-2">
-                  <strong>答案:</strong> {{ question.answer }}
-                </p>
-                <p v-else class="text-xs text-text-secondary italic mt-2">未回答</p>
+                <div class="flex gap-3">
+                  <span class="text-primary font-bold">{{ index + 1 }}.</span>
+                  <p class="font-semibold text-text-primary text-sm">{{ question.question || question }}</p>
+                </div>
+                <div v-if="question.answer" class="mt-3 pl-6 border-l-2 border-white/10 ml-1">
+                  <p class="text-sm text-text-secondary">{{ question.answer }}</p>
+                </div>
+                <div v-else class="mt-2 pl-6">
+                   <span class="text-xs text-text-secondary italic opacity-50">未回答</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Visual Analytics / Charts -->
-        <div class="bg-surface border border-border-color rounded-lg p-6">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-bold text-text-primary">数据可视化</h2>
+        <!-- Visual Analytics -->
+        <div class="glass-panel rounded-2xl p-6">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+               <span class="material-symbols-outlined text-accent-cyan">analytics</span> 数据可视化
+            </h2>
             <button
               @click="refreshCharts"
-              class="px-3 py-1 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors text-sm flex items-center gap-1"
+              class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-text-primary transition-colors text-xs font-bold flex items-center gap-2"
             >
               <span class="material-symbols-outlined text-sm">refresh</span>
               刷新
@@ -274,101 +281,51 @@
           </div>
 
           <!-- Chart Tabs -->
-          <div class="flex gap-2 mb-4 border-b border-border-color">
+          <div class="flex gap-2 mb-6 p-1 bg-black/20 rounded-lg w-fit">
             <button
               v-for="tab in chartTabs"
               :key="tab.id"
               @click="activeChartTab = tab.id"
               :class="[
-                'px-4 py-2 text-sm font-semibold transition-colors border-b-2',
+                'px-4 py-2 rounded-md text-sm font-bold transition-all',
                 activeChartTab === tab.id
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-text-secondary hover:text-text-primary'
+                  ? 'bg-primary text-background-dark shadow-lg'
+                  : 'text-text-secondary hover:text-white'
               ]"
             >
               {{ tab.label }}
             </button>
           </div>
 
-          <!-- Financial Charts -->
-          <div v-if="activeChartTab === 'financial'" class="space-y-4">
-            <div class="grid grid-cols-1 gap-4">
-              <div class="bg-background-dark rounded-lg p-4">
-                <h3 class="text-sm font-semibold text-text-primary mb-3">收入趋势</h3>
-                <img
-                  :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/revenue?language=${currentLanguage}`"
-                  alt="Revenue Chart"
-                  class="w-full rounded-lg"
-                  @error="handleChartError"
-                />
+          <!-- Charts Content -->
+          <div class="space-y-6 min-h-[300px]">
+             <!-- Financial -->
+            <div v-if="activeChartTab === 'financial'" class="grid grid-cols-1 gap-6 animate-fade-in">
+              <div class="bg-black/20 rounded-xl p-4 border border-white/5">
+                <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">收入趋势</h3>
+                <img :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/revenue?language=${currentLanguage}`" alt="Revenue Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
               </div>
-              <div class="bg-background-dark rounded-lg p-4">
-                <h3 class="text-sm font-semibold text-text-primary mb-3">利润率趋势</h3>
-                <img
-                  :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/profit?language=${currentLanguage}`"
-                  alt="Profit Chart"
-                  class="w-full rounded-lg"
-                  @error="handleChartError"
-                />
-              </div>
-              <div class="bg-background-dark rounded-lg p-4">
-                <h3 class="text-sm font-semibold text-text-primary mb-3">财务健康度</h3>
-                <img
-                  :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/financial_health?language=${currentLanguage}`"
-                  alt="Financial Health Chart"
-                  class="w-full rounded-lg"
-                  @error="handleChartError"
-                />
+              <div class="bg-black/20 rounded-xl p-4 border border-white/5">
+                <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">利润率趋势</h3>
+                <img :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/profit?language=${currentLanguage}`" alt="Profit Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
               </div>
             </div>
-          </div>
-
-          <!-- Market Charts -->
-          <div v-if="activeChartTab === 'market'" class="space-y-4">
-            <div class="grid grid-cols-1 gap-4">
-              <div class="bg-background-dark rounded-lg p-4">
-                <h3 class="text-sm font-semibold text-text-primary mb-3">市场份额分布</h3>
-                <img
-                  :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/market_share?language=${currentLanguage}`"
-                  alt="Market Share Chart"
-                  class="w-full rounded-lg"
-                  @error="handleChartError"
-                />
-              </div>
-              <div class="bg-background-dark rounded-lg p-4">
-                <h3 class="text-sm font-semibold text-text-primary mb-3">市场增长趋势</h3>
-                <img
-                  :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/market_growth?language=${currentLanguage}`"
-                  alt="Market Growth Chart"
-                  class="w-full rounded-lg"
-                  @error="handleChartError"
-                />
+            
+            <!-- Market -->
+            <div v-if="activeChartTab === 'market'" class="grid grid-cols-1 gap-6 animate-fade-in">
+              <div class="bg-black/20 rounded-xl p-4 border border-white/5">
+                <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">市场份额分布</h3>
+                <img :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/market_share?language=${currentLanguage}`" alt="Market Share Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
               </div>
             </div>
-          </div>
-
-          <!-- Team & Risk Charts -->
-          <div v-if="activeChartTab === 'team_risk'" class="space-y-4">
-            <div class="grid grid-cols-1 gap-4">
-              <div class="bg-background-dark rounded-lg p-4">
-                <h3 class="text-sm font-semibold text-text-primary mb-3">团队能力雷达图</h3>
-                <img
-                  :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/team_radar?language=${currentLanguage}`"
-                  alt="Team Radar Chart"
-                  class="w-full rounded-lg"
-                  @error="handleChartError"
-                />
-              </div>
-              <div class="bg-background-dark rounded-lg p-4">
-                <h3 class="text-sm font-semibold text-text-primary mb-3">风险评估矩阵</h3>
-                <img
-                  :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/risk_matrix?language=${currentLanguage}`"
-                  alt="Risk Matrix Chart"
-                  class="w-full rounded-lg"
-                  @error="handleChartError"
-                />
-              </div>
-            </div>
+            
+             <!-- Team & Risk -->
+             <div v-if="activeChartTab === 'team_risk'" class="grid grid-cols-1 gap-6 animate-fade-in">
+               <div class="bg-black/20 rounded-xl p-4 border border-white/5">
+                 <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">风险评估矩阵</h3>
+                 <img :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/risk_matrix?language=${currentLanguage}`" alt="Risk Matrix Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
+               </div>
+             </div>
           </div>
         </div>
       </div>
@@ -376,73 +333,55 @@
       <!-- Sidebar -->
       <div class="space-y-6">
         <!-- Meta Info -->
-        <div class="bg-surface border border-border-color rounded-lg p-4">
-          <h3 class="font-bold text-text-primary mb-3">报告信息</h3>
-          <div class="space-y-2 text-sm">
-            <div>
-              <span class="text-text-secondary">Session ID:</span>
-              <p class="text-text-primary font-mono text-xs mt-1">{{ selectedReport.session_id }}</p>
+        <div class="glass-panel rounded-2xl p-6">
+          <h3 class="font-bold text-white mb-4 text-sm uppercase tracking-wider">报告详情</h3>
+          <div class="space-y-4 text-sm">
+            <div class="pb-3 border-b border-white/5">
+              <span class="text-text-secondary block text-xs mb-1">Session ID</span>
+              <p class="text-white font-mono text-xs bg-white/5 p-2 rounded">{{ selectedReport.session_id }}</p>
+            </div>
+            <div class="pb-3 border-b border-white/5">
+              <span class="text-text-secondary block text-xs mb-1">分析类型</span>
+              <p class="text-white font-bold">{{ selectedReport.analysis_type }}</p>
             </div>
             <div>
-              <span class="text-text-secondary">分析类型:</span>
-              <p class="text-text-primary mt-1">{{ selectedReport.analysis_type }}</p>
-            </div>
-            <div>
-              <span class="text-text-secondary">状态:</span>
-              <p class="text-text-primary mt-1">{{ selectedReport.status }}</p>
-            </div>
-            <div>
-              <span class="text-text-secondary">创建时间:</span>
-              <p class="text-text-primary mt-1">{{ new Date(selectedReport.created_at).toLocaleString('zh-CN') }}</p>
-            </div>
-            <div v-if="selectedReport.saved_at">
-              <span class="text-text-secondary">保存时间:</span>
-              <p class="text-text-primary mt-1">{{ new Date(selectedReport.saved_at).toLocaleString('zh-CN') }}</p>
+              <span class="text-text-secondary block text-xs mb-1">保存时间</span>
+              <p class="text-white font-mono">{{ selectedReport.saved_at ? new Date(selectedReport.saved_at).toLocaleString('zh-CN') : 'N/A' }}</p>
             </div>
           </div>
         </div>
 
         <!-- Actions -->
-        <div class="bg-surface border border-border-color rounded-lg p-4">
-          <h3 class="font-bold text-text-primary mb-3">操作</h3>
-          <div class="space-y-2">
-            <div class="space-y-2">
-              <p class="text-xs text-text-secondary mb-2">导出报告</p>
-              <button
-                @click="exportReport(selectedReport.id, 'pdf')"
-                :disabled="exportLoading"
-                class="w-full px-4 py-2 rounded-lg bg-primary text-background-dark hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span class="material-symbols-outlined text-sm">picture_as_pdf</span>
-                {{ exportLoading ? '导出中...' : '导出为 PDF' }}
-              </button>
-              <button
-                @click="exportReport(selectedReport.id, 'word')"
-                :disabled="exportLoading"
-                class="w-full px-4 py-2 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span class="material-symbols-outlined text-sm">description</span>
-                {{ exportLoading ? '导出中...' : '导出为 Word' }}
-              </button>
-              <button
-                @click="exportReport(selectedReport.id, 'excel')"
-                :disabled="exportLoading"
-                class="w-full px-4 py-2 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span class="material-symbols-outlined text-sm">table_chart</span>
-                {{ exportLoading ? '导出中...' : '导出为 Excel' }}
-              </button>
-            </div>
-            <button class="w-full px-4 py-2 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors flex items-center justify-center gap-2">
-              <span class="material-symbols-outlined">share</span>
-              分享报告
+        <div class="glass-panel rounded-2xl p-6">
+          <h3 class="font-bold text-white mb-4 text-sm uppercase tracking-wider">操作</h3>
+          <div class="space-y-3">
+            <button
+              @click="exportReport(selectedReport.id, 'pdf')"
+              :disabled="exportLoading"
+              class="w-full px-4 py-3 rounded-xl bg-gradient-to-r from-primary to-primary-dark text-white font-bold hover:shadow-glow transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <span class="material-symbols-outlined text-lg">picture_as_pdf</span>
+              {{ exportLoading ? '导出中...' : '导出 PDF' }}
             </button>
+            
+            <div class="grid grid-cols-2 gap-3">
+                <button @click="exportReport(selectedReport.id, 'word')" class="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-text-primary transition-colors flex items-center justify-center gap-2 text-sm font-semibold">
+                    <span class="material-symbols-outlined text-base text-blue-400">description</span> Word
+                </button>
+                <button @click="exportReport(selectedReport.id, 'excel')" class="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-text-primary transition-colors flex items-center justify-center gap-2 text-sm font-semibold">
+                    <span class="material-symbols-outlined text-base text-emerald-400">table_chart</span> Excel
+                </button>
+            </div>
+
+            <button class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-text-primary hover:bg-white/10 transition-colors flex items-center justify-center gap-2 font-semibold mt-2">
+              <span class="material-symbols-outlined">share</span> 分享报告
+            </button>
+            
             <button
               @click="confirmDelete(selectedReport.id)"
-              class="w-full px-4 py-2 rounded-lg border border-accent-red text-accent-red hover:bg-accent-red/10 transition-colors flex items-center justify-center gap-2"
+              class="w-full px-4 py-3 rounded-xl border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 transition-colors flex items-center justify-center gap-2 font-semibold mt-4"
             >
-              <span class="material-symbols-outlined">delete</span>
-              删除报告
+              <span class="material-symbols-outlined">delete</span> 删除报告
             </button>
           </div>
         </div>
@@ -453,39 +392,35 @@
   <!-- Delete Confirmation Dialog -->
   <div
     v-if="showDeleteConfirm"
-    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+    class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
     @click="cancelDelete"
   >
     <div
-      class="bg-surface border border-border-color rounded-lg p-6 max-w-md w-full mx-4"
+      class="glass-panel border border-white/10 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl transform transition-all scale-100"
       @click.stop
     >
-      <div class="flex items-start gap-4 mb-6">
-        <div class="w-12 h-12 rounded-full bg-accent-red/20 flex items-center justify-center flex-shrink-0">
-          <span class="material-symbols-outlined text-accent-red text-2xl">warning</span>
+      <div class="flex flex-col items-center text-center mb-6">
+        <div class="w-16 h-16 rounded-full bg-rose-500/20 flex items-center justify-center mb-4 shadow-[0_0_20px_rgba(244,63,94,0.3)]">
+          <span class="material-symbols-outlined text-rose-500 text-3xl">warning</span>
         </div>
-        <div class="flex-1">
-          <h3 class="text-lg font-bold text-text-primary mb-2">删除报告</h3>
-          <p class="text-sm text-text-secondary">
-            确定要删除报告 <strong>"{{ reportToDelete?.project_name || reportToDelete?.company_name }}"</strong> 吗？
-          </p>
-          <p class="text-sm text-text-secondary mt-2">此操作无法撤销。</p>
-        </div>
+        <h3 class="text-xl font-bold text-white mb-2">确认删除?</h3>
+        <p class="text-sm text-text-secondary">
+          您即将删除报告 <strong>"{{ reportToDelete?.project_name || reportToDelete?.company_name }}"</strong>。此操作无法撤销。
+        </p>
       </div>
 
-      <div class="flex items-center gap-3 justify-end">
+      <div class="flex items-center gap-4">
         <button
           @click="cancelDelete"
-          class="px-4 py-2 rounded-lg border border-border-color text-text-primary hover:bg-background-dark transition-colors"
+          class="flex-1 px-6 py-3 rounded-xl border border-white/10 text-white hover:bg-white/10 transition-colors font-bold"
         >
           取消
         </button>
         <button
           @click="deleteReport"
-          class="px-4 py-2 rounded-lg bg-accent-red text-white hover:bg-accent-red/90 transition-colors flex items-center gap-2"
+          class="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 text-white hover:shadow-[0_0_15px_rgba(244,63,94,0.5)] transition-all font-bold"
         >
-          <span class="material-symbols-outlined text-sm">delete</span>
-          删除
+          确认删除
         </button>
       </div>
     </div>

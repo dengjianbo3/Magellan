@@ -269,8 +269,22 @@ function handleSaveTemplate() {
 }
 
 function handleGenerate() {
-  console.log('[IndustryResearchConfig] Generating report with config:', config.value);
-  emit('config-complete', config.value);
+  // 构建符合后端AnalysisConfig schema的配置对象
+  const analysisConfig = {
+    depth: 'standard',
+    data_sources: config.value.data_sources || [],
+    language: 'zh',
+    // 场景专属参数放入scenario_params
+    scenario_params: {
+      research_scope: config.value.research_scope,
+      methodologies: config.value.methodologies,
+      predictive_model: config.value.predictive_model,
+      competitive_focus: config.value.competitive_focus
+    }
+  };
+
+  console.log('[IndustryResearchConfig] Generating report with config:', analysisConfig);
+  emit('config-complete', analysisConfig);
 }
 </script>
 

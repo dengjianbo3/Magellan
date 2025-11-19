@@ -290,8 +290,22 @@ function handleBack() {
 }
 
 function handleGenerate() {
-  console.log('[AlternativeConfig] Generating report with config:', config.value);
-  emit('config-complete', config.value);
+  // 构建符合后端AnalysisConfig schema的配置对象
+  const analysisConfig = {
+    depth: config.value.analysis_depth || 'standard',
+    data_sources: [],
+    language: 'zh',
+    // 场景专属参数放入scenario_params
+    scenario_params: {
+      valuation_model: config.value.valuation_model,
+      dd_focus: config.value.dd_focus,
+      exit_preference: config.value.exit_preference,
+      risk_tolerance: config.value.risk_tolerance
+    }
+  };
+
+  console.log('[AlternativeConfig] Generating report with config:', analysisConfig);
+  emit('config-complete', analysisConfig);
 }
 
 // Lifecycle

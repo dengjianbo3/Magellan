@@ -1,15 +1,15 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-8">
     <!-- Page Header -->
-    <div class="flex items-center justify-between">
+    <div class="flex items-end justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-text-primary mb-2">{{ t('dashboard.title') }}</h1>
-        <p class="text-text-secondary">{{ t('dashboard.welcome') }}</p>
+        <h1 class="text-3xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-text-secondary mb-2 tracking-tight">{{ t('dashboard.title') }}</h1>
+        <p class="text-text-secondary text-lg font-light">{{ t('dashboard.welcome') }}</p>
       </div>
       <button
-        class="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-background-dark font-semibold hover:bg-primary/90 transition-colors"
+        class="group flex items-center gap-2 px-6 py-2.5 rounded-lg bg-gradient-to-r from-primary to-primary-dark text-white font-bold shadow-glow-sm hover:shadow-glow hover:scale-105 transition-all duration-300"
       >
-        <span class="material-symbols-outlined">download</span>
+        <span class="material-symbols-outlined group-hover:animate-bounce">download</span>
         {{ t('dashboard.exportReport') }}
       </button>
     </div>
@@ -30,45 +30,58 @@
     <!-- Charts Row -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <!-- Analysis Trends Chart -->
-      <div class="bg-surface border border-border-color rounded-lg p-6">
-        <div class="flex items-center justify-between mb-6">
-          <h3 class="text-lg font-bold text-text-primary">{{ t('dashboard.analysisTrends') }}</h3>
-          <select class="px-3 py-1.5 rounded-lg bg-background-dark border border-border-color text-text-primary text-sm">
+      <div class="glass-panel rounded-xl p-6 relative overflow-hidden">
+        <div class="flex items-center justify-between mb-8">
+          <h3 class="text-lg font-bold text-white flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary">show_chart</span>
+            {{ t('dashboard.analysisTrends') }}
+          </h3>
+          <select class="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-text-primary text-sm focus:border-primary/50 focus:outline-none focus:bg-surface/50 transition-colors">
             <option>{{ t('dashboard.timeRanges.last7Days') }}</option>
             <option>{{ t('dashboard.timeRanges.last30Days') }}</option>
             <option>{{ t('dashboard.timeRanges.last3Months') }}</option>
           </select>
         </div>
-        <div class="h-64">
+        <div class="h-72 relative z-10">
           <canvas ref="trendsChart"></canvas>
         </div>
+        <!-- Decorative background glow -->
+        <div class="absolute top-0 right-0 w-64 h-64 bg-primary/5 blur-3xl rounded-full pointer-events-none"></div>
       </div>
 
       <!-- Agent Performance Chart -->
-      <div class="bg-surface border border-border-color rounded-lg p-6">
-        <div class="flex items-center justify-between mb-6">
-          <h3 class="text-lg font-bold text-text-primary">{{ t('dashboard.agentPerformance') }}</h3>
-          <select class="px-3 py-1.5 rounded-lg bg-background-dark border border-border-color text-text-primary text-sm">
+      <div class="glass-panel rounded-xl p-6 relative overflow-hidden">
+        <div class="flex items-center justify-between mb-8">
+          <h3 class="text-lg font-bold text-white flex items-center gap-2">
+            <span class="material-symbols-outlined text-accent-violet">donut_large</span>
+            {{ t('dashboard.agentPerformance') }}
+          </h3>
+          <select class="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-text-primary text-sm focus:border-primary/50 focus:outline-none focus:bg-surface/50 transition-colors">
             <option>{{ t('dashboard.timeRanges.thisMonth') }}</option>
             <option>{{ t('dashboard.timeRanges.lastMonth') }}</option>
             <option>{{ t('dashboard.timeRanges.allTime') }}</option>
           </select>
         </div>
-        <div class="h-64">
+        <div class="h-72 relative z-10">
           <canvas ref="performanceChart"></canvas>
         </div>
+         <!-- Decorative background glow -->
+         <div class="absolute bottom-0 left-0 w-64 h-64 bg-accent-violet/5 blur-3xl rounded-full pointer-events-none"></div>
       </div>
     </div>
 
     <!-- Recent Activity & Quick Actions -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <!-- Recent Reports -->
-      <div class="lg:col-span-2 bg-surface border border-border-color rounded-lg p-6">
+      <div class="lg:col-span-2 glass-panel rounded-xl p-6">
         <div class="flex items-center justify-between mb-6">
-          <h3 class="text-lg font-bold text-text-primary">{{ t('dashboard.recentReports') }}</h3>
-          <button @click="emit('navigate', 'reports')" class="text-primary text-sm font-semibold hover:underline">{{ t('dashboard.viewAll') }}</button>
+          <h3 class="text-lg font-bold text-white flex items-center gap-2">
+            <span class="material-symbols-outlined text-emerald-400">history</span>
+            {{ t('dashboard.recentReports') }}
+          </h3>
+          <button @click="emit('navigate', 'reports')" class="text-primary text-sm font-bold hover:text-primary-dark transition-colors hover:underline">{{ t('dashboard.viewAll') }}</button>
         </div>
-        <div class="space-y-4">
+        <div class="space-y-2">
           <ReportItem
             v-for="report in recentReports"
             :key="report.id"
@@ -81,30 +94,39 @@
       </div>
 
       <!-- Quick Actions -->
-      <div class="bg-surface border border-border-color rounded-lg p-6">
-        <h3 class="text-lg font-bold text-text-primary mb-6">{{ t('dashboard.quickActions') }}</h3>
+      <div class="glass-panel rounded-xl p-6">
+        <h3 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
+          <span class="material-symbols-outlined text-amber-400">bolt</span>
+          {{ t('dashboard.quickActions') }}
+        </h3>
         <div class="space-y-3">
           <button
             v-for="action in quickActions"
             :key="action.title"
             @click="handleQuickAction(action)"
-            class="w-full flex items-center gap-3 p-3 rounded-lg bg-background-dark hover:bg-background-dark/80 border border-border-color transition-colors text-left group"
+            class="w-full flex items-center gap-4 p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-transparent hover:border-primary/30 transition-all duration-300 text-left group"
           >
-            <span class="material-symbols-outlined text-primary">{{ action.icon }}</span>
+            <div class="w-10 h-10 rounded-lg bg-background-dark flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+               <span class="material-symbols-outlined text-primary group-hover:text-white transition-colors">{{ action.icon }}</span>
+            </div>
             <div class="flex-1">
-              <p class="text-sm font-semibold text-text-primary group-hover:text-primary transition-colors">
+              <p class="text-sm font-bold text-text-primary group-hover:text-primary transition-colors">
                 {{ action.title }}
               </p>
               <p class="text-xs text-text-secondary">{{ action.description }}</p>
             </div>
+            <span class="material-symbols-outlined text-text-secondary group-hover:translate-x-1 transition-transform">chevron_right</span>
           </button>
         </div>
       </div>
     </div>
 
     <!-- Active Agents -->
-    <div class="bg-surface border border-border-color rounded-lg p-6">
-      <h3 class="text-lg font-bold text-text-primary mb-6">{{ t('dashboard.activeAgents') }}</h3>
+    <div class="glass-panel rounded-xl p-6">
+      <h3 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
+        <span class="material-symbols-outlined text-primary">smart_toy</span>
+        {{ t('dashboard.activeAgents') }}
+      </h3>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <AgentCard
           v-for="agent in activeAgents"
@@ -320,6 +342,17 @@ const fetchDashboardData = async () => {
 const initializeCharts = () => {
   // Initialize Trends Chart
   if (trendsChart.value && trendsData.value) {
+    const ctx = trendsChart.value.getContext('2d');
+    
+    // Create Gradients
+    const gradientReports = ctx.createLinearGradient(0, 0, 0, 300);
+    gradientReports.addColorStop(0, 'rgba(56, 189, 248, 0.4)');
+    gradientReports.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+    
+    const gradientAnalysis = ctx.createLinearGradient(0, 0, 0, 300);
+    gradientAnalysis.addColorStop(0, 'rgba(139, 92, 246, 0.4)');
+    gradientAnalysis.addColorStop(1, 'rgba(139, 92, 246, 0.0)');
+
     new Chart(trendsChart.value, {
       type: 'line',
       data: {
@@ -328,16 +361,26 @@ const initializeCharts = () => {
           {
             label: t('dashboard.chartLabels.reportsGenerated'),
             data: trendsData.value.datasets.reports,
-            borderColor: '#3b82f6',
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            borderColor: '#38bdf8',
+            backgroundColor: gradientReports,
+            borderWidth: 2,
+            pointBackgroundColor: '#38bdf8',
+            pointBorderColor: '#000',
+            pointRadius: 4,
+            pointHoverRadius: 6,
             tension: 0.4,
             fill: true
           },
           {
             label: t('dashboard.chartLabels.analysesStarted'),
             data: trendsData.value.datasets.analyses,
-            borderColor: '#10b981',
-            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            borderColor: '#8b5cf6',
+            backgroundColor: gradientAnalysis,
+            borderWidth: 2,
+            pointBackgroundColor: '#8b5cf6',
+            pointBorderColor: '#000',
+            pointRadius: 4,
+            pointHoverRadius: 6,
             tension: 0.4,
             fill: true
           }
@@ -348,17 +391,33 @@ const initializeCharts = () => {
         maintainAspectRatio: false,
         plugins: {
           legend: {
-            labels: { color: '#e5e7eb' }
+            labels: { 
+              color: '#9ca3af',
+              font: { family: 'Inter', size: 12 }
+            },
+            align: 'end'
+          },
+          tooltip: {
+            backgroundColor: 'rgba(17, 24, 39, 0.9)',
+            titleColor: '#f3f4f6',
+            bodyColor: '#9ca3af',
+            borderColor: 'rgba(255,255,255,0.1)',
+            borderWidth: 1,
+            padding: 12,
+            displayColors: true,
+            boxPadding: 4
           }
         },
         scales: {
           y: {
-            ticks: { color: '#9ca3af' },
-            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+            ticks: { color: '#6b7280', font: { size: 11 } },
+            grid: { color: 'rgba(255, 255, 255, 0.03)' },
+            border: { display: false }
           },
           x: {
-            ticks: { color: '#9ca3af' },
-            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+            ticks: { color: '#6b7280', font: { size: 11 } },
+            grid: { display: false },
+            border: { display: false }
           }
         }
       }
@@ -384,21 +443,27 @@ const initializeCharts = () => {
             performanceData.value.risk_assessment
           ],
           backgroundColor: [
-            '#3b82f6',
-            '#10b981',
-            '#f59e0b',
-            '#ef4444'
+            '#38bdf8', // Primary
+            '#06b6d4', // Cyan
+            '#8b5cf6', // Violet
+            '#10b981'  // Emerald
           ],
-          borderWidth: 0
+          borderColor: '#111827', // Match card bg
+          borderWidth: 2
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        cutout: '75%',
         plugins: {
           legend: {
-            position: 'bottom',
-            labels: { color: '#e5e7eb', padding: 15 }
+            position: 'right',
+            labels: { 
+              color: '#e5e7eb', 
+              padding: 20,
+              font: { family: 'Inter', size: 12 }
+            }
           }
         }
       }

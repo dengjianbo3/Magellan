@@ -53,7 +53,7 @@ EARLY_STAGE_STANDARD = [
         name="BP解析",
         required=False,
         agent="bp_parser",
-        condition="target.bp_file_id is not None",
+        condition="target.get('bp_file_id') is not None",
         inputs=["bp_file_id"],
         expected_output=["structured_bp", "business_model", "financials"]
     ),
@@ -249,7 +249,7 @@ PUBLIC_MARKET_STANDARD = [
         name="技术面分析",
         required=False,
         agent="quant_analyst",
-        condition="config.depth == 'comprehensive'",
+        condition="config.get('depth') == 'comprehensive'",
         inputs=["stock_data"],
         expected_output=["technical_signals", "price_targets", "support_resistance"]
     ),
@@ -480,7 +480,7 @@ INDUSTRY_RESEARCH_STANDARD = [
         name="专家圆桌讨论",
         required=False,
         agent="roundtable",
-        condition="config.depth == 'comprehensive'",
+        condition="config.get('depth') == 'comprehensive'",
         inputs=["all_previous"],
         expected_output=["expert_insights", "consensus_view", "debate_points"]
     )

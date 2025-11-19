@@ -33,7 +33,8 @@ export default {
     knowledge: '知识库',
     settings: '设置',
     collapse: '收起',
-    startNewAnalysis: '开始新分析'
+    startNewAnalysis: '开始新分析',
+    brandSubtitle: 'AI 投资分析'
   },
 
   // Dashboard
@@ -301,6 +302,65 @@ export default {
       completed: '已完成',
       inProgress: '进行中',
       pending: '待处理'
+    },
+
+    hitl: {
+      requiredTitle: '初步分析完成，请审核',
+      keyQuestions: '关键尽职调查问题',
+      answerPlaceholder: '在此输入您的答案或备注...',
+      actionRequired: '需要操作：请选择一个选项'
+    },
+
+    report: {
+      preliminaryMemo: '初步投资备忘录',
+      companyInfo: '公司信息',
+      name: '名称',
+      industry: '行业',
+      stage: '阶段',
+      teamAssessment: '团队评估',
+      teamAnalysisCompleted: '团队分析已完成。',
+      marketAnalysis: '市场分析',
+      marketAnalysisCompleted: '市场分析已完成。',
+      savedSuccess: '分析成功完成！',
+      saveButton: '保存分析报告',
+      savedButton: '报告已保存',
+      viewFull: '查看完整报告'
+    },
+
+    sidebar: {
+      elapsedTime: '已用时间',
+      estRemaining: '预计剩余',
+      currentAction: '当前操作',
+      processing: '处理中...',
+      configuration: '配置信息',
+      company: '公司',
+      type: '类型',
+      agents: '智能体',
+      active: '活跃'
+    }
+  },
+
+  // Scenarios (Mock Data Fallback)
+  scenarios: {
+    earlyStage: {
+      name: '早期风险投资',
+      description: '分析天使轮/种子轮初创公司，重点关注团队和市场潜力。'
+    },
+    growth: {
+      name: '成长期权益投资',
+      description: '评估具有既定指标和单位经济效益的规模化公司。'
+    },
+    publicMarket: {
+      name: '公开市场',
+      description: '对上市证券和报告进行全面分析。'
+    },
+    industryResearch: {
+      name: '行业研究',
+      description: '深入研究特定市场领域和竞争格局。'
+    },
+    alternative: {
+      name: '另类资产',
+      description: '房地产、加密货币和其他非传统资产类别。'
     }
   },
 
