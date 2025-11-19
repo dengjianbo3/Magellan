@@ -19,8 +19,10 @@ from ...models.analysis_models import (
 from ..quick_agents import (
     ValuationQuickAgent,
     FundamentalsAgent,
-    TechnicalAnalysisAgent
+    TechnicalAnalysisAgent,
+    DataFetcherAgent
 )
+from ...agents.financial_expert_agent import FinancialExpertAgent
 
 
 class PublicMarketInvestmentOrchestrator(BaseOrchestrator):
@@ -61,6 +63,11 @@ class PublicMarketInvestmentOrchestrator(BaseOrchestrator):
             "valuation_expert": ValuationQuickAgent(web_search_url=self.WEB_SEARCH_URL),
             "fundamental_analyst": FundamentalsAgent(web_search_url=self.WEB_SEARCH_URL),
             "technical_analyst": TechnicalAnalysisAgent(web_search_url=self.WEB_SEARCH_URL),
+            "data_fetcher": DataFetcherAgent(),
+            "financial_expert": FinancialExpertAgent(
+                web_search_url=self.WEB_SEARCH_URL,
+                llm_gateway_url=self.LLM_GATEWAY_URL
+            ),
         }
 
     async def _validate_target(self) -> bool:

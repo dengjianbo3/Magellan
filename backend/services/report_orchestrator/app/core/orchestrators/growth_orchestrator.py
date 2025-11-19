@@ -21,6 +21,7 @@ from ..quick_agents import (
     GrowthPotentialAgent,
     MarketPositionAgent
 )
+from ...agents.financial_expert_agent import FinancialExpertAgent
 
 
 class GrowthInvestmentOrchestrator(BaseOrchestrator):
@@ -59,6 +60,10 @@ class GrowthInvestmentOrchestrator(BaseOrchestrator):
             "financial_analyst": FinancialHealthAgent(web_search_url=self.WEB_SEARCH_URL),
             "growth_evaluator": GrowthPotentialAgent(web_search_url=self.WEB_SEARCH_URL),
             "market_analyst": MarketPositionAgent(web_search_url=self.WEB_SEARCH_URL),
+            "financial_expert": FinancialExpertAgent(
+                web_search_url=self.WEB_SEARCH_URL,
+                llm_gateway_url=self.LLM_GATEWAY_URL
+            ),
         }
 
     async def _validate_target(self) -> bool:

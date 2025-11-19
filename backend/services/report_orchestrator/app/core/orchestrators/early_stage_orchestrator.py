@@ -13,6 +13,7 @@ from app.models.analysis_models import (
 )
 from app.core.orchestrators.base_orchestrator import BaseOrchestrator
 from app.core.quick_agents import TeamQuickAgent, MarketQuickAgent, RedFlagAgent
+from app.agents.financial_expert_agent import FinancialExpertAgent
 
 
 class EarlyStageInvestmentOrchestrator(BaseOrchestrator):
@@ -55,6 +56,10 @@ class EarlyStageInvestmentOrchestrator(BaseOrchestrator):
             "team_evaluator": TeamQuickAgent(web_search_url=self.WEB_SEARCH_URL),
             "market_analyst": MarketQuickAgent(web_search_url=self.WEB_SEARCH_URL),
             "risk_assessor": RedFlagAgent(web_search_url=self.WEB_SEARCH_URL),
+            "financial_expert": FinancialExpertAgent(
+                web_search_url=self.WEB_SEARCH_URL,
+                llm_gateway_url=self.LLM_GATEWAY_URL
+            ),
         }
 
     async def _validate_target(self) -> bool:
