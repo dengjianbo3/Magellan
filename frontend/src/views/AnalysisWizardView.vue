@@ -87,28 +87,18 @@
             class="h-full"
           />
 
-          <!-- Step 2: Target Input -->
-          <component
+          <!-- Step 2: Unified Analysis Form (Target Input + Config) -->
+          <UnifiedAnalysisForm
             v-else-if="currentStep === 1"
-            :is="targetInputComponent"
             :scenario="selectedScenario"
-            @target-configured="handleTargetConfigured"
+            @analysis-start="handleAnalysisStart"
             @back="currentStep--"
             class="h-full"
           />
 
-          <!-- Step 3: Analysis Config -->
-          <AnalysisConfig
-            v-else-if="currentStep === 2"
-            :scenario="selectedScenario"
-            @config-complete="handleConfigComplete"
-            @back="currentStep--"
-            class="h-full"
-          />
-
-          <!-- Step 4: Analysis Progress -->
+          <!-- Step 3: Analysis Progress -->
           <AnalysisProgress
-            v-else-if="currentStep === 3"
+            v-else-if="currentStep === 2"
             :session-id="sessionId"
             :scenario="selectedScenario"
             :depth="analysisConfig.depth"
@@ -123,19 +113,18 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { useLanguage } from '@/composables/useLanguage.js';
+import { useToast } from '@/composables/useToast';
 import analysisServiceV2 from '@/services/analysisServiceV2.js';
+import sessionManager from '@/services/sessionManager.js';
 
 import ScenarioSelection from '@/components/analysis/ScenarioSelection.vue';
-import EarlyStageInput from '@/components/analysis/EarlyStageInput.vue';
-import GrowthInput from '@/components/analysis/GrowthInput.vue';
-import PublicMarketInput from '@/components/analysis/PublicMarketInput.vue';
-import AlternativeInput from '@/components/analysis/AlternativeInput.vue';
-import IndustryResearchInput from '@/components/analysis/IndustryResearchInput.vue';
-import AnalysisConfig from '@/components/analysis/AnalysisConfig.vue';
+import UnifiedAnalysisForm from '@/components/analysis/UnifiedAnalysisForm.vue';
 import AnalysisProgress from '@/components/analysis/AnalysisProgress.vue';
 
 const { t } = useLanguage();
+const { error } = useToast();
 
 // Current Step
 const currentStep = ref(0);
@@ -143,7 +132,6 @@ const currentStep = ref(0);
 // Steps Definition
 const steps = computed(() => [
   { label: t('analysisWizard.selectScenario') || 'Select Scenario' },
-  { label: t('analysisWizard.inputTarget') || 'Target Input' },
   { label: t('analysisWizard.configAnalysis') || 'Configuration' },
   { label: t('analysisWizard.analyzing') || 'Analysis' }
 ]);
@@ -165,21 +153,6 @@ const analysisConfig = ref({
 // Session ID
 const sessionId = ref(null);
 
-// Dynamic Target Input Component
-const targetInputComponent = computed(() => {
-  if (!selectedScenario.value) return null;
-
-  const componentMap = {
-    'early-stage-investment': EarlyStageInput,
-    'growth-investment': GrowthInput,
-    'public-market-investment': PublicMarketInput,
-    'alternative-investment': AlternativeInput,
-    'industry-research': IndustryResearchInput
-  };
-
-  return componentMap[selectedScenario.value.id];
-});
-
 // Handle Scenario Selection
 function handleScenarioSelected(scenario) {
   console.log('[Wizard] Scenario selected:', scenario);
@@ -187,46 +160,75 @@ function handleScenarioSelected(scenario) {
   currentStep.value = 1;
 }
 
-// Handle Target Configuration
-function handleTargetConfigured(config) {
-  console.log('[Wizard] Target configured:', config);
-  targetConfig.value = config;
-  currentStep.value = 2;
-}
+// Handle Analysis Start (Target + Config combined)
+async function handleAnalysisStart(data) {
+  console.log('[Wizard] Analysis starting with:', data);
 
-// Handle Config Completion
-async function handleConfigComplete(config) {
-  console.log('[Wizard] Config complete:', config);
+  const { target, config } = data;
+  targetConfig.value = target;
   analysisConfig.value = config;
 
   // Start Analysis
   try {
     const request = {
-      project_name: targetConfig.value.company_name || 'Analysis Project',
+      project_name: target.company_name || target.target_name || target.industry_name || 'Analysis Project',
       scenario: selectedScenario.value.id,
-      target: targetConfig.value,
-      config: analysisConfig.value
+      target: target,
+      config: config
     };
 
-    // Mock API call for now if service is missing or fails
-    // const result = await analysisServiceV2.startAnalysis(request);
-    // sessionId.value = result.sessionId;
-    
-    // Simulate success for UI demo
-    sessionId.value = 'mock-session-' + Date.now();
+    console.log('[Wizard] Starting real analysis...', request);
 
-    // Move to progress step
-    currentStep.value = 3;
+    // IMPORTANT: Move to progress step FIRST so AnalysisProgress can mount and register listeners
+    // before workflow_start message arrives
+    currentStep.value = 2;
 
-  } catch (error) {
-    console.error('[Wizard] Failed to start analysis:', error);
-    alert('Failed to start analysis: ' + error.message);
+    // Small delay to ensure component is fully mounted
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Real API call
+    const result = await analysisServiceV2.startAnalysis(request);
+    sessionId.value = result.sessionId;
+
+    console.log('[Wizard] Analysis started successfully:', result);
+
+    // Save session to SessionManager
+    sessionManager.saveSession({
+      sessionId: sessionId.value,
+      projectName: request.project_name,
+      scenario: selectedScenario.value,
+      targetData: target,
+      configData: config,
+      status: 'running',
+      progress: 0,
+      currentStep: 0,
+      startedAt: Date.now()
+    });
+
+    console.log('[Wizard] Session saved to localStorage');
+
+  } catch (err) {
+    console.error('[Wizard] Failed to start analysis:', err);
+    error('启动分析失败: ' + (err.message || '未知错误'));
+
+    // Go back to config step on error
+    currentStep.value = 2;
   }
 }
 
 // Handle Analysis Completion
 function handleAnalysisComplete(result) {
   console.log('[Wizard] Analysis complete:', result);
-  // TODO: Navigate to report view
+
+  if (result?.view === 'report') {
+    // User clicked "查看完整报告"
+    // Navigate to the report view with the session ID
+    router.push({
+      name: 'ReportsView',
+      query: {
+        sessionId: sessionId.value
+      }
+    });
+  }
 }
 </script>

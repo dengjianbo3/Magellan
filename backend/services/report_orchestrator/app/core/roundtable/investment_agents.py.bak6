@@ -1496,7 +1496,7 @@ Rapid technology assessment focusing on KEY STRENGTHS ONLY.
 ```
 
 **重要**: 保持简洁。40秒内完成。用中文回复。"""
-    else:
+        else:
         # Standard Mode: 详细技术评估
         if language == "en":
             role_prompt = """You are the **Technology Assessment Expert**, focused on technology and innovation analysis.
@@ -1813,7 +1813,7 @@ Rapid legal check focusing on CRITICAL ISSUES ONLY.
 ```
 
 **重要**: 保持简洁。35秒内完成。用中文回复。"""
-    else:
+        else:
         # Standard Mode: 详细法律评估
         if language == "en":
             role_prompt = """You are the **Legal Advisor**, focused on legal compliance and regulatory analysis.
@@ -1845,8 +1845,8 @@ Rapid legal check focusing on CRITICAL ISSUES ONLY.
 - Ensure regulatory compliance is adequate
 
 **IMPORTANT**: Please respond in English."""
-        else:
-            role_prompt = """你是**法律与合规专家**，专注于法律风险识别和合规性评估。
+    else:
+        role_prompt = """你是**法律与合规专家**，专注于法律风险识别和合规性评估。
 
 ## 你的专长:
 - 公司法律结构审查

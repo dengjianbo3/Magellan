@@ -16,13 +16,8 @@ from ...models.analysis_models import (
     QuickJudgmentResult,
     RecommendationType
 )
-from ..quick_agents import (
-    MarketSizeAgent,
-    CompetitionLandscapeAgent,
-    TrendAnalysisAgent,
-    OpportunityScanAgent,
-    IndustryResearcherAgent
-)
+# Phase 2: All agents now loaded from AgentRegistry
+# Legacy imports removed
 
 
 class IndustryResearchOrchestrator(BaseOrchestrator):
@@ -43,11 +38,6 @@ class IndustryResearchOrchestrator(BaseOrchestrator):
     """
 
     def __init__(self, session_id: str, request: Any, websocket: Any = None):
-        # Service URLs (必须在super().__init__之前定义,因为_init_agent_pool会被调用)
-        self.LLM_GATEWAY_URL = "http://llm_gateway:8003"
-        self.WEB_SEARCH_URL = "http://web_search_service:8010"
-        self.USER_SERVICE_URL = "http://user_service:8008"
-
         super().__init__(
             scenario=InvestmentScenario.INDUSTRY_RESEARCH,
             session_id=session_id,
@@ -56,17 +46,7 @@ class IndustryResearchOrchestrator(BaseOrchestrator):
         )
         self.scenario_name = "行业研究"
 
-    def _init_agent_pool(self) -> Dict[str, Any]:
-        """
-        初始化行业研究场景的专业Agent池
-        """
-        return {
-            "market_analyst": MarketSizeAgent(web_search_url=self.WEB_SEARCH_URL),
-            "competition_analyst": CompetitionLandscapeAgent(web_search_url=self.WEB_SEARCH_URL),
-            "trend_researcher": TrendAnalysisAgent(web_search_url=self.WEB_SEARCH_URL),
-            "opportunity_scanner": OpportunityScanAgent(web_search_url=self.WEB_SEARCH_URL),
-            "industry_researcher": IndustryResearcherAgent(web_search_url=self.WEB_SEARCH_URL),
-        }
+        # Phase 2: Agents now loaded from AgentRegistry, no need for service URLs here
 
     async def _validate_target(self) -> bool:
         """
@@ -74,10 +54,12 @@ class IndustryResearchOrchestrator(BaseOrchestrator):
 
         必填:
         - industry_name: 行业名称 (如: 人工智能, 新能源汽车)
-        - research_topic: 研究主题 (如: 2024年AI芯片市场趋势)
 
         可选:
-        - geo_scope: 地域范围 (global, china, us, etc)
+        - research_topic: 研究主题 (如: 2024年AI芯片市场趋势)
+        - sub_sector: 细分领域 (如: AI推理芯片)
+        - region: 地域范围 (如: china, global, us等)
+        - geo_scope: 地域范围（已废弃，使用region）
         - key_questions: 关键问题列表
         """
         await self._send_status(
@@ -91,8 +73,25 @@ class IndustryResearchOrchestrator(BaseOrchestrator):
         if not target.get('industry_name'):
             raise ValueError("缺少行业名称 (industry_name)")
 
+        # research_topic 如果没有提供，从其他字段生成
         if not target.get('research_topic'):
-            raise ValueError("缺少研究主题 (research_topic)")
+            # 尝试从 sub_sector 和 region 生成 research_topic
+            industry_name = target.get('industry_name', '')
+            sub_sector = target.get('sub_sector', '')
+            region = target.get('region', target.get('geo_scope', ''))
+
+            # 构建研究主题
+            topic_parts = [industry_name]
+            if sub_sector:
+                topic_parts.append(sub_sector)
+            if region:
+                region_name = {'china': '中国', 'global': '全球', 'us': '美国'}.get(region, region)
+                topic_parts.append(f"{region_name}市场")
+            else:
+                topic_parts.append("市场分析")
+
+            # 设置生成的research_topic
+            target['research_topic'] = " - ".join(topic_parts)
 
         return True
 

@@ -54,6 +54,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend/services/report_orchestrator/app:/usr/src/app/app
+      - ./backend/services/report_orchestrator/config:/usr/src/app/config
       - uploads_volume:/var/uploads
     networks:
       - default

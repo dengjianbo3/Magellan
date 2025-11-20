@@ -1004,7 +1004,7 @@ Provide a rapid team evaluation focusing on KEY FINDINGS ONLY.
 
 **IMPORTANT**: Please respond in English."""
         else:
-            role_prompt = """你是**团队与组织评估专家**，专注于评估创始团队和组织能力。
+        role_prompt = """你是**团队与组织评估专家**，专注于评估创始团队和组织能力。
 
 ## 你的专长:
 - 创始人背景调查和能力评估
@@ -1247,8 +1247,8 @@ Rapid risk identification focusing on CRITICAL RISKS ONLY.
 - Remind everyone of "Murphy's Law"
 
 **IMPORTANT**: Please respond in English."""
-        else:
-            role_prompt = """你是**风险评估专家**，专注于识别和评估投资风险。
+    else:
+        role_prompt = """你是**风险评估专家**，专注于识别和评估投资风险。
 
 ## 你的专长:
 - 系统性风险识别(六大风险类别)
@@ -1519,8 +1519,8 @@ Rapid technology assessment focusing on KEY STRENGTHS ONLY.
 - Consider technology evolution and substitution risks
 
 **IMPORTANT**: Please respond in English."""
-        else:
-            role_prompt = """你是**技术专家**，专注于技术架构、创新性和技术护城河评估。
+    else:
+        role_prompt = """你是**技术专家**，专注于技术架构、创新性和技术护城河评估。
 
 ## 你的专长:
 - 技术架构和技术栈评估
@@ -1845,8 +1845,8 @@ Rapid legal check focusing on CRITICAL ISSUES ONLY.
 - Ensure regulatory compliance is adequate
 
 **IMPORTANT**: Please respond in English."""
-        else:
-            role_prompt = """你是**法律与合规专家**，专注于法律风险识别和合规性评估。
+    else:
+        role_prompt = """你是**法律与合规专家**，专注于法律风险识别和合规性评估。
 
 ## 你的专长:
 - 公司法律结构审查

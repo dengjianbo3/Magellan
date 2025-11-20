@@ -18,7 +18,7 @@ from app.models.analysis_models import (
     QuickJudgmentResult,
     InvestmentScenario
 )
-from app.core.workflows.scenario_workflows import get_workflow
+from app.core.agent_registry import registry
 
 
 class BaseOrchestrator(ABC):
@@ -42,14 +42,17 @@ class BaseOrchestrator(ABC):
         # 决策模式 (子类可覆盖)
         self.decision_mode = DecisionMode.HYBRID
 
-        # 从workflow registry加载模板
-        self.workflow_templates = get_workflow(
+        # Phase 2: 使用AgentRegistry替代硬编码的agent_pool
+        # IMPORTANT: Initialize registry FIRST before loading workflows
+        self.registry = registry  # New: Use AgentRegistry
+        self.agent_pool = {}  # Deprecated, kept for backward compatibility
+
+        # Phase 2: 从AgentRegistry加载workflow配置
+        # Convert YAML-based workflow steps to old WorkflowStepTemplate format for backward compatibility
+        self.workflow_templates = self._load_workflow_from_registry(
             scenario.value,
             request.config.depth.value
         )
-
-        # 初始化专业Agent池 (子类实现)
-        self.agent_pool = self._init_agent_pool()
 
         # 工作流执行状态
         self.workflow: List[WorkflowStep] = []
@@ -63,15 +66,72 @@ class BaseOrchestrator(ABC):
         self.start_time = datetime.now()
         self.started_at = self.start_time.isoformat()
 
+    # ============ Phase 2: 新增配置加载方法 ============
+
+    def _load_workflow_from_registry(
+        self,
+        scenario: str,
+        depth: str
+    ) -> List[WorkflowStepTemplate]:
+        """
+        Phase 2: 从AgentRegistry加载workflow配置
+
+        将YAML格式的workflow步骤转换为WorkflowStepTemplate对象
+        以保持与现有代码的兼容性
+
+        Args:
+            scenario: 场景ID (e.g., 'early-stage-investment')
+            depth: 分析深度 ('quick', 'standard', 'comprehensive')
+
+        Returns:
+            WorkflowStepTemplate列表
+        """
+        # 映射depth到mode
+        mode = 'quick' if depth == 'quick' else 'standard'
+
+        # 从AgentRegistry获取workflow步骤
+        steps = self.registry.get_workflow_steps(scenario, mode)
+
+        if not steps:
+            raise ValueError(f"No workflow found for scenario={scenario}, mode={mode}")
+
+        # 转换为WorkflowStepTemplate对象
+        templates = []
+        for step in steps:
+            # Convert depends_on (integers) to strings
+            depends_on = step.get('depends_on', [])
+            inputs = [str(dep) for dep in depends_on] if depends_on else []
+
+            template = WorkflowStepTemplate(
+                id=str(step.get('step_id', '')),
+                name=step.get('description', ''),
+                required=step.get('required', True),
+                agent=step.get('agent_id', ''),
+                quick_mode=step.get('agent_params', {}).get('quick_mode', False),
+                expected_duration=step.get('estimated_duration', 60),
+                inputs=inputs,
+                data_sources=step.get('data_sources', []),
+                expected_output=step.get('expected_output', []),
+                condition=step.get('condition')
+            )
+            templates.append(template)
+
+        return templates
+
     # ============ 抽象方法 (子类必须实现) ============
 
-    @abstractmethod
     def _init_agent_pool(self) -> Dict[str, Any]:
         """
         初始化专业Agent池
-        子类必须实现
+
+        Phase 2 NOTE: 此方法已弃用，保留仅为向后兼容
+        子类不再需要实现此方法
+        Agent现在通过AgentRegistry动态创建
+
+        Returns:
+            空字典（向后兼容）
         """
-        pass
+        return {}
 
     @abstractmethod
     async def _validate_target(self) -> bool:
@@ -406,24 +466,47 @@ class BaseOrchestrator(ABC):
     ) -> Dict[str, Any]:
         """
         执行Agent任务
+
+        Phase 2: 使用AgentRegistry动态创建Agent
         """
         # 构建Agent任务
         task = self._build_agent_task(step, template)
 
-        # 获取Agent
-        agent = self.agent_pool.get(step.agent)
-        if not agent:
-            # 如果agent不存在,使用模拟结果
-            await self._send_agent_event(step, "thinking", f"{step.agent}正在分析...")
-            return {"mock": True, "agent": step.agent}
-
-        # Phase 3: 调用真实Agent的analyze方法
         await self._send_agent_event(step, "thinking", f"{step.agent}正在分析...")
 
         try:
+            # Phase 2: 从AgentRegistry动态创建Agent
+            # 提取agent参数（如quick_mode, language等）
+            agent_params = template.quick_mode and {'quick_mode': True} or {}
+
+            # 创建Agent实例
+            agent = self.registry.create_agent(step.agent, **agent_params)
+
             # 调用Agent的analyze方法,传入target信息
             result = await agent.analyze(self.request.target)
             return result
+
+        except ValueError as e:
+            # Agent不存在于registry中
+            print(f"[BaseOrchestrator] Agent {step.agent} not found in registry: {e}")
+            # 尝试从旧的agent_pool获取（向后兼容）
+            agent = self.agent_pool.get(step.agent)
+            if agent:
+                print(f"[BaseOrchestrator] Using legacy agent from agent_pool: {step.agent}")
+                try:
+                    result = await agent.analyze(self.request.target)
+                    return result
+                except Exception as e2:
+                    print(f"[BaseOrchestrator] Legacy agent execution failed: {e2}")
+                    return {
+                        "error": str(e2),
+                        "agent": step.agent,
+                        "mock": True
+                    }
+            else:
+                # 既不在registry也不在agent_pool，返回mock结果
+                return {"mock": True, "agent": step.agent, "error": str(e)}
+
         except Exception as e:
             print(f"[BaseOrchestrator] Agent {step.agent} execution failed: {e}")
             return {

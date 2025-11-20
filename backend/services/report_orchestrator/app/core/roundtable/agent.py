@@ -239,15 +239,30 @@ class Agent:
                 response.raise_for_status()
                 result = response.json()
 
+                # 调试：打印响应类型和内容
+                print(f"[Agent:{self.name}] LLM response type: {type(result)}")
+
                 # 转换响应格式，使其兼容 OpenAI 格式的解析
                 # LLM Gateway 返回: {"content": "text"}
                 # 转换为: {"choices": [{"message": {"content": "text"}}]}
+
+                # 处理两种可能的响应格式
+                if isinstance(result, str):
+                    # 如果result是字符串，直接使用
+                    content = result
+                elif isinstance(result, dict):
+                    # 如果是字典，提取content字段
+                    content = result.get("content", str(result))
+                else:
+                    # 其他类型，转为字符串
+                    content = str(result)
+
                 return {
                     "choices": [
                         {
                             "message": {
                                 "role": "assistant",
-                                "content": result["content"]
+                                "content": content
                             }
                         }
                     ]
@@ -391,3 +406,154 @@ class Agent:
             消息历史列表
         """
         return [msg.to_dict() for msg in self.message_history[-limit:]]
+
+    async def analyze(self, target: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        单独执行分析（兼容BaseOrchestrator接口）
+
+        这是一个适配方法，允许Agent在BaseOrchestrator的workflow中独立执行分析，
+        而不需要完整的roundtable meeting环境。
+
+        Args:
+            target: 分析目标数据
+            context: 上下文信息（可选）
+
+        Returns:
+            分析结果字典
+        """
+        # 构建分析提示
+        analysis_prompt = f"""请分析以下投资标的:
+
+{json.dumps(target, ensure_ascii=False, indent=2)}
+
+请从你的专业角度提供分析，包括:
+1. 关键发现
+2. 风险因素
+3. 优势分析
+4. 评分(1-10分)
+5. 投资建议
+
+请使用工具获取必要的数据支持你的分析。"""
+
+        # 创建一个虚拟的分析消息
+        messages = [
+            {
+                "role": "system",
+                "content": self._get_system_prompt()
+            },
+            {
+                "role": "user",
+                "content": analysis_prompt
+            }
+        ]
+
+        # 调用LLM进行分析
+        try:
+            llm_response = await self._call_llm(messages)
+
+            # 详细日志：打印响应类型和内容
+            print(f"[Agent:{self.name}] 🔍 DEBUG: llm_response type = {type(llm_response)}")
+            print(f"[Agent:{self.name}] 🔍 DEBUG: llm_response = {str(llm_response)[:200]}")
+
+            # 安全提取content - 处理可能的类型问题
+            if isinstance(llm_response, str):
+                # 如果响应是字符串，直接使用
+                print(f"[Agent:{self.name}] ✅ Response is string, using directly")
+                content = llm_response
+            elif isinstance(llm_response, dict) and "choices" in llm_response:
+                # 标准格式
+                print(f"[Agent:{self.name}] ✅ Response is dict with 'choices', extracting content")
+                choice = llm_response["choices"][0]
+                content = choice["message"].get("content", "")
+            else:
+                # 未知格式，尝试转为字符串
+                print(f"[Agent:{self.name}] ⚠️ WARNING: Unexpected llm_response type: {type(llm_response)}")
+                print(f"[Agent:{self.name}] ⚠️ WARNING: Full response: {llm_response}")
+                content = str(llm_response)
+
+            # 检测并执行工具调用
+            import re
+            tool_pattern = r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]'
+            tool_matches = re.findall(tool_pattern, content)
+
+            if tool_matches and self.tools:
+                tool_results = []
+                for tool_name, params_str in tool_matches:
+                    if tool_name in self.tools:
+                        try:
+                            # 解析参数
+                            params = {}
+                            param_pattern = r'(\w+)="([^"]*)"'
+                            param_matches = re.findall(param_pattern, params_str)
+                            for key, value in param_matches:
+                                params[key] = value
+
+                            # 执行工具
+                            tool_result = await self.tools[tool_name].execute(**params)
+                            tool_results.append(f"[{tool_name}]: {tool_result}")
+                        except Exception as e:
+                            tool_results.append(f"[{tool_name} Error]: {str(e)}")
+
+                # 如果有工具结果，进行第二轮分析
+                if tool_results:
+                    follow_up_messages = messages + [
+                        {
+                            "role": "assistant",
+                            "content": content
+                        },
+                        {
+                            "role": "user",
+                            "content": f"工具返回结果:\n{chr(10).join(tool_results)}\n\n请基于这些数据给出最终分析结论。"
+                        }
+                    ]
+                    llm_response = await self._call_llm(follow_up_messages)
+                    content = llm_response["choices"][0]["message"].get("content", "")
+
+            # 返回结构化结果
+            return {
+                "agent": self.name,
+                "analysis": content,
+                "score": self._extract_score(content),
+                "recommendation": self._extract_recommendation(content),
+                "raw_output": content
+            }
+
+        except Exception as e:
+            print(f"[Agent:{self.name}] analyze() failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "agent": self.name,
+                "error": str(e),
+                "analysis": f"分析失败: {str(e)}"
+            }
+
+    def _extract_score(self, content: str) -> float:
+        """从分析内容中提取评分"""
+        import re
+        # 尝试匹配 "评分: 8/10" 或 "得分: 8分" 等格式
+        score_patterns = [
+            r'评分[:：]\s*(\d+\.?\d*)',
+            r'得分[:：]\s*(\d+\.?\d*)',
+            r'分数[:：]\s*(\d+\.?\d*)',
+            r'(\d+\.?\d*)/10',
+            r'(\d+\.?\d*)分'
+        ]
+        for pattern in score_patterns:
+            match = re.search(pattern, content)
+            if match:
+                score = float(match.group(1))
+                return min(score / 10.0 if score > 10 else score, 1.0)
+        return 0.5  # 默认中等评分
+
+    def _extract_recommendation(self, content: str) -> str:
+        """从分析内容中提取建议"""
+        content_lower = content.lower()
+        if "建议投资" in content_lower or "推荐买入" in content_lower:
+            return "BUY"
+        elif "建议观察" in content_lower or "继续关注" in content_lower:
+            return "HOLD"
+        elif "不建议" in content_lower or "建议放弃" in content_lower:
+            return "PASS"
+        else:
+            return "FURTHER_DD"

@@ -16,12 +16,8 @@ from ...models.analysis_models import (
     QuickJudgmentResult,
     RecommendationType
 )
-from ..quick_agents import (
-    FinancialHealthAgent,
-    GrowthPotentialAgent,
-    MarketPositionAgent
-)
-from ...agents.financial_expert_agent import FinancialExpertAgent
+# Phase 2: All agents now loaded from AgentRegistry
+# Legacy imports removed
 
 
 class GrowthInvestmentOrchestrator(BaseOrchestrator):
@@ -39,11 +35,6 @@ class GrowthInvestmentOrchestrator(BaseOrchestrator):
     """
 
     def __init__(self, session_id: str, request: Any, websocket: Any = None):
-        # Service URLs (必须在super().__init__之前定义,因为_init_agent_pool会被调用)
-        self.LLM_GATEWAY_URL = "http://llm_gateway:8003"
-        self.WEB_SEARCH_URL = "http://web_search_service:8010"
-        self.USER_SERVICE_URL = "http://user_service:8008"
-
         super().__init__(
             scenario=InvestmentScenario.GROWTH,
             session_id=session_id,
@@ -52,19 +43,7 @@ class GrowthInvestmentOrchestrator(BaseOrchestrator):
         )
         self.scenario_name = "成长期投资"
 
-    def _init_agent_pool(self) -> Dict[str, Any]:
-        """
-        初始化成长期投资场景的专业Agent池
-        """
-        return {
-            "financial_analyst": FinancialHealthAgent(web_search_url=self.WEB_SEARCH_URL),
-            "growth_evaluator": GrowthPotentialAgent(web_search_url=self.WEB_SEARCH_URL),
-            "market_analyst": MarketPositionAgent(web_search_url=self.WEB_SEARCH_URL),
-            "financial_expert": FinancialExpertAgent(
-                web_search_url=self.WEB_SEARCH_URL,
-                llm_gateway_url=self.LLM_GATEWAY_URL
-            ),
-        }
+        # Phase 2: Agents now loaded from AgentRegistry, no need for service URLs here
 
     async def _validate_target(self) -> bool:
         """

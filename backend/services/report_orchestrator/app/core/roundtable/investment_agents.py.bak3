@@ -1004,7 +1004,7 @@ Provide a rapid team evaluation focusing on KEY FINDINGS ONLY.
 
 **IMPORTANT**: Please respond in English."""
         else:
-            role_prompt = """你是**团队与组织评估专家**，专注于评估创始团队和组织能力。
+        role_prompt = """你是**团队与组织评估专家**，专注于评估创始团队和组织能力。
 
 ## 你的专长:
 - 创始人背景调查和能力评估
@@ -1216,7 +1216,7 @@ Rapid risk identification focusing on CRITICAL RISKS ONLY.
 ```
 
 **重要**: 保持简洁。35秒内完成。用中文回复。"""
-    else:
+        else:
         # Standard Mode: 详细风险评估
         if language == "en":
             role_prompt = """You are the **Risk Assessment Expert**, focused on risk identification and management.
@@ -1248,7 +1248,7 @@ Rapid risk identification focusing on CRITICAL RISKS ONLY.
 
 **IMPORTANT**: Please respond in English."""
         else:
-            role_prompt = """你是**风险评估专家**，专注于识别和评估投资风险。
+        role_prompt = """你是**风险评估专家**，专注于识别和评估投资风险。
 
 ## 你的专长:
 - 系统性风险识别(六大风险类别)
@@ -1496,7 +1496,7 @@ Rapid technology assessment focusing on KEY STRENGTHS ONLY.
 ```
 
 **重要**: 保持简洁。40秒内完成。用中文回复。"""
-    else:
+        else:
         # Standard Mode: 详细技术评估
         if language == "en":
             role_prompt = """You are the **Technology Assessment Expert**, focused on technology and innovation analysis.
@@ -1520,7 +1520,7 @@ Rapid technology assessment focusing on KEY STRENGTHS ONLY.
 
 **IMPORTANT**: Please respond in English."""
         else:
-            role_prompt = """你是**技术专家**，专注于技术架构、创新性和技术护城河评估。
+        role_prompt = """你是**技术专家**，专注于技术架构、创新性和技术护城河评估。
 
 ## 你的专长:
 - 技术架构和技术栈评估
@@ -1813,7 +1813,7 @@ Rapid legal check focusing on CRITICAL ISSUES ONLY.
 ```
 
 **重要**: 保持简洁。35秒内完成。用中文回复。"""
-    else:
+        else:
         # Standard Mode: 详细法律评估
         if language == "en":
             role_prompt = """You are the **Legal Advisor**, focused on legal compliance and regulatory analysis.
@@ -1845,8 +1845,8 @@ Rapid legal check focusing on CRITICAL ISSUES ONLY.
 - Ensure regulatory compliance is adequate
 
 **IMPORTANT**: Please respond in English."""
-        else:
-            role_prompt = """你是**法律与合规专家**，专注于法律风险识别和合规性评估。
+    else:
+        role_prompt = """你是**法律与合规专家**，专注于法律风险识别和合规性评估。
 
 ## 你的专长:
 - 公司法律结构审查

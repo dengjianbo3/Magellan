@@ -12,8 +12,8 @@ from app.models.analysis_models import (
     EarlyStageTarget
 )
 from app.core.orchestrators.base_orchestrator import BaseOrchestrator
-from app.core.quick_agents import TeamQuickAgent, MarketQuickAgent, RedFlagAgent
-from app.agents.financial_expert_agent import FinancialExpertAgent
+# Phase 2: All agents now loaded from AgentRegistry
+# Legacy imports removed
 
 
 class EarlyStageInvestmentOrchestrator(BaseOrchestrator):
@@ -42,25 +42,8 @@ class EarlyStageInvestmentOrchestrator(BaseOrchestrator):
         # 解析early-stage specific target
         self.target: EarlyStageTarget = EarlyStageTarget(**request.target)
 
-        # Service URLs (从环境变量获取,暂时硬编码)
-        self.LLM_GATEWAY_URL = "http://llm_gateway:8003"
-        self.WEB_SEARCH_URL = "http://web_search_service:8010"
-        self.USER_SERVICE_URL = "http://user_service:8008"
-
-    def _init_agent_pool(self) -> Dict[str, Any]:
-        """
-        初始化早期投资场景的专业Agent池
-        """
-        # Phase 3: 实现真实的快速判断Agent
-        return {
-            "team_evaluator": TeamQuickAgent(web_search_url=self.WEB_SEARCH_URL),
-            "market_analyst": MarketQuickAgent(web_search_url=self.WEB_SEARCH_URL),
-            "risk_assessor": RedFlagAgent(web_search_url=self.WEB_SEARCH_URL),
-            "financial_expert": FinancialExpertAgent(
-                web_search_url=self.WEB_SEARCH_URL,
-                llm_gateway_url=self.LLM_GATEWAY_URL
-            ),
-        }
+        # Phase 2: Service URLs不再需要，Agent通过AgentRegistry创建时会处理
+        # Agents now get service URLs from environment variables or agent factory
 
     async def _validate_target(self) -> bool:
         """

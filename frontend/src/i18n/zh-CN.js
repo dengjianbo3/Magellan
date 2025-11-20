@@ -20,7 +20,23 @@ export default {
     finish: '完成',
     close: '关闭',
     settings: '设置',
-    logout: '退出登录'
+    logout: '退出登录',
+    pleaseSelect: '请选择',
+    clickToUpload: '点击上传',
+    submitting: '提交中...',
+    starting: '启动中...',
+    min: '分',
+    sec: '秒'
+  },
+
+  // Validation
+  validation: {
+    required: '此字段为必填项',
+    minLength: '最少需要 {n} 个字符',
+    maxLength: '最多 {n} 个字符',
+    min: '最小值为 {n}',
+    max: '最大值为 {n}',
+    pattern: '格式不正确'
   },
 
   // Sidebar
@@ -722,6 +738,23 @@ export default {
 
     // Wizard Steps
     inputTarget: '输入目标',
+    targetInfo: '目标信息',
+    configTitle: '配置分析参数',
+    configSubtitle: '选择分析模式和关注领域',
+    targetSummary: '目标摘要',
+    analysisSettings: '分析设置',
+    quickModeDesc: '4-6分钟快速评估，适合初步筛选',
+    standardModeDesc: '12-20分钟深度分析，提供完整报告',
+    analysisFocus: '分析重点',
+    analysisFocusHint: '选择您最关注的分析维度（可多选）',
+    additionalOptions: '附加选项',
+    includeComparison: '包含同行对比分析',
+    includeRisks: '包含风险评估',
+    detailedFinancials: '详细财务建模',
+    mockDataWarning: '⚠️ 后端服务不可用，当前显示演示数据',
+    mockDataHint: '请启动后端服务以使用真实分析功能',
+    error: '错误',
+    almostDone: '即将完成',
 
     // Step Result Card
     tam: 'TAM',

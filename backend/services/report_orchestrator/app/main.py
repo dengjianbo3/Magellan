@@ -6,6 +6,7 @@ import re
 import os
 import uuid
 import time
+from datetime import datetime
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -917,6 +918,215 @@ async def upload_bp_file(
             status_code=500,
             detail=f"文件上传失败: {str(e)}"
         )
+
+
+# V2: Simplified Upload APIs (Local Storage)
+# These endpoints save files locally instead of using File Service
+# Suitable for development and Stage 1 implementation
+
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@app.post("/api/v2/upload/bp", tags=["File Upload (V2 - Stage 1)"])
+async def upload_bp_v2(
+    file: UploadFile = File(...),
+    max_size_mb: int = 50
+):
+    """
+    V2: Upload Business Plan file (simplified, local storage).
+
+    Supports: PDF, Word (.doc, .docx), Excel (.xls, .xlsx)
+    Max size: 50MB (configurable)
+
+    Returns:
+        file_id: Unique identifier for the uploaded file
+        filename: Original filename
+        size: File size in bytes
+    """
+    try:
+        # Validate file type
+        allowed_extensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx']
+        file_extension = os.path.splitext(file.filename)[1].lower()
+
+        if file_extension not in allowed_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type: {file_extension}. Allowed: {', '.join(allowed_extensions)}"
+            )
+
+        # Read and validate file size
+        file_content = await file.read()
+        file_size = len(file_content)
+        max_size_bytes = max_size_mb * 1024 * 1024
+
+        if file_size > max_size_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large: {file_size / (1024*1024):.2f}MB. Max: {max_size_mb}MB"
+            )
+
+        # Generate unique file_id
+        file_id = f"bp_{uuid.uuid4().hex[:12]}"
+        safe_filename = f"{file_id}{file_extension}"
+        file_path = os.path.join(UPLOAD_DIR, safe_filename)
+
+        # Save file
+        with open(file_path, "wb") as f:
+            f.write(file_content)
+
+        logger.info(f"[UPLOAD] BP file saved: {file.filename} → {file_id} ({file_size} bytes)")
+
+        return {
+            "success": True,
+            "file_id": file_id,
+            "filename": file.filename,
+            "size": file_size
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[UPLOAD] BP upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+@app.post("/api/v2/upload/financial", tags=["File Upload (V2 - Stage 1)"])
+async def upload_financial_v2(
+    file: UploadFile = File(...),
+    max_size_mb: int = 50
+):
+    """
+    V2: Upload Financial Data file (simplified, local storage).
+
+    Supports: Excel (.xls, .xlsx), CSV
+    Max size: 50MB (configurable)
+
+    Returns:
+        file_id: Unique identifier for the uploaded file
+        filename: Original filename
+        size: File size in bytes
+    """
+    try:
+        # Validate file type
+        allowed_extensions = ['.xls', '.xlsx', '.csv']
+        file_extension = os.path.splitext(file.filename)[1].lower()
+
+        if file_extension not in allowed_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type: {file_extension}. Allowed: {', '.join(allowed_extensions)}"
+            )
+
+        # Read and validate file size
+        file_content = await file.read()
+        file_size = len(file_content)
+        max_size_bytes = max_size_mb * 1024 * 1024
+
+        if file_size > max_size_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large: {file_size / (1024*1024):.2f}MB. Max: {max_size_mb}MB"
+            )
+
+        # Generate unique file_id
+        file_id = f"fin_{uuid.uuid4().hex[:12]}"
+        safe_filename = f"{file_id}{file_extension}"
+        file_path = os.path.join(UPLOAD_DIR, safe_filename)
+
+        # Save file
+        with open(file_path, "wb") as f:
+            f.write(file_content)
+
+        logger.info(f"[UPLOAD] Financial file saved: {file.filename} → {file_id} ({file_size} bytes)")
+
+        return {
+            "success": True,
+            "file_id": file_id,
+            "filename": file.filename,
+            "size": file_size
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[UPLOAD] Financial upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+@app.post("/api/v2/upload/filings", tags=["File Upload (V2 - Stage 1)"])
+async def upload_filings_v2(
+    files: List[UploadFile] = File(...),
+    max_size_mb: int = 50
+):
+    """
+    V2: Upload Public Market Filings (simplified, local storage).
+
+    Supports multiple files: PDF, Word (.doc, .docx)
+    Max size per file: 50MB (configurable)
+
+    Returns:
+        file_ids: List of file IDs for uploaded files
+        filenames: List of original filenames
+        total_size: Total size of all files in bytes
+    """
+    try:
+        allowed_extensions = ['.pdf', '.doc', '.docx']
+        max_size_bytes = max_size_mb * 1024 * 1024
+
+        file_ids = []
+        filenames = []
+        total_size = 0
+
+        for file in files:
+            # Validate file type
+            file_extension = os.path.splitext(file.filename)[1].lower()
+
+            if file_extension not in allowed_extensions:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported file type: {file_extension}. Allowed: {', '.join(allowed_extensions)}"
+                )
+
+            # Read and validate file size
+            file_content = await file.read()
+            file_size = len(file_content)
+
+            if file_size > max_size_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File too large: {file.filename} ({file_size / (1024*1024):.2f}MB). Max: {max_size_mb}MB"
+                )
+
+            # Generate unique file_id
+            file_id = f"fil_{uuid.uuid4().hex[:12]}"
+            safe_filename = f"{file_id}{file_extension}"
+            file_path = os.path.join(UPLOAD_DIR, safe_filename)
+
+            # Save file
+            with open(file_path, "wb") as f:
+                f.write(file_content)
+
+            file_ids.append(file_id)
+            filenames.append(file.filename)
+            total_size += file_size
+
+            logger.info(f"[UPLOAD] Filing saved: {file.filename} → {file_id} ({file_size} bytes)")
+
+        logger.info(f"[UPLOAD] Total {len(files)} filings uploaded, total size: {total_size} bytes")
+
+        return {
+            "success": True,
+            "file_ids": file_ids,
+            "filenames": filenames,
+            "total_size": total_size,
+            "count": len(files)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[UPLOAD] Filings upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
 @app.post("/api/reports", tags=["Reports (V5)"])
@@ -2786,17 +2996,69 @@ async def websocket_analysis_v2(websocket: WebSocket, session_id: str):
     V2: 统一分析WebSocket端点
 
     支持所有5个场景的实时分析进度推送
+    Stage 2: 添加心跳机制支持
     """
+    import asyncio
+
     await websocket.accept()
     logger.info(f"[V2 WS] Client connected: session={session_id}")
 
+    # Stage 2: 心跳处理和消息路由
+    analysis_request = None
+    analysis_started = asyncio.Event()
+    heartbeat_active = True
+
+    async def message_router():
+        """统一处理所有接收的消息,避免竞争条件"""
+        nonlocal analysis_request, heartbeat_active
+        try:
+            while heartbeat_active:
+                try:
+                    message = await websocket.receive_json()
+
+                    if isinstance(message, dict):
+                        msg_type = message.get('type')
+
+                        if msg_type == 'ping':
+                            # 立即响应心跳
+                            logger.debug(f"[V2 WS] ❤️ Heartbeat ping received from session={session_id}")
+                            await websocket.send_json({
+                                "type": "pong",
+                                "timestamp": datetime.now().isoformat()
+                            })
+                        else:
+                            # 这是实际的分析请求
+                            if analysis_request is None:
+                                analysis_request = message
+                                logger.info(f"[V2 WS] Received analysis request: {message}")
+                                analysis_started.set()
+                            else:
+                                # 分析已经开始,这可能是HITL响应或其他消息
+                                # 暂时忽略,因为orchestrator会通过自己的receive处理
+                                logger.debug(f"[V2 WS] Received additional message during analysis: {msg_type}")
+
+                except WebSocketDisconnect:
+                    logger.info(f"[V2 WS] Message router: client disconnected session={session_id}")
+                    heartbeat_active = False
+                    break
+                except Exception as e:
+                    logger.error(f"[V2 WS] Message router error: {e}")
+                    break
+        except Exception as e:
+            logger.error(f"[V2 WS] Message router fatal error: {e}")
+
     try:
-        # 接收初始请求
-        data = await websocket.receive_json()
-        logger.info(f"[V2 WS] Received request: {data}")
+        # Stage 2: 启动消息路由任务
+        router_task = asyncio.create_task(message_router())
+
+        # 等待接收分析请求 (通过message_router)
+        await asyncio.wait_for(analysis_started.wait(), timeout=30.0)
+
+        if analysis_request is None:
+            raise Exception("Failed to receive analysis request")
 
         # 解析请求
-        request = AnalysisRequest(**data)
+        request = AnalysisRequest(**analysis_request)
 
         # 根据scenario创建对应的Orchestrator
         orchestrator = None
@@ -2832,6 +3094,9 @@ async def websocket_analysis_v2(websocket: WebSocket, session_id: str):
                 websocket=websocket
             )
         else:
+            # 停止消息路由
+            heartbeat_active = False
+            router_task.cancel()
             raise HTTPException(
                 status_code=501,
                 detail=f"场景 {request.scenario.value} 暂未实现"
@@ -2841,6 +3106,10 @@ async def websocket_analysis_v2(websocket: WebSocket, session_id: str):
         result = await orchestrator.orchestrate()
 
         logger.info(f"[V2 WS] Analysis completed: session={session_id}")
+
+        # Stage 2: 停止消息路由任务
+        heartbeat_active = False
+        router_task.cancel()
 
     except WebSocketDisconnect:
         logger.info(f"[V2 WS] Client disconnected: session={session_id}")

@@ -1,0 +1,568 @@
+# Workflow Configuration File
+# 定义所有投资分析场景的workflow
+#
+# Workflow = 一系列Agent的编排执行顺序
+# 每个场景支持两种深度: quick (快速) 和 standard (标准)
+#
+# 设计原则:
+# 1. Workflow只负责编排，不包含业务逻辑
+# 2. 所有能力来自原子Agent
+# 3. 不同场景通过不同的Agent组合实现差异化
+# 4. 最后一步总是report_synthesizer生成报告
+
+workflows:
+  # ============================================
+  # 早期投资分析 (Early Stage Investment)
+  # 重点: 团队 > 市场 > 产品概念
+  # ============================================
+
+  early-stage-investment:
+    scenario_id: early-stage-investment
+    name:
+      zh: 早期项目投资分析
+      en: Early Stage Investment Analysis
+    description:
+      zh: 适用于种子轮、天使轮、Pre-A轮项目的尽职调查
+      en: Due diligence for seed, angel, and pre-A stage projects
+
+    modes:
+      quick:
+        name: 快速分析
+        description: 3-5分钟快速评估，适合初筛
+        estimated_duration: 240  # 秒 (4分钟)
+        steps:
+          - step_id: 1
+            agent_id: team_evaluator
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 团队评估 (30秒)
+            required: true
+
+          - step_id: 2
+            agent_id: market_analyst
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 市场分析 (45秒)
+            required: true
+
+          - step_id: 3
+            agent_id: financial_expert
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 财务检查 (40秒)
+            required: true
+
+          - step_id: 4
+            agent_id: risk_assessor
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 风险评估 (35秒)
+            required: true
+
+          - step_id: 5
+            agent_id: report_synthesizer
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 生成快速报告 (30秒)
+            required: true
+            depends_on: [1, 2, 3, 4]
+
+      standard:
+        name: 标准分析
+        description: 10-15分钟全面尽调，包含详细分析
+        estimated_duration: 720  # 秒 (12分钟)
+        steps:
+          - step_id: 1
+            agent_id: team_evaluator
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 团队深度评估 (120秒)
+            required: true
+
+          - step_id: 2
+            agent_id: market_analyst
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 市场深度分析 (150秒)
+            required: true
+
+          - step_id: 3
+            agent_id: financial_expert
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 财务详细分析 (140秒)
+            required: true
+
+          - step_id: 4
+            agent_id: risk_assessor
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 风险全面评估 (130秒)
+            required: true
+
+          - step_id: 5
+            agent_id: report_synthesizer
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 生成详细报告 (90秒)
+            required: true
+            depends_on: [1, 2, 3, 4]
+
+  # ============================================
+  # 成长期投资分析 (Growth Investment)
+  # 重点: 市场 > 财务 > 团队
+  # ============================================
+
+  growth-investment:
+    scenario_id: growth-investment
+    name:
+      zh: 成长期项目投资分析
+      en: Growth Stage Investment Analysis
+    description:
+      zh: 适用于A轮、B轮、C轮成长期项目的投资分析
+      en: Investment analysis for Series A, B, C growth stage projects
+
+    modes:
+      quick:
+        name: 快速分析
+        estimated_duration: 255  # 秒
+        steps:
+          - step_id: 1
+            agent_id: market_analyst
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 市场分析 (45秒)
+            required: true
+
+          - step_id: 2
+            agent_id: financial_expert
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 财务分析 (40秒)
+            required: true
+
+          - step_id: 3
+            agent_id: team_evaluator
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 团队评估 (30秒)
+            required: true
+
+          - step_id: 4
+            agent_id: tech_specialist
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 技术评估 (40秒)
+            required: true
+
+          - step_id: 5
+            agent_id: risk_assessor
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 风险评估 (35秒)
+            required: true
+
+          - step_id: 6
+            agent_id: report_synthesizer
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 生成报告 (30秒)
+            required: true
+            depends_on: [1, 2, 3, 4, 5]
+
+      standard:
+        name: 标准分析
+        estimated_duration: 810  # 秒
+        steps:
+          - step_id: 1
+            agent_id: market_analyst
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 市场深度分析 (150秒)
+            required: true
+
+          - step_id: 2
+            agent_id: financial_expert
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 财务详细分析 (140秒)
+            required: true
+
+          - step_id: 3
+            agent_id: team_evaluator
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 团队评估 (120秒)
+            required: true
+
+          - step_id: 4
+            agent_id: tech_specialist
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 技术深度评估 (140秒)
+            required: true
+
+          - step_id: 5
+            agent_id: risk_assessor
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 风险全面评估 (130秒)
+            required: true
+
+          - step_id: 6
+            agent_id: report_synthesizer
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 生成详细报告 (90秒)
+            required: true
+            depends_on: [1, 2, 3, 4, 5]
+
+  # ============================================
+  # 公开市场投资分析 (Public Market Investment)
+  # 重点: 财务 > 市场 > 风险
+  # ============================================
+
+  public-market-investment:
+    scenario_id: public-market-investment
+    name:
+      zh: 公开市场投资分析
+      en: Public Market Investment Analysis
+    description:
+      zh: 适用于二级市场上市公司的投资分析
+      en: Investment analysis for publicly traded companies
+
+    modes:
+      quick:
+        name: 快速分析
+        estimated_duration: 180  # 秒
+        steps:
+          - step_id: 1
+            agent_id: financial_expert
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 财务分析 (40秒)
+            required: true
+
+          - step_id: 2
+            agent_id: market_analyst
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 市场分析 (45秒)
+            required: true
+
+          - step_id: 3
+            agent_id: risk_assessor
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 风险评估 (35秒)
+            required: true
+
+          - step_id: 4
+            agent_id: report_synthesizer
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 生成报告 (30秒)
+            required: true
+            depends_on: [1, 2, 3]
+
+      standard:
+        name: 标准分析
+        estimated_duration: 510  # 秒
+        steps:
+          - step_id: 1
+            agent_id: financial_expert
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 财务深度分析 (140秒)
+            required: true
+
+          - step_id: 2
+            agent_id: market_analyst
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 市场深度分析 (150秒)
+            required: true
+
+          - step_id: 3
+            agent_id: risk_assessor
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 风险全面评估 (130秒)
+            required: true
+
+          - step_id: 4
+            agent_id: report_synthesizer
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 生成详细报告 (90秒)
+            required: true
+            depends_on: [1, 2, 3]
+
+  # ============================================
+  # 另类投资分析 (Alternative Investment)
+  # 重点: 市场 > 财务 > 法律
+  # ============================================
+
+  alternative-investment:
+    scenario_id: alternative-investment
+    name:
+      zh: 另类投资分析
+      en: Alternative Investment Analysis
+    description:
+      zh: 适用于PE/VC基金、房地产、大宗商品等另类投资标的
+      en: Analysis for alternative investments like PE/VC funds, real estate, commodities
+
+    modes:
+      quick:
+        name: 快速分析
+        estimated_duration: 215  # 秒
+        steps:
+          - step_id: 1
+            agent_id: market_analyst
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 市场分析 (45秒)
+            required: true
+
+          - step_id: 2
+            agent_id: financial_expert
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 财务分析 (40秒)
+            required: true
+
+          - step_id: 3
+            agent_id: legal_advisor
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 法律合规检查 (35秒)
+            required: true
+
+          - step_id: 4
+            agent_id: risk_assessor
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 风险评估 (35秒)
+            required: true
+
+          - step_id: 5
+            agent_id: report_synthesizer
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 生成报告 (30秒)
+            required: true
+            depends_on: [1, 2, 3, 4]
+
+      standard:
+        name: 标准分析
+        estimated_duration: 640  # 秒
+        steps:
+          - step_id: 1
+            agent_id: market_analyst
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 市场深度分析 (150秒)
+            required: true
+
+          - step_id: 2
+            agent_id: financial_expert
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 财务详细分析 (140秒)
+            required: true
+
+          - step_id: 3
+            agent_id: legal_advisor
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 法律合规审查 (130秒)
+            required: true
+
+          - step_id: 4
+            agent_id: risk_assessor
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 风险全面评估 (130秒)
+            required: true
+
+          - step_id: 5
+            agent_id: report_synthesizer
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 生成详细报告 (90秒)
+            required: true
+            depends_on: [1, 2, 3, 4]
+
+  # ============================================
+  # 行业研究分析 (Industry Research)
+  # 重点: 市场 > 技术 > 财务
+  # ============================================
+
+  industry-research:
+    scenario_id: industry-research
+    name:
+      zh: 行业研究分析
+      en: Industry Research Analysis
+    description:
+      zh: 适用于行业趋势研究、赛道分析等宏观研究
+      en: Analysis for industry trends, sector research, and macro studies
+
+    modes:
+      quick:
+        name: 快速分析
+        estimated_duration: 195  # 秒
+        steps:
+          - step_id: 1
+            agent_id: market_analyst
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 市场与行业分析 (45秒)
+            required: true
+
+          - step_id: 2
+            agent_id: tech_specialist
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 技术趋势分析 (40秒)
+            required: true
+
+          - step_id: 3
+            agent_id: financial_expert
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 财务趋势分析 (40秒)
+            required: true
+
+          - step_id: 4
+            agent_id: report_synthesizer
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 生成报告 (30秒)
+            required: true
+            depends_on: [1, 2, 3]
+
+      standard:
+        name: 标准分析
+        estimated_duration: 570  # 秒
+        steps:
+          - step_id: 1
+            agent_id: market_analyst
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 市场与行业深度分析 (150秒)
+            required: true
+
+          - step_id: 2
+            agent_id: tech_specialist
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 技术趋势深度分析 (140秒)
+            required: true
+
+          - step_id: 3
+            agent_id: financial_expert
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 财务趋势详细分析 (140秒)
+            required: true
+
+          - step_id: 4
+            agent_id: report_synthesizer
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 生成详细报告 (90秒)
+            required: true
+            depends_on: [1, 2, 3]
+
+# ============================================
+# Workflow执行策略
+# ============================================
+
+execution:
+  # 步骤执行模式
+  mode: sequential  # sequential (顺序执行) / parallel (并行执行 - 未来支持)
+
+  # 错误处理
+  error_handling:
+    # 单个Agent失败时的策略
+    on_agent_failure: continue  # continue (继续执行) / stop (停止workflow) / retry (重试)
+    max_retries: 2
+    retry_delay: 5  # 秒
+
+  # 超时设置
+  timeout:
+    per_step: 300  # 单个步骤最大执行时间 (秒)
+    total: 1800     # 整个workflow最大执行时间 (秒, 30分钟)
+
+  # 结果缓存
+  caching:
+    enabled: true
+    ttl: 3600  # 缓存有效期 (秒, 1小时)
+
+# 配置元数据
+metadata:
+  version: "2.0.0"
+  last_updated: "2025-01-19"
+  maintainer: "Magellan Product Team"
+  description: |
+    Workflow配置文件定义了5个投资分析场景的Agent编排策略。
+
+    核心设计:
+    1. 每个场景有quick和standard两种模式
+    2. 所有workflow最后一步都是report_synthesizer
+    3. 不同场景通过不同的Agent组合和顺序实现差异化
+    4. Agent参数在workflow中配置，保持灵活性
+
+    变更流程:
+    1. 修改此配置文件
+    2. 重启report_orchestrator服务
+    3. 配置会被WorkflowEngine自动加载
+    4. 无需修改代码

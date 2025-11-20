@@ -16,12 +16,8 @@ from ...models.analysis_models import (
     QuickJudgmentResult,
     RecommendationType
 )
-from ..quick_agents import (
-    TechFoundationAgent,
-    TokenomicsAgent,
-    CommunityActivityAgent
-)
-from ...agents.crypto_analyst_agent import CryptoAnalystAgent
+# Phase 2: All agents now loaded from AgentRegistry
+# Legacy imports removed
 
 
 class AlternativeInvestmentOrchestrator(BaseOrchestrator):
@@ -42,11 +38,6 @@ class AlternativeInvestmentOrchestrator(BaseOrchestrator):
     """
 
     def __init__(self, session_id: str, request: Any, websocket: Any = None):
-        # Service URLs (必须在super().__init__之前定义,因为_init_agent_pool会被调用)
-        self.LLM_GATEWAY_URL = "http://llm_gateway:8003"
-        self.WEB_SEARCH_URL = "http://web_search_service:8010"
-        self.USER_SERVICE_URL = "http://user_service:8008"
-
         super().__init__(
             scenario=InvestmentScenario.ALTERNATIVE,
             session_id=session_id,
@@ -55,19 +46,7 @@ class AlternativeInvestmentOrchestrator(BaseOrchestrator):
         )
         self.scenario_name = "另类投资"
 
-    def _init_agent_pool(self) -> Dict[str, Any]:
-        """
-        初始化另类投资场景的专业Agent池
-        """
-        return {
-            "tech_analyst": TechFoundationAgent(web_search_url=self.WEB_SEARCH_URL),
-            "tokenomics_expert": TokenomicsAgent(web_search_url=self.WEB_SEARCH_URL),
-            "community_analyzer": CommunityActivityAgent(web_search_url=self.WEB_SEARCH_URL),
-            "crypto_analyst": CryptoAnalystAgent(
-                web_search_url=self.WEB_SEARCH_URL,
-                llm_gateway_url=self.LLM_GATEWAY_URL
-            ),
-        }
+        # Phase 2: Agents now loaded from AgentRegistry, no need for service URLs here
 
     async def _validate_target(self) -> bool:
         """

@@ -3,8 +3,8 @@
     <!-- Header -->
     <div class="header">
       <div class="header-left">
-        <h1>{{ t('analysisWizard.analysisFor') }}: {{ targetName }}</h1>
-        <p class="subtitle">{{ t('analysisWizard.analyzingHint') }}</p>
+        <h1 v-if="targetName && targetName !== 'Unknown Project'">{{ t('analysisWizard.analysisFor') }}: {{ targetName }}</h1>
+        <h1 v-else>{{ t('analysisWizard.analysis') }}</h1>
       </div>
       <div class="header-right">
         <button class="btn-cancel" @click="handleCancel">{{ t('analysisWizard.cancelAnalysis') }}</button>
@@ -38,7 +38,7 @@
       </div>
     </div>
 
-    <!-- Main Content: Agent Status & Timeline -->
+    <!-- Main Content: Agent Status & Analysis Results -->
     <div class="content-grid">
       <!-- AI Agent Status -->
       <div class="agent-status-panel">
@@ -65,29 +65,8 @@
         </div>
       </div>
 
-      <!-- Analysis Timeline -->
-      <div class="timeline-panel">
-        <h3 class="panel-title">{{ t('analysisWizard.analysisTimeline') }}</h3>
-        <div class="timeline-list">
-          <div
-            v-for="(event, index) in timelineEvents"
-            :key="index"
-            :class="['timeline-item', event.status]"
-          >
-            <div class="timeline-icon" :style="{ backgroundColor: event.iconColor }">
-              <span class="material-symbols-outlined">{{ event.icon }}</span>
-            </div>
-            <div class="timeline-content">
-              <div class="timeline-title">{{ event.title }}</div>
-              <div class="timeline-status">{{ event.statusText }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Workflow步骤列表 -->
-    <div class="workflow-steps">
+      <!-- Analysis Results (Workflow步骤列表) -->
+      <div class="workflow-steps-panel">
       <div
         v-for="(step, index) in workflow"
         :key="step.id"
@@ -133,6 +112,7 @@
             ✗ {{ step.error }}
           </div>
         </div>
+      </div>
       </div>
     </div>
 
@@ -227,10 +207,12 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useLanguage } from '@/composables/useLanguage.js';
+import { useToast } from '@/composables/useToast';
 import analysisServiceV2 from '@/services/analysisServiceV2.js';
 import StepResultCard from './StepResultCard.vue';
 
-const { t, currentLang } = useLanguage();
+const { t, locale: currentLang } = useLanguage();
+const { info } = useToast();
 
 const props = defineProps({
   sessionId: {
@@ -244,6 +226,15 @@ const props = defineProps({
   depth: {
     type: String,
     default: 'quick'
+  },
+  projectName: {
+    type: String,
+    required: false,
+    default: ''
+  },
+  targetData: {
+    type: Object,
+    default: () => ({})
   }
 });
 
@@ -252,7 +243,7 @@ const emit = defineEmits(['analysis-complete', 'cancel']);
 const analysisStatus = ref('running');
 const workflow = ref([]);
 const currentStepIndex = ref(0);
-const overallProgress = ref(65);
+const overallProgress = ref(0); // Initialize to 0, will be updated by workflow progress
 const currentAgentMessage = ref('');
 const quickJudgment = ref(null);
 const elapsedTime = ref('0m0s');
@@ -265,21 +256,21 @@ const getAgentsForScenario = (scenarioId) => {
   const agentConfigs = {
     'early_stage_dd': [
       {
-        id: 'team_quick_check',
+        id: 'team_evaluator',
         name: t('earlyStage.teamEvaluationAgent'),
         message: t('earlyStage.analyzingTeamBackground'),
         icon: 'groups',
         iconColor: '#3b82f6'
       },
       {
-        id: 'market_opportunity',
+        id: 'market_analyst',
         name: t('earlyStage.marketAnalysisAgent'),
         message: t('earlyStage.analyzingMarketSize'),
         icon: 'trending_up',
         iconColor: '#10b981'
       },
       {
-        id: 'red_flag_scan',
+        id: 'risk_assessor',
         name: t('earlyStage.riskAssessmentAgent'),
         message: t('earlyStage.scanningRedFlags'),
         icon: 'warning',
@@ -288,21 +279,21 @@ const getAgentsForScenario = (scenarioId) => {
     ],
     'growth_stage_dd': [
       {
-        id: 'financial_health_check',
+        id: 'financial_analyst',
         name: t('growthStage.financialHealthAgent'),
         message: t('growthStage.analyzingFinancialHealth'),
         icon: 'account_balance',
         iconColor: '#10b981'
       },
       {
-        id: 'growth_assessment',
+        id: 'growth_evaluator',
         name: t('growthStage.growthPotentialAgent'),
         message: t('growthStage.assessingGrowthPotential'),
         icon: 'insights',
         iconColor: '#3b82f6'
       },
       {
-        id: 'market_position_check',
+        id: 'market_analyst',
         name: t('growthStage.marketPositionAgent'),
         message: t('growthStage.analyzingMarketPosition'),
         icon: 'query_stats',
@@ -311,21 +302,21 @@ const getAgentsForScenario = (scenarioId) => {
     ],
     'public_market_dd': [
       {
-        id: 'valuation_check',
+        id: 'valuation_expert',
         name: t('analysisWizard.valuationAgent'),
         message: t('analysisWizard.runningGenerating'),
         icon: 'paid',
         iconColor: '#10b981'
       },
       {
-        id: 'fundamentals_check',
+        id: 'fundamental_analyst',
         name: t('analysisWizard.fundamentalsAgent'),
         message: t('analysisWizard.analyzingFundamentals'),
         icon: 'analytics',
         iconColor: '#3b82f6'
       },
       {
-        id: 'technical_check',
+        id: 'technical_analyst',
         name: t('analysisWizard.technicalAgent'),
         message: t('analysisWizard.analyzingTechnicals'),
         icon: 'show_chart',
@@ -334,28 +325,28 @@ const getAgentsForScenario = (scenarioId) => {
     ],
     'industry_research': [
       {
-        id: 'market_size_check',
+        id: 'market_analyst',
         name: t('analysisWizard.marketSizeAgent'),
         message: t('analysisWizard.analyzingMarketSize'),
         icon: 'public',
         iconColor: '#10b981'
       },
       {
-        id: 'competition_landscape',
+        id: 'competition_analyst',
         name: t('analysisWizard.competitionAgent'),
         message: t('analysisWizard.analyzingCompetition'),
         icon: 'groups',
         iconColor: '#3b82f6'
       },
       {
-        id: 'trend_analysis',
+        id: 'trend_researcher',
         name: t('analysisWizard.trendAgent'),
         message: t('analysisWizard.analyzingTrends'),
         icon: 'trending_up',
         iconColor: '#f59e0b'
       },
       {
-        id: 'opportunity_scan',
+        id: 'opportunity_scanner',
         name: t('analysisWizard.opportunityAgent'),
         message: t('analysisWizard.scanningOpportunities'),
         icon: 'lightbulb',
@@ -364,21 +355,21 @@ const getAgentsForScenario = (scenarioId) => {
     ],
     'alternative_investment_dd': [
       {
-        id: 'tech_analysis',
+        id: 'tech_analyst',
         name: t('alternative.techFoundationAgent'),
         message: t('alternative.analyzingTechFoundation'),
         icon: 'developer_board',
         iconColor: '#3b82f6'
       },
       {
-        id: 'tokenomics_analysis',
+        id: 'tokenomics_expert',
         name: t('alternative.tokenomicsAgent'),
         message: t('alternative.analyzingTokenomics'),
         icon: 'currency_bitcoin',
         iconColor: '#f59e0b'
       },
       {
-        id: 'community_analysis',
+        id: 'community_analyzer',
         name: t('alternative.communityAgent'),
         message: t('alternative.analyzingCommunity'),
         icon: 'forum',
@@ -391,54 +382,73 @@ const getAgentsForScenario = (scenarioId) => {
 };
 
 const agents = computed(() => {
+  // 如果workflow有数据，直接从workflow生成agents列表（已经翻译过）
+  if (workflow.value.length > 0) {
+    return workflow.value.map((step, index) => {
+      // 确定状态
+      let status = 'queued';
+      if (step.status === 'success') {
+        status = 'completed';
+      } else if (step.status === 'running') {
+        status = 'running';
+      }
+
+      // 确定图标和颜色（基于步骤序号或类型）
+      const iconColors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4'];
+      const icons = ['analytics', 'trending_up', 'show_chart', 'insights', 'assessment', 'query_stats'];
+
+      return {
+        id: step.id,
+        name: step.name,  // 已经在handleWorkflowStart中翻译过
+        message: step.status === 'running' ? '分析中...' : (step.status === 'success' ? '已完成' : '等待中'),
+        icon: icons[index % icons.length],
+        iconColor: iconColors[index % iconColors.length],
+        status: status
+      };
+    });
+  }
+
+  // 如果workflow还没有数据，使用预定义配置
   const scenarioId = props.scenario?.id || 'public_market_dd';
   const baseAgents = getAgentsForScenario(scenarioId);
 
-  // 设置状态(从workflow中获取实际状态,否则默认为queued)
   return baseAgents.map(agent => ({
     ...agent,
-    status: 'queued' // 实际状态应该从WebSocket更新
+    status: 'queued'
   }));
 });
 
-// Mock timeline events
-const timelineEvents = computed(() => [
-  {
-    title: t('analysisWizard.fetchingMarketData'),
-    statusText: t('analysisWizard.completedStatus'),
-    icon: 'download',
-    iconColor: '#10b981',
-    status: 'completed'
-  },
-  {
-    title: t('analysisWizard.analyzingFinancialStatements'),
-    statusText: t('analysisWizard.inProgress'),
-    icon: 'analytics',
-    iconColor: '#3b82f6',
-    status: 'in_progress'
-  },
-  {
-    title: t('analysisWizard.generatingValuationModels'),
-    statusText: t('analysisWizard.pending'),
-    icon: 'model_training',
-    iconColor: '#6b7280',
-    status: 'pending'
-  },
-  {
-    title: t('analysisWizard.finalReportCompilation'),
-    statusText: t('analysisWizard.pending'),
-    icon: 'description',
-    iconColor: '#6b7280',
-    status: 'pending'
-  }
-]);
-
 const targetName = computed(() => {
-  return 'AAPL';
+  return props.projectName || 'Unknown Project';
 });
 
 const estimatedTimeRemaining = computed(() => {
-  return '12m 45s';
+  // 根据深度估算总时间（分钟）
+  const depthTimes = {
+    quick: 5,
+    standard: 15,
+    comprehensive: 30
+  };
+
+  const totalMinutes = depthTimes[props.depth] || 5;
+  const totalSeconds = totalMinutes * 60;
+
+  // 计算已用时间
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+
+  // 根据进度估算剩余时间
+  const progress = overallProgress.value / 100;
+  const estimatedTotal = progress > 0.1 ? elapsed / progress : totalSeconds;
+  const remaining = Math.max(0, Math.floor(estimatedTotal - elapsed));
+
+  const minutes = Math.floor(remaining / 60);
+  const seconds = remaining % 60;
+
+  if (remaining === 0) {
+    return t('analysisWizard.almostDone');
+  }
+
+  return `${minutes}${t('analysisWizard.minutes')} ${seconds}${t('analysisWizard.seconds')}`;
 });
 
 const activeAgentsCount = computed(() => {
@@ -446,11 +456,21 @@ const activeAgentsCount = computed(() => {
 });
 
 const analysisStartTime = computed(() => {
-  return '10:42 AM';
+  const date = new Date(startTime);
+  const lang = currentLang?.value || 'zh';
+  return date.toLocaleTimeString(lang === 'zh' ? 'zh-CN' : 'en-US', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 });
 
 onMounted(() => {
   console.log('[AnalysisProgress] Mounted, session:', props.sessionId);
+  console.log('[AnalysisProgress] Project name:', props.projectName);
+  console.log('[AnalysisProgress] Target data:', props.targetData);
+  console.log('[AnalysisProgress] Scenario:', props.scenario);
+  console.log('[AnalysisProgress] Current lang:', currentLang.value);
+  console.log('[AnalysisProgress] Test translation:', t('analysisWizard.almostDone'));
 
   // 注册消息处理器
   analysisServiceV2.on('workflow_start', handleWorkflowStart);
@@ -460,6 +480,10 @@ onMounted(() => {
   analysisServiceV2.on('quick_judgment_complete', handleQuickJudgmentComplete);
   analysisServiceV2.on('analysis_complete', handleAnalysisComplete);
   analysisServiceV2.on('error', handleError);
+
+  // Stage 3: 刷新消息缓冲区，重放之前收到的消息
+  console.log('[AnalysisProgress] Flushing message buffer...');
+  analysisServiceV2.flushMessageBuffer();
 
   // 启动计时器
   elapsedTimer = setInterval(updateElapsedTime, 1000);
@@ -482,13 +506,64 @@ onUnmounted(() => {
 
 function handleWorkflowStart(message) {
   console.log('[Progress] Workflow start:', message);
-  workflow.value = message.data.steps.map(s => ({
-    id: s.id,
-    name: s.name,
-    agent: s.agent,
-    status: 'pending',
-    progress: 0
-  }));
+  console.log('[Progress] Steps received:', message.data?.steps);
+
+  // 详细日志 - 打印每个步骤的原始数据
+  if (message.data?.steps) {
+    message.data.steps.forEach((step, index) => {
+      console.log(`[Progress] Step ${index + 1} RAW:`, JSON.stringify(step));
+    });
+  }
+
+  if (!message.data || !message.data.steps) {
+    console.error('[Progress] Invalid workflow_start message format:', message);
+    return;
+  }
+
+  workflow.value = message.data.steps.map((s, index) => {
+    console.log(`[Progress] Processing step ${index + 1}:`, {
+      originalName: s.name,
+      hasDot: s.name?.includes('.'),
+      agent: s.agent
+    });
+
+    // 检测并翻译i18n key (包含"."的字符串)
+    let displayName = s.name;
+    if (displayName && displayName.includes('.')) {
+      // 这是一个i18n key，使用t()翻译
+      try {
+        const translated = t(displayName);
+        console.log(`[Progress] Translated "${displayName}" → "${translated}"`);
+        displayName = translated;
+      } catch (e) {
+        console.warn(`[Progress] Failed to translate i18n key: ${displayName}`, e);
+        // 如果翻译失败，保持原值
+      }
+    }
+
+    // 同样处理agent字段
+    let displayAgent = s.agent;
+    if (displayAgent && displayAgent.includes('.')) {
+      try {
+        const translated = t(displayAgent);
+        console.log(`[Progress] Translated agent "${displayAgent}" → "${translated}"`);
+        displayAgent = translated;
+      } catch (e) {
+        console.warn(`[Progress] Failed to translate agent i18n key: ${displayAgent}`, e);
+      }
+    }
+
+    return {
+      id: s.id,
+      name: displayName,
+      agent: displayAgent,
+      status: 'pending',
+      progress: 0
+    };
+  });
+
+  console.log('[Progress] Workflow initialized with', workflow.value.length, 'steps');
+  console.log('[Progress] Final workflow data:', JSON.stringify(workflow.value.map(s => ({id: s.id, name: s.name, agent: s.agent}))));
 }
 
 function handleStepStart(message) {
@@ -575,13 +650,13 @@ function getRecommendationText(recommendation) {
 function upgradeToStandard() {
   console.log('[Progress] Upgrade to standard analysis');
   // TODO: 实现升级到标准分析
-  alert(t('analysisWizard.upgradeFeatureInDevelopment'));
+  info(t('analysisWizard.upgradeFeatureInDevelopment'));
 }
 
 function exportReport() {
   console.log('[Progress] Export report');
   // TODO: 导出报告
-  alert(t('analysisWizard.exportFeatureInDevelopment'));
+  info(t('analysisWizard.exportFeatureInDevelopment'));
 }
 
 function viewReport() {
@@ -716,7 +791,7 @@ function handleCancel() {
 
 /* Panel Styles */
 .agent-status-panel,
-.timeline-panel {
+.workflow-steps-panel {
   background: #1a1d26;
   border: 1px solid #2d3748;
   border-radius: 12px;
@@ -819,70 +894,6 @@ function handleCancel() {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-/* Timeline List */
-.timeline-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.timeline-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem;
-  background: #0f1117;
-  border: 1px solid #374151;
-  border-radius: 10px;
-  transition: all 0.2s ease;
-}
-
-.timeline-item.in_progress {
-  border-color: #3b82f6;
-  background: rgba(59, 130, 246, 0.05);
-}
-
-.timeline-item.completed {
-  border-color: #10b981;
-  background: rgba(16, 185, 129, 0.05);
-}
-
-.timeline-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.timeline-icon .material-symbols-outlined {
-  font-size: 1.25rem;
-  color: white;
-}
-
-.timeline-content {
-  flex: 1;
-}
-
-.timeline-title {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #f3f4f6;
-  margin-bottom: 0.25rem;
-}
-
-.timeline-status {
-  font-size: 0.85rem;
-  color: #9ca3af;
-}
-
-/* Workflow步骤 */
-.workflow-steps {
-  margin-bottom: 2rem;
 }
 
 .step-item {

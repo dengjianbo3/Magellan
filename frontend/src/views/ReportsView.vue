@@ -430,8 +430,10 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useLanguage } from '../composables/useLanguage';
+import { useToast } from '@/composables/useToast';
 
 const { t } = useLanguage();
+const { success, error: showError } = useToast();
 
 const reportsData = ref([]);
 const loading = ref(true);
@@ -522,7 +524,7 @@ const viewReport = async (reportId) => {
     console.log('[ReportsView] Viewing report:', selectedReport.value);
   } catch (err) {
     console.error('[ReportsView] Failed to fetch report details:', err);
-    alert('获取报告详情失败: ' + err.message);
+    showError('获取报告详情失败: ' + err.message);
   }
 };
 
@@ -572,7 +574,7 @@ const deleteReport = async () => {
     }
   } catch (err) {
     console.error('[ReportsView] Failed to delete report:', err);
-    alert('删除报告失败: ' + err.message);
+    showError('删除报告失败: ' + err.message);
   }
 };
 
@@ -628,11 +630,11 @@ const exportReport = async (reportId, format) => {
     document.body.removeChild(a);
 
     console.log(`[ReportsView] Successfully exported report as ${format}: ${filename}`);
-    alert(`报告已成功导出为 ${format.toUpperCase()} 格式！`);
+    success(`报告已成功导出为 ${format.toUpperCase()} 格式！`);
 
   } catch (err) {
     console.error('[ReportsView] Failed to export report:', err);
-    alert(`导出报告失败: ${err.message}`);
+    showError(`导出报告失败: ${err.message}`);
   } finally {
     exportLoading.value = false;
   }

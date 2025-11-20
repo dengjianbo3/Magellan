@@ -1,5 +1,16 @@
 <template>
   <div class="w-full max-w-7xl mx-auto">
+    <!-- Mock Data Warning Banner -->
+    <div v-if="usingMockData" class="mb-8 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 backdrop-blur-sm">
+      <div class="flex items-center gap-3">
+        <span class="material-symbols-outlined text-amber-400 text-2xl">warning</span>
+        <div class="flex-1">
+          <p class="text-amber-300 font-medium">{{ t('analysisWizard.mockDataWarning') || '⚠️ Backend service is unavailable. Using demo data for display.' }}</p>
+          <p class="text-amber-400/70 text-sm mt-1">{{ t('analysisWizard.mockDataHint') || 'Please start the backend service to use real analysis features.' }}</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Header -->
     <div class="text-center mb-12">
       <h1 class="text-4xl font-display font-bold text-white mb-4 tracking-tight">{{ t('analysisWizard.selectScenario') }}</h1>
@@ -100,6 +111,7 @@ const emit = defineEmits(['scenario-selected']);
 const loading = ref(true);
 const rawScenarios = ref([]);
 const selectedScenario = ref(null);
+const usingMockData = ref(false);
 
 const scenarios = computed(() => {
   // Map raw IDs to translated content
@@ -127,8 +139,10 @@ onMounted(async () => {
     // Use mock data if service fails or for demo purposes since backend might not be running
     try {
         rawScenarios.value = await analysisServiceV2.getScenarios();
+        usingMockData.value = false;
     } catch (e) {
         console.warn("Backend fetch failed, using mock data for demo visuals");
+        usingMockData.value = true;
         rawScenarios.value = [
             { id: 'early-stage-investment', name: 'Early Stage VC', description: 'Analyze pre-seed/seed startups focusing on team and market potential.', icon: '🚀', quick_mode_duration: '5m', standard_mode_duration: '15m', status: 'active' },
             { id: 'growth-investment', name: 'Growth Equity', description: 'Evaluate scaling companies with established metrics and unit economics.', icon: '📈', quick_mode_duration: '10m', standard_mode_duration: '30m', status: 'active' },
@@ -140,6 +154,7 @@ onMounted(async () => {
     loading.value = false;
   } catch (error) {
     console.error('Failed to load scenarios:', error);
+    usingMockData.value = true;
     loading.value = false;
   }
 });
