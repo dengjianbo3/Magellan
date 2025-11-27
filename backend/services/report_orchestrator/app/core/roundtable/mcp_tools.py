@@ -13,6 +13,7 @@ class TavilySearchTool(Tool):
     Tavily 网络搜索工具 (MCP方式)
 
     通过 Web Search Service 调用 Tavily API
+    支持时间过滤功能
     """
 
     def __init__(
@@ -27,7 +28,13 @@ class TavilySearchTool(Tool):
         """
         super().__init__(
             name="tavily_search",
-            description="搜索互联网获取最新信息、新闻、市场数据等。适用于需要实时信息、行业动态、公司新闻的场景。"
+            description="""搜索互联网获取最新信息、新闻、市场数据等。
+支持时间过滤:
+- topic: 设为"news"可搜索新闻，配合days参数限制天数
+- time_range: "day"(24小时), "week"(7天), "month"(30天), "year"(1年)
+- days: 配合topic="news"使用，指定天数如3表示最近3天
+
+示例: 搜索最近一周的新闻，设置time_range="week"或topic="news"且days=7"""
         )
         self.web_search_url = web_search_url
         self.max_results = max_results
@@ -38,21 +45,40 @@ class TavilySearchTool(Tool):
 
         Args:
             query: 搜索查询
-            **kwargs: 其他参数（如 max_results）
+            **kwargs: 其他参数
+                - max_results: 最大返回结果数量
+                - topic: "general" 或 "news"
+                - time_range: "day", "week", "month", "year"
+                - days: 天数 (仅topic="news"时有效)
 
         Returns:
             搜索结果
         """
         max_results = kwargs.get("max_results", self.max_results)
+        topic = kwargs.get("topic", "general")
+        time_range = kwargs.get("time_range", None)
+        days = kwargs.get("days", None)
 
         try:
+            # Build request payload
+            request_data = {
+                "query": query,
+                "max_results": max_results,
+                "topic": topic,
+                "include_date": True
+            }
+
+            # Add time filtering if specified
+            if time_range and time_range in ["day", "week", "month", "year"]:
+                request_data["time_range"] = time_range
+
+            if days and topic == "news":
+                request_data["days"] = days
+
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     f"{self.web_search_url}/search",
-                    json={
-                        "query": query,
-                        "max_results": max_results
-                    }
+                    json=request_data
                 )
                 response.raise_for_status()
                 result = response.json()
@@ -66,11 +92,20 @@ class TavilySearchTool(Tool):
                         "results": []
                     }
 
-                # 构建摘要
-                summary_parts = [f"找到 {len(results)} 条关于'{query}'的搜索结果:\n"]
+                # 构建摘要 (包含日期信息)
+                time_filter_info = ""
+                if time_range:
+                    time_filter_info = f" (时间范围: {time_range})"
+                elif days and topic == "news":
+                    time_filter_info = f" (最近{days}天新闻)"
+
+                summary_parts = [f"找到 {len(results)} 条关于'{query}'的搜索结果{time_filter_info}:\n"]
                 for i, res in enumerate(results, 1):
+                    date_info = ""
+                    if res.get('published_date'):
+                        date_info = f"\n   发布日期: {res['published_date']}"
                     summary_parts.append(
-                        f"\n{i}. {res['title']}\n"
+                        f"\n{i}. {res['title']}{date_info}\n"
                         f"   来源: {res['url']}\n"
                         f"   内容: {res['content'][:200]}..."
                     )
@@ -106,6 +141,21 @@ class TavilySearchTool(Tool):
                         "type": "integer",
                         "description": "最大返回结果数量",
                         "default": self.max_results
+                    },
+                    "topic": {
+                        "type": "string",
+                        "description": "搜索主题: 'general'(通用搜索) 或 'news'(新闻搜索，可配合days参数)",
+                        "enum": ["general", "news"],
+                        "default": "general"
+                    },
+                    "time_range": {
+                        "type": "string",
+                        "description": "时间范围过滤: 'day'(24小时), 'week'(7天), 'month'(30天), 'year'(1年)",
+                        "enum": ["day", "week", "month", "year"]
+                    },
+                    "days": {
+                        "type": "integer",
+                        "description": "搜索最近N天的内容 (仅当topic='news'时有效)"
                     }
                 },
                 "required": ["query"]
@@ -318,6 +368,40 @@ class KnowledgeBaseTool(Tool):
 from .yahoo_finance_tool import YahooFinanceTool
 from .sec_edgar_tool import SECEdgarTool
 
+# Phase 1 增强工具
+from .enhanced_tools import (
+    ChinaMarketDataTool,
+    CompanyRegistryTool,
+    GitHubAnalyzerTool,
+    PatentSearchTool,
+    SentimentMonitorTool
+)
+
+# Phase 2 分析计算工具
+from .analysis_tools import (
+    DCFCalculatorTool,
+    ComparableAnalysisTool,
+    RiskScoringTool,
+    ComplianceCheckerTool,
+    SummaryChartTool
+)
+
+# Phase 3 MCP工具桥接
+from .mcp_tool_bridge import (
+    MCPFinancialDataTool,
+    MCPCompanyIntelligenceTool,
+    get_mcp_tool_for_agent
+)
+
+# Phase 4 高级工具
+from .advanced_tools import (
+    PersonBackgroundTool,
+    RegulationSearchTool,
+    MultiExchangeTool,
+    OrderbookAnalyzerTool,
+    BlackSwanScannerTool
+)
+
 
 # 工具工厂函数
 def create_mcp_tools_for_agent(agent_role: str) -> List[Tool]:
@@ -342,28 +426,52 @@ def create_mcp_tools_for_agent(agent_role: str) -> List[Tool]:
         tools.append(PublicDataTool())
         tools.append(YahooFinanceTool())  # 添加股票市场数据工具
         tools.append(SECEdgarTool())      # 添加SEC官方数据工具
+        tools.append(ChinaMarketDataTool())  # Phase 1: 中国市场数据 (A股/港股)
+        tools.append(MCPFinancialDataTool()) # Phase 3: MCP金融数据服务
 
     elif agent_role in ["FinancialExpert", "财务专家"]:
         # 财务专家需要公开数据和财务报表
         tools.append(PublicDataTool())
         tools.append(YahooFinanceTool())  # 添加财报数据工具
         tools.append(SECEdgarTool())      # 添加SEC官方财报工具
+        tools.append(ChinaMarketDataTool())  # Phase 1: 中国市场数据 (财务分析)
+        tools.append(DCFCalculatorTool())      # Phase 2: DCF估值计算
+        tools.append(ComparableAnalysisTool()) # Phase 2: 可比公司分析
+        tools.append(MCPFinancialDataTool())   # Phase 3: MCP金融数据服务
 
     elif agent_role in ["TeamEvaluator", "团队评估"]:
-        # 团队评估专家需要搜索团队背景
-        pass  # 主要使用 Tavily 搜索
+        # 团队评估专家需要搜索团队背景和企业信息
+        tools.append(CompanyRegistryTool())       # Phase 1: 企业工商信息查询
+        tools.append(MCPCompanyIntelligenceTool()) # Phase 3: MCP企业信息服务
+        tools.append(PersonBackgroundTool())      # Phase 4: 人员背景调查
 
     elif agent_role in ["RiskAssessor", "风险评估"]:
         # 风险评估专家需要搜索风险信息和查看SEC披露的风险因素
         tools.append(SECEdgarTool())  # 添加SEC工具查看8-K重大事件和10-K风险因素
+        tools.append(SentimentMonitorTool())  # Phase 1: 舆情监控和负面信息追踪
+        tools.append(RiskScoringTool())       # Phase 2: 风险量化评分模型
+        tools.append(MCPCompanyIntelligenceTool()) # Phase 3: MCP企业信息（风险查询）
+        tools.append(BlackSwanScannerTool())  # Phase 4: 黑天鹅事件扫描
 
     elif agent_role in ["TechSpecialist", "技术专家"]:
-        # 技术专家主要使用搜索工具
-        pass  # 主要使用 Tavily 搜索
+        # 技术专家需要分析技术栈和专利
+        tools.append(GitHubAnalyzerTool())  # Phase 1: GitHub项目分析
+        tools.append(PatentSearchTool())    # Phase 1: 专利检索
 
     elif agent_role in ["LegalAdvisor", "法律顾问"]:
-        # 法律顾问主要使用搜索工具查询法规
-        pass  # 主要使用 Tavily 搜索
+        # 法律顾问需要搜索法规和专利信息
+        tools.append(PatentSearchTool())       # Phase 1: 专利检索 (知识产权相关)
+        tools.append(ComplianceCheckerTool())  # Phase 2: 合规性检查清单
+        tools.append(RegulationSearchTool())   # Phase 4: 法规检索工具
+
+    elif agent_role in ["TechnicalAnalyst", "技术分析师"]:
+        # 技术分析师需要加密货币市场数据
+        tools.append(MultiExchangeTool())      # Phase 4: 多交易所数据
+        tools.append(OrderbookAnalyzerTool())  # Phase 4: 订单簿分析
+
+    elif agent_role in ["Leader", "主持人", "Moderator"]:
+        # Leader需要汇总和报告生成工具
+        tools.append(SummaryChartTool())  # Phase 2: 汇总图表生成
 
     # 知识库工具 - 所有专家都可以使用
     tools.append(KnowledgeBaseTool())

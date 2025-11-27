@@ -1,0 +1,157 @@
+# MCP (Model Context Protocol) 服务配置
+# 为圆桌讨论Agent提供的外部服务配置
+
+mcp_servers:
+  # ==========================================
+  # 1. 金融数据服务
+  # ==========================================
+  - name: financial-data
+    type: http
+    url: http://financial_data_mcp:8020
+    description: "统一金融数据接口 - 提供股票、财务、市场数据"
+    enabled: true
+    timeout: 30
+    retry_count: 3
+    tools:
+      - china_stock_quote      # A股实时行情
+      - china_stock_kline      # A股K线数据
+      - china_financial_report # A股财报数据
+      - hk_stock_quote         # 港股行情
+      - us_stock_quote         # 美股行情 (via Yahoo Finance)
+      - market_overview        # 市场概览
+      - industry_ranking       # 行业排名
+    auth:
+      api_key: "${FINANCIAL_DATA_API_KEY}"
+
+  # ==========================================
+  # 2. 企业信息服务
+  # ==========================================
+  - name: company-intelligence
+    type: http
+    url: http://company_intelligence_mcp:8021
+    description: "企业信息和背景调查服务"
+    enabled: true
+    timeout: 30
+    retry_count: 3
+    tools:
+      - company_basic_info     # 企业基本信息
+      - company_shareholders   # 股东信息
+      - company_executives     # 高管信息
+      - company_legal_cases    # 法律诉讼
+      - company_investments    # 对外投资
+      - company_risk_info      # 风险信息
+      - related_companies      # 关联企业图谱
+    auth:
+      api_key: "${COMPANY_INTEL_API_KEY}"
+
+  # ==========================================
+  # 3. 搜索服务 (已有)
+  # ==========================================
+  - name: web-search
+    type: http
+    url: http://web_search_service:8010
+    description: "网络搜索服务 - Tavily搜索"
+    enabled: true
+    timeout: 30
+    tools:
+      - search                 # 通用搜索
+      - news_search           # 新闻搜索
+    auth:
+      api_key: "${TAVILY_API_KEY}"
+
+  # ==========================================
+  # 4. 知识库服务 (已有)
+  # ==========================================
+  - name: knowledge-base
+    type: http
+    url: http://internal_knowledge_service:8009
+    description: "内部知识库服务"
+    enabled: true
+    timeout: 30
+    tools:
+      - search_documents       # 文档搜索
+      - get_document          # 获取文档
+      - list_documents        # 列出文档
+    auth: {}
+
+  # ==========================================
+  # 5. 技术分析服务
+  # ==========================================
+  - name: tech-analysis
+    type: http
+    url: http://tech_analysis_mcp:8022
+    description: "技术分析服务 - GitHub/专利/技术栈"
+    enabled: true
+    timeout: 60
+    retry_count: 2
+    tools:
+      - github_repo_info       # GitHub仓库信息
+      - github_contributors    # 贡献者分析
+      - github_activity        # 活跃度分析
+      - patent_search          # 专利检索
+      - patent_analyze         # 专利分析
+      - tech_stack_detect      # 技术栈检测
+    auth:
+      github_token: "${GITHUB_TOKEN}"
+      google_patents_key: "${GOOGLE_PATENTS_KEY}"
+
+  # ==========================================
+  # 6. 风险监控服务
+  # ==========================================
+  - name: risk-monitoring
+    type: http
+    url: http://risk_monitoring_mcp:8023
+    description: "风险监控服务 - 舆情/监管/预警"
+    enabled: true
+    timeout: 30
+    tools:
+      - sentiment_analysis     # 舆情分析
+      - negative_news_scan     # 负面新闻扫描
+      - regulatory_updates     # 监管动态
+      - risk_alerts           # 风险预警
+    auth:
+      api_key: "${RISK_MONITOR_API_KEY}"
+
+  # ==========================================
+  # 7. 本地计算服务 (无需网络)
+  # ==========================================
+  - name: local-analysis
+    type: local
+    url: ""
+    description: "本地分析计算服务 - 估值/评分模型"
+    enabled: true
+    tools:
+      - dcf_valuation          # DCF估值
+      - comparable_valuation   # 可比公司估值
+      - risk_scoring           # 风险评分
+      - compliance_check       # 合规检查
+      - chart_generation       # 图表生成
+    auth: {}
+
+
+# ==========================================
+# 服务发现配置
+# ==========================================
+service_discovery:
+  enabled: false
+  type: consul  # consul / etcd / kubernetes
+  address: ""
+  namespace: magellan
+
+
+# ==========================================
+# 全局配置
+# ==========================================
+global:
+  default_timeout: 30
+  max_retries: 3
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 5
+    recovery_timeout: 30
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 60
+  logging:
+    level: INFO
+    include_params: false  # 是否记录请求参数（可能包含敏感信息）
