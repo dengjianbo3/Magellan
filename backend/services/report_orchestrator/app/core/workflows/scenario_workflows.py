@@ -52,7 +52,7 @@ EARLY_STAGE_STANDARD = [
         id="bp_parsing",
         name="BP解析",
         required=False,
-        agent="bp_parser",
+        agent="market_analyst",
         condition="target.get('bp_file_id') is not None",
         inputs=["bp_file_id"],
         expected_output=["structured_bp", "business_model", "financials"]
@@ -91,12 +91,12 @@ EARLY_STAGE_STANDARD = [
         expected_output=["inconsistencies", "red_flags"]
     ),
     WorkflowStepTemplate(
-        id="investment_recommendation",
-        name="投资决策建议",
+        id="report_synthesis",
+        name="生成投资备忘录",
         required=True,
-        agent="orchestrator",
+        agent="report_synthesizer",
         inputs=["all_previous"],
-        expected_output=["recommendation", "investment_score", "key_risks", "next_steps"]
+        expected_output=["recommendation", "investment_score", "key_risks", "next_steps", "preliminary_im"]
     )
 ]
 
@@ -108,7 +108,7 @@ GROWTH_QUICK = [
         id="financial_health_check",
         name="财务健康检查",
         required=True,
-        agent="financial_analyst",
+        agent="financial_expert",
         quick_mode=True,
         expected_duration=90,
         expected_output=["cash_position", "runway", "profitability_path"]
@@ -117,7 +117,7 @@ GROWTH_QUICK = [
         id="growth_assessment",
         name="增长潜力评估",
         required=True,
-        agent="growth_evaluator",
+        agent="market_analyst",
         quick_mode=True,
         expected_duration=60,
         expected_output=["growth_score", "growth_drivers", "scalability"]
@@ -176,12 +176,12 @@ GROWTH_STANDARD = [
         expected_output=["valuation_range", "dcf_model", "comparable_multiples"]
     ),
     WorkflowStepTemplate(
-        id="roi_projection",
-        name="投资回报预测",
+        id="report_synthesis",
+        name="生成投资分析报告",
         required=True,
-        agent="orchestrator",
+        agent="report_synthesizer",
         inputs=["all_previous"],
-        expected_output=["roi_scenarios", "exit_timeline", "risk_adjusted_return"]
+        expected_output=["roi_scenarios", "exit_timeline", "risk_adjusted_return", "final_report"]
     )
 ]
 
@@ -193,7 +193,7 @@ PUBLIC_MARKET_QUICK = [
         id="valuation_check",
         name="估值检查",
         required=True,
-        agent="valuation_expert",
+        agent="financial_expert",
         quick_mode=True,
         data_sources=["yahoo_finance"],
         expected_duration=60,
@@ -203,7 +203,7 @@ PUBLIC_MARKET_QUICK = [
         id="fundamentals_check",
         name="基本面检查",
         required=True,
-        agent="fundamental_analyst",
+        agent="financial_expert",
         quick_mode=True,
         expected_duration=90,
         expected_output=["fundamentals_score", "revenue_growth", "profit_margin"]
@@ -212,7 +212,7 @@ PUBLIC_MARKET_QUICK = [
         id="technical_check",
         name="技术面检查",
         required=True,
-        agent="technical_analyst",
+        agent="market_analyst",
         quick_mode=True,
         expected_duration=60,
         expected_output=["technical_score", "trend", "support_resistance"]
@@ -232,7 +232,7 @@ PUBLIC_MARKET_STANDARD = [
         id="data_collection",
         name="数据获取",
         required=True,
-        agent="data_fetcher",
+        agent="financial_expert",
         data_sources=["yahoo_finance", "sec_edgar"],
         expected_output=["stock_data", "financials", "company_info"]
     ),
@@ -248,7 +248,7 @@ PUBLIC_MARKET_STANDARD = [
         id="technical_analysis",
         name="技术面分析",
         required=False,
-        agent="quant_analyst",
+        agent="financial_expert",
         condition="config.get('depth') == 'comprehensive'",
         inputs=["stock_data"],
         expected_output=["technical_signals", "price_targets", "support_resistance"]
@@ -270,12 +270,12 @@ PUBLIC_MARKET_STANDARD = [
         expected_output=["risk_factors", "risk_score", "scenario_analysis"]
     ),
     WorkflowStepTemplate(
-        id="investment_recommendation",
-        name="投资建议生成",
+        id="report_synthesis",
+        name="生成投资建议书",
         required=True,
-        agent="orchestrator",
+        agent="report_synthesizer",
         inputs=["all_previous"],
-        expected_output=["recommendation", "target_price", "confidence", "time_horizon"]
+        expected_output=["recommendation", "target_price", "confidence", "time_horizon", "final_report"]
     )
 ]
 
@@ -287,7 +287,7 @@ ALTERNATIVE_QUICK = [
         id="tech_foundation_check",
         name="技术基础检查",
         required=True,
-        agent="tech_analyst",
+        agent="tech_specialist",
         quick_mode=True,
         data_sources=["github", "web_search"],
         expected_duration=60,
@@ -297,7 +297,7 @@ ALTERNATIVE_QUICK = [
         id="tokenomics_check",
         name="代币经济学检查",
         required=True,
-        agent="tokenomics_expert",
+        agent="financial_expert",
         quick_mode=True,
         expected_duration=90,
         expected_output=["tokenomics_score", "distribution", "inflation_model"]
@@ -306,7 +306,7 @@ ALTERNATIVE_QUICK = [
         id="community_check",
         name="社区活跃度检查",
         required=True,
-        agent="community_analyzer",
+        agent="market_analyst",
         quick_mode=True,
         expected_duration=60,
         expected_output=["community_score", "social_engagement", "holder_count"]
@@ -326,7 +326,7 @@ ALTERNATIVE_STANDARD = [
         id="token_identification",
         name="代币识别",
         required=True,
-        agent="crypto_analyst",
+        agent="market_analyst",
         inputs=["symbol", "contract_address"],
         data_sources=["coingecko", "etherscan"],
         expected_output=["token_info", "token_type", "chain_info"]
@@ -335,7 +335,7 @@ ALTERNATIVE_STANDARD = [
         id="onchain_analysis",
         name="链上数据分析",
         required=True,
-        agent="onchain_analyst",
+        agent="tech_specialist",
         data_sources=["etherscan", "dune_analytics"],
         inputs=["contract_address"],
         expected_output=["holder_distribution", "transaction_volume", "whale_activity"]
@@ -344,7 +344,7 @@ ALTERNATIVE_STANDARD = [
         id="project_research",
         name="项目研究",
         required=True,
-        agent="crypto_analyst",
+        agent="market_analyst",
         inputs=["token_info", "project_name"],
         data_sources=["web_search", "github", "discord"],
         expected_output=["tech_overview", "team_background", "roadmap"]
@@ -361,7 +361,7 @@ ALTERNATIVE_STANDARD = [
         id="community_assessment",
         name="社区评估",
         required=True,
-        agent="crypto_analyst",
+        agent="market_analyst",
         data_sources=["twitter", "discord", "telegram"],
         expected_output=["community_size", "engagement", "sentiment"]
     ),
@@ -374,12 +374,12 @@ ALTERNATIVE_STANDARD = [
         expected_output=["technical_risks", "regulatory_risks", "market_risks"]
     ),
     WorkflowStepTemplate(
-        id="investment_recommendation",
-        name="投资建议",
+        id="report_synthesis",
+        name="生成投资分析报告",
         required=True,
-        agent="orchestrator",
+        agent="report_synthesizer",
         inputs=["all_previous"],
-        expected_output=["recommendation", "entry_price", "stop_loss", "position_size"]
+        expected_output=["recommendation", "entry_price", "stop_loss", "position_size", "final_report"]
     )
 ]
 
@@ -401,7 +401,7 @@ INDUSTRY_RESEARCH_QUICK = [
         id="competition_landscape",
         name="竞争格局分析",
         required=True,
-        agent="competition_analyst",
+        agent="market_analyst",
         quick_mode=True,
         expected_duration=90,
         expected_output=["top_players", "market_concentration", "entry_barriers"]
@@ -410,7 +410,7 @@ INDUSTRY_RESEARCH_QUICK = [
         id="trend_analysis",
         name="趋势分析",
         required=True,
-        agent="trend_researcher",
+        agent="market_analyst",
         quick_mode=True,
         expected_duration=60,
         expected_output=["key_trends", "tech_direction", "policy_support"]
@@ -419,7 +419,7 @@ INDUSTRY_RESEARCH_QUICK = [
         id="opportunity_scan",
         name="机会扫描",
         required=True,
-        agent="opportunity_scanner",
+        agent="market_analyst",
         quick_mode=True,
         expected_duration=60,
         expected_output=["opportunities", "sub_sectors", "innovations"]
@@ -439,7 +439,7 @@ INDUSTRY_RESEARCH_STANDARD = [
         id="market_definition",
         name="市场定义",
         required=True,
-        agent="industry_researcher",
+        agent="market_analyst",
         inputs=["industry_name", "research_topic"],
         expected_output=["market_boundaries", "segments", "value_chain"]
     ),
@@ -468,12 +468,12 @@ INDUSTRY_RESEARCH_STANDARD = [
         expected_output=["key_players", "market_structure", "competitive_dynamics"]
     ),
     WorkflowStepTemplate(
-        id="investment_opportunity_mapping",
-        name="投资机会地图",
+        id="report_synthesis",
+        name="生成行业研究报告",
         required=True,
-        agent="orchestrator",
+        agent="report_synthesizer",
         inputs=["all_previous"],
-        expected_output=["opportunity_areas", "attractive_segments", "entry_strategies"]
+        expected_output=["opportunity_areas", "attractive_segments", "entry_strategies", "final_report"]
     ),
     WorkflowStepTemplate(
         id="roundtable_discussion",

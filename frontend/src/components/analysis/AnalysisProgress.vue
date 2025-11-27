@@ -257,21 +257,21 @@ const getAgentsForScenario = (scenarioId) => {
     'early_stage_dd': [
       {
         id: 'team_evaluator',
-        name: t('earlyStage.teamEvaluationAgent'),
+        name: t('analysis.step2.agents.teamEvaluator.name'),
         message: t('earlyStage.analyzingTeamBackground'),
         icon: 'groups',
         iconColor: '#3b82f6'
       },
       {
         id: 'market_analyst',
-        name: t('earlyStage.marketAnalysisAgent'),
+        name: t('analysis.step2.agents.marketAnalyst.name'),
         message: t('earlyStage.analyzingMarketSize'),
         icon: 'trending_up',
         iconColor: '#10b981'
       },
       {
         id: 'risk_assessor',
-        name: t('earlyStage.riskAssessmentAgent'),
+        name: t('analysis.step2.agents.riskAssessor.name'),
         message: t('earlyStage.scanningRedFlags'),
         icon: 'warning',
         iconColor: '#ef4444'
@@ -279,22 +279,22 @@ const getAgentsForScenario = (scenarioId) => {
     ],
     'growth_stage_dd': [
       {
-        id: 'financial_analyst',
-        name: t('growthStage.financialHealthAgent'),
+        id: 'financial_expert',
+        name: t('analysis.step2.agents.financialExpert.name'),
         message: t('growthStage.analyzingFinancialHealth'),
         icon: 'account_balance',
         iconColor: '#10b981'
       },
       {
-        id: 'growth_evaluator',
-        name: t('growthStage.growthPotentialAgent'),
+        id: 'market_analyst',
+        name: t('analysis.step2.agents.marketAnalyst.name'),
         message: t('growthStage.assessingGrowthPotential'),
         icon: 'insights',
         iconColor: '#3b82f6'
       },
       {
         id: 'market_analyst',
-        name: t('growthStage.marketPositionAgent'),
+        name: t('analysis.step2.agents.marketAnalyst.name'),
         message: t('growthStage.analyzingMarketPosition'),
         icon: 'query_stats',
         iconColor: '#f59e0b'
@@ -302,23 +302,23 @@ const getAgentsForScenario = (scenarioId) => {
     ],
     'public_market_dd': [
       {
-        id: 'valuation_expert',
-        name: t('analysisWizard.valuationAgent'),
+        id: 'financial_expert',
+        name: t('analysis.step2.agents.financialExpert.name'),
         message: t('analysisWizard.runningGenerating'),
         icon: 'paid',
         iconColor: '#10b981'
       },
       {
-        id: 'fundamental_analyst',
-        name: t('analysisWizard.fundamentalsAgent'),
-        message: t('analysisWizard.analyzingFundamentals'),
+        id: 'financial_expert',
+        name: t('analysis.step2.agents.financialExpert.name'),
+        message: t('publicMarket.fundamentalAnalysis'),
         icon: 'analytics',
         iconColor: '#3b82f6'
       },
       {
-        id: 'technical_analyst',
-        name: t('analysisWizard.technicalAgent'),
-        message: t('analysisWizard.analyzingTechnicals'),
+        id: 'market_analyst',
+        name: t('analysis.step2.agents.marketAnalyst.name'),
+        message: t('publicMarket.technicalIndicators'),
         icon: 'show_chart',
         iconColor: '#f59e0b'
       }
@@ -326,51 +326,51 @@ const getAgentsForScenario = (scenarioId) => {
     'industry_research': [
       {
         id: 'market_analyst',
-        name: t('analysisWizard.marketSizeAgent'),
-        message: t('analysisWizard.analyzingMarketSize'),
+        name: t('analysis.step2.agents.marketAnalyst.name'),
+        message: t('analysisWizard.analyzing'),
         icon: 'public',
         iconColor: '#10b981'
       },
       {
-        id: 'competition_analyst',
-        name: t('analysisWizard.competitionAgent'),
-        message: t('analysisWizard.analyzingCompetition'),
+        id: 'market_analyst',
+        name: t('analysis.step2.agents.marketAnalyst.name'),
+        message: t('analysisWizard.analyzing'),
         icon: 'groups',
         iconColor: '#3b82f6'
       },
       {
-        id: 'trend_researcher',
-        name: t('analysisWizard.trendAgent'),
-        message: t('analysisWizard.analyzingTrends'),
+        id: 'market_analyst',
+        name: t('analysis.step2.agents.marketAnalyst.name'),
+        message: t('analysisWizard.analyzing'),
         icon: 'trending_up',
         iconColor: '#f59e0b'
       },
       {
-        id: 'opportunity_scanner',
-        name: t('analysisWizard.opportunityAgent'),
-        message: t('analysisWizard.scanningOpportunities'),
+        id: 'market_analyst',
+        name: t('analysis.step2.agents.marketAnalyst.name'),
+        message: t('analysisWizard.analyzing'),
         icon: 'lightbulb',
         iconColor: '#8b5cf6'
       }
     ],
     'alternative_investment_dd': [
       {
-        id: 'tech_analyst',
-        name: t('alternative.techFoundationAgent'),
+        id: 'tech_specialist',
+        name: t('analysis.step2.agents.techSpecialist.name'),
         message: t('alternative.analyzingTechFoundation'),
         icon: 'developer_board',
         iconColor: '#3b82f6'
       },
       {
-        id: 'tokenomics_expert',
-        name: t('alternative.tokenomicsAgent'),
+        id: 'financial_expert',
+        name: t('analysis.step2.agents.financialExpert.name'),
         message: t('alternative.analyzingTokenomics'),
         icon: 'currency_bitcoin',
         iconColor: '#f59e0b'
       },
       {
-        id: 'community_analyzer',
-        name: t('alternative.communityAgent'),
+        id: 'market_analyst',
+        name: t('analysis.step2.agents.marketAnalyst.name'),
         message: t('alternative.analyzingCommunity'),
         icon: 'forum',
         iconColor: '#10b981'
@@ -400,7 +400,7 @@ const agents = computed(() => {
       return {
         id: step.id,
         name: step.name,  // 已经在handleWorkflowStart中翻译过
-        message: step.status === 'running' ? '分析中...' : (step.status === 'success' ? '已完成' : '等待中'),
+        message: step.status === 'running' ? t('analysisWizard.analyzing') : (step.status === 'success' ? t('analysisWizard.completed') : t('analysisWizard.queued')),
         icon: icons[index % icons.length],
         iconColor: iconColors[index % iconColors.length],
         status: status
@@ -520,6 +520,17 @@ function handleWorkflowStart(message) {
     return;
   }
 
+  // Agent ID to i18n key mapping
+  const agentKeyMap = {
+    'market_analyst': 'analysis.step2.agents.marketAnalyst.name',
+    'financial_expert': 'analysis.step2.agents.financialExpert.name',
+    'team_evaluator': 'analysis.step2.agents.teamEvaluator.name',
+    'risk_assessor': 'analysis.step2.agents.riskAssessor.name',
+    'tech_specialist': 'analysis.step2.agents.techSpecialist.name',
+    'legal_advisor': 'analysis.step2.agents.legalAdvisor.name',
+    'report_synthesizer': 'analysis.step2.agents.marketAnalyst.name' // Fallback for report synthesizer
+  };
+
   workflow.value = message.data.steps.map((s, index) => {
     console.log(`[Progress] Processing step ${index + 1}:`, {
       originalName: s.name,
@@ -541,15 +552,23 @@ function handleWorkflowStart(message) {
       }
     }
 
-    // 同样处理agent字段
+    // 处理agent字段 translation
     let displayAgent = s.agent;
-    if (displayAgent && displayAgent.includes('.')) {
-      try {
-        const translated = t(displayAgent);
-        console.log(`[Progress] Translated agent "${displayAgent}" → "${translated}"`);
-        displayAgent = translated;
-      } catch (e) {
-        console.warn(`[Progress] Failed to translate agent i18n key: ${displayAgent}`, e);
+    if (displayAgent) {
+      if (displayAgent.includes('.')) {
+        // 已经是 key
+        try {
+          displayAgent = t(displayAgent);
+        } catch (e) {
+           console.warn(`[Progress] Failed to translate agent key: ${displayAgent}`, e);
+        }
+      } else if (agentKeyMap[displayAgent]) {
+        // 使用映射表
+        try {
+          displayAgent = t(agentKeyMap[displayAgent]);
+        } catch (e) {
+          console.warn(`[Progress] Failed to translate mapped agent: ${displayAgent}`, e);
+        }
       }
     }
 
@@ -674,7 +693,7 @@ function handleCancel() {
 .analysis-progress {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 2rem;
+  /* padding: 2rem; Removed to avoid double padding with parent */
   color: #e5e7eb;
 }
 
@@ -784,9 +803,15 @@ function handleCancel() {
 /* Content Grid */
 .content-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 350px 1fr;
   gap: 1.5rem;
   margin-bottom: 2rem;
+}
+
+@media (max-width: 1024px) {
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Panel Styles */

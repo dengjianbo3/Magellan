@@ -50,56 +50,61 @@ class PDFReportGenerator:
         styles = getSampleStyleSheet()
 
         # 标题样式
-        styles.add(ParagraphStyle(
-            name='ReportTitle',
-            parent=styles['Heading1'],
-            fontSize=24,
-            textColor=colors.HexColor('#1a1a1a'),
-            spaceAfter=30,
-            alignment=TA_CENTER,
-            fontName='Helvetica-Bold'
-        ))
+        if 'ReportTitle' not in styles:
+            styles.add(ParagraphStyle(
+                name='ReportTitle',
+                parent=styles['Heading1'],
+                fontSize=24,
+                textColor=colors.HexColor('#1a1a1a'),
+                spaceAfter=30,
+                alignment=TA_CENTER,
+                fontName='Helvetica-Bold'
+            ))
 
         # 章节标题
-        styles.add(ParagraphStyle(
-            name='ChapterTitle',
-            parent=styles['Heading2'],
-            fontSize=18,
-            textColor=colors.HexColor('#2c3e50'),
-            spaceBefore=20,
-            spaceAfter=12,
-            fontName='Helvetica-Bold'
-        ))
+        if 'ChapterTitle' not in styles:
+            styles.add(ParagraphStyle(
+                name='ChapterTitle',
+                parent=styles['Heading2'],
+                fontSize=18,
+                textColor=colors.HexColor('#2c3e50'),
+                spaceBefore=20,
+                spaceAfter=12,
+                fontName='Helvetica-Bold'
+            ))
 
         # 小节标题
-        styles.add(ParagraphStyle(
-            name='SectionTitle',
-            parent=styles['Heading3'],
-            fontSize=14,
-            textColor=colors.HexColor('#34495e'),
-            spaceBefore=12,
-            spaceAfter=6,
-            fontName='Helvetica-Bold'
-        ))
+        if 'SectionTitle' not in styles:
+            styles.add(ParagraphStyle(
+                name='SectionTitle',
+                parent=styles['Heading3'],
+                fontSize=14,
+                textColor=colors.HexColor('#34495e'),
+                spaceBefore=12,
+                spaceAfter=6,
+                fontName='Helvetica-Bold'
+            ))
 
         # 正文样式
-        styles.add(ParagraphStyle(
-            name='BodyText',
-            parent=styles['Normal'],
-            fontSize=11,
-            leading=16,
-            textColor=colors.HexColor('#2c3e50'),
-            alignment=TA_JUSTIFY,
-            spaceAfter=10
-        ))
+        if 'BodyText' not in styles:
+            styles.add(ParagraphStyle(
+                name='BodyText',
+                parent=styles['Normal'],
+                fontSize=11,
+                leading=16,
+                textColor=colors.HexColor('#2c3e50'),
+                alignment=TA_JUSTIFY,
+                spaceAfter=10
+            ))
 
         # 重点文本
-        styles.add(ParagraphStyle(
-            name='Highlight',
-            parent=styles['BodyText'],
-            textColor=colors.HexColor('#e74c3c'),
-            fontName='Helvetica-Bold'
-        ))
+        if 'Highlight' not in styles:
+            styles.add(ParagraphStyle(
+                name='Highlight',
+                parent=styles['BodyText'],
+                textColor=colors.HexColor('#e74c3c'),
+                fontName='Helvetica-Bold'
+            ))
 
         return styles
 
@@ -131,6 +136,11 @@ class PDFReportGenerator:
         # 构建文档内容
         story = []
 
+        # 获取 sections（LLM生成的报告格式）
+        # 数据可能在顶层或 preliminary_im 内部
+        preliminary_im = report_data.get('preliminary_im', {})
+        sections = report_data.get('sections') or preliminary_im.get('sections', {})
+
         # 1. 封面
         story.extend(self._build_cover_page(report_data))
         story.append(PageBreak())
@@ -140,38 +150,125 @@ class PDFReportGenerator:
         story.append(PageBreak())
 
         # 3. 执行摘要
-        if report_data.get('preliminary_im'):
-            story.extend(self._build_executive_summary(report_data['preliminary_im']))
+        if preliminary_im:
+            story.extend(self._build_executive_summary(preliminary_im))
             story.append(PageBreak())
 
-        # 4. 财务分析
-        if report_data.get('preliminary_im', {}).get('financial_highlights'):
-            story.extend(self._build_financial_section(report_data['preliminary_im']))
+        # 4. 财务分析 - 优先从 sections 获取，兼容旧格式
+        financial_data = sections.get('financial') or preliminary_im.get('financial_highlights')
+        if financial_data:
+            story.extend(self._build_financial_section_v2(financial_data, preliminary_im))
             story.append(PageBreak())
 
-        # 5. 市场分析
-        if report_data.get('market_analysis'):
-            story.extend(self._build_market_section(report_data['market_analysis']))
+        # 5. 市场分析 - 优先从 sections 获取，也检查 market_section
+        market_data = sections.get('market') or preliminary_im.get('market_section') or report_data.get('market_analysis')
+        if market_data:
+            story.extend(self._build_market_section(market_data))
             story.append(PageBreak())
 
-        # 6. 团队分析
-        if report_data.get('team_analysis'):
-            story.extend(self._build_team_section(report_data['team_analysis']))
+        # 6. 团队分析 - 优先从 sections 获取，也检查 team_section
+        team_data = sections.get('team') or preliminary_im.get('team_section') or report_data.get('team_analysis')
+        if team_data:
+            story.extend(self._build_team_section(team_data))
             story.append(PageBreak())
 
-        # 7. 风险评估（从preliminary_im中提取）
-        if report_data.get('preliminary_im', {}).get('risks'):
-            story.extend(self._build_risk_section(report_data['preliminary_im']))
+        # 7. 风险评估 - 优先从 sections 获取
+        risk_data = sections.get('risk')
+        if risk_data:
+            story.extend(self._build_risk_section_v2(risk_data))
+            story.append(PageBreak())
+        elif preliminary_im.get('risks'):
+            story.extend(self._build_risk_section(preliminary_im))
             story.append(PageBreak())
 
         # 8. 结论和建议
-        if report_data.get('preliminary_im'):
-            story.extend(self._build_conclusion(report_data['preliminary_im']))
+        if preliminary_im:
+            story.extend(self._build_conclusion(preliminary_im))
 
         # 生成PDF
         doc.build(story)
 
         return output_path
+
+    def _build_financial_section_v2(self, financial_data: Dict[str, Any], im_data: Dict[str, Any]) -> List:
+        """构建财务分析章节 - 支持新旧两种格式"""
+        story = []
+
+        if self.language == "en":
+            story.append(Paragraph("2. Financial Analysis", self.styles['ChapterTitle']))
+        else:
+            story.append(Paragraph("2. 财务分析", self.styles['ChapterTitle']))
+
+        story.append(Spacer(1, 0.2*inch))
+
+        # 如果是新格式 (summary 字段)
+        if financial_data.get('summary'):
+            summary_text = str(financial_data['summary'])
+            paragraphs = summary_text.split('\n\n') if '\n\n' in summary_text else [summary_text]
+            for para in paragraphs:
+                if para.strip():
+                    story.append(Paragraph(para.strip(), self.styles['BodyText']))
+                    story.append(Spacer(1, 0.1*inch))
+        else:
+            # 旧格式
+            if isinstance(financial_data, dict):
+                if self.language == "en":
+                    story.append(Paragraph("Financial Highlights", self.styles['SectionTitle']))
+                else:
+                    story.append(Paragraph("财务亮点", self.styles['SectionTitle']))
+
+                table_data = []
+                if self.language == "en":
+                    table_data.append(['Metric', 'Value'])
+                else:
+                    table_data.append(['指标', '数值'])
+
+                for key, value in financial_data.items():
+                    if key != 'summary':
+                        table_data.append([str(key), str(value)])
+
+                if len(table_data) > 1:
+                    table = Table(table_data, colWidths=[3*inch, 3*inch])
+                    table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498db')),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 12),
+                        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                    ]))
+                    story.append(table)
+                    story.append(Spacer(1, 0.2*inch))
+
+        # 添加 im_data 中的财务分析
+        if im_data.get('financial_analysis'):
+            story.append(Paragraph(str(im_data['financial_analysis']), self.styles['BodyText']))
+
+        return story
+
+    def _build_risk_section_v2(self, risk_data: Dict[str, Any]) -> List:
+        """构建风险评估章节 - 支持新格式"""
+        story = []
+
+        if self.language == "en":
+            story.append(Paragraph("5. Risk Evaluation", self.styles['ChapterTitle']))
+        else:
+            story.append(Paragraph("5. 风险评估", self.styles['ChapterTitle']))
+
+        story.append(Spacer(1, 0.2*inch))
+
+        # 如果是新格式 (summary 字段)
+        if risk_data.get('summary'):
+            summary_text = str(risk_data['summary'])
+            paragraphs = summary_text.split('\n\n') if '\n\n' in summary_text else [summary_text]
+            for para in paragraphs:
+                if para.strip():
+                    story.append(Paragraph(para.strip(), self.styles['BodyText']))
+                    story.append(Spacer(1, 0.1*inch))
+
+        return story
 
     def _build_cover_page(self, report_data: Dict[str, Any]) -> List:
         """构建封面"""
@@ -281,7 +378,20 @@ class PDFReportGenerator:
             findings = im_data['key_findings']
             if isinstance(findings, list):
                 for finding in findings:
-                    story.append(Paragraph(f"• {finding}", self.styles['BodyText']))
+                    if isinstance(finding, dict):
+                        # Format dict finding
+                        category = finding.get('category', 'General')
+                        score = finding.get('score', 'N/A')
+                        points = "; ".join(finding.get('key_points', []))
+                        concerns = "; ".join(finding.get('concerns', []))
+                        
+                        text = f"• <b>{category} (评分: {score})</b>"
+                        if points: text += f"<br/>  亮点: {points}"
+                        if concerns: text += f"<br/>  关注: {concerns}"
+                        
+                        story.append(Paragraph(text, self.styles['BodyText']))
+                    else:
+                        story.append(Paragraph(f"• {finding}", self.styles['BodyText']))
             else:
                 story.append(Paragraph(str(findings), self.styles['BodyText']))
             story.append(Spacer(1, 0.15*inch))
@@ -369,7 +479,18 @@ class PDFReportGenerator:
 
         story.append(Spacer(1, 0.2*inch))
 
-        # 市场规模
+        # 首先检查是否有 summary 字段 (LLM生成的报告格式)
+        if market_data.get('summary'):
+            summary_text = str(market_data['summary'])
+            # 分段落显示
+            paragraphs = summary_text.split('\n\n') if '\n\n' in summary_text else [summary_text]
+            for para in paragraphs:
+                if para.strip():
+                    story.append(Paragraph(para.strip(), self.styles['BodyText']))
+                    story.append(Spacer(1, 0.1*inch))
+            return story
+
+        # 兼容旧格式：市场规模
         if market_data.get('market_size_analysis'):
             if self.language == "en":
                 story.append(Paragraph("Market Size", self.styles['SectionTitle']))
@@ -416,7 +537,18 @@ class PDFReportGenerator:
 
         story.append(Spacer(1, 0.2*inch))
 
-        # 团队评分
+        # 首先检查是否有 summary 字段 (LLM生成的报告格式)
+        if team_data.get('summary'):
+            summary_text = str(team_data['summary'])
+            # 分段落显示
+            paragraphs = summary_text.split('\n\n') if '\n\n' in summary_text else [summary_text]
+            for para in paragraphs:
+                if para.strip():
+                    story.append(Paragraph(para.strip(), self.styles['BodyText']))
+                    story.append(Spacer(1, 0.1*inch))
+            return story
+
+        # 兼容旧格式：团队评分
         if team_data.get('experience_match_score'):
             if self.language == "en":
                 score_text = f"Experience Match Score: {team_data['experience_match_score']}/10"

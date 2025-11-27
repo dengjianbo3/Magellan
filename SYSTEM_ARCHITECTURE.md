@@ -80,7 +80,9 @@ Agent框架：
 - Redis (缓存和会话)
 
 消息队列：
-- RabbitMQ (异步任务)
+- Kafka (服务间通信、消息持久化)
+- Zookeeper (Kafka 协调)
+- Kafka UI (消息监控) - http://localhost:8080
 ```
 
 ### 基础设施
@@ -798,10 +800,10 @@ class SessionManager {
 **Quick模式Workflow**：
 ```python
 [
-    {"id": "team_check", "name": "团队背景检查", "agent": "team_analyst"},
-    {"id": "product_validation", "name": "产品验证", "agent": "product_analyst"},
+    {"id": "team_check", "name": "团队背景检查", "agent": "team_evaluator"},
+    {"id": "product_validation", "name": "产品验证", "agent": "tech_specialist"},
     {"id": "market_opportunity", "name": "市场机会", "agent": "market_analyst"},
-    {"id": "red_flag_scan", "name": "红旗扫描", "agent": "risk_analyst"}
+    {"id": "red_flag_scan", "name": "红旗扫描", "agent": "risk_assessor"}
 ]
 ```
 

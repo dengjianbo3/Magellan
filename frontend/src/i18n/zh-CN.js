@@ -559,9 +559,20 @@ export default {
     },
 
     api: {
-      title: 'API 配置',
-      openaiKey: 'OpenAI API 密钥',
-      claudeKey: 'Claude API 密钥',
+      title: 'AI 模型配置',
+      llmProvider: 'LLM 提供商',
+      llmProviderDesc: '选择用于 AI 分析的大语言模型提供商',
+      providers: {
+        gemini: 'Gemini (Google)',
+        kimi: 'Kimi (Moonshot AI)'
+      },
+      currentModel: '当前模型',
+      providerStatus: '状态',
+      available: '可用',
+      unavailable: '未配置',
+      switching: '切换中...',
+      switchSuccess: '已切换到 {provider}',
+      switchError: '切换失败: {error}',
       update: '更新',
       usage: 'API 用量',
       thisMonth: '本月'
@@ -858,6 +869,21 @@ export default {
     summary: {
       title: '讨论总结',
       completed: '圆桌讨论已完成'
+    },
+
+    // Human-in-the-Loop (HITL)
+    hitl: {
+      interruptButton: '打断并补充',
+      dialogTitle: '打断并补充信息',
+      respondingTo: '您正在回应:',
+      inputLabel: '补充信息',
+      inputPlaceholder: '请输入您的补充信息，例如：\n- 纠正专家的错误分析\n- 补充重要的背景信息\n- 提出新的关注点\n- 提供内部数据或情况\n\nLeader会根据您的补充重新规划讨论方向。',
+      inputHint: '提示：您的补充会被发送给所有专家，Leader会根据这个信息调整讨论方向',
+      submit: '发送补充',
+      submitting: '发送中...',
+      cancel: '取消',
+      interventionSent: '补充信息已发送，Leader将根据您的信息重新规划讨论',
+      interventionError: '发送补充信息失败'
     }
   },
 

@@ -19,6 +19,9 @@ from app.models.analysis_models import (
     InvestmentScenario
 )
 from app.core.agent_registry import registry
+from app.core.session_store import SessionStore
+# Phase 7: Import Agent Message Service for Kafka integration
+from app.messaging import get_agent_service
 
 
 class BaseOrchestrator(ABC):
@@ -46,6 +49,9 @@ class BaseOrchestrator(ABC):
         # IMPORTANT: Initialize registry FIRST before loading workflows
         self.registry = registry  # New: Use AgentRegistry
         self.agent_pool = {}  # Deprecated, kept for backward compatibility
+        
+        # Initialize SessionStore
+        self.session_store = SessionStore()
 
         # Phase 2: 从AgentRegistry加载workflow配置
         # Convert YAML-based workflow steps to old WorkflowStepTemplate format for backward compatibility
@@ -467,7 +473,8 @@ class BaseOrchestrator(ABC):
         """
         执行Agent任务
 
-        Phase 2: 使用AgentRegistry动态创建Agent
+        Phase 7: 使用AgentMessageService通过Kafka执行Agent
+        支持自动降级到直接调用
         """
         # 构建Agent任务
         task = self._build_agent_task(step, template)
@@ -475,40 +482,48 @@ class BaseOrchestrator(ABC):
         await self._send_agent_event(step, "thinking", f"{step.agent}正在分析...")
 
         try:
-            # Phase 2: 从AgentRegistry动态创建Agent
-            # 提取agent参数（如quick_mode, language等）
-            agent_params = template.quick_mode and {'quick_mode': True} or {}
+            # Phase 7: 使用AgentMessageService (支持Kafka + 自动降级)
+            agent_service = await get_agent_service()
 
-            # 创建Agent实例
-            agent = self.registry.create_agent(step.agent, **agent_params)
+            # 构建配置参数
+            config = {
+                "quick_mode": template.quick_mode,
+                "scenario": self.scenario.value,
+                "depth": self.request.config.depth.value,
+                "language": getattr(self.request.config, 'language', 'zh')
+            }
 
-            # 调用Agent的analyze方法,传入target信息
-            result = await agent.analyze(self.request.target)
-            return result
+            # 调用Agent服务
+            response = await agent_service.request_analysis(
+                agent_id=step.agent,
+                inputs=self.request.target,
+                session_id=self.session_id,
+                config=config,
+                trace_id=getattr(self, 'trace_id', None),
+                timeout=template.expected_duration or 120
+            )
 
-        except ValueError as e:
-            # Agent不存在于registry中
-            print(f"[BaseOrchestrator] Agent {step.agent} not found in registry: {e}")
-            # 尝试从旧的agent_pool获取（向后兼容）
-            agent = self.agent_pool.get(step.agent)
-            if agent:
-                print(f"[BaseOrchestrator] Using legacy agent from agent_pool: {step.agent}")
-                try:
-                    result = await agent.analyze(self.request.target)
-                    return result
-                except Exception as e2:
-                    print(f"[BaseOrchestrator] Legacy agent execution failed: {e2}")
-                    return {
-                        "error": str(e2),
-                        "agent": step.agent,
-                        "mock": True
-                    }
+            # 处理响应
+            if response.get("status") == "success":
+                result = response.get("outputs", {})
+                # 记录执行方式 (kafka 或 direct)
+                via = response.get("via", "unknown")
+                print(f"[BaseOrchestrator] Agent {step.agent} executed via {via}")
+                return result
             else:
-                # 既不在registry也不在agent_pool，返回mock结果
-                return {"mock": True, "agent": step.agent, "error": str(e)}
+                # Agent执行失败
+                error_msg = response.get("error_message", "Unknown error")
+                print(f"[BaseOrchestrator] Agent {step.agent} failed: {error_msg}")
+                return {
+                    "error": error_msg,
+                    "agent": step.agent,
+                    "mock": True
+                }
 
         except Exception as e:
             print(f"[BaseOrchestrator] Agent {step.agent} execution failed: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 "error": str(e),
                 "agent": step.agent,
@@ -724,7 +739,62 @@ class BaseOrchestrator(ABC):
         final_report: Optional[Dict[str, Any]] = None
     ):
         """
-        保存session到Redis
-        TODO: 实现Redis存储
+        保存session和report到Redis
         """
-        pass
+        try:
+            # Construct session context
+            context = {
+                "session_id": self.session_id,
+                "scenario": self.scenario.value,
+                "request": self.request.dict(),
+                "status": "completed" if (final_report or quick_judgment) else "running",
+                "results": self.results,
+                "workflow": [step.dict() for step in self.workflow],
+                "started_at": self.started_at,
+                "updated_at": datetime.now().isoformat()
+            }
+
+            if quick_judgment:
+                # Handle Pydantic models in quick_judgment
+                if hasattr(quick_judgment, 'dict'):
+                    context["quick_judgment"] = quick_judgment.dict()
+                elif hasattr(quick_judgment, 'model_dump'):
+                     context["quick_judgment"] = quick_judgment.model_dump()
+                else:
+                    context["quick_judgment"] = quick_judgment
+            
+            if final_report:
+                context["final_report"] = final_report
+
+            # Save session
+            self.session_store.save_session(self.session_id, context)
+
+            # If completed (quick or standard), save as a report
+            if quick_judgment or final_report:
+                # Prepare quick_judgment data for report
+                qj_data = {}
+                if quick_judgment:
+                    if hasattr(quick_judgment, 'dict'):
+                        qj_data = quick_judgment.dict()
+                    elif hasattr(quick_judgment, 'model_dump'):
+                        qj_data = quick_judgment.model_dump()
+                    else:
+                        qj_data = quick_judgment
+
+                report_data = {
+                    "id": self.session_id, # Use session_id as report_id for simplicity
+                    "session_id": self.session_id,
+                    "project_name": self.request.project_name,
+                    "company_name": self.request.target.get("company_name") or self.request.target.get("target_name") or self.request.target.get("ticker") or "Unknown Target",
+                    "analysis_type": self.scenario.value,
+                    "status": "completed",
+                    "created_at": datetime.now().isoformat(),
+                    "steps": [step.dict() for step in self.workflow],
+                    "preliminary_im": final_report if final_report else {}, # Map final report structure here
+                    "quick_judgment": qj_data
+                }
+                self.session_store.save_report(self.session_id, report_data)
+                
+        except Exception as e:
+            print(f"[BaseOrchestrator] Failed to save session: {e}")
+            # Don't raise, just log, to avoid crashing the flow at the very end

@@ -201,10 +201,20 @@ class SessionStore:
             )
 
             # Add to reports list (sorted set by timestamp)
-            timestamp = report_data.get('created_at', '')
+            timestamp_str = report_data.get('created_at', '')
+            score = 0.0
+            if timestamp_str:
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(timestamp_str)
+                    score = dt.timestamp()
+                except ValueError:
+                    print(f"[SessionStore] ⚠️  Invalid timestamp format: {timestamp_str}, using 0")
+                    score = 0.0
+
             self.redis_client.zadd(
                 'reports:all',
-                {report_id: float(timestamp) if timestamp else 0}
+                {report_id: score}
             )
 
             print(f"[SessionStore] ✅ Saved report: {report_id}")
@@ -296,6 +306,119 @@ class SessionStore:
         except Exception as e:
             print(f"[SessionStore] ❌ Failed to delete report {report_id}: {e}")
             return False
+
+    # ==================== Roundtable History Management ====================
+
+    def get_roundtable_reports(self, limit: int = 50) -> list:
+        """
+        Get all roundtable discussion reports (most recent first).
+
+        Args:
+            limit: Maximum number of reports to return
+
+        Returns:
+            List of roundtable report data dicts with basic info
+        """
+        try:
+            # Get report IDs from sorted set (newest first)
+            report_ids = self.redis_client.zrevrange('reports:all', 0, limit * 2 - 1)  # Get more to filter
+
+            roundtable_reports = []
+            for report_id in report_ids:
+                report_data = self.get_report(report_id)
+                if report_data and report_data.get('type') == 'roundtable':
+                    # Return only essential info for list display
+                    roundtable_reports.append({
+                        'id': report_id,
+                        'topic': report_data.get('topic', report_data.get('title', 'Unknown')),
+                        'company_name': report_data.get('company_name', ''),
+                        'created_at': report_data.get('created_at', ''),
+                        'meeting_minutes': report_data.get('meeting_minutes', '')[:500] + '...' if len(report_data.get('meeting_minutes', '')) > 500 else report_data.get('meeting_minutes', ''),
+                        'total_turns': report_data.get('discussion_summary', {}).get('total_turns', 0),
+                        'participating_agents': report_data.get('discussion_summary', {}).get('participating_agents', []),
+                        'config': report_data.get('config', {})
+                    })
+
+                    if len(roundtable_reports) >= limit:
+                        break
+
+            print(f"[SessionStore] ✅ Retrieved {len(roundtable_reports)} roundtable reports")
+            return roundtable_reports
+
+        except Exception as e:
+            print(f"[SessionStore] ❌ Failed to get roundtable reports: {e}")
+            return []
+
+    def get_roundtable_report_full(self, report_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get full roundtable report including meeting minutes for reference.
+
+        Args:
+            report_id: Report identifier
+
+        Returns:
+            Full roundtable report data if found and is roundtable type, None otherwise
+        """
+        try:
+            report_data = self.get_report(report_id)
+
+            if report_data is None:
+                return None
+
+            if report_data.get('type') != 'roundtable':
+                print(f"[SessionStore] ⚠️  Report {report_id} is not a roundtable report")
+                return None
+
+            return report_data
+
+        except Exception as e:
+            print(f"[SessionStore] ❌ Failed to get roundtable report {report_id}: {e}")
+            return None
+
+    def search_similar_roundtables(self, topic: str, limit: int = 5) -> list:
+        """
+        Search for roundtable reports with similar topics.
+
+        Args:
+            topic: Search topic/keywords
+            limit: Maximum number of results
+
+        Returns:
+            List of similar roundtable reports
+        """
+        try:
+            # Get all roundtable reports
+            all_roundtables = self.get_roundtable_reports(limit=100)
+
+            # Simple keyword matching (can be enhanced with vector search later)
+            topic_lower = topic.lower()
+            keywords = topic_lower.split()
+
+            scored_results = []
+            for report in all_roundtables:
+                report_topic = report.get('topic', '').lower()
+                report_company = report.get('company_name', '').lower()
+
+                # Calculate simple relevance score
+                score = 0
+                for keyword in keywords:
+                    if keyword in report_topic:
+                        score += 2
+                    if keyword in report_company:
+                        score += 1
+
+                if score > 0:
+                    scored_results.append((score, report))
+
+            # Sort by score descending
+            scored_results.sort(key=lambda x: x[0], reverse=True)
+
+            # Return top results
+            return [r[1] for r in scored_results[:limit]]
+
+        except Exception as e:
+            print(f"[SessionStore] ❌ Failed to search similar roundtables: {e}")
+            return []
 
     # ==================== Utility Methods ====================
 

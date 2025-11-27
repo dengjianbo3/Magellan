@@ -127,8 +127,8 @@ class Agent:
             "content": self._get_system_prompt()
         })
 
-        # 对话历史
-        for msg in self.message_history[-10:]:  # 只保留最近10条
+        # 对话历史 - 保留更多上下文以避免丢失关键信息
+        for msg in self.message_history[-20:]:  # 保留最近20条
             # 根据消息发送者确定角色
             if msg.sender == self.name:
                 role = "assistant"
@@ -187,6 +187,16 @@ class Agent:
 - 查询公司数据: [USE_TOOL: get_public_company_data(company_name="特斯拉")]
 - 搜索知识库: [USE_TOOL: search_knowledge_base(query="特斯拉财务分析")]
 
+### ⚠️ 时效性搜索指引 (重要!):
+对于需要最新信息的问题，**必须**使用时间过滤参数：
+- 最近24小时: [USE_TOOL: tavily_search(query="比特币价格", time_range="day")]
+- 最近一周: [USE_TOOL: tavily_search(query="市场新闻", time_range="week")]
+- 最近一个月: [USE_TOOL: tavily_search(query="财报分析", time_range="month")]
+- 新闻搜索(指定天数): [USE_TOOL: tavily_search(query="股票动态", topic="news", days=3)]
+
+**判断标准**: 如果问题涉及"最近"、"最新"、"今天"、"本周"、"当前价格"等时间敏感词汇，
+或涉及短期预测（如"未来3天"），必须使用time_range或days参数限制搜索范围。
+
 使用工具后，你会收到工具返回的结果，然后基于这些结果继续讨论。
 """
         else:
@@ -204,72 +214,97 @@ class Agent:
 """
         return base_prompt
 
-    async def _call_llm(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
+    async def _call_llm(self, messages: List[Dict[str, str]], max_retries: int = 3) -> Dict[str, Any]:
         """
-        调用LLM网关进行推理
+        调用LLM网关进行推理（带重试机制）
 
         Args:
             messages: 符合OpenAI格式的消息列表
+            max_retries: 最大重试次数
 
         Returns:
             LLM的响应
         """
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            # 转换为 LLM Gateway 格式
-            # LLM Gateway 期望: {"history": [{"role": "user", "parts": ["text"]}]}
-            history = []
-            for msg in messages:
-                role = msg["role"]
-                content = msg["content"]
-                # Convert role: system/user/assistant -> user/model
-                if role == "system" or role == "user":
-                    history.append({"role": "user", "parts": [content]})
-                elif role == "assistant":
-                    history.append({"role": "model", "parts": [content]})
+        import asyncio
 
-            request_data = {
-                "history": history
-            }
+        last_exception = None
 
+        # 转换为 LLM Gateway 格式
+        # LLM Gateway 期望: {"history": [{"role": "user", "parts": ["text"]}]}
+        history = []
+        for msg in messages:
+            role = msg["role"]
+            content = msg["content"]
+            # Convert role: system/user/assistant -> user/model
+            if role == "system" or role == "user":
+                history.append({"role": "user", "parts": [content]})
+            elif role == "assistant":
+                history.append({"role": "model", "parts": [content]})
+
+        request_data = {
+            "history": history,
+            "temperature": self.temperature  # 传递temperature参数
+        }
+
+        for attempt in range(max_retries):
             try:
-                response = await client.post(
-                    f"{self.llm_gateway_url}/chat",
-                    json=request_data
-                )
-                response.raise_for_status()
-                result = response.json()
+                async with httpx.AsyncClient(timeout=180.0) as client:
+                    response = await client.post(
+                        f"{self.llm_gateway_url}/chat",
+                        json=request_data
+                    )
+                    response.raise_for_status()
+                    result = response.json()
 
-                # 调试：打印响应类型和内容
-                print(f"[Agent:{self.name}] LLM response type: {type(result)}")
+                    # 调试：打印响应类型和内容
+                    print(f"[Agent:{self.name}] LLM response type: {type(result)}")
 
-                # 转换响应格式，使其兼容 OpenAI 格式的解析
-                # LLM Gateway 返回: {"content": "text"}
-                # 转换为: {"choices": [{"message": {"content": "text"}}]}
+                    # 转换响应格式，使其兼容 OpenAI 格式的解析
+                    # LLM Gateway 返回: {"content": "text"}
+                    # 转换为: {"choices": [{"message": {"content": "text"}}]}
 
-                # 处理两种可能的响应格式
-                if isinstance(result, str):
-                    # 如果result是字符串，直接使用
-                    content = result
-                elif isinstance(result, dict):
-                    # 如果是字典，提取content字段
-                    content = result.get("content", str(result))
-                else:
-                    # 其他类型，转为字符串
-                    content = str(result)
+                    # 处理两种可能的响应格式
+                    if isinstance(result, str):
+                        # 如果result是字符串，直接使用
+                        content = result
+                    elif isinstance(result, dict):
+                        # 如果是字典，提取content字段
+                        content = result.get("content", str(result))
+                    else:
+                        # 其他类型，转为字符串
+                        content = str(result)
 
-                return {
-                    "choices": [
-                        {
-                            "message": {
-                                "role": "assistant",
-                                "content": content
+                    return {
+                        "choices": [
+                            {
+                                "message": {
+                                    "role": "assistant",
+                                    "content": content
+                                }
                             }
-                        }
-                    ]
-                }
+                        ]
+                    }
+
+            except httpx.ReadTimeout as e:
+                last_exception = e
+                print(f"[Agent:{self.name}] LLM timeout on attempt {attempt + 1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    # 指数退避：2秒, 4秒, 8秒...
+                    wait_time = 2 ** (attempt + 1)
+                    print(f"[Agent:{self.name}] Retrying in {wait_time} seconds...")
+                    await asyncio.sleep(wait_time)
+                continue
+
             except Exception as e:
-                print(f"[Agent:{self.name}] LLM call failed: {e}")
-                raise
+                last_exception = e
+                print(f"[Agent:{self.name}] LLM call failed on attempt {attempt + 1}/{max_retries}: {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2)
+                continue
+
+        # 所有重试都失败
+        print(f"[Agent:{self.name}] All {max_retries} LLM call attempts failed")
+        raise last_exception
 
     async def _parse_llm_response(self, llm_response: Dict[str, Any]) -> List[Message]:
         """
@@ -507,7 +542,14 @@ class Agent:
                         }
                     ]
                     llm_response = await self._call_llm(follow_up_messages)
-                    content = llm_response["choices"][0]["message"].get("content", "")
+                    
+                    # 安全处理第二轮响应
+                    if isinstance(llm_response, str):
+                        content = llm_response
+                    elif isinstance(llm_response, dict) and "choices" in llm_response:
+                        content = llm_response["choices"][0]["message"].get("content", "")
+                    else:
+                        content = str(llm_response)
 
             # 返回结构化结果
             return {

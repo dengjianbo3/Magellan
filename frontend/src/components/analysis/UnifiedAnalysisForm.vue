@@ -1,20 +1,6 @@
 <template>
   <div class="unified-analysis-form w-full max-w-5xl mx-auto">
-    <!-- Progress Steps -->
-    <div class="progress-steps mb-8">
-      <div class="step completed">
-        <div class="step-number">1</div>
-        <div class="step-label">{{ t('analysisWizard.selectScenario') }}</div>
-      </div>
-      <div class="step active">
-        <div class="step-number">2</div>
-        <div class="step-label">{{ t('analysisWizard.configAnalysis') }}</div>
-      </div>
-      <div class="step">
-        <div class="step-number">3</div>
-        <div class="step-label">{{ t('analysisWizard.analyzing') }}</div>
-      </div>
-    </div>
+
 
     <!-- Scenario Header -->
     <div class="glass-card p-8 mb-8">
@@ -180,14 +166,6 @@
       <!-- Actions -->
       <div class="flex gap-4">
         <button
-          type="button"
-          class="btn btn-secondary flex-1"
-          @click="goBack"
-        >
-          <span class="material-symbols-outlined">arrow_back</span>
-          <span>{{ t('common.back') }}</span>
-        </button>
-        <button
           type="submit"
           class="btn btn-primary flex-1"
           :disabled="isSubmitting"
@@ -326,85 +304,7 @@ function handleSubmit() {
 
 <style scoped>
 .unified-analysis-form {
-  padding: 2rem 1rem;
-}
-
-/* Progress Steps */
-.progress-steps {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  position: relative;
-  max-width: 600px;
-  margin: 0 auto;
-  padding: 0 1rem;
-}
-
-.progress-steps::before {
-  content: '';
-  position: absolute;
-  top: 1.5rem;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(to right,
-    rgba(56, 189, 248, 0.5) 0%,
-    rgba(56, 189, 248, 0.5) 50%,
-    rgba(255, 255, 255, 0.1) 50%,
-    rgba(255, 255, 255, 0.1) 100%
-  );
-  z-index: 0;
-}
-
-.step {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  position: relative;
-  z-index: 1;
-}
-
-.step-number {
-  width: 3rem;
-  height: 3rem;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 1.125rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  color: rgb(148 163 184);
-  transition: all 0.3s ease;
-}
-
-.step.completed .step-number {
-  background: rgba(56, 189, 248, 0.2);
-  border-color: rgb(56, 189, 248);
-  color: rgb(56, 189, 248);
-  box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
-}
-
-.step.active .step-number {
-  background: linear-gradient(135deg, rgb(56, 189, 248), rgb(14, 165, 233));
-  border-color: rgb(56, 189, 248);
-  color: white;
-  box-shadow: 0 0 30px rgba(56, 189, 248, 0.5);
-  transform: scale(1.1);
-}
-
-.step-label {
-  font-size: 0.75rem;
-  color: rgb(148 163 184);
-  text-align: center;
-  max-width: 100px;
-}
-
-.step.completed .step-label,
-.step.active .step-label {
-  color: rgb(203 213 225);
+  /* padding: 2rem 1rem; Removed to avoid double padding with parent */
 }
 
 /* Glass Card */
@@ -682,21 +582,6 @@ select.form-input {
 }
 
 @media (max-width: 640px) {
-  .progress-steps {
-    padding: 0;
-  }
-
-  .step-label {
-    font-size: 0.625rem;
-    max-width: 60px;
-  }
-
-  .step-number {
-    width: 2.5rem;
-    height: 2.5rem;
-    font-size: 1rem;
-  }
-
   .mode-selector {
     grid-template-columns: 1fr;
   }

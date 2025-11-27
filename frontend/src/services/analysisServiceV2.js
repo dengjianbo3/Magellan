@@ -35,6 +35,20 @@ class AnalysisServiceV2 {
   }
 
   /**
+   * 准备新分析 - 重置服务状态
+   * 必须在启动新分析前调用
+   */
+  prepare() {
+    console.log('[AnalysisV2] Preparing for new analysis session...');
+    this.disconnect(); // 断开现有连接
+    this.messageHandlers.clear(); // 清除旧的处理器
+    this.messageBuffer = []; // 清空缓冲区
+    this.isBuffering = true; // 开启缓冲模式
+    this.sessionId = null;
+    this.reconnectAttempts = 0;
+  }
+
+  /**
    * 获取支持的场景列表
    */
   async getScenarios() {
@@ -205,7 +219,9 @@ class AnalysisServiceV2 {
       'agent_event',
       'status_update',
       'error',  // 错误消息必须立即处理
-      'complete'  // 完成消息也应该立即处理
+      'complete',  // 完成消息也应该立即处理
+      'quick_judgment_complete', // Stage 4: 快速判断完成
+      'analysis_complete' // Stage 4: 标准分析完成
     ];
     return importantTypes.includes(type);
   }

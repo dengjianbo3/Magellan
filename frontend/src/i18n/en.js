@@ -543,9 +543,20 @@ export default {
     },
 
     api: {
-      title: 'API Configuration',
-      openaiKey: 'OpenAI API Key',
-      claudeKey: 'Claude API Key',
+      title: 'AI Model Configuration',
+      llmProvider: 'LLM Provider',
+      llmProviderDesc: 'Select the LLM provider for AI analysis',
+      providers: {
+        gemini: 'Gemini (Google)',
+        kimi: 'Kimi (Moonshot AI)'
+      },
+      currentModel: 'Current Model',
+      providerStatus: 'Status',
+      available: 'Available',
+      unavailable: 'Not Configured',
+      switching: 'Switching...',
+      switchSuccess: 'Switched to {provider}',
+      switchError: 'Switch failed: {error}',
       update: 'Update',
       usage: 'API Usage',
       thisMonth: 'This Month'
@@ -825,6 +836,21 @@ export default {
     summary: {
       title: 'Discussion Summary',
       completed: 'Roundtable discussion completed'
+    },
+
+    // Human-in-the-Loop (HITL)
+    hitl: {
+      interruptButton: 'Interrupt & Add Input',
+      dialogTitle: 'Interrupt and Provide Feedback',
+      respondingTo: 'You are responding to:',
+      inputLabel: 'Your Input',
+      inputPlaceholder: 'Enter your feedback, such as:\n- Correct expert analysis errors\n- Provide additional context\n- Raise new concerns\n- Share internal data\n\nThe Leader will re-plan the discussion based on your input.',
+      inputHint: 'Tip: Your input will be shared with all experts. The Leader will adjust the discussion accordingly.',
+      submit: 'Send Input',
+      submitting: 'Sending...',
+      cancel: 'Cancel',
+      interventionSent: 'Your input has been sent. The Leader will re-plan the discussion.',
+      interventionError: 'Failed to send input'
     }
   },
 

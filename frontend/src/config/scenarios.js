@@ -224,10 +224,10 @@ export const SCENARIOS = {
       {
         name: 'stock_code',
         type: 'text',
-        label: { zh: '股票代码', en: 'Stock Code' },
-        placeholder: { zh: '例如: 600000', en: 'e.g., 600000' },
-        required: false,
-        validation: { pattern: '^[A-Z0-9]{4,10}$' }
+        label: { zh: '股票代码', en: 'Stock Code/Ticker' },
+        placeholder: { zh: '例如: NVDA, AAPL, 600000', en: 'e.g., NVDA, AAPL, 600000' },
+        required: true,
+        validation: { pattern: '^[A-Za-z0-9.]{1,10}$' }
       },
       {
         name: 'market',
@@ -261,6 +261,7 @@ export const SCENARIOS = {
 
   // ============================================
   // 另类投资分析 (Alternative Investment)
+  // 包含加密货币技术分析
   // ============================================
   ALTERNATIVE: {
     id: 'alternative-investment',
@@ -269,17 +270,17 @@ export const SCENARIOS = {
       en: 'Alternative Investment Analysis'
     },
     description: {
-      zh: '适用于PE/VC基金、房地产、大宗商品等另类投资标的',
-      en: 'Analysis for alternative investments like PE/VC funds, real estate, commodities'
+      zh: '适用于加密货币、PE/VC基金、房地产等另类投资标的，支持技术面分析',
+      en: 'Analysis for crypto, PE/VC funds, real estate with technical analysis support'
     },
     icon: '💎',
     category: 'alternative',
 
-    stages: ['fund', 'real-estate', 'commodity'],
+    stages: ['crypto', 'fund', 'real-estate', 'commodity'],
 
     focus: {
-      zh: ['市场趋势 (40%)', '法律合规 (35%)', '风险评估 (25%)'],
-      en: ['Market Trends (40%)', 'Legal (35%)', 'Risk (25%)']
+      zh: ['技术分析 (35%)', '市场趋势 (35%)', '风险评估 (30%)'],
+      en: ['Technical Analysis (35%)', 'Market Trends (35%)', 'Risk (30%)']
     },
 
     formFields: [
@@ -287,7 +288,7 @@ export const SCENARIOS = {
         name: 'target_name',
         type: 'text',
         label: { zh: '投资标的名称', en: 'Target Name' },
-        placeholder: { zh: '基金/项目名称', en: 'Fund/Project name' },
+        placeholder: { zh: '如: 比特币, BTC', en: 'e.g., Bitcoin, BTC' },
         required: true,
         validation: { minLength: 2, maxLength: 100 }
       },
@@ -297,12 +298,35 @@ export const SCENARIOS = {
         label: { zh: '投资类型', en: 'Investment Type' },
         required: true,
         options: [
+          { value: 'crypto', label: { zh: '加密货币', en: 'Cryptocurrency' } },
           { value: 'pe-fund', label: { zh: 'PE基金', en: 'PE Fund' } },
           { value: 'vc-fund', label: { zh: 'VC基金', en: 'VC Fund' } },
           { value: 'real-estate', label: { zh: '房地产', en: 'Real Estate' } },
           { value: 'commodity', label: { zh: '大宗商品', en: 'Commodity' } },
           { value: 'other', label: { zh: '其他', en: 'Other' } }
         ]
+      },
+      {
+        name: 'symbol',
+        type: 'text',
+        label: { zh: '交易对/代码 (加密货币)', en: 'Symbol (for Crypto)' },
+        placeholder: { zh: '如: BTC/USDT, ETH/USDT', en: 'e.g., BTC/USDT, ETH/USDT' },
+        required: false,
+        validation: { maxLength: 20 },
+        showCondition: { field: 'investment_type', value: 'crypto' }
+      },
+      {
+        name: 'timeframe',
+        type: 'select',
+        label: { zh: '分析周期', en: 'Timeframe' },
+        required: false,
+        options: [
+          { value: '1h', label: { zh: '1小时', en: '1 Hour' } },
+          { value: '4h', label: { zh: '4小时', en: '4 Hours' } },
+          { value: '1d', label: { zh: '日线', en: 'Daily' } },
+          { value: '1w', label: { zh: '周线', en: 'Weekly' } }
+        ],
+        showCondition: { field: 'investment_type', value: 'crypto' }
       },
       {
         name: 'bp_file',
@@ -315,14 +339,14 @@ export const SCENARIOS = {
 
     modes: {
       quick: {
-        duration: 215,
+        duration: 235,
         label: { zh: '快速分析', en: 'Quick Analysis' },
-        description: { zh: '3-4分钟快速评估', en: '3-4 min assessment' }
+        description: { zh: '3-4分钟快速评估（含技术分析）', en: '3-4 min with technical analysis' }
       },
       standard: {
-        duration: 640,
+        duration: 700,
         label: { zh: '标准分析', en: 'Standard Analysis' },
-        description: { zh: '10-12分钟详细分析', en: '10-12 min analysis' }
+        description: { zh: '10-12分钟详细分析（含完整技术面）', en: '10-12 min with full technical analysis' }
       }
     }
   },

@@ -65,6 +65,10 @@ class PublicMarketInvestmentOrchestrator(BaseOrchestrator):
 
         target = self.request.target
 
+        # Support 'stock_code' from frontend (alias to ticker)
+        if not target.get('ticker') and target.get('stock_code'):
+            target['ticker'] = target.get('stock_code')
+
         # 检查必填字段
         if not target.get('ticker'):
             raise ValueError("缺少股票代码 (ticker)")
@@ -74,119 +78,96 @@ class PublicMarketInvestmentOrchestrator(BaseOrchestrator):
     async def _synthesize_quick_judgment(self) -> QuickJudgmentResult:
         """
         综合快速判断结果 (公开市场投资)
-
-        Quick Mode Workflow:
-        1. valuation_check: 估值检查
-        2. fundamentals_check: 基本面检查
-        3. technical_check: 技术面检查
-        4. quick_judgment: 快速综合判断
-
-        评分权重:
-        - 估值: 35%
-        - 基本面: 30%
-        - 技术面: 20%
-        - 市场情绪: 15%
         """
-        # Mock实现
-        valuation_score = self.results.get('valuation_check', {}).get('score', 0.5)
-        fundamentals_score = self.results.get('fundamentals_check', {}).get('score', 0.5)
-        technical_score = self.results.get('technical_check', {}).get('score', 0.5)
-        sentiment_score = 0.5  # Mock
+        from app.agents.report_synthesizer_agent import synthesize_report
+        from ...models.analysis_models import QuickJudgmentResult, RecommendationType
 
-        # 加权计算总分
-        overall_score = (
-            valuation_score * 0.35 +
-            fundamentals_score * 0.30 +
-            technical_score * 0.20 +
-            sentiment_score * 0.15
-        )
+        # Prepare context
+        context = {
+            "scenario": "public-market-investment",
+            "target": self.request.target,
+            "config": self.request.config.dict(),
+            "financial_analysis": {
+                **self.results.get("valuation_check", {}),
+                **self.results.get("fundamentals_check", {}),
+                # Map score
+                "financial_score": self.results.get("fundamentals_check", {}).get("fundamentals_score", 0)
+            },
+            "tech_assessment": self.results.get("technical_check", {}),
+            **self.results
+        }
 
-        # 确定推荐
-        if overall_score >= 0.75:
-            recommendation = RecommendationType.BUY
-            verdict = "估值合理,基本面良好,建议买入"
-            confidence = 0.75
-        elif overall_score >= 0.6:
-            recommendation = RecommendationType.FURTHER_DD
-            verdict = "需要进一步分析市场时机"
-            confidence = 0.6
-        else:
-            recommendation = RecommendationType.PASS
-            verdict = "估值偏高或基本面转弱,暂不建议"
-            confidence = 0.65
+        # Call synthesizer in quick mode
+        report = await synthesize_report(context, quick_mode=True)
 
-        key_positive = []
-        key_concern = []
-        red_flags = []
+        # Map to QuickJudgmentResult
+        rec_map = {
+            "invest": RecommendationType.BUY,
+            "observe": RecommendationType.FURTHER_DD,
+            "reject": RecommendationType.PASS
+        }
+        recommendation = rec_map.get(report.get("overall_recommendation", "observe"), RecommendationType.FURTHER_DD)
+        
+        conf_map = {"high": 0.9, "medium": 0.7, "low": 0.5}
+        confidence = conf_map.get(report.get("confidence_level", "medium"), 0.7)
 
-        if valuation_score >= 0.7:
-            key_positive.append("估值合理")
-        elif valuation_score < 0.5:
-            red_flags.append("估值偏高")
-
-        if fundamentals_score >= 0.7:
-            key_positive.append("基本面稳健")
-        elif fundamentals_score < 0.5:
-            key_concern.append("基本面转弱")
-
-        if technical_score >= 0.7:
-            key_positive.append("技术面良好")
-
-        judgment_time = f"{int((datetime.now() - self.start_time).total_seconds() // 60)}分{int((datetime.now() - self.start_time).total_seconds() % 60)}秒"
+        scores_breakdown = report.get("scores_breakdown", {})
 
         return QuickJudgmentResult(
             recommendation=recommendation,
             confidence=confidence,
-            judgment_time=judgment_time,
+            judgment_time=self._calculate_elapsed_time(),
             summary={
-                "verdict": verdict,
-                "key_positive": key_positive,
-                "key_concern": key_concern,
-                "red_flags": red_flags
+                "verdict": report.get("summary", ""),
+                "key_positive": report.get("key_findings", [])[:3],
+                "key_concern": [f for f in report.get("key_findings", []) if "风险" in f or "不足" in f],
+                "red_flags": []
             },
             scores={
-                "valuation": round(valuation_score, 2),
-                "fundamentals": round(fundamentals_score, 2),
-                "technical": round(technical_score, 2),
-                "sentiment": round(sentiment_score, 2),
-                "overall": round(overall_score, 2)
+                "valuation": scores_breakdown.get("financial", 0), # Using financial score as proxy
+                "fundamentals": scores_breakdown.get("financial", 0),
+                "technical": scores_breakdown.get("tech", 0),
+                "sentiment": 0.5, # Mock for now
+                "overall": report.get("investment_score", 0)
             },
             next_steps={
-                "recommended_action": "建仓" if recommendation == RecommendationType.BUY else ("观望" if recommendation == RecommendationType.FURTHER_DD else "回避"),
-                "focus_areas": [
-                    "详细估值模型",
-                    "财报深度分析",
-                    "行业对比",
-                    "市场时机把握"
-                ] if recommendation != RecommendationType.PASS else []
-            },
-            is_mock=True
+                "recommended_action": report.get("next_steps", ["建议进一步分析"])[0] if report.get("next_steps") else "待定",
+                "focus_areas": report.get("next_steps", [])[1:]
+            }
         )
 
     async def _synthesize_final_report(self) -> Dict[str, Any]:
         """
         综合生成公开市场投资分析报告
         """
-        # Mock实现
-        return {
-            "scenario": InvestmentScenario.PUBLIC_MARKET.value,
-            "ticker": self.request.target.get('ticker'),
-            "analysis_depth": self.request.config.depth.value,
-            "final_recommendation": "BUY",
-            "overall_score": 0.78,
-            "sections": {
-                "valuation": {
-                    "score": 0.80,
-                    "summary": "PE估值合理,处于历史中位"
-                },
-                "fundamentals": {
-                    "score": 0.75,
-                    "summary": "营收增长稳定,利润率改善"
-                },
-                "technical": {
-                    "score": 0.70,
-                    "summary": "突破关键阻力位,趋势向好"
-                }
+        # Import synthesizer
+        from app.agents.report_synthesizer_agent import synthesize_report
+
+        # Prepare context for synthesizer
+        # Map workflow specific step IDs to standard keys
+        context = {
+            "scenario": "public-market-investment",
+            "target": self.request.target,
+            "config": self.request.config.dict(),
+            
+            # Map step results
+            "financial_analysis": {
+                **self.results.get("fundamental_analysis", {}),
+                # Valuation check often done separately or part of fundamentals
+                "valuation_level": self.results.get("valuation_check", {}),
             },
-            "is_mock": True
+            "market_analysis": {
+                **self.results.get("industry_comparison", {}),
+                "market_score": self.results.get("technical_analysis", {}).get("technical_score", 0) # Using technical score as proxy for 'market timing/momentum'
+            },
+            "tech_assessment": self.results.get("technical_analysis", {}), # Technical analysis
+            "risk_assessment": self.results.get("risk_assessment", {}),
+            
+            # Raw results access
+            **self.results
         }
+
+        # Call synthesizer
+        report = await synthesize_report(context, quick_mode=False)
+        
+        return report

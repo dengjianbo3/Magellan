@@ -24,7 +24,11 @@ from datetime import datetime
 
 # Set style for professional charts
 sns.set_style("whitegrid")
-plt.rcParams['font.family'] = 'DejaVu Sans'  # Use a font that supports both English and some unicode
+# Configure fonts for Chinese support
+# Prioritize macOS fonts (PingFang, Heiti, Arial Unicode) then Linux/Windows (SimHei, YaHei)
+plt.rcParams['font.family'] = 'sans-serif'
+plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'PingFang SC', 'Heiti TC', 'Microsoft YaHei', 'SimHei', 'WenQuanYi Micro Hei', 'DejaVu Sans', 'sans-serif']
+plt.rcParams['axes.unicode_minus'] = False  # Ensure minus signs are shown correctly
 plt.rcParams['figure.figsize'] = (10, 6)
 plt.rcParams['axes.grid'] = True
 plt.rcParams['grid.alpha'] = 0.3

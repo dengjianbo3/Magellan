@@ -60,12 +60,13 @@
             <div
               :class="[
                 'w-12 h-12 rounded-xl flex items-center justify-center shadow-lg backdrop-blur-sm border transition-transform group-hover:scale-110 duration-300',
+                report.type === 'roundtable' ? 'bg-primary/10 border-primary/20 text-primary' :
                 report.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
                 report.status === 'in-progress' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
                 'bg-white/5 border-white/10 text-text-secondary'
               ]"
             >
-              <span class="material-symbols-outlined text-2xl">article</span>
+              <span class="material-symbols-outlined text-2xl">{{ report.type === 'roundtable' ? 'groups' : 'article' }}</span>
             </div>
             <span
               :class="[
@@ -170,10 +171,379 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <!-- Main Content -->
       <div class="lg:col-span-2 space-y-8">
-        <!-- Analysis Steps -->
+
+        <!-- ============================================ -->
+        <!-- Roundtable Meeting Report Template -->
+        <!-- ============================================ -->
+        <template v-if="selectedReport.type === 'roundtable'">
+          <!-- Meeting Minutes (Main Content) -->
+          <div class="glass-panel rounded-2xl p-6">
+            <div class="flex items-center justify-between mb-6">
+              <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary">summarize</span> 会议纪要
+              </h2>
+              <span class="px-3 py-1 rounded-full bg-primary/20 text-primary text-xs font-bold">
+                圆桌讨论
+              </span>
+            </div>
+
+            <!-- Meeting Stats -->
+            <div class="grid grid-cols-3 gap-4 mb-6 p-4 rounded-xl bg-white/5 border border-white/10">
+              <div class="text-center">
+                <div class="text-2xl font-bold text-primary">{{ selectedReport.config?.num_agents || selectedReport.discussion_summary?.participating_agents?.length || 'N/A' }}</div>
+                <div class="text-xs text-text-secondary mt-1">参与专家</div>
+              </div>
+              <div class="text-center">
+                <div class="text-2xl font-bold text-accent-cyan">{{ selectedReport.discussion_summary?.total_turns || selectedReport.total_turns || 'N/A' }}</div>
+                <div class="text-xs text-text-secondary mt-1">讨论轮次</div>
+              </div>
+              <div class="text-center">
+                <div class="text-2xl font-bold text-accent-violet">{{ selectedReport.discussion_summary?.total_messages || 'N/A' }}</div>
+                <div class="text-xs text-text-secondary mt-1">消息总数</div>
+              </div>
+            </div>
+
+            <!-- Meeting Minutes Content (Markdown) -->
+            <div class="prose prose-invert prose-sm max-w-none report-content">
+              <div v-html="renderMarkdown(selectedReport.meeting_minutes)" class="text-text-secondary leading-relaxed"></div>
+            </div>
+          </div>
+
+          <!-- Participating Experts -->
+          <div v-if="selectedReport.config?.agents || selectedReport.discussion_summary?.participating_agents" class="glass-panel rounded-2xl p-6">
+            <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <span class="material-symbols-outlined text-accent-violet">groups</span> 参与专家
+            </h2>
+            <div class="flex flex-wrap gap-2">
+              <span
+                v-for="agent in (selectedReport.config?.agents || selectedReport.discussion_summary?.participating_agents)"
+                :key="agent"
+                class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-text-primary text-sm font-medium flex items-center gap-2"
+              >
+                <span class="w-2 h-2 rounded-full" :class="getAgentColor(agent)"></span>
+                {{ agent }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Discussion History (Collapsible) -->
+          <div class="glass-panel rounded-2xl p-6">
+            <button
+              @click="showDiscussionHistory = !showDiscussionHistory"
+              class="w-full flex items-center justify-between text-lg font-bold text-white"
+            >
+              <span class="flex items-center gap-2">
+                <span class="material-symbols-outlined text-accent-cyan">forum</span> 讨论历史记录
+              </span>
+              <span class="material-symbols-outlined transition-transform" :class="{ 'rotate-180': showDiscussionHistory }">
+                expand_more
+              </span>
+            </button>
+
+            <!-- Collapsed Summary -->
+            <div v-if="!showDiscussionHistory" class="mt-4 text-sm text-text-secondary">
+              点击展开查看完整讨论过程 ({{ selectedReport.discussion_summary?.conversation_history?.length || 0 }} 条消息)
+            </div>
+
+            <!-- Expanded Discussion History -->
+            <div v-if="showDiscussionHistory" class="mt-6 space-y-4 max-h-[600px] overflow-y-auto">
+              <div
+                v-for="(message, index) in selectedReport.discussion_summary?.conversation_history"
+                :key="message.message_id || index"
+                class="p-4 rounded-xl border"
+                :class="getMessageClass(message)"
+              >
+                <!-- Message Header -->
+                <div class="flex items-center justify-between mb-2">
+                  <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full" :class="getAgentColor(message.sender)"></span>
+                    <span class="font-bold text-white text-sm">{{ message.sender }}</span>
+                    <span v-if="message.recipient && message.recipient !== 'ALL'" class="text-xs text-text-secondary">
+                      → {{ message.recipient }}
+                    </span>
+                  </div>
+                  <span class="text-xs text-text-secondary font-mono">
+                    {{ formatMessageTime(message.timestamp) }}
+                  </span>
+                </div>
+
+                <!-- Message Content -->
+                <div class="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">
+                  {{ message.content }}
+                </div>
+
+                <!-- Message Type Badge -->
+                <div v-if="message.message_type && message.message_type !== 'broadcast'" class="mt-2">
+                  <span class="text-xs px-2 py-0.5 rounded bg-white/5 text-text-secondary">
+                    {{ getMessageTypeLabel(message.message_type) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Conclusion Reason (if any) -->
+          <div v-if="selectedReport.conclusion_reason" class="glass-panel rounded-2xl p-6">
+            <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <span class="material-symbols-outlined text-amber-400">info</span> 会议结束原因
+            </h2>
+            <p class="text-text-secondary">{{ selectedReport.conclusion_reason }}</p>
+          </div>
+        </template>
+
+        <!-- ============================================ -->
+        <!-- Generic Report Sections (For Public Market / Industry Research) -->
+        <!-- ============================================ -->
+        <div v-else-if="selectedReport.sections" class="glass-panel rounded-2xl p-6">
+          <h2 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
+             <span class="material-symbols-outlined text-primary">analytics</span> 详细分析报告
+          </h2>
+
+          <!-- Summary / Recommendation -->
+          <div v-if="selectedReport.final_recommendation" class="mb-8 p-5 rounded-xl bg-gradient-to-br from-primary/10 to-transparent border border-primary/20">
+             <div class="flex items-center justify-between mb-3">
+               <span class="text-sm font-bold text-primary uppercase tracking-wider">投资建议</span>
+               <span class="text-2xl font-bold text-white">{{ selectedReport.final_recommendation }}</span>
+             </div>
+             <div v-if="selectedReport.overall_score" class="flex items-center justify-between">
+               <span class="text-sm font-bold text-text-secondary uppercase tracking-wider">综合评分</span>
+               <span class="text-xl font-bold text-emerald-400">{{ (selectedReport.overall_score * 100).toFixed(0) }} / 100</span>
+             </div>
+          </div>
+
+          <!-- Sections List -->
+          <div class="space-y-6">
+            <div 
+              v-for="(content, title) in selectedReport.sections" 
+              :key="title"
+              class="p-5 rounded-xl bg-white/5 border border-white/10"
+            >
+              <h3 class="text-lg font-bold text-white mb-3 capitalize">{{ title.replace(/_/g, ' ') }}</h3>
+              
+              <!-- Render content based on type -->
+              <div v-if="typeof content === 'string'" class="prose prose-invert prose-sm max-w-none text-text-secondary">
+                {{ content }}
+              </div>
+              <div v-else-if="typeof content === 'object'" class="space-y-2">
+                <div v-for="(val, key) in content" :key="key" class="flex justify-between text-sm border-b border-white/5 pb-2 last:border-0">
+                   <span class="text-text-secondary capitalize">{{ key.replace(/_/g, ' ') }}</span>
+                   <span class="text-white font-medium text-right ml-4">{{ val }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Specialized DD Report (Preliminary IM) - Full Report Display -->
+        <div v-else-if="selectedReport.preliminary_im" class="space-y-6">
+
+          <!-- Investment Recommendation Banner -->
+          <div class="glass-panel rounded-2xl p-6 bg-gradient-to-br from-primary/10 to-accent-violet/10 border border-primary/20">
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-xs font-bold text-primary uppercase tracking-wider">投资建议</span>
+                <h2 class="text-3xl font-bold text-white mt-2">
+                  {{ getRecommendationText(selectedReport.preliminary_im.overall_recommendation) }}
+                </h2>
+              </div>
+              <div class="text-right">
+                <span class="text-xs font-bold text-text-secondary uppercase tracking-wider">综合评分</span>
+                <div class="text-4xl font-bold mt-2" :class="getScoreColor(selectedReport.preliminary_im.investment_score)">
+                  {{ selectedReport.preliminary_im.investment_score || 'N/A' }}<span class="text-lg text-text-secondary">/100</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Score Breakdown -->
+            <div v-if="selectedReport.preliminary_im.scores_breakdown" class="mt-6 pt-6 border-t border-white/10">
+              <div class="grid grid-cols-3 gap-4">
+                <div v-for="(score, key) in selectedReport.preliminary_im.scores_breakdown" :key="key" class="text-center">
+                  <div class="text-2xl font-bold" :class="getScoreColor(score)">{{ score }}</div>
+                  <div class="text-xs text-text-secondary uppercase mt-1">{{ getScoreLabel(key) }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Executive Summary -->
+          <div class="glass-panel rounded-2xl p-6">
+            <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary">summarize</span> 执行摘要
+            </h2>
+            <div class="prose prose-invert prose-sm max-w-none">
+              <div v-html="renderMarkdown(selectedReport.preliminary_im.executive_summary)" class="text-text-secondary leading-relaxed"></div>
+            </div>
+          </div>
+
+          <!-- Key Findings -->
+          <div v-if="selectedReport.preliminary_im.key_findings && selectedReport.preliminary_im.key_findings.length > 0" class="glass-panel rounded-2xl p-6">
+            <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <span class="material-symbols-outlined text-accent-cyan">lightbulb</span> 关键发现
+            </h2>
+            <div class="space-y-4">
+              <!-- Handle structured findings (objects with category, score, key_points, concerns) -->
+              <template v-if="isStructuredFindings(selectedReport.preliminary_im.key_findings)">
+                <div v-for="(finding, index) in selectedReport.preliminary_im.key_findings" :key="index"
+                     class="p-5 rounded-xl bg-white/5 border border-white/10">
+                  <!-- Category Header with Score -->
+                  <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-base font-bold text-white flex items-center gap-2">
+                      <span class="w-7 h-7 rounded-lg bg-primary/20 text-primary flex items-center justify-center text-sm font-bold">{{ index + 1 }}</span>
+                      {{ finding.category }}
+                    </h3>
+                    <div v-if="finding.score !== undefined" class="flex items-center gap-2">
+                      <span class="text-xs text-text-secondary">评分</span>
+                      <span class="text-lg font-bold" :class="getScoreColor(finding.score)">{{ finding.score }}</span>
+                    </div>
+                  </div>
+
+                  <!-- Key Points -->
+                  <div v-if="finding.key_points && finding.key_points.length > 0" class="mb-4">
+                    <h4 class="text-xs font-bold text-emerald-400 uppercase mb-2 flex items-center gap-1">
+                      <span class="material-symbols-outlined text-sm">check_circle</span> 亮点
+                    </h4>
+                    <ul class="space-y-2">
+                      <li v-for="(point, pIdx) in finding.key_points" :key="pIdx"
+                          class="text-sm text-text-secondary flex items-start gap-2">
+                        <span class="text-emerald-400 mt-1">•</span>
+                        <span>{{ point }}</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <!-- Concerns -->
+                  <div v-if="finding.concerns && finding.concerns.length > 0">
+                    <h4 class="text-xs font-bold text-amber-400 uppercase mb-2 flex items-center gap-1">
+                      <span class="material-symbols-outlined text-sm">warning</span> 关注点
+                    </h4>
+                    <ul class="space-y-2">
+                      <li v-for="(concern, cIdx) in finding.concerns" :key="cIdx"
+                          class="text-sm text-text-secondary flex items-start gap-2">
+                        <span class="text-amber-400 mt-1">•</span>
+                        <span>{{ concern }}</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Handle simple string findings -->
+              <template v-else>
+                <div v-for="(finding, index) in selectedReport.preliminary_im.key_findings" :key="index"
+                     class="flex items-start gap-3 p-4 rounded-xl bg-white/5 border border-white/5">
+                  <span class="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold shrink-0">{{ index + 1 }}</span>
+                  <p class="text-text-secondary text-sm leading-relaxed">{{ typeof finding === 'string' ? finding : JSON.stringify(finding) }}</p>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Detailed Analysis Sections -->
+          <div v-if="getAnalysisSections(selectedReport.preliminary_im)" class="space-y-6">
+            <div v-for="section in getAnalysisSections(selectedReport.preliminary_im)" :key="section.key" class="glass-panel rounded-2xl p-6">
+              <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <span class="material-symbols-outlined" :class="section.iconColor">{{ section.icon }}</span>
+                {{ section.title }}
+              </h2>
+              <div class="prose prose-invert prose-sm max-w-none report-content">
+                <div v-html="renderMarkdown(section.content)" class="text-text-secondary leading-relaxed"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SWOT Analysis -->
+          <div v-if="hasSWOT(selectedReport.preliminary_im)" class="glass-panel rounded-2xl p-6">
+            <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <span class="material-symbols-outlined text-amber-400">grid_view</span> SWOT 分析
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Strengths -->
+              <div class="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                <h3 class="text-sm font-bold text-emerald-400 uppercase mb-3 flex items-center gap-2">
+                  <span class="material-symbols-outlined text-sm">thumb_up</span> 优势
+                </h3>
+                <ul class="space-y-2">
+                  <li v-for="(item, idx) in selectedReport.preliminary_im.strengths" :key="idx" class="text-sm text-text-secondary flex items-start gap-2">
+                    <span class="text-emerald-400">•</span> {{ item }}
+                  </li>
+                </ul>
+              </div>
+              <!-- Weaknesses -->
+              <div class="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                <h3 class="text-sm font-bold text-rose-400 uppercase mb-3 flex items-center gap-2">
+                  <span class="material-symbols-outlined text-sm">thumb_down</span> 劣势
+                </h3>
+                <ul class="space-y-2">
+                  <li v-for="(item, idx) in selectedReport.preliminary_im.weaknesses" :key="idx" class="text-sm text-text-secondary flex items-start gap-2">
+                    <span class="text-rose-400">•</span> {{ item }}
+                  </li>
+                </ul>
+              </div>
+              <!-- Opportunities -->
+              <div class="p-4 rounded-xl bg-primary/10 border border-primary/20">
+                <h3 class="text-sm font-bold text-primary uppercase mb-3 flex items-center gap-2">
+                  <span class="material-symbols-outlined text-sm">trending_up</span> 机会
+                </h3>
+                <ul class="space-y-2">
+                  <li v-for="(item, idx) in selectedReport.preliminary_im.opportunities" :key="idx" class="text-sm text-text-secondary flex items-start gap-2">
+                    <span class="text-primary">•</span> {{ item }}
+                  </li>
+                </ul>
+              </div>
+              <!-- Threats -->
+              <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                <h3 class="text-sm font-bold text-amber-400 uppercase mb-3 flex items-center gap-2">
+                  <span class="material-symbols-outlined text-sm">warning</span> 威胁
+                </h3>
+                <ul class="space-y-2">
+                  <li v-for="(item, idx) in selectedReport.preliminary_im.threats" :key="idx" class="text-sm text-text-secondary flex items-start gap-2">
+                    <span class="text-amber-400">•</span> {{ item }}
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Next Steps -->
+          <div v-if="selectedReport.preliminary_im.next_steps && selectedReport.preliminary_im.next_steps.length > 0" class="glass-panel rounded-2xl p-6">
+            <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <span class="material-symbols-outlined text-accent-violet">checklist</span> 下一步行动建议
+            </h2>
+            <div class="space-y-3">
+              <div v-for="(step, index) in selectedReport.preliminary_im.next_steps" :key="index"
+                   class="flex items-start gap-3 p-4 rounded-xl bg-white/5 border border-white/5">
+                <span class="w-8 h-8 rounded-lg bg-accent-violet/20 text-accent-violet flex items-center justify-center shrink-0">
+                  <span class="material-symbols-outlined text-sm">arrow_forward</span>
+                </span>
+                <p class="text-text-secondary text-sm leading-relaxed">{{ step }}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- DD Questions (if any) -->
+          <div v-if="selectedReport.preliminary_im.dd_questions && selectedReport.preliminary_im.dd_questions.length > 0" class="glass-panel rounded-2xl p-6">
+            <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <span class="material-symbols-outlined text-amber-400">help_outline</span> 尽调问题
+            </h2>
+            <div class="space-y-4">
+              <div v-for="(question, index) in selectedReport.preliminary_im.dd_questions" :key="index"
+                   class="p-4 rounded-xl bg-white/5 border border-white/5">
+                <div class="flex gap-3">
+                  <span class="text-primary font-bold">{{ index + 1 }}.</span>
+                  <p class="font-semibold text-text-primary text-sm">{{ question.question || question }}</p>
+                </div>
+                <div v-if="question.answer" class="mt-3 pl-6 border-l-2 border-white/10 ml-1">
+                  <p class="text-sm text-text-secondary">{{ question.answer }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Analysis Steps (Universal) -->
         <div class="glass-panel rounded-2xl p-6">
           <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
-             <span class="material-symbols-outlined text-primary">checklist</span> 分析步骤
+             <span class="material-symbols-outlined text-primary">checklist</span> 执行步骤记录
           </h2>
           <div class="space-y-3">
             <div
@@ -194,78 +564,14 @@
                 </span>
               </div>
               <div class="flex-1">
-                <p class="font-bold text-text-primary text-sm">{{ step.title }}</p>
-                <p v-if="step.result" class="text-xs text-text-secondary mt-1 leading-relaxed">{{ step.result }}</p>
+                <p class="font-bold text-text-primary text-sm">{{ step.title || step.name }}</p>
+                <p v-if="step.result && typeof step.result === 'string'" class="text-xs text-text-secondary mt-1 leading-relaxed line-clamp-2">{{ step.result }}</p>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Preliminary IM -->
-        <div v-if="selectedReport.preliminary_im" class="glass-panel rounded-2xl p-6">
-          <h2 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
-            <span class="material-symbols-outlined text-accent-violet">description</span> 投资备忘录
-          </h2>
-
-          <div class="grid grid-cols-1 gap-6">
-             <!-- Company Info -->
-             <div v-if="selectedReport.preliminary_im.company_info" class="p-5 rounded-xl bg-black/20 border border-white/10">
-               <h3 class="font-bold text-primary mb-3 text-sm uppercase tracking-wider">公司信息</h3>
-               <div class="space-y-2 text-sm">
-                 <div class="flex justify-between border-b border-white/5 pb-2">
-                   <span class="text-text-secondary">名称</span>
-                   <span class="text-white font-semibold">{{ selectedReport.preliminary_im.company_info.name || selectedReport.company_name }}</span>
-                 </div>
-                 <div class="flex justify-between border-b border-white/5 pb-2" v-if="selectedReport.preliminary_im.company_info.industry">
-                   <span class="text-text-secondary">行业</span>
-                   <span class="text-white">{{ selectedReport.preliminary_im.company_info.industry }}</span>
-                 </div>
-                 <div class="flex justify-between" v-if="selectedReport.preliminary_im.company_info.stage">
-                   <span class="text-text-secondary">阶段</span>
-                   <span class="text-white">{{ selectedReport.preliminary_im.company_info.stage }}</span>
-                 </div>
-               </div>
-             </div>
-
-             <!-- Team & Market -->
-             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-               <div v-if="selectedReport.preliminary_im.team_section" class="p-5 rounded-xl bg-black/20 border border-white/10">
-                 <h3 class="font-bold text-primary mb-3 text-sm uppercase tracking-wider">团队评估</h3>
-                 <p class="text-sm text-text-secondary leading-relaxed">{{ selectedReport.preliminary_im.team_section.summary || '团队分析已完成' }}</p>
-               </div>
-
-               <div v-if="selectedReport.preliminary_im.market_section" class="p-5 rounded-xl bg-black/20 border border-white/10">
-                 <h3 class="font-bold text-primary mb-3 text-sm uppercase tracking-wider">市场分析</h3>
-                 <p class="text-sm text-text-secondary leading-relaxed">{{ selectedReport.preliminary_im.market_section.summary || '市场分析已完成' }}</p>
-               </div>
-             </div>
-          </div>
-
-          <!-- DD Questions -->
-          <div v-if="selectedReport.preliminary_im.dd_questions && selectedReport.preliminary_im.dd_questions.length > 0" class="mt-6 pt-6 border-t border-white/10">
-            <h3 class="font-bold text-white mb-4 text-sm uppercase tracking-wider">关键问题与答案</h3>
-            <div class="space-y-4">
-              <div
-                v-for="(question, index) in selectedReport.preliminary_im.dd_questions"
-                :key="index"
-                class="p-4 rounded-xl bg-white/5 border border-white/5"
-              >
-                <div class="flex gap-3">
-                  <span class="text-primary font-bold">{{ index + 1 }}.</span>
-                  <p class="font-semibold text-text-primary text-sm">{{ question.question || question }}</p>
-                </div>
-                <div v-if="question.answer" class="mt-3 pl-6 border-l-2 border-white/10 ml-1">
-                  <p class="text-sm text-text-secondary">{{ question.answer }}</p>
-                </div>
-                <div v-else class="mt-2 pl-6">
-                   <span class="text-xs text-text-secondary italic opacity-50">未回答</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Visual Analytics -->
+        <!-- Visual Analytics (Universal) -->
         <div class="glass-panel rounded-2xl p-6">
           <div class="flex items-center justify-between mb-6">
             <h2 class="text-lg font-bold text-white flex items-center gap-2">
@@ -338,15 +644,31 @@
           <div class="space-y-4 text-sm">
             <div class="pb-3 border-b border-white/5">
               <span class="text-text-secondary block text-xs mb-1">Session ID</span>
-              <p class="text-white font-mono text-xs bg-white/5 p-2 rounded">{{ selectedReport.session_id }}</p>
+              <p class="text-white font-mono text-xs bg-white/5 p-2 rounded break-all">{{ selectedReport.session_id || selectedReport.id }}</p>
             </div>
             <div class="pb-3 border-b border-white/5">
-              <span class="text-text-secondary block text-xs mb-1">分析类型</span>
-              <p class="text-white font-bold">{{ selectedReport.analysis_type }}</p>
+              <span class="text-text-secondary block text-xs mb-1">报告类型</span>
+              <p class="text-white font-bold flex items-center gap-2">
+                <span class="material-symbols-outlined text-base" :class="selectedReport.type === 'roundtable' ? 'text-primary' : 'text-emerald-400'">
+                  {{ selectedReport.type === 'roundtable' ? 'groups' : 'article' }}
+                </span>
+                {{ selectedReport.type === 'roundtable' ? '圆桌会议' : (selectedReport.analysis_type || '投资分析') }}
+              </p>
             </div>
+            <!-- Roundtable specific info -->
+            <template v-if="selectedReport.type === 'roundtable'">
+              <div class="pb-3 border-b border-white/5">
+                <span class="text-text-secondary block text-xs mb-1">讨论主题</span>
+                <p class="text-white">{{ selectedReport.topic || selectedReport.project_name }}</p>
+              </div>
+              <div class="pb-3 border-b border-white/5">
+                <span class="text-text-secondary block text-xs mb-1">讨论时长</span>
+                <p class="text-white font-mono">{{ formatDuration(selectedReport.discussion_summary?.total_duration_seconds) }}</p>
+              </div>
+            </template>
             <div>
               <span class="text-text-secondary block text-xs mb-1">保存时间</span>
-              <p class="text-white font-mono">{{ selectedReport.saved_at ? new Date(selectedReport.saved_at).toLocaleString('zh-CN') : 'N/A' }}</p>
+              <p class="text-white font-mono">{{ selectedReport.saved_at || selectedReport.created_at ? new Date(selectedReport.saved_at || selectedReport.created_at).toLocaleString('zh-CN') : 'N/A' }}</p>
             </div>
           </div>
         </div>
@@ -429,11 +751,128 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { useLanguage } from '../composables/useLanguage';
 import { useToast } from '@/composables/useToast';
+import { marked } from 'marked';
 
+const route = useRoute();
 const { t } = useLanguage();
 const { success, error: showError } = useToast();
+
+// Configure marked for safe rendering
+marked.setOptions({
+  breaks: true,
+  gfm: true
+});
+
+// Markdown rendering function
+const renderMarkdown = (text) => {
+  if (!text) return '';
+  try {
+    return marked.parse(String(text));
+  } catch (e) {
+    console.error('[ReportsView] Markdown parse error:', e);
+    return String(text);
+  }
+};
+
+// Helper functions for report display
+const getRecommendationText = (recommendation) => {
+  const map = {
+    'invest': '建议投资',
+    'observe': '持续观察',
+    'reject': '不建议投资',
+    'buy': '买入',
+    'hold': '持有',
+    'sell': '卖出',
+    'pass': '放弃'
+  };
+  return map[recommendation?.toLowerCase()] || recommendation || '待定';
+};
+
+const getScoreColor = (score) => {
+  if (score === null || score === undefined) return 'text-text-secondary';
+  const numScore = Number(score);
+  if (numScore >= 80) return 'text-emerald-400';
+  if (numScore >= 60) return 'text-primary';
+  if (numScore >= 40) return 'text-amber-400';
+  return 'text-rose-400';
+};
+
+const getScoreLabel = (key) => {
+  const labels = {
+    'financial': '财务',
+    'market': '市场',
+    'team': '团队',
+    'tech': '技术',
+    'technology': '技术',
+    'risk': '风险',
+    'overall': '综合'
+  };
+  return labels[key?.toLowerCase()] || key;
+};
+
+const getAnalysisSections = (pim) => {
+  if (!pim) return [];
+
+  const sections = [];
+  const sectionConfig = {
+    'financial': { title: '财务分析', icon: 'account_balance', iconColor: 'text-emerald-400' },
+    'market': { title: '市场分析', icon: 'trending_up', iconColor: 'text-primary' },
+    'technology': { title: '技术评估', icon: 'memory', iconColor: 'text-accent-cyan' },
+    'team': { title: '团队评估', icon: 'groups', iconColor: 'text-accent-violet' },
+    'risk': { title: '风险评估', icon: 'warning', iconColor: 'text-amber-400' }
+  };
+
+  // Try to get sections from different possible locations
+  const sectionsData = pim.sections || {};
+
+  for (const [key, config] of Object.entries(sectionConfig)) {
+    // Check in sections object first
+    let content = sectionsData[key]?.summary || sectionsData[key];
+
+    // Fall back to top-level section fields
+    if (!content) {
+      const sectionField = pim[`${key}_section`];
+      content = sectionField?.summary || sectionField;
+    }
+
+    // Also check direct analysis fields
+    if (!content && key === 'market') {
+      content = pim.market_analysis?.summary || pim.market_analysis;
+    }
+    if (!content && key === 'team') {
+      content = pim.team_analysis?.summary || pim.team_analysis;
+    }
+
+    if (content && typeof content === 'string' && content.trim()) {
+      sections.push({
+        key,
+        ...config,
+        content
+      });
+    }
+  }
+
+  return sections;
+};
+
+const hasSWOT = (pim) => {
+  return pim && (
+    (pim.strengths && pim.strengths.length > 0) ||
+    (pim.weaknesses && pim.weaknesses.length > 0) ||
+    (pim.opportunities && pim.opportunities.length > 0) ||
+    (pim.threats && pim.threats.length > 0)
+  );
+};
+
+// Check if key_findings are structured objects (with category, score, etc.)
+const isStructuredFindings = (findings) => {
+  if (!findings || !Array.isArray(findings) || findings.length === 0) return false;
+  const first = findings[0];
+  return typeof first === 'object' && first !== null && (first.category || first.key_points || first.concerns);
+};
 
 const reportsData = ref([]);
 const loading = ref(true);
@@ -443,6 +882,71 @@ const showDeleteConfirm = ref(false); // Delete confirmation dialog
 const reportToDelete = ref(null); // Report being deleted
 const exportMenuReportId = ref(null); // Track which report's export menu is open
 const exportLoading = ref(false); // Track export operation state
+const showDiscussionHistory = ref(false); // Toggle for roundtable discussion history
+
+// Agent color mapping for roundtable
+const agentColors = {
+  'Leader': 'bg-primary',
+  '主持人': 'bg-primary',
+  'MarketAnalyst': 'bg-emerald-400',
+  '市场分析师': 'bg-emerald-400',
+  'FinancialExpert': 'bg-accent-cyan',
+  '财务专家': 'bg-accent-cyan',
+  'TeamEvaluator': 'bg-accent-violet',
+  '团队评估专家': 'bg-accent-violet',
+  'RiskAssessor': 'bg-amber-400',
+  '风险评估师': 'bg-amber-400',
+  'TechSpecialist': 'bg-blue-400',
+  '技术专家': 'bg-blue-400',
+  'LegalAdvisor': 'bg-rose-400',
+  '法务顾问': 'bg-rose-400',
+  'Meeting Orchestrator': 'bg-white/50'
+};
+
+const getAgentColor = (agentName) => {
+  return agentColors[agentName] || 'bg-white/30';
+};
+
+const getMessageClass = (message) => {
+  const sender = message.sender;
+  if (sender === 'Leader' || sender === '主持人') {
+    return 'bg-primary/10 border-primary/30';
+  } else if (sender === 'Meeting Orchestrator') {
+    return 'bg-white/5 border-white/10';
+  }
+  return 'bg-white/5 border-white/10';
+};
+
+const getMessageTypeLabel = (type) => {
+  const labels = {
+    'broadcast': '广播',
+    'private': '私聊',
+    'question': '提问',
+    'agreement': '同意',
+    'disagreement': '反对'
+  };
+  return labels[type] || type;
+};
+
+const formatMessageTime = (timestamp) => {
+  if (!timestamp) return '';
+  try {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch (e) {
+    return timestamp;
+  }
+};
+
+const formatDuration = (seconds) => {
+  if (!seconds || seconds === 0) return 'N/A';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  if (mins > 0) {
+    return `${mins}分${secs}秒`;
+  }
+  return `${secs}秒`;
+};
 
 // Chart-related state
 const activeChartTab = ref('financial'); // Default active tab
@@ -473,17 +977,32 @@ const reports = computed(() => reportsData.value.map(report => {
   };
 
   // Count how many agents were used (from steps or selected_agents)
-  const agentCount = report.steps ? report.steps.filter(s => s.status === 'success').length : 0;
+  let agentCount = 0;
+  if (report.type === 'roundtable') {
+    // For roundtable, use config.num_agents or participating_agents
+    agentCount = report.config?.num_agents || report.discussion_summary?.participating_agents?.length || 0;
+  } else {
+    agentCount = report.steps ? report.steps.filter(s => s.status === 'success').length : 0;
+  }
+
+  // Determine description based on report type
+  let description = '';
+  if (report.type === 'roundtable') {
+    const turns = report.discussion_summary?.total_turns || report.total_turns || 0;
+    description = `圆桌讨论会议 - ${turns} 轮对话`;
+  } else {
+    description = `${report.analysis_type || ''} analysis for ${report.company_name || ''}`;
+  }
 
   return {
     id: report.id,
-    title: report.project_name || `${report.company_name} Analysis`,
-    description: `${report.analysis_type} analysis for ${report.company_name}`,
+    title: report.project_name || report.topic || `${report.company_name} Analysis`,
+    description: description,
     date: formattedDate,
     status: statusMap[report.status] || 'completed',
-    statusText: t(`reports.status.${statusMap[report.status] || 'completed'}`),
+    statusText: report.type === 'roundtable' ? '圆桌会议' : t(`reports.status.${statusMap[report.status] || 'completed'}`),
     agents: agentCount,
-    type: report.analysis_type
+    type: report.type || report.analysis_type
   };
 }));
 
@@ -514,6 +1033,9 @@ const fetchReports = async () => {
 
 const viewReport = async (reportId) => {
   try {
+    // Reset states
+    showDiscussionHistory.value = false;
+
     const response = await fetch(`http://localhost:8000/api/reports/${reportId}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch report: ${response.statusText}`);
@@ -561,15 +1083,18 @@ const deleteReport = async () => {
     const data = await response.json();
     console.log('[ReportsView] Report deleted:', data);
 
+    // Store the deleted report id before clearing
+    const deletedReportId = reportToDelete.value.id;
+
     // Remove from local list
-    reportsData.value = reportsData.value.filter(r => r.id !== reportToDelete.value.id);
+    reportsData.value = reportsData.value.filter(r => r.id !== deletedReportId);
 
     // Close dialog
     showDeleteConfirm.value = false;
     reportToDelete.value = null;
 
     // If we were viewing the deleted report, close detail view
-    if (selectedReport.value && selectedReport.value.id === reportToDelete.value.id) {
+    if (selectedReport.value && selectedReport.value.id === deletedReportId) {
       selectedReport.value = null;
     }
   } catch (err) {
@@ -672,7 +1197,134 @@ const handleChartError = (event) => {
   event.target.style.textAlign = 'center';
 };
 
-onMounted(() => {
-  fetchReports();
+onMounted(async () => { // Made async to await fetchReports if needed, though fetchReports updates reactive state so subsequent call is fine
+  await fetchReports();
+
+  // Check for sessionId in query params to auto-open report
+  if (route.query.sessionId) {
+    console.log('[ReportsView] Auto-opening report from session:', route.query.sessionId);
+    console.log('[ReportsView] Full route query:', route.query);
+    console.log('[ReportsView] Available reports:', reportsData.value.map(r => r.id || r.session_id));
+    viewReport(route.query.sessionId);
+  }
 });
 </script>
+
+<style scoped>
+/* Report Content Markdown Styling */
+.report-content :deep(p) {
+  margin-bottom: 1rem;
+  line-height: 1.75;
+}
+
+.report-content :deep(h1),
+.report-content :deep(h2),
+.report-content :deep(h3),
+.report-content :deep(h4) {
+  color: white;
+  font-weight: 700;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.report-content :deep(h3) {
+  font-size: 1.1rem;
+  color: rgb(56, 189, 248);
+}
+
+.report-content :deep(h4) {
+  font-size: 1rem;
+  color: rgb(203, 213, 225);
+}
+
+.report-content :deep(ul),
+.report-content :deep(ol) {
+  margin-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.report-content :deep(li) {
+  margin-bottom: 0.5rem;
+  line-height: 1.6;
+}
+
+.report-content :deep(strong) {
+  color: white;
+  font-weight: 600;
+}
+
+.report-content :deep(em) {
+  color: rgb(148, 163, 184);
+}
+
+.report-content :deep(code) {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+  color: rgb(56, 189, 248);
+}
+
+.report-content :deep(blockquote) {
+  border-left: 3px solid rgb(56, 189, 248);
+  padding-left: 1rem;
+  margin: 1rem 0;
+  color: rgb(148, 163, 184);
+  font-style: italic;
+}
+
+.report-content :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.report-content :deep(th),
+.report-content :deep(td) {
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: left;
+}
+
+.report-content :deep(th) {
+  background: rgba(56, 189, 248, 0.1);
+  color: white;
+  font-weight: 600;
+}
+
+.report-content :deep(td) {
+  color: rgb(203, 213, 225);
+}
+
+.report-content :deep(hr) {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 1.5rem 0;
+}
+
+/* Prose Invert Override */
+.prose-invert :deep(a) {
+  color: rgb(56, 189, 248);
+  text-decoration: none;
+}
+
+.prose-invert :deep(a:hover) {
+  text-decoration: underline;
+}
+
+/* Animation */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+</style>

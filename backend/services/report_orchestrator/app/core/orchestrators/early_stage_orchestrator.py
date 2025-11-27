@@ -107,89 +107,30 @@ class EarlyStageInvestmentOrchestrator(BaseOrchestrator):
     async def _synthesize_final_report(self) -> Dict[str, Any]:
         """
         综合生成早期投资分析报告
-
-        核心逻辑:
-        1. 提取各步骤结果
-        2. 计算综合评分 (团队40% + 市场35% + 产品25%)
-        3. 生成投资建议 (INVEST/FURTHER_DD/PASS)
-        4. 生成投资备忘录
         """
-        # 1. 提取关键结果
-        team_analysis = self.results.get("team_deep_investigation", {})
-        market_analysis = self.results.get("market_validation", {})
-        business_model = self.results.get("business_model_assessment", {})
-        cross_validation = self.results.get("cross_validation", {})
+        # Import synthesizer
+        from app.agents.report_synthesizer_agent import synthesize_report
 
-        # 2. 计算评分 (默认0.5,如果无数据)
-        team_score = team_analysis.get("team_score", 0.5)
-        market_score = market_analysis.get("market_attractiveness", 0.5)
-        product_score = business_model.get("innovation_score", 0.5)
-
-        # 综合评分
-        overall_score = (
-            team_score * 0.4 +
-            market_score * 0.35 +
-            product_score * 0.25
-        )
-
-        # 3. 生成建议
-        red_flags = cross_validation.get("red_flags", [])
-
-        if len(red_flags) > 0 and overall_score < 0.6:
-            recommendation = "PASS"
-            reasoning = f"发现{len(red_flags)}个红旗,综合评分{overall_score:.2f}低于投资门槛"
-        elif overall_score >= 0.7:
-            recommendation = "INVEST"
-            reasoning = f"综合评分{overall_score:.2f},建议投资"
-        elif overall_score >= 0.5:
-            recommendation = "FURTHER_DD"
-            reasoning = f"综合评分{overall_score:.2f},建议进行更深入的尽调"
-        else:
-            recommendation = "PASS"
-            reasoning = f"综合评分{overall_score:.2f},不符合投资标准"
-
-        # 4. 提取关键发现
-        key_findings = self._extract_key_findings()
-
-        # 5. 生成next steps
-        next_steps = self._generate_next_steps(recommendation, red_flags)
-
-        # 6. 构建报告
-        report = {
+        # Prepare context for synthesizer
+        # Map workflow specific step IDs to standard keys
+        context = {
             "scenario": "early-stage-investment",
-            "company_name": self.target.company_name,
-            "stage": self.target.stage,
-            "recommendation": recommendation,
-            "investment_score": overall_score,
-            "confidence": self._calculate_confidence(),
-
-            "summary": {
-                "verdict": reasoning,
-                "key_strengths": key_findings.get("strengths", []),
-                "key_concerns": key_findings.get("concerns", []),
-                "red_flags": red_flags
-            },
-
-            "scores": {
-                "team": team_score,
-                "market": market_score,
-                "product": product_score,
-                "overall": overall_score
-            },
-
-            "detailed_analysis": {
-                "team_assessment": team_analysis,
-                "market_opportunity": market_analysis,
-                "business_model": business_model,
-                "risk_factors": cross_validation
-            },
-
-            "next_steps": next_steps,
-
-            "generated_at": self._get_current_time(),
-            "elapsed_time": self._calculate_elapsed_time()
+            "target": self.target.dict(),
+            "config": self.request.config.dict(),
+            
+            # Map step results
+            "team_analysis": self.results.get("team_deep_investigation", {}),
+            "market_analysis": self.results.get("market_validation", {}),
+            "financial_analysis": self.results.get("business_model_assessment", {}), # Early stage focuses on business model
+            "risk_assessment": self.results.get("cross_validation", {}), # Cross validation contains red flags
+            
+            # Raw results access
+            **self.results
         }
 
+        # Call synthesizer
+        report = await synthesize_report(context, quick_mode=False)
+        
         return report
 
     def _extract_key_findings(self) -> Dict[str, List[str]]:
@@ -280,58 +221,57 @@ class EarlyStageInvestmentOrchestrator(BaseOrchestrator):
     async def _synthesize_quick_judgment(self) -> Dict[str, Any]:
         """
         早期投资快速判断
-
-        核心逻辑:
-        - 团队快查: 创始人背景是否匹配
-        - 市场初判: TAM是否够大 (>$1B)
-        - 红旗检查: 是否有明显问题
         """
-        team_data = self.results.get("team_quick_check", {})
-        market_data = self.results.get("market_opportunity", {})
-        red_flags_data = self.results.get("red_flag_scan", {})
+        from app.agents.report_synthesizer_agent import synthesize_report
+        from ...models.analysis_models import QuickJudgmentResult, RecommendationType
 
-        team_score = team_data.get("team_score", 0.5)
-        market_score = market_data.get("market_attractiveness", 0.5)
-        red_flags = red_flags_data.get("red_flags", [])
-
-        # 决策逻辑
-        overall_score = (team_score + market_score) / 2
-
-        if len(red_flags) > 0:
-            recommendation = "PASS"
-            verdict = f"发现{len(red_flags)}个红旗,建议放弃"
-        elif overall_score >= 0.7 and team_score >= 0.7:
-            recommendation = "BUY"
-            verdict = f"团队优秀,市场机会明确,建议投资"
-        elif overall_score >= 0.5:
-            recommendation = "FURTHER_DD"
-            verdict = f"有潜力但需要更多信息,建议标准尽调"
-        else:
-            recommendation = "PASS"
-            verdict = f"综合评分{overall_score:.2f}较低,不建议投资"
-
-        return {
-            "recommendation": recommendation,
-            "confidence": overall_score,
-            "judgment_time": self._calculate_elapsed_time(),
-            "summary": {
-                "verdict": verdict,
-                "key_positive": team_data.get("highlights", []),
-                "key_concern": red_flags,
-                "red_flags": red_flags
-            },
-            "scores": {
-                "team": team_score,
-                "market": market_score,
-                "overall": overall_score
-            },
-            "next_steps": {
-                "recommended_action": "进行标准尽调" if recommendation == "FURTHER_DD" else None,
-                "focus_areas": [
-                    "深入验证团队背景",
-                    "市场规模数据验证",
-                    "竞品分析"
-                ] if recommendation == "FURTHER_DD" else []
-            },
-            "is_mock": True
+        # Prepare context
+        context = {
+            "scenario": "early-stage-investment",
+            "target": self.target.dict(),
+            "config": self.request.config.dict(),
+            "team_analysis": self.results.get("team_quick_check", {}),
+            "market_analysis": self.results.get("market_opportunity", {}),
+            "risk_assessment": self.results.get("red_flag_scan", {}),
+            **self.results
         }
+
+        # Call synthesizer in quick mode
+        report = await synthesize_report(context, quick_mode=True)
+
+        # Map to QuickJudgmentResult
+        # Recommendation mapping: 'invest'->BUY, 'observe'->FURTHER_DD, 'reject'->PASS
+        rec_map = {
+            "invest": RecommendationType.BUY,
+            "observe": RecommendationType.FURTHER_DD,
+            "reject": RecommendationType.PASS
+        }
+        recommendation = rec_map.get(report.get("overall_recommendation", "observe"), RecommendationType.FURTHER_DD)
+        
+        # Confidence mapping: 'high'->0.9, 'medium'->0.7, 'low'->0.5
+        conf_map = {"high": 0.9, "medium": 0.7, "low": 0.5}
+        confidence = conf_map.get(report.get("confidence_level", "medium"), 0.7)
+
+        # Extract detailed scores
+        scores_breakdown = report.get("scores_breakdown", {})
+
+        return QuickJudgmentResult(
+            recommendation=recommendation,
+            confidence=confidence,
+            judgment_time=self._calculate_elapsed_time(),
+            summary={
+                "verdict": report.get("summary", ""),
+                "key_positive": report.get("key_findings", [])[:3], # Use top findings as positives
+                "key_concern": [f for f in report.get("key_findings", []) if "风险" in f or "不足" in f],
+                "red_flags": self.results.get("red_flag_scan", {}).get("red_flags", [])
+            },
+            scores={
+                "team": scores_breakdown.get("team", 0),
+                "market": scores_breakdown.get("market", 0),
+                "overall": report.get("investment_score", 0)
+            },
+            next_steps={
+                "recommended_action": report.get("next_steps", ["建议进一步分析"])[0] if report.get("next_steps") else "待定",
+                "focus_areas": report.get("next_steps", [])[1:]
+            }
+        )

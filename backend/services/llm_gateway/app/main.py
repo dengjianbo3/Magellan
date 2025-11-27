@@ -1,12 +1,15 @@
 # backend/services/llm_gateway/app/main.py
-from google import genai
-from google.genai import types
+"""
+LLM Gateway Service - 支持多 LLM 提供商
+当前支持: Gemini (Google) 和 Kimi (Moonshot AI)
+"""
 import os
 import io
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+import asyncio
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional, Literal
 
 from .core.config import settings
 
@@ -17,15 +20,30 @@ class ChatMessage(BaseModel):
 
 class GenerateRequest(BaseModel):
     history: List[ChatMessage]
+    # Gemini 特定参数
+    thinking_level: Optional[Literal["low", "high"]] = None
+    # Temperature 参数 - 控制输出随机性
+    temperature: Optional[float] = None
+    # 指定 LLM 提供商 (可选，默认使用系统配置)
+    provider: Optional[Literal["gemini", "kimi"]] = None
 
 class GenerateResponse(BaseModel):
     content: str
 
+class ProviderInfo(BaseModel):
+    name: str
+    available: bool
+    model: str
+
+class ProvidersResponse(BaseModel):
+    current_provider: str
+    providers: List[ProviderInfo]
+
 # --- FastAPI App ---
 app = FastAPI(
-    title="LLM Gateway Service (Gemini)",
-    description="A gateway for Gemini models, supporting text, chat, and native file understanding via the File API.",
-    version="3.3.0" # Final V3 version
+    title="LLM Gateway Service (Multi-Provider)",
+    description="统一的 LLM 网关服务，支持 Gemini 和 Kimi 多提供商切换",
+    version="5.0.0"
 )
 
 app.add_middleware(
@@ -36,91 +54,63 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-genai_client = None
+# --- 全局客户端 ---
+gemini_client = None
+kimi_client = None
+current_provider = settings.DEFAULT_LLM_PROVIDER
 
 @app.on_event("startup")
 def startup_event():
-    global genai_client
-    try:
-        genai_client = genai.Client(api_key=settings.GOOGLE_API_KEY)
-        print("Successfully initialized Google AI client.")
-    except Exception as e:
-        print(f"Failed to create Google AI client: {e}")
-        raise RuntimeError(f"Failed to create Google AI client: {e}")
+    global gemini_client, kimi_client, current_provider
 
-# --- API Endpoints ---
-@app.post("/generate_from_file", response_model=GenerateResponse, tags=["AI Generation"])
-async def generate_from_file(prompt: str = Form(...), file: UploadFile = File(...)):
-    """
-    Understands a file (PDF, image, etc.) by uploading it via the File API
-    and then generating content with gemini-2.5-flash.
-    """
-    if not genai_client:
-        raise HTTPException(status_code=503, detail="Google AI client is not available.")
-        
-    try:
-        import time
-        
-        # 1. Read file content into a BytesIO object
-        file_content = await file.read()
-        file_io = io.BytesIO(file_content)
-        file_io.name = file.filename  # Set the name attribute
-        
-        # 2. Upload file to Files API
-        upload_response = genai_client.files.upload(
-            file=file_io,
-            config=types.UploadFileConfig(
-                mime_type=file.content_type,
-                display_name=file.filename
+    # 初始化 Gemini 客户端
+    if settings.GOOGLE_API_KEY:
+        try:
+            from google import genai
+            gemini_client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+            print(f"[LLM Gateway] Gemini client initialized (model: {settings.GEMINI_MODEL_NAME})")
+        except Exception as e:
+            print(f"[LLM Gateway] Failed to initialize Gemini client: {e}")
+
+    # 初始化 Kimi 客户端 (使用 OpenAI 兼容接口)
+    if settings.KIMI_API_KEY:
+        try:
+            from openai import OpenAI
+            kimi_client = OpenAI(
+                api_key=settings.KIMI_API_KEY,
+                base_url=settings.KIMI_BASE_URL
             )
-        )
-        
-        # 3. Wait for file to be processed
-        print(f"Uploaded file: {upload_response.name}, state: {upload_response.state}")
-        while upload_response.state == "PROCESSING":
-            time.sleep(1)
-            upload_response = genai_client.files.get(name=upload_response.name)
-            print(f"File state: {upload_response.state}")
-        
-        if upload_response.state != "ACTIVE":
-            raise HTTPException(status_code=500, detail=f"File processing failed with state: {upload_response.state}")
-        
-        # 4. Generate content using the uploaded file
-        response = genai_client.models.generate_content(
-            model="gemini-2.0-flash-exp",
-            contents=[
-                types.Part(text=prompt),
-                types.Part(file_data=types.FileData(file_uri=upload_response.uri))
-            ]
-        )
-        
-        # 5. Clean up the file
-        genai_client.files.delete(name=upload_response.name)
-        
-        return GenerateResponse(content=response.text)
-    except Exception as e:
-        import traceback
-        print("====== DETAILED ERROR IN llm_gateway ======")
-        traceback.print_exc()
-        print("============================================")
-        raise HTTPException(status_code=500, detail=f"Error during generation: {str(e)}")
+            print(f"[LLM Gateway] Kimi client initialized (model: {settings.KIMI_MODEL_NAME})")
+        except Exception as e:
+            print(f"[LLM Gateway] Failed to initialize Kimi client: {e}")
 
-@app.post("/chat", response_model=GenerateResponse, tags=["AI Generation"])
-async def chat_handler(request: GenerateRequest):
-    """
-    Handles standard chat conversations with gemini-1.0-pro.
-    Includes retry logic for 503 errors.
-    """
-    if not genai_client:
-        raise HTTPException(status_code=503, detail="Google AI client is not available.")
-        
-    # Retry configuration
-    max_retries = 3
-    retry_delay = 2  # seconds
-    
+    # 确定默认提供商
+    if current_provider == "gemini" and not gemini_client:
+        if kimi_client:
+            current_provider = "kimi"
+            print("[LLM Gateway] Gemini not available, falling back to Kimi")
+    elif current_provider == "kimi" and not kimi_client:
+        if gemini_client:
+            current_provider = "gemini"
+            print("[LLM Gateway] Kimi not available, falling back to Gemini")
+
+    print(f"[LLM Gateway] Current provider: {current_provider}")
+
+# --- Gemini 调用 ---
+async def call_gemini(request: GenerateRequest) -> str:
+    """调用 Gemini API"""
+    from google import genai
+    from google.genai import types
+
+    if not gemini_client:
+        raise HTTPException(status_code=503, detail="Gemini client is not available")
+
+    max_retries = 5
+    retry_delay = 3
+
     for attempt in range(max_retries):
         try:
-            # Convert history to contents format for new SDK
+            # 转换消息格式
             contents = []
             for msg in request.history:
                 contents.append(
@@ -129,33 +119,232 @@ async def chat_handler(request: GenerateRequest):
                         parts=[types.Part(text=part) for part in msg.parts]
                     )
                 )
-            
-            response = genai_client.models.generate_content(
+
+            # 构建配置
+            config_dict = {}
+            if request.thinking_level:
+                config_dict["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=request.thinking_level
+                )
+            if request.temperature is not None:
+                config_dict["temperature"] = request.temperature
+                print(f"[Gemini] Using temperature: {request.temperature}")
+
+            config = types.GenerateContentConfig(**config_dict) if config_dict else None
+
+            response = gemini_client.models.generate_content(
                 model=settings.GEMINI_MODEL_NAME,
-                contents=contents
+                contents=contents,
+                config=config
             )
-            
-            return GenerateResponse(content=response.text)
+
+            return response.text
+
         except Exception as e:
-            import traceback
-            import asyncio
             from google.genai.errors import ServerError
-            
-            # Check if it's a 503 error that we should retry
+
             is_503_error = (isinstance(e, ServerError) and hasattr(e, 'status_code') and e.status_code == 503)
-            
+
             if is_503_error and attempt < max_retries - 1:
-                print(f"[RETRY] Attempt {attempt + 1}/{max_retries} failed with 503. Retrying in {retry_delay}s...")
+                print(f"[Gemini] Attempt {attempt + 1}/{max_retries} failed with 503. Retrying in {retry_delay}s...")
                 await asyncio.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
+                retry_delay *= 2
                 continue
-            
-            # If it's the last attempt or not a retryable error, raise
-            print("====== DETAILED ERROR IN llm_gateway chat ======")
-            traceback.print_exc()
-            print("================================================")
-            raise HTTPException(status_code=500, detail=f"Error during chat: {str(e)}")
+
+            print(f"[Gemini] Error: {e}")
+            raise HTTPException(status_code=500, detail=f"Gemini error: {str(e)}")
+
+# --- Kimi 调用 ---
+async def call_kimi(request: GenerateRequest) -> str:
+    """调用 Kimi API (OpenAI 兼容格式)"""
+    if not kimi_client:
+        raise HTTPException(status_code=503, detail="Kimi client is not available")
+
+    max_retries = 3
+    retry_delay = 2
+
+    for attempt in range(max_retries):
+        try:
+            # 转换消息格式为 OpenAI 格式
+            messages = []
+            for msg in request.history:
+                # Kimi 使用 content 而不是 parts
+                content = "\n".join(msg.parts) if msg.parts else ""
+                # 映射 role: model -> assistant
+                role = "assistant" if msg.role == "model" else msg.role
+                messages.append({
+                    "role": role,
+                    "content": content
+                })
+
+            # Kimi K2 推荐 temperature=0.6
+            temperature = request.temperature if request.temperature is not None else 0.6
+
+            print(f"[Kimi] Using temperature: {temperature}")
+
+            # 使用同步调用（在异步上下文中）
+            import asyncio
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: kimi_client.chat.completions.create(
+                    model=settings.KIMI_MODEL_NAME,
+                    messages=messages,
+                    temperature=temperature,
+                    stream=False
+                )
+            )
+
+            return response.choices[0].message.content
+
+        except Exception as e:
+            error_str = str(e)
+            # 检查是否是可重试的错误
+            is_retryable = "503" in error_str or "rate" in error_str.lower() or "timeout" in error_str.lower()
+
+            if is_retryable and attempt < max_retries - 1:
+                print(f"[Kimi] Attempt {attempt + 1}/{max_retries} failed. Retrying in {retry_delay}s...")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2
+                continue
+
+            print(f"[Kimi] Error: {e}")
+            raise HTTPException(status_code=500, detail=f"Kimi error: {str(e)}")
+
+# --- API Endpoints ---
+
+@app.get("/providers", response_model=ProvidersResponse, tags=["Configuration"])
+async def get_providers():
+    """获取可用的 LLM 提供商列表和当前选择"""
+    providers = [
+        ProviderInfo(
+            name="gemini",
+            available=gemini_client is not None,
+            model=settings.GEMINI_MODEL_NAME
+        ),
+        ProviderInfo(
+            name="kimi",
+            available=kimi_client is not None,
+            model=settings.KIMI_MODEL_NAME
+        )
+    ]
+    return ProvidersResponse(
+        current_provider=current_provider,
+        providers=providers
+    )
+
+@app.post("/providers/{provider_name}", tags=["Configuration"])
+async def set_provider(provider_name: Literal["gemini", "kimi"]):
+    """切换当前 LLM 提供商"""
+    global current_provider
+
+    if provider_name == "gemini" and not gemini_client:
+        raise HTTPException(status_code=400, detail="Gemini is not configured. Please set GOOGLE_API_KEY in .env")
+    if provider_name == "kimi" and not kimi_client:
+        raise HTTPException(status_code=400, detail="Kimi is not configured. Please set KIMI_API_KEY in .env")
+
+    current_provider = provider_name
+    print(f"[LLM Gateway] Provider switched to: {current_provider}")
+
+    return {"message": f"Provider switched to {provider_name}", "current_provider": current_provider}
+
+@app.post("/chat", response_model=GenerateResponse, tags=["AI Generation"])
+async def chat_handler(request: GenerateRequest):
+    """
+    处理聊天请求，根据当前提供商路由到对应的 LLM
+
+    - 可以通过 request.provider 临时指定提供商
+    - 否则使用全局 current_provider
+    """
+    # 确定使用哪个提供商
+    provider = request.provider or current_provider
+
+    print(f"[LLM Gateway] Chat request using provider: {provider}")
+
+    if provider == "gemini":
+        content = await call_gemini(request)
+    elif provider == "kimi":
+        content = await call_kimi(request)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
+
+    return GenerateResponse(content=content)
+
+@app.post("/generate_from_file", response_model=GenerateResponse, tags=["AI Generation"])
+async def generate_from_file(
+    prompt: str = Form(...),
+    file: UploadFile = File(...)
+):
+    """
+    文件理解功能 (仅 Gemini 支持)
+
+    上传文件并使用 Gemini 进行理解和分析
+    """
+    from google import genai
+    from google.genai import types
+
+    if not gemini_client:
+        raise HTTPException(status_code=503, detail="Gemini client is not available. File understanding requires Gemini.")
+
+    try:
+        import time
+
+        # 1. 读取文件内容
+        file_content = await file.read()
+        file_io = io.BytesIO(file_content)
+        file_io.name = file.filename
+
+        # 2. 上传文件到 Files API
+        upload_response = gemini_client.files.upload(
+            file=file_io,
+            config=types.UploadFileConfig(
+                mime_type=file.content_type,
+                display_name=file.filename
+            )
+        )
+
+        # 3. 等待文件处理完成
+        print(f"[Gemini] Uploaded file: {upload_response.name}, state: {upload_response.state}")
+        while upload_response.state == "PROCESSING":
+            time.sleep(1)
+            upload_response = gemini_client.files.get(name=upload_response.name)
+            print(f"[Gemini] File state: {upload_response.state}")
+
+        if upload_response.state != "ACTIVE":
+            raise HTTPException(status_code=500, detail=f"File processing failed with state: {upload_response.state}")
+
+        # 4. 生成内容
+        response = gemini_client.models.generate_content(
+            model=settings.GEMINI_MODEL_NAME,
+            contents=[
+                types.Part(text=prompt),
+                types.Part(file_data=types.FileData(file_uri=upload_response.uri))
+            ]
+        )
+
+        # 5. 清理文件
+        gemini_client.files.delete(name=upload_response.name)
+
+        return GenerateResponse(content=response.text)
+
+    except Exception as e:
+        import traceback
+        print("====== DETAILED ERROR IN llm_gateway ======")
+        traceback.print_exc()
+        print("============================================")
+        raise HTTPException(status_code=500, detail=f"Error during generation: {str(e)}")
 
 @app.get("/", tags=["Health Check"])
 def read_root():
-    return {"status": "ok", "service": "LLM Gateway"}
+    return {"status": "ok", "service": "LLM Gateway", "version": "5.0.0"}
+
+@app.get("/health", tags=["Health Check"])
+def health_check():
+    return {
+        "status": "healthy",
+        "current_provider": current_provider,
+        "gemini_available": gemini_client is not None,
+        "kimi_available": kimi_client is not None,
+        "gemini_model": settings.GEMINI_MODEL_NAME,
+        "kimi_model": settings.KIMI_MODEL_NAME
+    }

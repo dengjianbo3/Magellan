@@ -222,6 +222,52 @@ agents:
       comprehensive: 310
     tags: [legal, compliance, ip]
 
+  - agent_id: technical_analyst
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 技术分析师
+      en: Technical Analyst
+    description:
+      zh: 基于K线形态、技术指标进行量化分析，提供支撑阻力位、趋势判断和交易信号
+      en: Quantitative analysis based on candlestick patterns and technical indicators, providing support/resistance levels, trend judgment and trading signals
+    class_path: app.core.roundtable.investment_agents.create_technical_analyst
+    capabilities:
+      - K线形态识别 (头肩、双顶、三角形等)
+      - 技术指标计算 (RSI, MACD, KDJ, 布林带等)
+      - 均线分析 (EMA, SMA, 均线排列)
+      - 支撑阻力位识别 (斐波那契、枢轴点)
+      - 趋势判断与交易信号
+      - 多时间周期联动分析
+    inputs:
+      - symbol: 交易对符号 (如 BTC/USDT, AAPL)
+      - timeframe: 时间周期 (1h, 4h, 1d, 1w)
+      - market_type: 市场类型 (crypto, stock, forex)
+      - target_data: 目标数据 (可选)
+    outputs:
+      technical_score: 技术面评分 (0-100)
+      trend_analysis: 趋势分析结果
+      indicator_signals: 指标信号汇总
+      support_resistance: 支撑阻力位
+      pattern_recognition: K线形态识别
+      trading_suggestion: 交易建议
+      risk_warning: 风险提示
+    quick_mode_support: true
+    estimated_duration:
+      quick: 20
+      standard: 60
+      comprehensive: 150
+    tags: [technical-analysis, trading, quantitative, crypto, stock]
+    notes: |
+      此Agent主要用于:
+      - 加密货币价格分析 (BTC, ETH等)
+      - 股票技术面分析
+      - 另类投资场景的技术面评估
+
+      数据来源:
+      - 加密货币: Binance公开API
+      - 股票: Yahoo Finance (需安装yfinance)
+
   # ============================================
   # 特殊Agent层 (Special Agents)
   # 特定场景专用 - 不可复用到其他场景

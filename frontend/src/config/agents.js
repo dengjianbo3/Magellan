@@ -89,6 +89,20 @@ export const AGENTS_CONFIG = [
     avgResponse: '3.8s'
   },
   {
+    id: 'technical-analyst',
+    name: 'Technical Analyst',
+    name_zh: '技术分析师',
+    role: 'Technical Analysis',
+    role_zh: '技术面分析',
+    icon: 'candlestick_chart',
+    description: 'Performs K-line pattern analysis, calculates technical indicators (RSI, MACD, Bollinger Bands), identifies support/resistance levels, and provides trading signals.',
+    description_zh: '进行K线形态分析，计算技术指标（RSI、MACD、布林带等），识别支撑阻力位，提供交易信号',
+    capabilities: ['K-Line Patterns', 'Technical Indicators', 'Support/Resistance', 'Trading Signals'],
+    status: 'active',
+    analysisCount: 0,
+    avgResponse: '2.0s'
+  },
+  {
     id: 'leader',
     name: 'Discussion Leader',
     name_zh: '讨论主持人',

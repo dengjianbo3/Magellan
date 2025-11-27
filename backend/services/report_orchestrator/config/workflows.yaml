@@ -330,7 +330,8 @@ workflows:
 
   # ============================================
   # 另类投资分析 (Alternative Investment)
-  # 重点: 市场 > 财务 > 法律
+  # 重点: 技术分析 > 市场 > 财务 > 法律
+  # 新增技术分析师进行K线和指标分析
   # ============================================
 
   alternative-investment:
@@ -339,15 +340,23 @@ workflows:
       zh: 另类投资分析
       en: Alternative Investment Analysis
     description:
-      zh: 适用于PE/VC基金、房地产、大宗商品等另类投资标的
-      en: Analysis for alternative investments like PE/VC funds, real estate, commodities
+      zh: 适用于加密货币、PE/VC基金、房地产等另类投资标的，包含技术分析
+      en: Analysis for alternative investments like crypto, PE/VC funds, real estate, with technical analysis
 
     modes:
       quick:
         name: 快速分析
-        estimated_duration: 215  # 秒
+        estimated_duration: 235  # 秒 (新增20秒技术分析)
         steps:
           - step_id: 1
+            agent_id: technical_analyst
+            agent_params:
+              quick_mode: true
+              language: zh
+            description: 技术面快速扫描 (20秒)
+            required: false  # 可选，仅对加密货币/股票有意义
+
+          - step_id: 2
             agent_id: market_analyst
             agent_params:
               quick_mode: true
@@ -355,7 +364,7 @@ workflows:
             description: 市场分析 (45秒)
             required: true
 
-          - step_id: 2
+          - step_id: 3
             agent_id: financial_expert
             agent_params:
               quick_mode: true
@@ -363,7 +372,7 @@ workflows:
             description: 财务分析 (40秒)
             required: true
 
-          - step_id: 3
+          - step_id: 4
             agent_id: legal_advisor
             agent_params:
               quick_mode: true
@@ -371,7 +380,7 @@ workflows:
             description: 法律合规检查 (35秒)
             required: true
 
-          - step_id: 4
+          - step_id: 5
             agent_id: risk_assessor
             agent_params:
               quick_mode: true
@@ -379,20 +388,28 @@ workflows:
             description: 风险评估 (35秒)
             required: true
 
-          - step_id: 5
+          - step_id: 6
             agent_id: report_synthesizer
             agent_params:
               quick_mode: true
               language: zh
             description: 生成报告 (30秒)
             required: true
-            depends_on: [1, 2, 3, 4]
+            depends_on: [1, 2, 3, 4, 5]
 
       standard:
         name: 标准分析
-        estimated_duration: 640  # 秒
+        estimated_duration: 700  # 秒 (新增60秒技术分析)
         steps:
           - step_id: 1
+            agent_id: technical_analyst
+            agent_params:
+              quick_mode: false
+              language: zh
+            description: 技术面完整分析 (60秒)
+            required: false  # 可选，仅对加密货币/股票有意义
+
+          - step_id: 2
             agent_id: market_analyst
             agent_params:
               quick_mode: false
@@ -400,7 +417,7 @@ workflows:
             description: 市场深度分析 (150秒)
             required: true
 
-          - step_id: 2
+          - step_id: 3
             agent_id: financial_expert
             agent_params:
               quick_mode: false
@@ -408,7 +425,7 @@ workflows:
             description: 财务详细分析 (140秒)
             required: true
 
-          - step_id: 3
+          - step_id: 4
             agent_id: legal_advisor
             agent_params:
               quick_mode: false
@@ -416,7 +433,7 @@ workflows:
             description: 法律合规审查 (130秒)
             required: true
 
-          - step_id: 4
+          - step_id: 5
             agent_id: risk_assessor
             agent_params:
               quick_mode: false
@@ -424,14 +441,14 @@ workflows:
             description: 风险全面评估 (130秒)
             required: true
 
-          - step_id: 5
+          - step_id: 6
             agent_id: report_synthesizer
             agent_params:
               quick_mode: false
               language: zh
             description: 生成详细报告 (90秒)
             required: true
-            depends_on: [1, 2, 3, 4]
+            depends_on: [1, 2, 3, 4, 5]
 
   # ============================================
   # 行业研究分析 (Industry Research)
@@ -565,4 +582,4 @@ metadata:
     1. 修改此配置文件
     2. 重启report_orchestrator服务
     3. 配置会被WorkflowEngine自动加载
-    4. 无需修改代码
+    4. 无需修改代码或数据库

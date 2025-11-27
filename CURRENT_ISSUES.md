@@ -6,31 +6,7 @@
 
 ## 🔴 高优先级问题
 
-### 1. 财务分析TypeError持续报错
-
-**问题描述**：
-- Agent `FinancialExpert` 分析时出现 `TypeError: string indices must be integers, not 'str'`
-- 错误发生在尝试访问 `llm_response["choices"][0]` 时
-
-**已完成的修复尝试**：
-1. 在 `agent.py:234-272` 添加了 LLM响应格式的类型检查
-2. 在 `agent.py:454-472` 添加了安全的content提取逻辑
-3. 重启了 Docker 容器应用修复
-4. 添加了详细的调试日志（🔍 DEBUG, ✅ Success, ⚠️ Warning标记）
-
-**当前状态**：
-- 代码修复已应用到容器
-- 需要运行新的分析来查看详细日志
-- 日志将显示 `llm_response` 的实际类型和内容
-
-**下一步行动**：
-- 运行行业研究分析，收集详细日志
-- 根据日志确定 LLM Gateway 返回的实际格式
-- 可能需要修改 LLM Gateway 或者进一步增强类型处理
-
-**相关文件**：
-- `backend/services/report_orchestrator/app/core/roundtable/agent.py`
-- Lines: 234-272 (LLM调用), 454-472 (content提取)
+_当前无高优先级问题_
 
 ---
 
@@ -61,33 +37,51 @@
 
 ## ✅ 已解决问题
 
-### 1. "Unknown Project" 和 "分析中..." 不必要提示文本
+### 1. LLM Gateway Gemini模型配置错误（根本原因）⭐⭐⭐
+**错误**：`google.genai.errors.ClientError: 404 NOT_FOUND - models/gemini-1.0-pro is not found`
+**根本原因**：
+- LLM Gateway配置使用了已废弃的 `gemini-1.0-pro` 模型
+- 导致所有LLM调用返回500错误
+- 级联导致后端连接错误、WebSocket超时、前端 ERR_CONNECTION_RESET
+
+**解决方案**：
+- 修改 `backend/services/llm_gateway/app/core/config.py:7`
+- 将 `GEMINI_MODEL_NAME` 从 `"gemini-1.0-pro"` 改为 `"gemini-2.0-flash-exp"`
+- 重建并重启 llm_gateway 服务
+- 重启 report_orchestrator 服务
+
+**验证**：
+- ✅ LLM Gateway启动成功: "Successfully initialized Google AI client"
+- ✅ Dashboard API响应正常: 200 OK
+- ✅ 所有服务状态健康
+
+### 2. "Unknown Project" 和 "分析中..." 不必要提示文本
 **解决方案**：
 - 修改了 `AnalysisProgress.vue:5-7`
 - 当项目名为 "Unknown Project" 时不显示
 - 移除了 "分析中... 系统正在处理实时市场数据。" 提示
 
-### 2. 时间线面板重复显示
+### 3. 时间线面板重复显示
 **解决方案**：
 - 完全移除了时间线面板（lines 68-85）
 - 移除了相关CSS样式
 - 移除了 `timelineEvents` computed property
 
-### 3. 布局调整 - 分析结果移到右侧
+### 4. 布局调整 - 分析结果移到右侧
 **解决方案**：
 - 重构了 content-grid 布局
 - 左侧：AI智能体状态
 - 右侧：分析结果卡片（workflow steps）
 - 保持双列布局
 
-### 4. "查看完整报告" 按钮报错
+### 5. "查看完整报告" 按钮报错
 **错误**：`Cannot read properties of undefined (reading 'push')`
 **解决方案**：
 - 修改了 `AnalysisWizardView.vue:226`
 - 移除了重复的 `useRouter()` 调用
 - 使用setup()作用域中已有的 `router` 引用
 
-### 5. 分析卡在0%进度
+### 6. 分析卡在0%进度
 **原因**：
 - 缺少 `research_topic` 字段导致验证失败
 - 错误消息被缓冲而未显示
@@ -96,7 +90,7 @@
 - 修改 `industry_research_orchestrator.py:77-94` 自动生成 `research_topic`
 - 修改 `analysisServiceV2.js:207-208` 将 'error' 添加到重要消息类型
 
-### 6. Agent名称混合中英文显示
+### 7. Agent名称混合中英文显示
 **原因**：
 - 后端发送了i18n key而不是翻译后的文本
 - 前端未检测和翻译这些key

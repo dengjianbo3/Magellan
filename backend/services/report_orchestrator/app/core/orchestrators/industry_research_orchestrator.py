@@ -98,143 +98,193 @@ class IndustryResearchOrchestrator(BaseOrchestrator):
     async def _synthesize_quick_judgment(self) -> QuickJudgmentResult:
         """
         综合快速判断结果 (行业研究)
-
-        Quick Mode Workflow:
-        1. market_size_check: 市场规模检查
-        2. competition_landscape: 竞争格局分析
-        3. trend_analysis: 趋势分析
-        4. opportunity_scan: 机会扫描
-        5. quick_summary: 快速总结
-
-        评分权重:
-        - 市场规模与增长: 30%
-        - 竞争格局: 25%
-        - 技术趋势: 25%
-        - 投资机会: 20%
         """
-        # Mock实现
-        market_score = self.results.get('market_size_check', {}).get('score', 0.5)
-        competition_score = self.results.get('competition_landscape', {}).get('score', 0.5)
-        trend_score = self.results.get('trend_analysis', {}).get('score', 0.5)
-        opportunity_score = self.results.get('opportunity_scan', {}).get('score', 0.5)
+        from app.agents.report_synthesizer_agent import synthesize_report
+        from ...models.analysis_models import QuickJudgmentResult, RecommendationType
 
-        # 加权计算总分
-        overall_score = (
-            market_score * 0.30 +
-            competition_score * 0.25 +
-            trend_score * 0.25 +
-            opportunity_score * 0.20
-        )
+        # Retrieve results using step IDs from workflows.yaml (strings "1", "2", "3")
+        market_result = self._safe_to_dict(self.results.get("1"))
+        tech_result = self._safe_to_dict(self.results.get("2"))
+        financial_result = self._safe_to_dict(self.results.get("3"))
 
-        # 行业研究的"推荐"含义不同
-        if overall_score >= 0.75:
-            recommendation = RecommendationType.BUY
-            verdict = "行业前景优秀,建议重点关注投资机会"
-            confidence = 0.80
-        elif overall_score >= 0.60:
-            recommendation = RecommendationType.FURTHER_DD
-            verdict = "行业有潜力,建议深入研究细分赛道"
-            confidence = 0.70
-        else:
-            recommendation = RecommendationType.PASS
-            verdict = "行业增长放缓或竞争过度,谨慎投资"
-            confidence = 0.75
+        # Prepare context
+        context = {
+            "scenario": "industry-research",
+            "target": self.request.target,
+            "config": self.request.config.dict(),
+            "market_analysis": {
+                **market_result,
+                "market_score": market_result.get("score", 0) # Assuming result has score or similar
+            },
+            "tech_assessment": tech_result,
+            "financial_analysis": financial_result,
+            **self.results
+        }
 
-        key_positive = []
-        key_concern = []
-        red_flags = []
+        # Call synthesizer in quick mode
+        report = await synthesize_report(context, quick_mode=True)
 
-        if market_score >= 0.7:
-            key_positive.append("市场规模大且增长快")
-        elif market_score < 0.5:
-            key_concern.append("市场增长放缓")
+        # Map to QuickJudgmentResult
+        rec_map = {
+            "invest": RecommendationType.BUY,
+            "observe": RecommendationType.FURTHER_DD,
+            "reject": RecommendationType.PASS
+        }
+        recommendation = rec_map.get(report.get("overall_recommendation", "observe"), RecommendationType.FURTHER_DD)
+        
+        conf_map = {"high": 0.9, "medium": 0.7, "low": 0.5}
+        confidence = conf_map.get(report.get("confidence_level", "medium"), 0.7)
 
-        if competition_score >= 0.7:
-            key_positive.append("竞争格局清晰,有头部机会")
-        elif competition_score < 0.5:
-            red_flags.append("竞争过度激烈")
-
-        if trend_score >= 0.7:
-            key_positive.append("技术趋势向好")
-        elif trend_score < 0.5:
-            key_concern.append("技术路线不确定")
-
-        if opportunity_score >= 0.7:
-            key_positive.append("存在明确投资机会")
-
-        judgment_time = f"{int((datetime.now() - self.start_time).total_seconds() // 60)}分{int((datetime.now() - self.start_time).total_seconds() % 60)}秒"
+        scores_breakdown = report.get("scores_breakdown", {})
 
         return QuickJudgmentResult(
             recommendation=recommendation,
             confidence=confidence,
-            judgment_time=judgment_time,
+            judgment_time=self._calculate_elapsed_time(),
             summary={
-                "verdict": verdict,
-                "key_positive": key_positive,
-                "key_concern": key_concern,
-                "red_flags": red_flags
+                "verdict": report.get("summary", ""),
+                "key_positive": report.get("key_findings", [])[:3],
+                "key_concern": [f for f in report.get("key_findings", []) if "风险" in f or "不足" in f],
+                "red_flags": []
             },
             scores={
-                "market": round(market_score, 2),
-                "competition": round(competition_score, 2),
-                "trend": round(trend_score, 2),
-                "opportunity": round(opportunity_score, 2),
-                "overall": round(overall_score, 2)
+                "market": scores_breakdown.get("market", 0),
+                "competition": scores_breakdown.get("market", 0), # Proxy
+                "trend": scores_breakdown.get("tech", 0),
+                "opportunity": scores_breakdown.get("financial", 0),
+                "overall": report.get("investment_score", 0)
             },
             next_steps={
-                "recommended_action": "深入研究头部标的" if recommendation == RecommendationType.BUY else ("继续跟踪行业动态" if recommendation == RecommendationType.FURTHER_DD else "转向其他赛道"),
-                "focus_areas": [
-                    "细分赛道深度分析",
-                    "头部公司对比",
-                    "投资时机判断",
-                    "风险因素研究"
-                ] if recommendation != RecommendationType.PASS else [
-                    "寻找替代赛道"
-                ]
-            },
-            is_mock=True
+                "recommended_action": report.get("next_steps", ["建议进一步分析"])[0] if report.get("next_steps") else "待定",
+                "focus_areas": report.get("next_steps", [])[1:]
+            }
         )
+
+    def _safe_to_dict(self, data: Any) -> Dict[str, Any]:
+        """Helper to convert Pydantic models or dicts to dict and UNWRAP wrapper objects"""
+        if data is None:
+            return {}
+        
+        # 1. Convert outer object to dict
+        result = {}
+        if hasattr(data, 'model_dump'):
+            result = data.model_dump()
+        elif hasattr(data, 'dict'):
+            result = data.dict()
+        elif isinstance(data, dict):
+            result = data
+        else:
+            return {} # Unknown type
+        
+        # 2. Unwrap 'analysis' field if present (Common Agent Wrapper pattern)
+        if "analysis" in result:
+            analysis_obj = result["analysis"]
+            
+            # CASE A: Analysis is a String (Markdown report)
+            if isinstance(analysis_obj, str):
+                print(f"[IndustryOrchestrator] 'analysis' is a STRING. Wrapping as summary.", flush=True)
+                # Create a synthetic dict structure
+                analysis_content = {
+                    "summary": analysis_obj, 
+                    "raw_output": analysis_obj
+                }
+                # Inject score from wrapper if missing
+                if "score" in result:
+                    analysis_content["score"] = result["score"]
+                return analysis_content
+
+            # CASE B: Analysis is a Structured Object (Dict or Pydantic)
+            analysis_content = {}
+            if hasattr(analysis_obj, 'model_dump'):
+                analysis_content = analysis_obj.model_dump()
+            elif hasattr(analysis_obj, 'dict'):
+                analysis_content = analysis_obj.dict()
+            elif isinstance(analysis_obj, dict):
+                analysis_content = analysis_obj
+            
+            if analysis_content:
+                print(f"[IndustryOrchestrator] Unwrapping structured 'analysis' field", flush=True)
+                # Inject score from wrapper if missing in analysis
+                if "score" in result and "score" not in analysis_content:
+                    analysis_content["score"] = result["score"]
+                return analysis_content
+
+        return result
 
     async def _synthesize_final_report(self) -> Dict[str, Any]:
         """
         综合生成行业研究报告
         """
-        # Mock实现
-        return {
+        # Import synthesizer
+        from app.agents.report_synthesizer_agent import synthesize_report
+        import json
+        
+        # DEBUG LOGGING
+        try:
+            results_debug = json.dumps(self.results, default=str, ensure_ascii=False, indent=2)
+            print(f"[IndustryOrchestrator] FULL RESULTS DUMP:\n{results_debug}", flush=True)
+        except Exception as e:
+            print(f"[IndustryOrchestrator] Failed to dump results: {e}", flush=True)
+
+        # Ensure target has a name for the report cover AND persistence
+        if not self.request.target.get('company_name'):
+            industry = self.request.target.get('industry_name', '行业研究')
+            self.request.target['company_name'] = industry
+
+        # Retrieve results using step IDs from workflows.yaml (strings "1", "2", "3")
+        market_result = self._safe_to_dict(self.results.get("1"))
+        tech_result = self._safe_to_dict(self.results.get("2"))
+        financial_result = self._safe_to_dict(self.results.get("3"))
+        
+        # --- Map specific agent fields to generic 'summary' for Synthesizer extraction ---
+        
+        # Financial Agent returns 'business_model_assessment', map to 'summary'
+        if not financial_result.get("summary") and financial_result.get("business_model_assessment"):
+            financial_result["summary"] = financial_result["business_model_assessment"]
+            
+        # Tech Agent might return 'tech_foundation_check' -> 'summary'
+        if not tech_result.get("summary") and "tech_foundation_check" in tech_result:
+            check = tech_result["tech_foundation_check"]
+            if isinstance(check, dict) and check.get("summary"):
+                tech_result["summary"] = check.get("summary")
+        
+        print(f"[IndustryOrchestrator] Extracted Results:", flush=True)
+        print(f"  - Market keys: {list(market_result.keys())}", flush=True)
+        print(f"  - Tech keys: {list(tech_result.keys())}", flush=True)
+        print(f"  - Financial keys: {list(financial_result.keys())}", flush=True)
+
+        # Prepare context for synthesizer
+        context = {
             "scenario": InvestmentScenario.INDUSTRY_RESEARCH.value,
-            "industry_name": self.request.target.get('industry_name'),
-            "research_topic": self.request.target.get('research_topic'),
-            "analysis_depth": self.request.config.depth.value,
-            "final_recommendation": "BUY",
-            "overall_score": 0.82,
-            "sections": {
-                "market_analysis": {
-                    "score": 0.85,
-                    "summary": "市场规模达1000亿,年增长30%"
-                },
-                "competition": {
-                    "score": 0.78,
-                    "summary": "形成三大头部,中尾部机会丰富"
-                },
-                "trend_analysis": {
-                    "score": 0.80,
-                    "summary": "AI+行业融合加速,技术路线清晰"
-                },
-                "investment_opportunities": {
-                    "score": 0.85,
-                    "summary": "识别5个高潜力细分赛道"
-                }
+            "target": self.request.target,
+            "config": self.request.config.dict(),
+            
+            # Map results from workflow steps to standard keys expected by synthesizer
+            "market_analysis": {
+                **market_result,
+                "market_size_estimate": market_result.get("market_validation", "N/A"), 
+                "growth_rate": market_result.get("growth_potential", "N/A"),
             },
-            "key_findings": [
-                "行业处于快速增长期",
-                "政策支持力度大",
-                "技术成熟度提升",
-                "头部公司估值合理"
-            ],
-            "recommended_targets": [
-                "细分赛道A的头部公司",
-                "垂直领域B的创新企业",
-                "上下游产业链关键环节"
-            ],
-            "is_mock": True
+            "tech_assessment": {
+                 **tech_result,
+                 "tech_score": tech_result.get("tech_score", 80)
+            },
+            "financial_analysis": financial_result,
+            
+            # Risk often distributed; synthesize risks from all components
+            "risk_assessment": {
+                 "red_flags": (
+                     market_result.get("red_flags", []) + 
+                     tech_result.get("risks", []) +
+                     financial_result.get("risks", [])
+                 ),
+                 "risk_score": 75 # Placeholder
+            },
+            # Include raw results for robust access
+            **self.results
         }
+        
+        # Call synthesizer
+        report = await synthesize_report(context, quick_mode=False)
+        
+        return report

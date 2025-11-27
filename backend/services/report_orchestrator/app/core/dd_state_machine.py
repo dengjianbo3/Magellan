@@ -684,20 +684,85 @@ class DDStateMachine:
         step.status = "paused"
         step.started_at = datetime.now().isoformat()
         step.result = "✅ 初步尽职调查完成！您现在可以：\n\n1. 📝 查看和编辑投资备忘录\n2. 📄 添加访谈纪要或补充材料\n3. 💬 回答 DD 问题以深化分析\n\n请在 IM 工作台中继续您的工作。"
-        
-        # Build preliminary IM
-        preliminary_im = PreliminaryIM(
-            company_name=self.context.company_name,
-            bp_structured_data=self.context.bp_data,
-            team_section=self.context.team_analysis,
-            market_section=self.context.market_analysis,
-            cross_check_results=self.context.cross_check_results,
-            dd_questions=self.context.dd_questions,
-            session_id=self.context.session_id
-        )
-        
-        # Send to frontend for review
-        await self._send_hitl_message(step, preliminary_im)
+
+        # V5: Use ReportSynthesizerAgent to generate the final summary
+        try:
+            from ..agents.report_synthesizer_agent import ReportSynthesizerAgent
+            
+            print(f"[DD_WORKFLOW] Calling ReportSynthesizer for final summary...", flush=True)
+            
+            synthesizer = ReportSynthesizerAgent(quick_mode=False)
+            
+            # Prepare context for synthesizer
+            # Convert Pydantic models to dicts where necessary
+            context_data = {
+                "scenario": "due-diligence",
+                "target": {
+                    "company_name": self.context.company_name,
+                    "project_name": self.project_name,
+                    # Add other target info from bp_data if available
+                    **self.context.bp_data.dict()
+                },
+                "team_analysis": self.context.team_analysis.dict() if self.context.team_analysis else {},
+                "market_analysis": self.context.market_analysis.dict() if self.context.market_analysis else {},
+                # Add other analyses if available (financial, risk, etc.)
+                "risk_assessment": {
+                    "red_flags": [r.external_data for r in self.context.cross_check_results if r.discrepancy_level == "Major"] 
+                                 + ([q.question for q in self.context.dd_questions] if self.context.dd_questions else [])
+                }
+            }
+            
+            # Generate report
+            synthesized_report = await synthesizer.synthesize(context_data)
+            
+            print(f"[DD_WORKFLOW] ReportSynthesizer finished. Recommendation: {synthesized_report.get('overall_recommendation')}", flush=True)
+            
+            # Update context with synthesized result
+            # We need to map the synthesizer output back to PreliminaryIM structure or store it directly
+            # For now, we'll enhance the PreliminaryIM with the synthesized summary
+            
+            # Extract summary from synthesized report
+            exec_summary = synthesized_report.get('executive_summary', '')
+            financial_highlights = synthesized_report.get('preliminary_im', {}).get('financial_highlights', {})
+            
+            # Build PreliminaryIM (combining structured data + synthesized text)
+            preliminary_im = PreliminaryIM(
+                company_name=self.context.company_name,
+                bp_structured_data=self.context.bp_data,
+                team_section=self.context.team_analysis,
+                market_section=self.context.market_analysis,
+                cross_check_results=self.context.cross_check_results,
+                dd_questions=self.context.dd_questions,
+                session_id=self.context.session_id,
+                # Add synthesized fields
+                investment_highlights=synthesized_report.get('preliminary_im', {}).get('investment_highlights', []),
+                investment_recommendation=synthesized_report.get('preliminary_im', {}).get('investment_recommendation', ''),
+                key_findings=synthesized_report.get('preliminary_im', {}).get('key_findings', []),
+                financial_highlights=financial_highlights,
+                final_report=synthesized_report # Store full report for reference
+            )
+            
+            self.context.preliminary_im = preliminary_im.dict()
+            
+            # Send to frontend for review
+            await self._send_hitl_message(step, preliminary_im)
+
+        except Exception as e:
+            print(f"[DD_WORKFLOW] Report synthesis failed: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+            
+            # Fallback to basic PreliminaryIM if synthesis fails
+            preliminary_im = PreliminaryIM(
+                company_name=self.context.company_name,
+                bp_structured_data=self.context.bp_data,
+                team_section=self.context.team_analysis,
+                market_section=self.context.market_analysis,
+                cross_check_results=self.context.cross_check_results,
+                dd_questions=self.context.dd_questions,
+                session_id=self.context.session_id
+            )
+            await self._send_hitl_message(step, preliminary_im)
     
     async def _transition_to_completed(self):
         """Mark workflow as completed"""
@@ -937,8 +1002,14 @@ class DDStateMachine:
         # Build report sections
         sections = []
         
-        # 1. Executive Summary (基于 BP 数据)
+        # 1. Executive Summary (基于 BP 数据 + 综合分析)
         bp_data = preliminary_im.bp_structured_data
+        
+        # Extract synthesized content if available (from V5 update)
+        inv_rec = getattr(preliminary_im, 'investment_recommendation', None)
+        inv_highlights = getattr(preliminary_im, 'investment_highlights', [])
+        key_findings = getattr(preliminary_im, 'key_findings', [])
+        
         exec_summary = f"""**公司**: {bp_data.company_name}
 **融资**: {bp_data.funding_request or '待定'}
 **估值**: {bp_data.current_valuation or '待定'}
@@ -949,6 +1020,26 @@ class DDStateMachine:
 **市场**: {bp_data.target_market or '待确认'}
 **市场规模**: {bp_data.market_size_tam or '待核实'}
 """
+
+        # Add synthesized insights if available
+        if inv_rec:
+            exec_summary += f"\n\n**投资建议**: {inv_rec}"
+        
+        if inv_highlights:
+            highlights_str = "\n".join([f"- {h}" for h in inv_highlights[:3]])
+            exec_summary += f"\n\n**投资亮点**:\n{highlights_str}"
+            
+        if key_findings:
+            # Clean up key findings format if they contain category prefixes
+            cleaned_findings = []
+            for f in key_findings[:3]:
+                if isinstance(f, str) and ":" in f:
+                    cleaned_findings.append(f.split(":", 1)[1].strip())
+                else:
+                    cleaned_findings.append(str(f))
+            findings_str = "\n".join([f"- {f}" for f in cleaned_findings])
+            exec_summary += f"\n\n**关键发现**:\n{findings_str}"
+
         sections.append({
             "section_title": "执行摘要",
             "content": exec_summary

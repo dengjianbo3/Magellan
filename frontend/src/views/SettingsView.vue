@@ -184,47 +184,127 @@
           </div>
         </div>
 
-        <!-- API Settings -->
+        <!-- API Settings (LLM Provider) -->
         <div v-if="activeSection === 'api'" class="glass-panel rounded-2xl p-8 animate-fade-in">
-          <h2 class="text-xl font-bold text-white mb-8 pb-4 border-b border-white/10">{{ t('settings.sections.api') }}</h2>
+          <h2 class="text-xl font-bold text-white mb-8 pb-4 border-b border-white/10">{{ t('settings.api.title') }}</h2>
           <div class="space-y-6">
+            <!-- LLM Provider Selection -->
             <div>
-              <label class="block text-sm font-bold text-text-secondary mb-2 uppercase tracking-wider">{{ t('settings.api.openaiKey') }}</label>
-              <div class="flex gap-3">
-                <input
-                  type="password"
-                  value="sk-••••••••••••••••••••••••"
-                  class="flex-1 px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all font-mono"
-                />
-                <button class="px-6 py-3 rounded-xl border border-white/10 text-white hover:bg-white/10 transition-colors font-bold">
-                  {{ t('settings.api.update') }}
+              <label class="block text-sm font-bold text-text-secondary mb-2 uppercase tracking-wider">{{ t('settings.api.llmProvider') }}</label>
+              <p class="text-sm text-text-secondary mb-4">{{ t('settings.api.llmProviderDesc') }}</p>
+
+              <!-- Provider Cards -->
+              <div class="grid grid-cols-2 gap-4">
+                <!-- Gemini Provider -->
+                <button
+                  @click="switchProvider('gemini')"
+                  :disabled="providerSwitching || !providers.gemini?.available"
+                  :class="[
+                    'p-5 rounded-xl border-2 transition-all text-left relative overflow-hidden group',
+                    currentProvider === 'gemini'
+                      ? 'border-primary bg-primary/10 shadow-glow-sm'
+                      : providers.gemini?.available
+                        ? 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10'
+                        : 'border-white/5 bg-white/5 opacity-50 cursor-not-allowed'
+                  ]"
+                >
+                  <!-- Selected indicator -->
+                  <div v-if="currentProvider === 'gemini'" class="absolute top-3 right-3">
+                    <span class="material-symbols-outlined text-primary">check_circle</span>
+                  </div>
+
+                  <!-- Provider logo/icon -->
+                  <div class="flex items-center gap-3 mb-3">
+                    <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                      <span class="text-white font-bold text-lg">G</span>
+                    </div>
+                    <div>
+                      <h3 class="font-bold text-white">{{ t('settings.api.providers.gemini') }}</h3>
+                      <p class="text-xs text-text-secondary">{{ providers.gemini?.model || 'gemini-3-pro-preview' }}</p>
+                    </div>
+                  </div>
+
+                  <!-- Status -->
+                  <div class="flex items-center gap-2">
+                    <span :class="['w-2 h-2 rounded-full', providers.gemini?.available ? 'bg-green-500' : 'bg-red-500']"></span>
+                    <span class="text-xs text-text-secondary">
+                      {{ providers.gemini?.available ? t('settings.api.available') : t('settings.api.unavailable') }}
+                    </span>
+                  </div>
                 </button>
+
+                <!-- Kimi Provider -->
+                <button
+                  @click="switchProvider('kimi')"
+                  :disabled="providerSwitching || !providers.kimi?.available"
+                  :class="[
+                    'p-5 rounded-xl border-2 transition-all text-left relative overflow-hidden group',
+                    currentProvider === 'kimi'
+                      ? 'border-primary bg-primary/10 shadow-glow-sm'
+                      : providers.kimi?.available
+                        ? 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10'
+                        : 'border-white/5 bg-white/5 opacity-50 cursor-not-allowed'
+                  ]"
+                >
+                  <!-- Selected indicator -->
+                  <div v-if="currentProvider === 'kimi'" class="absolute top-3 right-3">
+                    <span class="material-symbols-outlined text-primary">check_circle</span>
+                  </div>
+
+                  <!-- Provider logo/icon -->
+                  <div class="flex items-center gap-3 mb-3">
+                    <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
+                      <span class="text-white font-bold text-lg">K</span>
+                    </div>
+                    <div>
+                      <h3 class="font-bold text-white">{{ t('settings.api.providers.kimi') }}</h3>
+                      <p class="text-xs text-text-secondary">{{ providers.kimi?.model || 'kimi-k2-0711-preview' }}</p>
+                    </div>
+                  </div>
+
+                  <!-- Status -->
+                  <div class="flex items-center gap-2">
+                    <span :class="['w-2 h-2 rounded-full', providers.kimi?.available ? 'bg-green-500' : 'bg-red-500']"></span>
+                    <span class="text-xs text-text-secondary">
+                      {{ providers.kimi?.available ? t('settings.api.available') : t('settings.api.unavailable') }}
+                    </span>
+                  </div>
+                </button>
+              </div>
+
+              <!-- Switching indicator -->
+              <div v-if="providerSwitching" class="mt-4 flex items-center gap-2 text-primary">
+                <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-sm">{{ t('settings.api.switching') }}</span>
+              </div>
+
+              <!-- Error message -->
+              <div v-if="providerError" class="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                {{ providerError }}
               </div>
             </div>
 
-            <div>
-              <label class="block text-sm font-bold text-text-secondary mb-2 uppercase tracking-wider">{{ t('settings.api.claudeKey') }}</label>
-              <div class="flex gap-3">
-                <input
-                  type="password"
-                  value="sk-ant-••••••••••••••••••"
-                  class="flex-1 px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all font-mono"
-                />
-                <button class="px-6 py-3 rounded-xl border border-white/10 text-white hover:bg-white/10 transition-colors font-bold">
-                  {{ t('settings.api.update') }}
-                </button>
-              </div>
-            </div>
-
+            <!-- Current Provider Info -->
             <div class="pt-6 border-t border-white/10">
-              <h3 class="font-bold text-primary mb-4 text-sm uppercase tracking-wider">{{ t('settings.api.usage') }}</h3>
-              <div class="space-y-4 p-5 rounded-xl bg-black/20 border border-white/5">
+              <h3 class="font-bold text-primary mb-4 text-sm uppercase tracking-wider">{{ t('settings.api.currentModel') }}</h3>
+              <div class="p-5 rounded-xl bg-black/20 border border-white/5">
                 <div class="flex items-center justify-between">
-                  <span class="text-sm text-text-secondary font-bold">{{ t('settings.api.thisMonth') }}</span>
-                  <span class="text-sm font-bold text-white font-mono">$127.50 / $500.00</span>
-                </div>
-                <div class="w-full h-3 bg-black/50 rounded-full overflow-hidden border border-white/5">
-                  <div class="h-full bg-gradient-to-r from-primary to-accent-cyan shadow-[0_0_10px_rgba(56,189,248,0.5)]" style="width: 25.5%"></div>
+                  <div class="flex items-center gap-3">
+                    <div :class="['w-8 h-8 rounded-lg flex items-center justify-center',
+                      currentProvider === 'gemini'
+                        ? 'bg-gradient-to-br from-blue-500 to-purple-600'
+                        : 'bg-gradient-to-br from-orange-500 to-red-600']">
+                      <span class="text-white font-bold">{{ currentProvider === 'gemini' ? 'G' : 'K' }}</span>
+                    </div>
+                    <div>
+                      <p class="font-bold text-white">{{ currentProvider === 'gemini' ? t('settings.api.providers.gemini') : t('settings.api.providers.kimi') }}</p>
+                      <p class="text-xs text-text-secondary font-mono">{{ providers[currentProvider]?.model || '-' }}</p>
+                    </div>
+                  </div>
+                  <span class="px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-xs font-bold">Active</span>
                 </div>
               </div>
             </div>
@@ -282,22 +362,95 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useLanguage } from '../composables/useLanguage';
 
 const { t, locale, setLocale } = useLanguage();
 
 const activeSection = ref('appearance');
 
+// LLM Provider state
+const currentProvider = ref('gemini');
+const providers = ref({
+  gemini: { available: false, model: '' },
+  kimi: { available: false, model: '' }
+});
+const providerSwitching = ref(false);
+const providerError = ref('');
+
 const sections = computed(() => [
   { id: 'profile', name: t('settings.sections.profile'), icon: 'person' },
   { id: 'notifications', name: t('settings.sections.notifications'), icon: 'notifications' },
   { id: 'security', name: t('settings.sections.security'), icon: 'lock' },
-  { id: 'api', name: t('settings.sections.api'), icon: 'key' },
+  { id: 'api', name: t('settings.sections.api'), icon: 'smart_toy' },
   { id: 'appearance', name: t('settings.sections.appearance'), icon: 'palette' }
 ]);
 
 const handleLanguageChange = (lang) => {
   setLocale(lang);
 };
+
+// Fetch LLM providers info
+const fetchProviders = async () => {
+  try {
+    console.log('[Settings] Fetching providers from http://localhost:8003/providers');
+    const response = await fetch('http://localhost:8003/providers');
+    console.log('[Settings] Response status:', response.status);
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log('[Settings] Providers data:', data);
+
+      currentProvider.value = data.current_provider;
+      // Map providers array to object
+      data.providers.forEach(p => {
+        providers.value[p.name] = {
+          available: p.available,
+          model: p.model
+        };
+      });
+
+      console.log('[Settings] Updated providers:', providers.value);
+      console.log('[Settings] Current provider:', currentProvider.value);
+    } else {
+      console.error('[Settings] Response not ok:', response.status, response.statusText);
+    }
+  } catch (error) {
+    console.error('[Settings] Failed to fetch providers:', error);
+  }
+};
+
+// Switch LLM provider
+const switchProvider = async (providerName) => {
+  if (providerName === currentProvider.value) return;
+  if (providerSwitching.value) return;
+
+  providerSwitching.value = true;
+  providerError.value = '';
+
+  try {
+    const response = await fetch(`http://localhost:8003/providers/${providerName}`, {
+      method: 'POST'
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      currentProvider.value = data.current_provider;
+      console.log(`[Settings] Switched to ${providerName}`);
+    } else {
+      const errorData = await response.json();
+      providerError.value = errorData.detail || 'Switch failed';
+    }
+  } catch (error) {
+    providerError.value = error.message;
+    console.error('[Settings] Failed to switch provider:', error);
+  } finally {
+    providerSwitching.value = false;
+  }
+};
+
+// Fetch providers on mount
+onMounted(() => {
+  fetchProviders();
+});
 </script>

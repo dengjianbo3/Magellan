@@ -2,7 +2,7 @@
   <div class="max-w-7xl mx-auto p-8 min-h-screen flex flex-col">
     <!-- Back Button -->
     <button 
-      v-if="currentStep > 0"
+      v-if="currentStep === 1"
       @click="currentStep--"
       class="self-start mb-6 flex items-center gap-2 text-text-secondary hover:text-primary transition-colors"
     >
@@ -125,6 +125,7 @@ import AnalysisProgress from '@/components/analysis/AnalysisProgress.vue';
 
 const { t } = useLanguage();
 const { error } = useToast();
+const router = useRouter();
 
 // Current Step
 const currentStep = ref(0);
@@ -170,6 +171,12 @@ async function handleAnalysisStart(data) {
 
   // Start Analysis
   try {
+    // Prepare service state (reset buffer, disconnect old sessions)
+    analysisServiceV2.prepare();
+
+    // IMPORTANT: Reset component-level sessionId to ensure we use the new session
+    sessionId.value = null;
+
     const request = {
       project_name: target.company_name || target.target_name || target.industry_name || 'Analysis Project',
       scenario: selectedScenario.value.id,
@@ -219,16 +226,26 @@ async function handleAnalysisStart(data) {
 // Handle Analysis Completion
 function handleAnalysisComplete(result) {
   console.log('[Wizard] Analysis complete:', result);
+  console.log('[Wizard] Current sessionId.value:', sessionId.value);
+  console.log('[Wizard] Service sessionId:', analysisServiceV2.sessionId);
 
   if (result?.view === 'report') {
     // User clicked "查看完整报告"
     // Navigate to the report view with the session ID
-    router.push({
-      name: 'ReportsView',
-      query: {
-        sessionId: sessionId.value
-      }
-    });
+    // Use the service's sessionId as the source of truth (in case component ref is stale)
+    const reportSessionId = analysisServiceV2.sessionId || sessionId.value;
+    console.log('[Wizard] Navigating to report with sessionId:', reportSessionId);
+
+    if (reportSessionId) {
+        router.push({
+        name: 'ReportsView',
+        query: {
+            sessionId: reportSessionId
+        }
+        });
+    } else {
+        error(t('analysisWizard.sessionNotFound'));
+    }
   }
 }
 </script>

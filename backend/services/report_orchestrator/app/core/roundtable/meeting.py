@@ -54,9 +54,30 @@ class Meeting:
         self.is_running = False
         self.current_turn = 0
         self.start_time = None
+        self.should_conclude = False  # Leader调用end_meeting工具时设为True
+        self.conclusion_reason = ""  # 结束原因
+
+        # Human-in-the-Loop 状态
+        self.waiting_for_human = False  # 是否正在等待用户输入
+        self.human_intervention_event = None  # 用于等待用户输入的异步事件
 
         # 设置消息监听器（用于实时推送）
         self.message_bus.add_listener(self._on_message)
+
+    def conclude_meeting(self, reason: str = "Leader决定结束会议") -> str:
+        """
+        结束会议的方法，供end_meeting工具调用
+
+        Args:
+            reason: 结束原因
+
+        Returns:
+            确认消息
+        """
+        self.should_conclude = True
+        self.conclusion_reason = reason
+        print(f"[Meeting] conclude_meeting called: {reason}")
+        return f"会议将在当前轮次结束后终止。原因: {reason}"
 
     async def run(
         self,
@@ -95,12 +116,31 @@ class Meeting:
                     print("[Meeting] Timeout reached")
                     break
 
+                # 检查Leader是否调用了end_meeting工具
+                # 支持两种方式: 直接设置should_conclude 或 通过_temp_state
+                if hasattr(self, '_temp_state') and self._temp_state.get("should_conclude"):
+                    self.should_conclude = True
+                    self.conclusion_reason = self._temp_state.get("conclusion_reason", "")
+
+                if self.should_conclude:
+                    print(f"[Meeting] Leader called end_meeting tool, concluding discussion. Reason: {self.conclusion_reason}")
+                    break
+
                 # 让每个Agent思考和行动
                 turn_complete = await self._execute_turn()
 
                 if not turn_complete:
                     # 没有Agent产生新消息，讨论结束
                     print("[Meeting] No new messages, discussion complete")
+                    break
+
+                # 再次检查（工具可能在turn中被调用）
+                if hasattr(self, '_temp_state') and self._temp_state.get("should_conclude"):
+                    self.should_conclude = True
+                    self.conclusion_reason = self._temp_state.get("conclusion_reason", "")
+
+                if self.should_conclude:
+                    print(f"[Meeting] Leader called end_meeting tool during turn, concluding discussion. Reason: {self.conclusion_reason}")
                     break
 
                 # 检查自定义终止条件
@@ -342,6 +382,83 @@ class Meeting:
         """停止讨论"""
         self.is_running = False
         print("[Meeting] Discussion stopped")
+
+    async def request_human_intervention(self) -> str:
+        """
+        请求人工介入，暂停会议并等待用户输入
+
+        Returns:
+            用户输入的内容
+        """
+        print("[Meeting] Requesting human intervention...")
+        self.waiting_for_human = True
+        self.human_intervention_event = asyncio.Event()
+
+        # 推送事件到前端，通知需要用户输入
+        if self.agent_event_bus:
+            await self.agent_event_bus.publish_thinking(
+                agent_name="Meeting Orchestrator",
+                message="⏸️ 会议已暂停，等待用户补充信息...",
+                progress=self.current_turn / self.max_turns
+            )
+
+        # 等待用户输入（通过inject_human_input方法触发）
+        await self.human_intervention_event.wait()
+
+        self.waiting_for_human = False
+        print("[Meeting] Human intervention received, resuming...")
+
+        # 返回用户输入（从最新的Human消息中获取）
+        human_messages = [msg for msg in self.message_bus.message_history if msg.sender == "Human"]
+        if human_messages:
+            return human_messages[-1].content
+        return ""
+
+    async def inject_human_input(self, content: str):
+        """
+        注入用户输入到讨论中（支持主动打断）
+
+        Args:
+            content: 用户补充的内容
+        """
+        print(f"[Meeting] Injecting human input: {content[:100]}...")
+
+        # 创建Human消息并广播给所有Agent（特别是Leader）
+        from .message import Message, MessageType
+        human_message = Message(
+            sender="Human",
+            recipient="ALL",  # 广播给所有人
+            content=f"""## 👤 用户补充信息
+
+{content}
+
+**重要**: 用户主动打断了讨论并补充了上述信息。
+
+**@Leader**: 请根据这个补充信息，重新评估当前讨论进展并规划接下来的议程。具体要求：
+1. 先确认收到并理解用户补充的内容
+2. 评估这个补充信息对当前讨论的影响
+3. 如果需要，调整后续的讨论方向和重点
+4. 指派相关专家根据这个新信息进行分析
+
+**@其他专家**: 请注意用户的补充信息，在后续发言中：
+1. 如果这个信息与你的专业领域相关，请优先分析和回应
+2. 如果发现用户信息与之前的分析有冲突，请指出并重新评估
+3. 将这个新信息纳入到你的专业判断中""",
+            message_type=MessageType.STATEMENT
+        )
+
+        # 发送到MessageBus（这样Leader和其他Agent在下次think_and_act时会看到）
+        await self.message_bus.send(human_message)
+
+        # 推送到前端
+        if self.agent_event_bus:
+            await self.agent_event_bus.publish_result(
+                agent_name="Human",
+                message=content,
+                data={"message_type": "human_intervention"}
+            )
+
+        print(f"[Meeting] Human input injected successfully into message bus")
 
     def get_conversation_history(self) -> List[Dict[str, Any]]:
         """

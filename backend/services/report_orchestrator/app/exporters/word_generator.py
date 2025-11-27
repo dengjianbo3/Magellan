@@ -223,7 +223,20 @@ class WordReportGenerator:
             findings = im_data['key_findings']
             if isinstance(findings, list):
                 for finding in findings:
-                    self.doc.add_paragraph(str(finding), style='List Bullet')
+                    if isinstance(finding, dict):
+                        # Format dict finding
+                        category = finding.get('category', 'General')
+                        score = finding.get('score', 'N/A')
+                        points = "; ".join(finding.get('key_points', []))
+                        concerns = "; ".join(finding.get('concerns', []))
+                        
+                        text = f"{category} (评分: {score})"
+                        if points: text += f" - 亮点: {points}"
+                        if concerns: text += f" - 关注: {concerns}"
+                        
+                        self.doc.add_paragraph(text, style='List Bullet')
+                    else:
+                        self.doc.add_paragraph(str(finding), style='List Bullet')
             else:
                 self.doc.add_paragraph(str(findings))
 
