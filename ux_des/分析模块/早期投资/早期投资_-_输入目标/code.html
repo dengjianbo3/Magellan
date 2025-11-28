@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Megellan - Early Stage Investment Analysis</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            primary: "#2563EB", // Blue-600
+            "background-light": "#F3F4F6", // Gray-100
+            "background-dark": "#111827", // Gray-900
+            "sidebar-dark": "#0D1117", // a very dark gray
+          },
+          fontFamily: {
+            display: ["Noto Sans SC", "sans-serif"],
+          },
+          borderRadius: {
+            DEFAULT: "0.5rem", // 8px
+          },
+        },
+      },
+    };
+  </script>
+<style>.glass-effect-dark {
+    background-color: rgba(13, 17, 23, 0.7);backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-right: 1px solid rgba(75, 85, 99, 0.3);}
+select {
+    background-image: url(https://lh3.googleusercontent.com/aida-public/AB6AXuD5M66fjlqJXQXzjvujXKMHN0DHcnssgNT0n96BkL3UJPxQRXMyhdUUfssgWVfHU1GvRP6FekTc36k_5oKgdv4TrhBUa8ir2sB1T9kaCJD_ycMWEdT-PgE5c09O76xFORlBJpaZTfyS9mKiGvGI7cpVNooSF6xKCBI2jEIQjHGq66V45OanCufWzRZaRIyJ9J1HCbK0awS2GB3WjFKvvOKASV0PWdw5XonOKoT-XBEeapyYrdSbIsR_7mSUNCPikRo4GVtztvAFkBD5);
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none
+    }
+.dark select {
+    background-image: url(https://lh3.googleusercontent.com/aida-public/AB6AXuD5M66fjlqJXQXzjvujXKMHN0DHcnssgNT0n96BkL3UJPxQRXMyhdUUfssgWVfHU1GvRP6FekTc36k_5oKgdv4TrhBUa8ir2sB1T9kaCJD_ycMWEdT-PgE5c09O76xFORlBJpaZTfyS9mKiGvGI7cpVNooSF6xKCBI2jEIQjHGq66V45OanCufWzRZaRIyJ9J1HCbK0awS2GB3WjFKvvOKASV0PWdw5XonOKoT-XBEeapyYrdSbIsR_7mSUNCPikRo4GVtztvAFkBD5)
+    }
+.custom-file-button span {
+    -webkit-user-select: none;-ms-user-select: none;user-select: none;}</style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-gray-900 dark:text-gray-100 antialiased">
+<div class="flex min-h-screen w-full">
+<aside class="w-64 flex-shrink-0 p-4 bg-sidebar-dark text-gray-300 flex flex-col glass-effect-dark">
+<div class="flex items-center justify-between p-2 mb-8">
+<a class="flex items-center space-x-3" href="#">
+<svg class="h-8 w-8 text-primary" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"></path>
+</svg>
+<span class="text-xl font-bold text-white">Megellan</span>
+</a>
+</div>
+<nav class="flex-grow space-y-2">
+<a class="flex items-center p-3 rounded-lg text-gray-400 hover:bg-gray-700/50 hover:text-white transition-colors" href="#">
+<span class="material-icons-outlined mr-3">dashboard</span>
+<span>仪表盘</span>
+</a>
+<a class="flex items-center p-3 rounded-lg bg-primary/20 text-white font-semibold" href="#">
+<span class="material-icons-outlined mr-3">insights</span>
+<span>投资分析</span>
+</a>
+<a class="flex items-center p-3 rounded-lg text-gray-400 hover:bg-gray-700/50 hover:text-white transition-colors" href="#">
+<span class="material-icons-outlined mr-3">history</span>
+<span>历史记录</span>
+</a>
+<a class="flex items-center p-3 rounded-lg text-gray-400 hover:bg-gray-700/50 hover:text-white transition-colors" href="#">
+<span class="material-icons-outlined mr-3">settings</span>
+<span>设置</span>
+</a>
+</nav>
+<div class="mt-auto">
+<button class="w-full flex items-center justify-center p-3 rounded-lg text-gray-400 hover:bg-gray-700/50 hover:text-white transition-colors">
+<span class="material-icons-outlined">menu_open</span>
+</button>
+</div>
+</aside>
+<main class="flex-1 flex flex-col">
+<header class="w-full max-w-5xl mx-auto px-8 pt-12">
+<div class="flex justify-center items-center">
+<div class="relative w-full">
+<div class="absolute top-1/2 left-0 w-full h-0.5 bg-gray-300 dark:bg-gray-700"></div>
+<div class="relative flex justify-between items-center">
+<div class="text-center">
+<div class="w-6 h-6 flex items-center justify-center rounded-full bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-sm font-bold">1</div>
+<p class="mt-2 text-sm text-gray-500 dark:text-gray-400">选择投资场景</p>
+</div>
+<div class="text-center">
+<div class="w-6 h-6 flex items-center justify-center rounded-full bg-primary text-white text-sm font-bold">2</div>
+<p class="mt-2 text-sm text-white font-semibold">输入目标</p>
+</div>
+<div class="text-center">
+<div class="w-6 h-6 flex items-center justify-center rounded-full bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-sm font-bold">3</div>
+<p class="mt-2 text-sm text-gray-500 dark:text-gray-400">配置分析</p>
+</div>
+<div class="text-center">
+<div class="w-6 h-6 flex items-center justify-center rounded-full bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-sm font-bold">4</div>
+<p class="mt-2 text-sm text-gray-500 dark:text-gray-400">分析中</p>
+</div>
+</div>
+</div>
+</div>
+</header>
+<div class="flex-1 flex items-center justify-center py-12 px-4">
+<div class="w-full max-w-2xl mx-auto">
+<div class="text-center mb-10">
+<h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">早期投资分析</h1>
+<p class="text-gray-600 dark:text-gray-400">分析天使轮、种子轮、Pre-A和A轮公司, 重点关注团队背景、市场机会和产品创新</p>
+</div>
+<form class="space-y-6">
+<div>
+<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="company-name">公司名称 <span class="text-red-500">*</span></label>
+<input class="w-full bg-gray-200/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-primary focus:border-primary placeholder-gray-500 dark:placeholder-gray-500" id="company-name" placeholder="例如: XX科技" type="text"/>
+<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">请输入待分析的公司名称</p>
+</div>
+<div>
+<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="funding-stage">融资阶段 <span class="text-red-500">*</span></label>
+<select class="w-full bg-gray-200/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-primary focus:border-primary text-gray-700 dark:text-gray-300" id="funding-stage">
+<option selected="">请选择融资阶段</option>
+<option>天使轮</option>
+<option>种子轮</option>
+<option>Pre-A轮</option>
+<option>A轮</option>
+</select>
+</div>
+<div>
+<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="industry">所属行业</label>
+<input class="w-full bg-gray-200/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-primary focus:border-primary placeholder-gray-500 dark:placeholder-gray-500" id="industry" placeholder="例如: 人工智能、新能源汽车" type="text"/>
+</div>
+<div>
+<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="business-plan">商业计划书 (可选)</label>
+<label class="relative cursor-pointer" for="business-plan">
+<div class="w-full flex items-center justify-center px-4 py-2 bg-gray-200/50 dark:bg-gray-800/50 border border-dashed border-gray-400 dark:border-gray-600 rounded-md">
+<span class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-600 dark:bg-gray-700 hover:bg-gray-700 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-900 focus:ring-gray-500">
+<span class="material-icons-outlined text-base mr-2">upload_file</span>
+<span>上传文件</span>
+</span>
+</div>
+<input class="sr-only" id="business-plan" name="business-plan" type="file"/>
+</label>
+<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">支持 PDF, PPT, Word 格式</p>
+</div>
+<div>
+<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="founding-year">成立年份</label>
+<input class="w-full bg-gray-200/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-primary focus:border-primary placeholder-gray-500 dark:placeholder-gray-500" id="founding-year" placeholder="例如: 2023" type="text"/>
+</div>
+<div>
+<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="team-members">团队成员</label>
+<textarea class="w-full bg-gray-200/50 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-primary focus:border-primary placeholder-gray-500 dark:placeholder-gray-500" id="team-members" placeholder="每行一个成员, 格式: 姓名, 职位, 背景
+例如:
+张三, CEO, 前阿里巴巴技术总监
+李四, CTO, 斯坦福大学博士" rows="4"></textarea>
+<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">每行输入一位团队成员信息</p>
+</div>
+<div class="border-t border-gray-300 dark:border-gray-700 pt-6 mt-8 flex justify-between items-center">
+<button class="inline-flex items-center px-6 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md shadow-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-900 focus:ring-primary" type="button">
+<span class="material-icons-outlined text-base mr-2">arrow_back</span>
+                返回
+              </button>
+<button class="inline-flex items-center px-6 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-900 focus:ring-primary" type="submit">
+                下一步
+                <span class="material-icons-outlined text-base ml-2">arrow_forward</span>
+</button>
+</div>
+</form>
+</div>
+</div>
+</main>
+</div>
+
+</body></html>

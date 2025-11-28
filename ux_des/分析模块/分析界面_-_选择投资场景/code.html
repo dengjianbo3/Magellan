@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>选择投资场景</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+<style>
+    .material-icons {
+      font-size: 3rem;
+    }
+  </style>
+<script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            primary: "#2563eb",
+            "background-dark": "#0B1120", // Deep navy blue
+          },
+          fontFamily: {
+            display: ["Noto Sans SC", "sans-serif"],
+          },
+          borderRadius: {
+            DEFAULT: "0.75rem",
+          },
+        },
+      },
+    };
+  </script>
+</head>
+<body class="font-display bg-background-dark text-gray-100 min-h-screen">
+<div class="flex h-screen">
+<nav class="w-64 bg-black/20 backdrop-blur-lg border-r border-gray-500/10 flex-shrink-0 flex flex-col">
+<div class="p-6 flex items-center gap-3">
+<svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
+<path d="M12 2L2 7L12 12L22 7L12 2Z" fill="#2563eb"></path>
+<path d="M2 17L12 22L22 17L12 12L2 17Z" fill="#2563eb" fill-opacity="0.6"></path>
+<path d="M2 7L12 12V22L2 17V7Z" fill="#2563eb" fill-opacity="0.2"></path>
+<path d="M22 7L12 12V22L22 17V7Z" fill="#2563eb" fill-opacity="0.4"></path>
+</svg>
+<span class="text-xl font-bold text-white">Megellan</span>
+</div>
+<div class="flex-grow p-4">
+<ul class="space-y-2">
+<li><a class="flex items-center gap-3 px-4 py-2 text-sm text-gray-300 rounded-md hover:bg-gray-700/50" href="#"><span>分析报告</span></a></li>
+<li><a class="flex items-center gap-3 px-4 py-2 text-sm text-white bg-blue-500/30 rounded-md" href="#"><span>创建新分析</span></a></li>
+<li><a class="flex items-center gap-3 px-4 py-2 text-sm text-gray-300 rounded-md hover:bg-gray-700/50" href="#"><span>知识库</span></a></li>
+<li><a class="flex items-center gap-3 px-4 py-2 text-sm text-gray-300 rounded-md hover:bg-gray-700/50" href="#"><span>监控列表</span></a></li>
+</ul>
+</div>
+<div class="p-4 border-t border-gray-500/10">
+<div class="flex items-center gap-4">
+<button class="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center font-semibold text-sm">
+            W
+          </button>
+<div>
+<p class="text-sm font-medium text-white">王伟</p>
+<p class="text-xs text-gray-400">Pro Investor</p>
+</div>
+</div>
+</div>
+</nav>
+<div class="flex-1 flex flex-col overflow-auto">
+<header class="w-full bg-background-dark/80 backdrop-blur-sm border-b border-gray-800/50 sticky top-0 z-10">
+<div class="container mx-auto px-6 py-4 flex justify-between items-center">
+<div class="flex items-center gap-6 text-sm">
+<span class="font-semibold text-white">选择投资场景</span>
+<span class="text-gray-500 dark:text-gray-500">输入目标</span>
+<span class="text-gray-500 dark:text-gray-500">配置分析</span>
+<span class="text-gray-500 dark:text-gray-500">分析中</span>
+</div>
+</div>
+</header>
+<main class="flex-grow container mx-auto px-6 py-12 md:py-20">
+<div class="text-center mb-12">
+<h1 class="text-3xl md:text-4xl font-bold text-white mb-4">选择投资场景</h1>
+<p class="text-gray-400">请选择最符合您投资需求的场景类型</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+<div class="bg-gray-900/40 rounded-lg p-6 flex flex-col items-center text-center backdrop-blur-sm border border-gray-700/50 hover:bg-gray-900/60 hover:border-blue-500/50 transition-all duration-300 cursor-pointer">
+<div class="w-16 h-16 rounded-full bg-gray-800/70 flex items-center justify-center mb-6">
+<span class="material-icons text-red-400">rocket_launch</span>
+</div>
+<h2 class="text-xl font-semibold mb-2 text-white">早期投资</h2>
+<p class="text-sm text-gray-400 mb-6">评估Angel/Seed/Series A投资机会</p>
+<div class="w-full border-t border-gray-700/60 pt-4 mt-auto text-sm space-y-2 text-left">
+<div class="flex justify-between text-gray-400">
+<span>快速判断:</span>
+<span class="text-gray-300">3-5分钟</span>
+</div>
+<div class="flex justify-between text-gray-400">
+<span>标准分析:</span>
+<span class="text-gray-300">30-45分钟</span>
+</div>
+</div>
+</div>
+<div class="bg-gray-900/40 rounded-lg p-6 flex flex-col items-center text-center backdrop-blur-sm border border-gray-700/50 hover:bg-gray-900/60 hover:border-blue-500/50 transition-all duration-300 cursor-pointer">
+<div class="w-16 h-16 rounded-full bg-gray-800/70 flex items-center justify-center mb-6">
+<span class="material-icons text-green-400">trending_up</span>
+</div>
+<h2 class="text-xl font-semibold mb-2 text-white">成长期投资</h2>
+<p class="text-sm text-gray-400 mb-6">评估Series B+公司的扩张潜力</p>
+<div class="w-full border-t border-gray-700/60 pt-4 mt-auto text-sm space-y-2 text-left">
+<div class="flex justify-between text-gray-400">
+<span>快速判断:</span>
+<span class="text-gray-300">3-5分钟</span>
+</div>
+<div class="flex justify-between text-gray-400">
+<span>标准分析:</span>
+<span class="text-gray-300">30-45分钟</span>
+</div>
+</div>
+</div>
+<div class="bg-gray-900/40 rounded-lg p-6 flex flex-col items-center text-center backdrop-blur-sm border border-gray-700/50 hover:bg-gray-900/60 hover:border-blue-500/50 transition-all duration-300 cursor-pointer">
+<div class="w-16 h-16 rounded-full bg-gray-800/70 flex items-center justify-center mb-6">
+<span class="material-icons text-blue-400">analytics</span>
+</div>
+<h2 class="text-xl font-semibold mb-2 text-white">公开市场投资</h2>
+<p class="text-sm text-gray-400 mb-6">分析上市公司投资价值</p>
+<div class="w-full border-t border-gray-700/60 pt-4 mt-auto text-sm space-y-2 text-left">
+<div class="flex justify-between text-gray-400">
+<span>快速判断:</span>
+<span class="text-gray-300">3-5分钟</span>
+</div>
+<div class="flex justify-between text-gray-400">
+<span>标准分析:</span>
+<span class="text-gray-300">20-30分钟</span>
+</div>
+</div>
+</div>
+<div class="bg-gray-900/40 rounded-lg p-6 flex flex-col items-center text-center backdrop-blur-sm border border-gray-700/50 hover:bg-gray-900/60 hover:border-blue-500/50 transition-all duration-300 cursor-pointer">
+<div class="w-16 h-16 rounded-full bg-gray-800/70 flex items-center justify-center mb-6">
+<span class="material-icons text-yellow-400">currency_bitcoin</span>
+</div>
+<h2 class="text-xl font-semibold mb-2 text-white">另类投资</h2>
+<p class="text-sm text-gray-400 mb-6">评估Crypto/DeFi/NFT投资机会</p>
+<div class="w-full border-t border-gray-700/60 pt-4 mt-auto text-sm space-y-2 text-left">
+<div class="flex justify-between text-gray-400">
+<span>快速判断:</span>
+<span class="text-gray-300">3-5分钟</span>
+</div>
+<div class="flex justify-between text-gray-400">
+<span>标准分析:</span>
+<span class="text-gray-300">25-35分钟</span>
+</div>
+</div>
+</div>
+<div class="bg-gray-900/40 rounded-lg p-6 flex flex-col items-center text-center backdrop-blur-sm border border-gray-700/50 hover:bg-gray-900/60 hover:border-blue-500/50 transition-all duration-300 cursor-pointer">
+<div class="w-16 h-16 rounded-full bg-gray-800/70 flex items-center justify-center mb-6">
+<span class="material-icons text-purple-400">travel_explore</span>
+</div>
+<h2 class="text-xl font-semibold mb-2 text-white">行业/市场研究</h2>
+<p class="text-sm text-gray-400 mb-6">系统性研究行业趋势和投资机会</p>
+<div class="w-full border-t border-gray-700/60 pt-4 mt-auto text-sm space-y-2 text-left">
+<div class="flex justify-between text-gray-400">
+<span>快速判断:</span>
+<span class="text-gray-300">5-8分钟</span>
+</div>
+<div class="flex justify-between text-gray-400">
+<span>标准分析:</span>
+<span class="text-gray-300">45-60分钟</span>
+</div>
+</div>
+</div>
+<div class="bg-gray-900/40 rounded-lg p-6 flex flex-col items-center text-center backdrop-blur-sm border border-dashed border-gray-700/50 hover:bg-gray-900/60 hover:border-blue-500/50 transition-all duration-300 cursor-pointer">
+<div class="w-16 h-16 rounded-full bg-gray-800/70 flex items-center justify-center mb-6">
+<span class="material-icons text-gray-400">add</span>
+</div>
+<h2 class="text-xl font-semibold mb-2 text-white">自定义场景</h2>
+<p class="text-sm text-gray-400 mb-6">根据您的特定需求创建新场景</p>
+<div class="w-full border-t border-transparent pt-4 mt-auto text-sm space-y-2 text-left">
+<div class="flex justify-between text-transparent">
+<span> </span>
+<span> </span>
+</div>
+<div class="flex justify-between text-transparent">
+<span> </span>
+<span> </span>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</div>
+
+</body></html>

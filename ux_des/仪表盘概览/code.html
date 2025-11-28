@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Megellan - Investment Analysis Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#38bdf8",
+                        "background-dark": "#0d1117",
+                        "surface": "#161b22",
+                        "border-color": "#30363d",
+                        "text-primary": "#e6edf3",
+                        "text-secondary": "#7d8590",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.375rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings:
+            'FILL' 0,
+            'wght' 300,
+            'GRAD' 0,
+            'opsz' 24
+        }
+        [x-cloak] { display: none !important; }
+    </style>
+<script defer="" src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body class="bg-background-dark font-display text-text-primary">
+<div class="relative flex min-h-screen w-full" x-data="{ sidebarOpen: true }">
+<aside :class="sidebarOpen ? 'w-64' : 'w-[72px]'" class="flex flex-col flex-shrink-0 bg-background-dark border-r border-border-color p-4 text-text-primary transition-all duration-300 ease-in-out">
+<div :class="sidebarOpen ? 'px-2' : ''" class="flex items-center justify-between mb-8">
+<div :class="sidebarOpen ? 'w-auto' : 'w-10'" class="flex items-center gap-3 overflow-hidden">
+<svg class="w-10 h-10 text-primary flex-shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+<path d="M2 17l10 5 10-5"></path>
+<path d="M2 12l10 5 10-5"></path>
+</svg>
+<div class="flex flex-col whitespace-nowrap" x-show="sidebarOpen">
+<h1 class="text-text-primary text-base font-bold leading-normal">Megellan</h1>
+<p class="text-text-secondary text-sm font-normal leading-normal">AI Investment Analysis</p>
+</div>
+</div>
+</div>
+<nav class="flex flex-col gap-2 flex-grow">
+<a class="group flex items-center gap-3 px-3 py-2 rounded-lg bg-surface border border-border-color" href="#">
+<span class="material-symbols-outlined text-primary">dashboard</span>
+<p class="text-text-primary text-sm font-semibold leading-normal whitespace-nowrap" x-show="sidebarOpen">Dashboard</p>
+</a>
+<a class="group flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-surface/50" href="#">
+<span class="material-symbols-outlined text-text-secondary group-hover:text-text-primary">article</span>
+<p class="text-text-secondary text-sm font-medium leading-normal group-hover:text-text-primary whitespace-nowrap" x-show="sidebarOpen">Reports</p>
+</a>
+<a class="group flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-surface/50" href="#">
+<span class="material-symbols-outlined text-text-secondary group-hover:text-text-primary">analytics</span>
+<p class="text-text-secondary text-sm font-medium leading-normal group-hover:text-text-primary whitespace-nowrap" x-show="sidebarOpen">Analysis</p>
+</a>
+<a class="group flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-surface/50" href="#">
+<span class="material-symbols-outlined text-text-secondary group-hover:text-text-primary">settings</span>
+<p class="text-text-secondary text-sm font-medium leading-normal group-hover:text-text-primary whitespace-nowrap" x-show="sidebarOpen">Settings</p>
+</a>
+</nav>
+<div class="flex flex-col gap-4">
+<button :class="sidebarOpen ? 'w-full px-4' : 'w-12 px-0'" class="flex min-w-[48px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 bg-primary text-background-dark text-sm font-bold leading-normal tracking-[0.015em] hover:bg-primary/90 transition-all duration-300 ease-in-out">
+<span class="truncate" x-show="sidebarOpen">Start New Analysis</span>
+<span class="material-symbols-outlined" x-cloak="" x-show="!sidebarOpen">add</span>
+</button>
+<div class="border-t border-border-color">
+<button @click="sidebarOpen = !sidebarOpen" class="w-full flex items-center gap-3 mt-4 px-3 py-2 rounded-lg hover:bg-surface/50 text-text-secondary hover:text-text-primary">
+<span :class="{'rotate-180': !sidebarOpen}" class="material-symbols-outlined transition-transform duration-300">menu_open</span>
+<span class="text-sm font-medium whitespace-nowrap" x-show="sidebarOpen">Collapse</span>
+</button>
+</div>
+</div>
+</aside>
+<main class="flex-1 p-8 overflow-y-auto">
+<div class="max-w-screen-2xl mx-auto">
+<div class="flex flex-wrap justify-between items-center gap-4 mb-6">
+<p class="text-text-primary text-2xl font-semibold leading-tight">Dashboard Overview</p>
+<div class="flex items-center gap-4">
+<button class="flex items-center justify-center h-10 w-10 rounded-full bg-surface border border-border-color text-text-secondary hover:text-text-primary">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<div class="flex items-center gap-3">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" data-alt="User avatar" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuD7kCOQ_OjmgS9-b1z4Fr2h-kTZenwyQkxaT3xFUi_nQwmnzl5Q0XsJKAKG6ZDi2gnRZ7jVAe3GwcgkPpymZKlrN1RL4bm8DQADKc10YKqPlGEVpHM5_S-W2zvXnmvRQOGUv0d51BkmTGeornUUAgpxlAgpN3fi797QpxTUhm5O3fkDg67_-kQ93MNZdL42zgBCSYbNtxop-1lVpqPEckkLegdrCSLQRIJlQkzerBNy3L1ZhiSCKKOWgy8bIApFSaZeAT8gdOhXFZQx");'></div>
+<div class="flex flex-col text-sm">
+<p class="text-text-primary font-medium">Alex Chen</p>
+<p class="text-text-secondary">Analyst</p>
+</div>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+<div class="flex flex-col gap-1 rounded-lg p-4 bg-surface border border-border-color">
+<p class="text-text-secondary text-sm font-medium leading-normal">Portfolio Value</p>
+<p class="text-text-primary tracking-tight text-3xl font-semibold leading-tight">$2,148,302.50</p>
+<p class="text-green-500 text-sm font-medium leading-normal">+1.8% today</p>
+</div>
+<div class="flex flex-col gap-1 rounded-lg p-4 bg-surface border border-border-color">
+<p class="text-text-secondary text-sm font-medium leading-normal">Total Reports Generated</p>
+<p class="text-text-primary tracking-tight text-3xl font-semibold leading-tight">1,204</p>
+<p class="text-text-secondary text-sm font-medium leading-normal">+5.2% vs last month</p>
+</div>
+<div class="flex flex-col gap-1 rounded-lg p-4 bg-surface border border-border-color">
+<p class="text-text-secondary text-sm font-medium leading-normal">Projects in Analysis</p>
+<p class="text-text-primary tracking-tight text-3xl font-semibold leading-tight">18</p>
+<p class="text-text-secondary text-sm font-medium leading-normal">+2 since yesterday</p>
+</div>
+<div class="flex flex-col gap-1 rounded-lg p-4 bg-surface border border-border-color">
+<p class="text-text-secondary text-sm font-medium leading-normal">Active Market Signals</p>
+<p class="text-text-primary tracking-tight text-3xl font-semibold leading-tight">42</p>
+<p class="text-red-500 text-sm font-medium leading-normal">-1.5% vs last hour</p>
+</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-6">
+<div class="lg:col-span-3 bg-surface border border-border-color rounded-lg p-6">
+<h2 class="text-text-primary text-lg font-semibold leading-tight mb-4">Portfolio Return Trend</h2>
+<div class="h-80"><canvas id="returnTrendChart"></canvas></div>
+</div>
+<div class="lg:col-span-2 bg-surface border border-border-color rounded-lg p-6">
+<h2 class="text-text-primary text-lg font-semibold leading-tight mb-4">Risk Exposure Distribution</h2>
+<div class="h-80"><canvas id="riskExposureChart"></canvas></div>
+</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+<div class="lg:col-span-3">
+<h2 class="text-text-primary text-lg font-semibold leading-tight mb-4">In-Progress Analysis</h2>
+<div class="overflow-hidden rounded-lg border border-border-color bg-surface">
+<table class="w-full">
+<thead>
+<tr class="bg-black/20">
+<th class="px-4 py-3 text-left text-text-secondary text-xs font-medium uppercase tracking-wider">Project Name</th>
+<th class="px-4 py-3 text-left text-text-secondary text-xs font-medium uppercase tracking-wider">Analysis Stage</th>
+<th class="px-4 py-3 text-left text-text-secondary text-xs font-medium uppercase tracking-wider">Progress</th>
+<th class="px-4 py-3 text-left text-text-secondary text-xs font-medium uppercase tracking-wider">Est. Completion</th>
+</tr>
+</thead>
+<tbody>
+<tr class="border-t border-t-border-color">
+<td class="h-[64px] px-4 py-2 text-text-primary text-sm font-normal leading-normal">Project Alpha</td>
+<td class="h-[64px] px-4 py-2 text-sm font-normal leading-normal"><span class="inline-flex items-center rounded-md bg-border-color px-2 py-1 text-xs font-medium text-text-secondary">Data Collection</span></td>
+<td class="h-[64px] px-4 py-2 text-sm font-normal leading-normal">
+<div class="flex items-center gap-3">
+<div class="w-24 overflow-hidden rounded-full bg-border-color h-1.5"><div class="h-1.5 rounded-full bg-primary" style="width: 25%;"></div></div>
+<p class="text-text-secondary text-sm font-medium leading-normal">25%</p>
+</div>
+</td>
+<td class="h-[64px] px-4 py-2 text-text-secondary text-sm font-normal leading-normal">2 hours</td>
+</tr>
+<tr class="border-t border-t-border-color">
+<td class="h-[64px] px-4 py-2 text-text-primary text-sm font-normal leading-normal">Project Beta</td>
+<td class="h-[64px] px-4 py-2 text-sm font-normal leading-normal"><span class="inline-flex items-center rounded-md bg-border-color px-2 py-1 text-xs font-medium text-text-secondary">Modeling</span></td>
+<td class="h-[64px] px-4 py-2 text-sm font-normal leading-normal">
+<div class="flex items-center gap-3">
+<div class="w-24 overflow-hidden rounded-full bg-border-color h-1.5"><div class="h-1.5 rounded-full bg-primary" style="width: 60%;"></div></div>
+<p class="text-text-secondary text-sm font-medium leading-normal">60%</p>
+</div>
+</td>
+<td class="h-[64px] px-4 py-2 text-text-secondary text-sm font-normal leading-normal">45 minutes</td>
+</tr>
+<tr class="border-t border-t-border-color">
+<td class="h-[64px] px-4 py-2 text-text-primary text-sm font-normal leading-normal">Project Gamma</td>
+<td class="h-[64px] px-4 py-2 text-sm font-normal leading-normal"><span class="inline-flex items-center rounded-md bg-border-color px-2 py-1 text-xs font-medium text-text-secondary">Report Generation</span></td>
+<td class="h-[64px] px-4 py-2 text-sm font-normal leading-normal">
+<div class="flex items-center gap-3">
+<div class="w-24 overflow-hidden rounded-full bg-border-color h-1.5"><div class="h-1.5 rounded-full bg-primary" style="width: 90%;"></div></div>
+<p class="text-text-secondary text-sm font-medium leading-normal">90%</p>
+</div>
+</td>
+<td class="h-[64px] px-4 py-2 text-text-secondary text-sm font-normal leading-normal">10 minutes</td>
+</tr>
+<tr class="border-t border-t-border-color">
+<td class="h-[64px] px-4 py-2 text-text-primary text-sm font-normal leading-normal">Project Delta</td>
+<td class="h-[64px] px-4 py-2 text-sm font-normal leading-normal"><span class="inline-flex items-center rounded-md bg-border-color px-2 py-1 text-xs font-medium text-text-secondary">Data Collection</span></td>
+<td class="h-[64px] px-4 py-2 text-sm font-normal leading-normal">
+<div class="flex items-center gap-3">
+<div class="w-24 overflow-hidden rounded-full bg-border-color h-1.5"><div class="h-1.5 rounded-full bg-primary" style="width: 15%;"></div></div>
+<p class="text-text-secondary text-sm font-medium leading-normal">15%</p>
+</div>
+</td>
+<td class="h-[64px] px-4 py-2 text-text-secondary text-sm font-normal leading-normal">3 hours</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="lg:col-span-2 bg-surface border border-border-color rounded-lg p-6">
+<h2 class="text-text-primary text-lg font-semibold leading-tight mb-4">Agent Analysis Efficiency</h2>
+<div class="h-[300px]"><canvas id="agentEfficiencyChart"></canvas></div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<script>
+    const chartTextColor = '#7d8590';
+    const chartGridColor = '#30363d';
+    const primaryColor = '#38bdf8';
+    // Chart.js global defaults
+    Chart.defaults.color = chartTextColor;
+    Chart.defaults.font.family = 'Inter, sans-serif';
+    Chart.defaults.maintainAspectRatio = false;
+    // Portfolio Return Trend Chart
+    const returnTrendCtx = document.getElementById('returnTrendChart').getContext('2d');
+    const gradient = returnTrendCtx.createLinearGradient(0, 0, 0, 320);
+    gradient.addColorStop(0, 'rgba(56, 189, 248, 0.3)');
+    gradient.addColorStop(1, 'rgba(56, 189, 248, 0)');
+    new Chart(returnTrendCtx, {
+        type: 'line',
+        data: {
+            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct'],
+            datasets: [{
+                label: 'Portfolio Return',
+                data: [5, 5.5, 6.2, 5.8, 7, 7.5, 8.1, 7.9, 8.5, 9.2],
+                borderColor: primaryColor,
+                backgroundColor: gradient,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: primaryColor,
+                pointBorderColor: '#fff',
+                pointHoverRadius: 6,
+                pointRadius: 4,
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    backgroundColor: '#161b22',
+                    titleFont: { weight: 'bold' },
+                    bodyFont: { size: 14 },
+                    padding: 12,
+                    cornerRadius: 6,
+                    borderColor: '#30363d',
+                    borderWidth: 1,
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: chartGridColor, drawOnChartArea: true, borderDash: [3,3] },
+                    ticks: { padding: 10 }
+                },
+                y: {
+                    grid: { color: chartGridColor, borderDash: [3,3] },
+                    ticks: { callback: value => value + '%', padding: 10 }
+                }
+            }
+        }
+    });
+    // Risk Exposure Chart
+    const riskExposureCtx = document.getElementById('riskExposureChart').getContext('2d');
+    new Chart(riskExposureCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Technology', 'Healthcare', 'Finance', 'Energy', 'Industrials', 'Consumer Goods'],
+            datasets: [{
+                label: 'Risk Exposure',
+                data: [35, 25, 15, 10, 8, 7],
+                backgroundColor: ['#0284c7', '#0ea5e9', '#38bdf8', '#7dd3fc', '#a5f3fc', '#e0f2fe'],
+                borderColor: '#161b22',
+                borderWidth: 4,
+                hoverOffset: 8
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        boxWidth: 12,
+                        padding: 20,
+                        usePointStyle: true,
+                        pointStyle: 'circle'
+                    }
+                }
+            },
+            cutout: '70%'
+        }
+    });
+    // Agent Efficiency Chart
+    const agentEfficiencyCtx = document.getElementById('agentEfficiencyChart').getContext('2d');
+    new Chart(agentEfficiencyCtx, {
+        type: 'radar',
+        data: {
+            labels: ['Data Collection', 'Modeling', 'Risk Analysis', 'Report Gen.', 'Market Scan', 'Sentiment Analysis'],
+            datasets: [{
+                label: 'Avg. Time (hours)',
+                data: [2.5, 4, 1.5, 0.5, 3, 2],
+                backgroundColor: 'rgba(56, 189, 248, 0.2)',
+                borderColor: primaryColor,
+                pointBackgroundColor: primaryColor,
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: primaryColor,
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                r: {
+                    angleLines: { color: chartGridColor },
+                    grid: { color: chartGridColor },
+                    pointLabels: {
+                        font: { size: 12 }
+                    },
+                    ticks: {
+                        backdropColor: 'transparent',
+                        stepSize: 1
+                    }
+                }
+            }
+        }
+    });
+</script>
+
+</body></html>

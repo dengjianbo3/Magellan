@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Megellan - Analyzing Project</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+<script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#135bec",
+              "background-light": "#f6f6f8",
+              "background-dark": "#101622",
+              "surface-dark": "#1A1A2E",
+              "text-light": "#EAEAEA",
+              "text-secondary-light": "#888899",
+              "success": "#2ECC71",
+              "error": "#E74C3C"
+            },
+            fontFamily: {
+              "display": ["Manrope", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-text-light">
+<div class="relative flex min-h-screen w-full">
+<!-- SideNavBar -->
+<aside class="flex flex-col w-64 bg-background-dark border-r border-white/10 p-4 shrink-0">
+<div class="flex items-center gap-3 mb-8">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" data-alt="Megellan company logo with abstract geometric shapes" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDfZn6VBUUvnlUmZHQ-xdEzsok9-KryoA3titmoBxQMGu0WAfgCi4l4uo1L8PjRXGg9rKiTD8kf8jqM0uMPejS7W4HBUlah5wejhZqPQEQ9JkMPhuHzomdlrfS-sEqtN_NUtD1tJXm1AALdoX6IB-qyitOJC8j1WaeypO2Is4kQdFwmlcZB6MzDrSYMqQ5Vpl894G7UmnzC6zsWRfbE75VFT-G62PDXa-2Y-09prjNowOh_8yKtrr74NlerX1PTWEDiSf-ZX3Y14vEw");'></div>
+<div class="flex flex-col">
+<h1 class="text-white text-base font-medium leading-normal">Megellan</h1>
+<p class="text-text-secondary-light text-sm font-normal leading-normal">AI Investment Analysis</p>
+</div>
+</div>
+<nav class="flex flex-col gap-2">
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-light/70 hover:bg-white/5 transition-colors" href="#">
+<span class="material-symbols-outlined text-xl">dashboard</span>
+<p class="text-sm font-medium leading-normal">Dashboard</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-primary/20 text-primary" href="#">
+<span class="material-symbols-outlined text-xl" style="font-variation-settings: 'FILL' 1;">add_circle</span>
+<p class="text-sm font-medium leading-normal">New Analysis</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-light/70 hover:bg-white/5 transition-colors" href="#">
+<span class="material-symbols-outlined text-xl">history</span>
+<p class="text-sm font-medium leading-normal">History</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-light/70 hover:bg-white/5 transition-colors" href="#">
+<span class="material-symbols-outlined text-xl">settings</span>
+<p class="text-sm font-medium leading-normal">Settings</p>
+</a>
+</nav>
+<div class="mt-auto flex flex-col gap-4">
+<button class="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-error/10 text-error hover:bg-error/20 transition-colors">
+<span class="material-symbols-outlined text-xl">cancel</span>
+<span class="text-sm font-medium">Cancel Analysis</span>
+</button>
+<button class="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-white/10 text-text-secondary-light cursor-not-allowed" disabled="">
+<span class="material-symbols-outlined text-xl">summarize</span>
+<span class="text-sm font-medium">View Summary</span>
+</button>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 p-8 overflow-y-auto">
+<div class="max-w-4xl mx-auto">
+<!-- PageHeading -->
+<div class="flex flex-wrap justify-between gap-4 mb-8">
+<div class="flex min-w-72 flex-col gap-2">
+<p class="text-text-light text-4xl font-black leading-tight tracking-[-0.033em]">Analyzing: Project Phoenix Growth Fund</p>
+<p class="text-text-secondary-light text-base font-normal leading-normal">Long-term investment analysis is currently in progress.</p>
+</div>
+</div>
+<!-- ProgressBar -->
+<div class="flex flex-col gap-3 p-6 rounded-xl bg-surface-dark/50 border border-white/10 backdrop-blur-sm mb-8">
+<div class="flex gap-6 justify-between items-center">
+<p class="text-text-light text-base font-medium leading-normal">Overall Progress</p>
+<p class="text-text-light text-lg font-bold leading-normal">75%</p>
+</div>
+<div class="rounded-full bg-black/30 h-3"><div class="h-3 rounded-full bg-primary" style="width: 75%;"></div></div>
+<p class="text-text-secondary-light text-sm font-normal leading-normal">Est. Remaining: ~5 minutes</p>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+<!-- Left Column: Agents -->
+<div class="lg:col-span-3">
+<!-- SectionHeader -->
+<h2 class="text-text-light text-[22px] font-bold leading-tight tracking-[-0.015em] px-4 pb-3 pt-5">Active AI Agents</h2>
+<div class="flex flex-col gap-2 p-4 rounded-xl bg-surface-dark/50 border border-white/10 backdrop-blur-sm">
+<!-- ListItem: Running -->
+<div class="flex items-center gap-4 bg-transparent px-4 min-h-14 justify-between">
+<div class="flex items-center gap-4">
+<div class="text-primary flex items-center justify-center rounded-lg bg-primary/20 shrink-0 size-10">
+<span class="material-symbols-outlined">data_exploration</span>
+</div>
+<p class="text-text-light text-base font-normal leading-normal flex-1 truncate">Market Research Agent</p>
+</div>
+<div class="shrink-0 flex items-center gap-2 text-primary text-sm font-medium">
+<div class="flex size-7 items-center justify-center"><div class="size-3 rounded-full bg-primary animate-pulse"></div></div>
+                                    Running
+                                </div>
+</div>
+<!-- ListItem: Completed -->
+<div class="flex items-center gap-4 bg-transparent px-4 min-h-14 justify-between">
+<div class="flex items-center gap-4">
+<div class="text-success flex items-center justify-center rounded-lg bg-success/20 shrink-0 size-10">
+<span class="material-symbols-outlined">model_training</span>
+</div>
+<p class="text-text-light text-base font-normal leading-normal flex-1 truncate">Financial Modeling Agent</p>
+</div>
+<div class="shrink-0 flex items-center gap-2 text-success text-sm font-medium">
+<span class="material-symbols-outlined text-xl">check_circle</span>
+                                    Completed
+                                </div>
+</div>
+<!-- ListItem: Completed -->
+<div class="flex items-center gap-4 bg-transparent px-4 min-h-14 justify-between">
+<div class="flex items-center gap-4">
+<div class="text-success flex items-center justify-center rounded-lg bg-success/20 shrink-0 size-10">
+<span class="material-symbols-outlined">security</span>
+</div>
+<p class="text-text-light text-base font-normal leading-normal flex-1 truncate">Risk Assessment Agent</p>
+</div>
+<div class="shrink-0 flex items-center gap-2 text-success text-sm font-medium">
+<span class="material-symbols-outlined text-xl">check_circle</span>
+                                    Completed
+                                </div>
+</div>
+<!-- ListItem: Queued -->
+<div class="flex items-center gap-4 bg-transparent px-4 min-h-14 justify-between">
+<div class="flex items-center gap-4">
+<div class="text-text-secondary-light flex items-center justify-center rounded-lg bg-white/10 shrink-0 size-10">
+<span class="material-symbols-outlined">pending</span>
+</div>
+<p class="text-text-secondary-light text-base font-normal leading-normal flex-1 truncate">Valuation Model Agent</p>
+</div>
+<div class="shrink-0 flex items-center gap-2 text-text-secondary-light text-sm font-medium">
+<div class="flex size-7 items-center justify-center"><div class="size-3 rounded-full bg-text-secondary-light"></div></div>
+                                    Queued
+                                </div>
+</div>
+</div>
+</div>
+<!-- Right Column: Timeline -->
+<div class="lg:col-span-2">
+<h2 class="text-text-light text-[22px] font-bold leading-tight tracking-[-0.015em] px-4 pb-3 pt-5">Analysis Progress</h2>
+<div class="flex flex-col gap-6 p-6 rounded-xl bg-surface-dark/50 border border-white/10 backdrop-blur-sm">
+<!-- Timeline Item: Completed -->
+<div class="flex gap-4">
+<div class="flex flex-col items-center">
+<div class="flex items-center justify-center size-8 rounded-full bg-success">
+<span class="material-symbols-outlined text-black text-lg">check</span>
+</div>
+<div class="w-px h-full bg-success"></div>
+</div>
+<p class="text-text-light font-medium pt-1">Market Data Aggregation</p>
+</div>
+<!-- Timeline Item: Completed -->
+<div class="flex gap-4">
+<div class="flex flex-col items-center">
+<div class="flex items-center justify-center size-8 rounded-full bg-success">
+<span class="material-symbols-outlined text-black text-lg">check</span>
+</div>
+<div class="w-px h-full bg-primary"></div>
+</div>
+<p class="text-text-light font-medium pt-1">Financial Statement Analysis</p>
+</div>
+<!-- Timeline Item: Current -->
+<div class="flex gap-4">
+<div class="flex flex-col items-center">
+<div class="flex items-center justify-center size-8 rounded-full bg-primary ring-4 ring-primary/30">
+<span class="material-symbols-outlined text-white text-lg animate-spin">progress_activity</span>
+</div>
+<div class="w-px h-full bg-white/20"></div>
+</div>
+<div class="pt-1">
+<p class="text-primary font-bold">Competitive Advantage Assessment</p>
+<p class="text-xs text-text-secondary-light mt-1">Fetching competitor data...</p>
+</div>
+</div>
+<!-- Timeline Item: Future -->
+<div class="flex gap-4">
+<div class="flex flex-col items-center">
+<div class="flex items-center justify-center size-8 rounded-full border-2 border-white/20"></div>
+<div class="w-px h-full bg-white/20"></div>
+</div>
+<p class="text-text-secondary-light font-medium pt-1">Risk Factor Identification</p>
+</div>
+<!-- Timeline Item: Future (last) -->
+<div class="flex gap-4">
+<div class="flex flex-col items-center">
+<div class="flex items-center justify-center size-8 rounded-full border-2 border-white/20"></div>
+</div>
+<p class="text-text-secondary-light font-medium pt-1">Final Report Generation</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

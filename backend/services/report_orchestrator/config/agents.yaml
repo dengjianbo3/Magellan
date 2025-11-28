@@ -1,0 +1,405 @@
+# Agent Configuration File
+# 所有AI智能体的配置定义
+#
+# 架构设计:
+# - 6个原子Agent (atomic): 所有场景的基础能力单元
+# - 2个特殊Agent (special): 特定场景专用
+#   - leader: 仅用于圆桌会议
+#   - report_synthesizer: 仅用于分析模块最后一步
+#
+# 原则:
+# 1. 所有场景 (分析模块/圆桌会议) 都应该基于这6个原子Agent
+# 2. 原子Agent支持quick_mode参数来调整输出详细程度
+# 3. 通过workflow编排原子Agent的执行顺序和组合方式
+# 4. 避免创建新的专用Agent, 通过组合原子Agent实现新能力
+
+agents:
+  # ============================================
+  # 原子Agent层 (Atomic Agents)
+  # 基础能力单元 - 所有场景复用
+  # ============================================
+
+  - agent_id: team_evaluator
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 团队评估师
+      en: Team Evaluator
+    description:
+      zh: 评估创始团队背景、能力、经验和团队结构
+      en: Evaluate founding team background, capabilities, experience and team structure
+    class_path: app.core.roundtable.investment_agents.create_team_evaluator
+    capabilities:
+      - 创始人背景分析
+      - 团队能力评估
+      - 组织架构评估
+      - 团队协作评估
+      - 人才储备分析
+    inputs:
+      - company_name: 公司名称
+      - team_info: 团队信息 (可选)
+      - target_data: 目标数据 (业务描述等)
+    outputs:
+      team_score: 团队综合评分 (0-100)
+      founder_assessment: 创始人评估
+      team_structure: 团队结构分析
+      key_strengths: 团队优势
+      concerns: 团队风险点
+      recommendations: 改进建议
+    quick_mode_support: true
+    estimated_duration:
+      quick: 30  # 秒
+      standard: 120
+      comprehensive: 300
+    tags: [team, due-diligence, early-stage]
+
+  - agent_id: market_analyst
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 市场分析师
+      en: Market Analyst
+    description:
+      zh: 分析市场规模、竞争格局、行业趋势和增长潜力
+      en: Analyze market size, competitive landscape, industry trends and growth potential
+    class_path: app.core.roundtable.investment_agents.create_market_analyst
+    capabilities:
+      - 市场规模测算 (TAM/SAM/SOM)
+      - 竞争对手分析
+      - 行业趋势研判
+      - 市场增长预测
+      - 市场定位评估
+    inputs:
+      - company_name: 公司名称
+      - industry: 行业/赛道
+      - target_data: 目标数据
+    outputs:
+      market_score: 市场吸引力评分 (0-100)
+      market_size: 市场规模分析
+      competitive_landscape: 竞争格局
+      growth_potential: 增长潜力
+      market_risks: 市场风险
+      opportunities: 市场机会
+    quick_mode_support: true
+    estimated_duration:
+      quick: 45
+      standard: 150
+      comprehensive: 360
+    tags: [market, competition, growth]
+
+  - agent_id: financial_expert
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 财务专家
+      en: Financial Expert
+    description:
+      zh: 分析财务数据、盈利能力、现金流和估值
+      en: Analyze financial data, profitability, cash flow and valuation
+    class_path: app.core.roundtable.investment_agents.create_financial_expert
+    capabilities:
+      - 财务健康度分析
+      - 盈利能力评估
+      - 现金流分析
+      - 估值建模
+      - 财务风险识别
+    inputs:
+      - company_name: 公司名称
+      - financial_data: 财务数据 (可选)
+      - target_data: 目标数据
+    outputs:
+      financial_score: 财务健康评分 (0-100)
+      profitability: 盈利能力分析
+      cash_flow: 现金流状况
+      valuation: 估值分析
+      financial_risks: 财务风险
+      recommendations: 财务建议
+    quick_mode_support: true
+    estimated_duration:
+      quick: 40
+      standard: 140
+      comprehensive: 330
+    tags: [finance, valuation, profitability]
+
+  - agent_id: risk_assessor
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 风险评估师
+      en: Risk Assessor
+    description:
+      zh: 识别和评估各类投资风险 (市场、运营、财务、法律等)
+      en: Identify and assess various investment risks (market, operational, financial, legal, etc.)
+    class_path: app.core.roundtable.investment_agents.create_risk_assessor
+    capabilities:
+      - 市场风险评估
+      - 运营风险识别
+      - 财务风险分析
+      - 合规风险评估
+      - 风险缓解建议
+    inputs:
+      - company_name: 公司名称
+      - target_data: 目标数据
+      - context: 前序分析结果 (可选)
+    outputs:
+      risk_score: 综合风险评分 (0-100, 越高越安全)
+      critical_risks: 关键风险清单
+      risk_matrix: 风险矩阵 (影响 x 概率)
+      mitigation_strategies: 风险缓解策略
+      red_flags: 危险信号
+    quick_mode_support: true
+    estimated_duration:
+      quick: 35
+      standard: 130
+      comprehensive: 300
+    tags: [risk, compliance, due-diligence]
+
+  - agent_id: tech_specialist
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 技术专家
+      en: Tech Specialist
+    description:
+      zh: 评估技术架构、产品能力、技术壁垒和技术债务
+      en: Evaluate technical architecture, product capabilities, technical barriers and technical debt
+    class_path: app.core.roundtable.investment_agents.create_tech_specialist
+    capabilities:
+      - 技术架构评估
+      - 产品能力分析
+      - 技术壁垒识别
+      - 技术债务评估
+      - 研发效率分析
+    inputs:
+      - company_name: 公司名称
+      - product_info: 产品信息 (可选)
+      - target_data: 目标数据
+    outputs:
+      tech_score: 技术能力评分 (0-100)
+      architecture_assessment: 技术架构评估
+      product_capabilities: 产品能力
+      technical_moat: 技术壁垒
+      tech_debt: 技术债务
+      recommendations: 技术建议
+    quick_mode_support: true
+    estimated_duration:
+      quick: 40
+      standard: 140
+      comprehensive: 320
+    tags: [technology, product, innovation]
+
+  - agent_id: legal_advisor
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 法律顾问
+      en: Legal Advisor
+    description:
+      zh: 评估法律合规、知识产权、合同风险和监管环境
+      en: Assess legal compliance, intellectual property, contract risks and regulatory environment
+    class_path: app.core.roundtable.investment_agents.create_legal_advisor
+    capabilities:
+      - 合规性审查
+      - 知识产权评估
+      - 合同风险分析
+      - 监管环境分析
+      - 法律风险识别
+    inputs:
+      - company_name: 公司名称
+      - legal_docs: 法律文档 (可选)
+      - target_data: 目标数据
+    outputs:
+      legal_score: 合规性评分 (0-100)
+      compliance_status: 合规状态
+      ip_assessment: 知识产权评估
+      legal_risks: 法律风险
+      regulatory_concerns: 监管关注点
+      recommendations: 法律建议
+    quick_mode_support: true
+    estimated_duration:
+      quick: 35
+      standard: 130
+      comprehensive: 310
+    tags: [legal, compliance, ip]
+
+  - agent_id: technical_analyst
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 技术分析师
+      en: Technical Analyst
+    description:
+      zh: 基于K线形态、技术指标进行量化分析，提供支撑阻力位、趋势判断和交易信号
+      en: Quantitative analysis based on candlestick patterns and technical indicators, providing support/resistance levels, trend judgment and trading signals
+    class_path: app.core.roundtable.investment_agents.create_technical_analyst
+    capabilities:
+      - K线形态识别 (头肩、双顶、三角形等)
+      - 技术指标计算 (RSI, MACD, KDJ, 布林带等)
+      - 均线分析 (EMA, SMA, 均线排列)
+      - 支撑阻力位识别 (斐波那契、枢轴点)
+      - 趋势判断与交易信号
+      - 多时间周期联动分析
+    inputs:
+      - symbol: 交易对符号 (如 BTC/USDT, AAPL)
+      - timeframe: 时间周期 (1h, 4h, 1d, 1w)
+      - market_type: 市场类型 (crypto, stock, forex)
+      - target_data: 目标数据 (可选)
+    outputs:
+      technical_score: 技术面评分 (0-100)
+      trend_analysis: 趋势分析结果
+      indicator_signals: 指标信号汇总
+      support_resistance: 支撑阻力位
+      pattern_recognition: K线形态识别
+      trading_suggestion: 交易建议
+      risk_warning: 风险提示
+    quick_mode_support: true
+    estimated_duration:
+      quick: 20
+      standard: 60
+      comprehensive: 150
+    tags: [technical-analysis, trading, quantitative, crypto, stock]
+    notes: |
+      此Agent主要用于:
+      - 加密货币价格分析 (BTC, ETH等)
+      - 股票技术面分析
+      - 另类投资场景的技术面评估
+
+      数据来源:
+      - 加密货币: Binance公开API
+      - 股票: Yahoo Finance (需安装yfinance)
+
+  # ============================================
+  # 特殊Agent层 (Special Agents)
+  # 特定场景专用 - 不可复用到其他场景
+  # ============================================
+
+  - agent_id: leader
+    type: special
+    scope: [roundtable]  # 仅圆桌会议使用
+    name:
+      zh: 圆桌主持人
+      en: Roundtable Leader
+    description:
+      zh: 主持圆桌会议讨论，协调各专家Agent，引导讨论方向，形成共识
+      en: Moderate roundtable discussions, coordinate expert agents, guide discussion direction, form consensus
+    class_path: app.core.roundtable.investment_agents.create_leader
+    capabilities:
+      - 会议流程主持
+      - 专家观点协调
+      - 讨论方向引导
+      - 共识形成
+      - 最终决策建议
+    inputs:
+      - discussion_topic: 讨论主题
+      - expert_opinions: 各专家观点
+      - context: 讨论上下文
+    outputs:
+      discussion_summary: 讨论总结
+      consensus_points: 共识要点
+      disagreements: 分歧点
+      final_recommendation: 最终建议
+      next_steps: 下一步行动
+    quick_mode_support: false
+    estimated_duration:
+      standard: 180
+      comprehensive: 420
+    tags: [roundtable, coordination, consensus]
+    notes: |
+      ⚠️ 此Agent仅用于圆桌会议场景
+      - 分析模块不应该使用leader
+      - 如果需要总结功能，应该使用report_synthesizer
+
+  - agent_id: report_synthesizer
+    type: special
+    scope: [analysis]  # 仅分析模块使用
+    name:
+      zh: 报告综合Agent
+      en: Report Synthesizer
+    description:
+      zh: 综合所有原子Agent的分析结果，生成结构化投资分析报告
+      en: Synthesize all atomic agent outputs into structured investment analysis report
+    class_path: app.agents.report_synthesizer_agent.ReportSynthesizerAgent
+    capabilities:
+      - 多维分析整合
+      - SWOT分析生成
+      - 投资建议形成
+      - 风险机会识别
+      - 结构化报告输出
+    inputs:
+      - scenario: 分析场景
+      - target: 分析目标
+      - config: 分析配置
+      - team_analysis: 团队分析结果 (from team_evaluator)
+      - market_analysis: 市场分析结果 (from market_analyst)
+      - financial_analysis: 财务分析结果 (from financial_expert)
+      - risk_assessment: 风险评估结果 (from risk_assessor)
+      - tech_assessment: 技术评估结果 (from tech_specialist, optional)
+      - legal_assessment: 法律评估结果 (from legal_advisor, optional)
+    outputs:
+      report_id: 报告ID
+      scenario: 分析场景
+      overall_recommendation: 投资建议 (invest/observe/reject)
+      investment_score: 综合评分 (0-100)
+      confidence_level: 置信度 (high/medium/low)
+      key_findings: 关键发现
+      strengths: 优势
+      weaknesses: 劣势
+      opportunities: 机会
+      threats: 威胁
+      detailed_sections: 详细分析章节
+      next_steps: 后续行动建议
+    quick_mode_support: true
+    estimated_duration:
+      quick: 30
+      standard: 90
+      comprehensive: 180
+    tags: [synthesis, report, analysis]
+    notes: |
+      ⚠️ 此Agent仅用于分析模块workflow的最后一步
+      - 圆桌会议不应该使用report_synthesizer
+      - 如果需要主持讨论，应该使用leader
+      - 此Agent依赖所有前序原子Agent的输出
+
+# ============================================
+# Agent组合示例
+# ============================================
+#
+# 早期投资分析 (Early Stage Investment):
+#   team_evaluator → market_analyst → financial_expert → risk_assessor → report_synthesizer
+#
+# 成长期投资分析 (Growth Investment):
+#   market_analyst → financial_expert → team_evaluator → tech_specialist → risk_assessor → report_synthesizer
+#
+# 公开市场投资分析 (Public Market Investment):
+#   financial_expert → market_analyst → risk_assessor → report_synthesizer
+#
+# 另类投资分析 (Alternative Investment):
+#   market_analyst → financial_expert → legal_advisor → risk_assessor → report_synthesizer
+#
+# 行业研究分析 (Industry Research):
+#   market_analyst → tech_specialist → financial_expert → report_synthesizer
+#
+# 圆桌会议 (Roundtable Discussion):
+#   leader → [team_evaluator, market_analyst, financial_expert, risk_assessor, tech_specialist, legal_advisor] → leader
+#
+# ============================================
+
+# 配置元数据
+metadata:
+  version: "2.0.0"
+  last_updated: "2025-01-19"
+  maintainer: "Magellan Product Team"
+  description: |
+    此配置文件定义了Magellan系统中所有AI Agent的能力边界和使用范围。
+
+    核心原则:
+    1. 保持6个原子Agent的纯粹性，避免功能蔓延
+    2. 新需求优先通过workflow编排现有Agent实现
+    3. 只有在确实需要全新能力维度时才考虑新增原子Agent
+    4. 特殊Agent仅用于特定场景，不可跨场景复用
+
+    变更流程:
+    1. 修改此配置文件
+    2. 重启report_orchestrator服务
+    3. 配置会被AgentRegistry自动加载
+    4. 无需修改代码或数据库

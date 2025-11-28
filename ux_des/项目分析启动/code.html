@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>New Investment Analysis - Megellan</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script>
+    tailwind.config = {
+        darkMode: "class",
+        theme: {
+            extend: {
+                colors: {
+                    "primary": "#3B82F6",
+                    "background-light": "#f6f6f8",
+                    "background-dark": "#0D1117",
+                    "surface": "#161B22",
+                    "border-color": "#30363D",
+                    "muted": "#8B949E"
+                },
+                fontFamily: {
+                    "display": ["Manrope", "sans-serif"]
+                },
+                borderRadius: {
+                    "DEFAULT": "0.375rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+                },
+            },
+        },
+    }
+    </script>
+<style>
+    .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+    }
+    </style>
+</head>
+<body class="bg-background-dark font-display text-gray-300">
+<div class="relative flex h-auto min-h-screen w-full flex-col bg-background-dark group/design-root overflow-x-hidden" x-data="{ sidebarCollapsed: false }">
+<div class="flex h-full grow">
+<aside :class="sidebarCollapsed ? 'w-20' : 'w-64'" class="flex h-screen flex-col border-r border-border-color bg-surface sticky top-0 transition-all duration-300">
+<div :class="sidebarCollapsed ? 'justify-center' : ''" class="flex h-16 shrink-0 items-center gap-3 border-b border-border-color px-6">
+<div class="text-primary size-8 shrink-0">
+<svg fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+<path d="M2 7L12 12M22 7L12 12M12 22V12" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+<path d="M17 4.5L7 9.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+</svg>
+</div>
+<h1 :class="sidebarCollapsed ? 'hidden' : ''" class="text-gray-100 text-lg font-semibold tracking-wide">Megellan</h1>
+</div>
+<nav class="flex flex-1 flex-col gap-1 p-4">
+<a :class="sidebarCollapsed ? 'justify-center' : ''" class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-background-dark" href="#">
+<span class="material-symbols-outlined shrink-0" style="font-size: 20px;">dashboard</span>
+<span :class="sidebarCollapsed ? 'w-0' : 'w-auto'" class="overflow-hidden transition-all whitespace-nowrap">Dashboard</span>
+</a>
+<a :class="sidebarCollapsed ? 'justify-center' : ''" class="flex items-center gap-3 rounded-md bg-primary/10 px-3 py-2 text-sm font-semibold text-primary" href="#">
+<span class="material-symbols-outlined shrink-0" style="font-size: 20px;">add_chart</span>
+<span :class="sidebarCollapsed ? 'w-0' : 'w-auto'" class="overflow-hidden transition-all whitespace-nowrap">New Analysis</span>
+</a>
+<a :class="sidebarCollapsed ? 'justify-center' : ''" class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-background-dark" href="#">
+<span class="material-symbols-outlined shrink-0" style="font-size: 20px;">assessment</span>
+<span :class="sidebarCollapsed ? 'w-0' : 'w-auto'" class="overflow-hidden transition-all whitespace-nowrap">Reports</span>
+</a>
+<a :class="sidebarCollapsed ? 'justify-center' : ''" class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-background-dark" href="#">
+<span class="material-symbols-outlined shrink-0" style="font-size: 20px;">settings</span>
+<span :class="sidebarCollapsed ? 'w-0' : 'w-auto'" class="overflow-hidden transition-all whitespace-nowrap">Settings</span>
+</a>
+</nav>
+<div class="mt-auto border-t border-border-color p-4">
+<div :class="sidebarCollapsed ? 'justify-center' : ''" class="flex items-center gap-4">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 shrink-0" data-alt="User avatar image" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuCrOnJsQGJpr1eedoiPwweuwuvOH9vLSKRA3dKhbuYHwgk_94ZSbzUg8D67Edidj3-mvQto0MNb_FGN5PGZcbXXo3GyorcTX-GmuCwRiHZEnQd8ZfPhHiz7aJaaE9RTYpjwogZ3R5fS02CrCC0mdJPiCwzjy4G0XOOy8tt2fi_MRtmWmwUdfZBkBZlgwSpP3iiRu3H-p8C2_QouHtlJGGkcTz_tcloUMmiTfMgpL0cr9c5rKLs-Dpj16TYb5nahCGqqGx-tK28_TJgf");'></div>
+<div :class="sidebarCollapsed ? 'hidden' : ''" class="flex flex-col overflow-hidden">
+<span class="text-sm font-medium text-gray-100 truncate">Eleanor Vance</span>
+<span class="text-xs text-muted truncate">eleanor@investco.pro</span>
+</div>
+</div>
+</div>
+</aside>
+<div class="flex-1">
+<header class="flex h-16 shrink-0 items-center justify-between whitespace-nowrap border-b border-border-color bg-surface px-6 sticky top-0 z-10">
+<button @click="sidebarCollapsed = !sidebarCollapsed" class="flex h-9 w-9 cursor-pointer items-center justify-center overflow-hidden rounded-md bg-transparent text-gray-400 hover:bg-background-dark hover:text-white transition-colors">
+<span :class="sidebarCollapsed ? 'rotate-180' : ''" class="material-symbols-outlined transition-transform duration-300" style="font-size: 20px;">menu_open</span>
+</button>
+<div class="flex items-center gap-2">
+<button class="flex h-9 w-9 cursor-pointer items-center justify-center overflow-hidden rounded-md bg-transparent text-gray-400 hover:bg-background-dark hover:text-white transition-colors">
+<span class="material-symbols-outlined" style="font-size: 20px;">notifications</span>
+</button>
+<button class="flex h-9 w-9 cursor-pointer items-center justify-center overflow-hidden rounded-md bg-transparent text-gray-400 hover:bg-background-dark hover:text-white transition-colors">
+<span class="material-symbols-outlined" style="font-size: 20px;">help</span>
+</button>
+</div>
+</header>
+<main class="flex flex-col gap-10 p-6 sm:p-8 lg:p-10 max-w-5xl mx-auto w-full">
+<div class="flex flex-col gap-2">
+<h2 class="text-gray-100 text-3xl font-bold tracking-tight">Launch New Analysis</h2>
+<p class="text-muted text-base">Configure your analysis task to receive a tailored investment report.</p>
+</div>
+<div class="flex flex-col gap-10">
+<div class="flex flex-col gap-6">
+<div class="flex items-center gap-4">
+<div class="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white font-bold text-sm shrink-0">1</div>
+<h3 class="text-gray-100 text-xl font-semibold">Project Information</h3>
+</div>
+<div class="flex flex-col gap-6 rounded-lg border border-border-color bg-surface p-6">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="flex flex-col gap-2">
+<label class="text-gray-300 text-sm font-medium" for="project-name">Project Name</label>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-md text-gray-200 focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-border-color bg-background-dark focus:border-primary h-11 placeholder:text-muted px-3 text-sm" id="project-name" placeholder="e.g., QuantumLeap AI" type="text" value=""/>
+</div>
+<div class="flex flex-col gap-2">
+<label class="text-gray-300 text-sm font-medium" for="project-industry">Project Industry</label>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-md text-gray-200 focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-border-color bg-background-dark focus:border-primary h-11 placeholder:text-muted px-3 text-sm" id="project-industry" placeholder="e.g., SaaS, Biotechnology, Renewable Energy" type="text" value=""/>
+</div>
+</div>
+<div class="flex flex-col gap-2">
+<label class="text-gray-300 text-sm font-medium" for="project-description">Detailed Description</label>
+<textarea class="form-textarea flex w-full min-w-0 flex-1 resize-y overflow-hidden rounded-md text-gray-200 focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-border-color bg-background-dark focus:border-primary min-h-36 placeholder:text-muted p-3 text-sm" id="project-description" placeholder="Provide a comprehensive overview of the project, including its mission, target market, competitive landscape, and unique value proposition."></textarea>
+</div>
+<div class="flex flex-col gap-2">
+<label class="text-gray-300 text-sm font-medium">Supporting Documents</label>
+<div class="flex items-center justify-center w-full">
+<label class="flex flex-col items-center justify-center w-full h-40 border-2 border-border-color border-dashed rounded-lg cursor-pointer bg-background-dark hover:bg-surface/50 transition-colors" for="dropzone-file">
+<div class="flex flex-col items-center justify-center pt-5 pb-6">
+<span class="material-symbols-outlined text-muted text-3xl">upload_file</span>
+<p class="mb-2 text-sm text-muted mt-2"><span class="font-semibold text-primary">Click to upload</span> or drag and drop</p>
+<p class="text-xs text-muted/80">Business plans, financial statements, pitch decks etc.</p>
+</div>
+<input class="hidden" id="dropzone-file" type="file"/>
+</label>
+</div>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-6">
+<div class="flex items-center gap-4">
+<div class="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white font-bold text-sm shrink-0">2</div>
+<h3 class="text-gray-100 text-xl font-semibold">Analysis Parameters</h3>
+</div>
+<div class="flex flex-col gap-6 rounded-lg border border-border-color bg-surface p-6">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-8">
+<div class="flex flex-col gap-3">
+<div class="flex justify-between items-center">
+<label class="text-gray-300 text-sm font-medium">Investment Horizon</label>
+<span class="text-gray-100 text-sm font-semibold bg-background-dark px-2 py-1 rounded">5 Years</span>
+</div>
+<input class="w-full h-1.5 bg-border-color rounded-lg appearance-none cursor-pointer accent-primary" max="20" min="1" type="range" value="5"/>
+</div>
+<div class="flex flex-col gap-3">
+<div class="flex justify-between items-center">
+<label class="text-gray-300 text-sm font-medium">Risk Appetite</label>
+<span class="text-gray-100 text-sm font-semibold bg-background-dark px-2 py-1 rounded">Medium</span>
+</div>
+<input class="w-full h-1.5 bg-border-color rounded-lg appearance-none cursor-pointer accent-primary" max="5" min="1" type="range" value="3"/>
+</div>
+</div>
+<div class="flex flex-col md:flex-row gap-6 pt-2">
+<div class="flex items-center gap-3">
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox" value=""/>
+<div class="w-11 h-6 bg-border-color rounded-full peer peer-focus:ring-2 peer-focus:ring-primary/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+</label>
+<span class="text-gray-300 text-sm font-medium">Enable Competitor Analysis</span>
+</div>
+<div class="flex items-center gap-3">
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" type="checkbox" value=""/>
+<div class="w-11 h-6 bg-border-color rounded-full peer peer-focus:ring-2 peer-focus:ring-primary/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+</label>
+<span class="text-gray-300 text-sm font-medium">Include ESG Factors</span>
+</div>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-6">
+<div class="flex items-center gap-4">
+<div class="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white font-bold text-sm shrink-0">3</div>
+<h3 class="text-gray-100 text-xl font-semibold">Select AI Analyst Team</h3>
+</div>
+<div class="flex flex-col gap-4 rounded-lg border border-border-color bg-surface p-6">
+<p class="text-sm text-muted">Choose the AI agents that best fit your analysis needs. At least one is required.</p>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+<div class="flex cursor-pointer flex-col gap-4 rounded-md border border-primary bg-primary/10 p-4 ring-2 ring-primary/40">
+<div class="flex justify-between items-start">
+<div class="flex items-center justify-center size-10 rounded-lg bg-primary/20 text-primary"><span class="material-symbols-outlined">analytics</span></div>
+<input checked="" class="form-checkbox h-5 w-5 rounded-sm bg-surface border-border-color text-primary focus:ring-primary focus:ring-offset-surface" type="checkbox"/>
+</div>
+<div class="flex flex-col">
+<h4 class="font-semibold text-gray-100">Market Trend Analyst</h4>
+<p class="text-sm text-muted">Analyzes market dynamics, growth projections, and industry shifts.</p>
+</div>
+</div>
+<div class="flex cursor-pointer flex-col gap-4 rounded-md border border-border-color bg-background-dark p-4 transition-colors hover:border-primary/50">
+<div class="flex justify-between items-start">
+<div class="flex items-center justify-center size-10 rounded-lg bg-surface text-gray-300"><span class="material-symbols-outlined">account_balance</span></div>
+<input checked="" class="form-checkbox h-5 w-5 rounded-sm bg-surface border-border-color text-primary focus:ring-primary focus:ring-offset-surface" type="checkbox"/>
+</div>
+<div class="flex flex-col">
+<h4 class="font-semibold text-gray-100">Financial Model Expert</h4>
+<p class="text-sm text-muted">Specializes in financial modeling, valuation, and cash flow analysis.</p>
+</div>
+</div>
+<div class="flex cursor-pointer flex-col gap-4 rounded-md border border-border-color bg-background-dark p-4 transition-colors hover:border-primary/50">
+<div class="flex justify-between items-start">
+<div class="flex items-center justify-center size-10 rounded-lg bg-surface text-gray-300"><span class="material-symbols-outlined">gpp_good</span></div>
+<input class="form-checkbox h-5 w-5 rounded-sm bg-surface border-border-color text-primary focus:ring-primary focus:ring-offset-surface" type="checkbox"/>
+</div>
+<div class="flex flex-col">
+<h4 class="font-semibold text-gray-100">Risk Assessment Specialist</h4>
+<p class="text-sm text-muted">Identifies potential risks, from market volatility to operational challenges.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="flex justify-end items-center gap-4 pt-6 mt-4 border-t border-border-color">
+<button class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-md h-11 px-5 bg-surface hover:bg-surface/80 text-gray-200 text-sm font-semibold transition-colors">
+<span class="truncate">Save as Draft</span>
+</button>
+<button class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-md h-11 px-5 bg-primary hover:bg-primary/90 text-white text-sm font-semibold transition-colors gap-2">
+<span class="truncate">Run Analysis</span>
+<span class="material-symbols-outlined" style="font-size: 18px">arrow_forward</span>
+</button>
+</div>
+</main>
+</div>
+</div>
+<script defer="" src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</div>
+
+</body></html>

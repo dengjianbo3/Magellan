@@ -25,3 +25,18 @@ pnpm-debug.log*
 # Note: This directory is created inside the container via a volume.
 # Adding it here is good practice for local development.
 uploads/
+
+# Test files
+test_*.py
+test_*.html
+*.bak
+
+# ChromaDB data
+chroma_data/
+
+# Test results
+test-results/
+playwright-report/
+
+# Debug files
+DEBUG_*.md

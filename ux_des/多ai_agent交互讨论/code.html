@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Multi-Agent Investment Analysis</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "primary": "#135bec",
+            "background-light": "#f6f6f8",
+            "background-dark": "#0D1117",
+            "surface-dark": "#161B22",
+            "border-dark": "#30363d",
+          },
+          fontFamily: {
+            "display": ["Space Grotesk", "sans-serif"]
+          },
+          borderRadius: {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      font-size: 24px;
+    }
+  </style>
+</head>
+<body class="bg-background-dark font-display text-slate-300">
+<div class="relative flex min-h-screen w-full">
+<aside class="flex w-64 flex-col bg-[#0D1117] p-4 border-r border-border-dark transition-all duration-300">
+<div class="flex items-center justify-between gap-3 px-2 mb-6">
+<div class="flex items-center gap-3">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" data-alt="Megellan Logo with abstract shapes" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBNcQUyzB8JicjL9b1hJW4yMADHS6L8oFQ-Ylo8vR5-uStaJVGUhFTIPODIjDwXVltC-c6YiLrk1znx0bSrdNUvok9AaPd5XpEZvllOYz3rXhrgGyFPr6G9Jpoz9UD7D0qd0H9rnCd4Q4STVB44Ok-Q3vEkoUG0_qFcT7L-DR1g_KfK_ZJ_H29vhr2tGSNmfd2mHS1fjMyDbliQEHAsbmHgKdRqG0J8Rb259Rdp1oGEwiQ5rP8_ovXFYMARaChRpQq-EHFKNVvvay8v");'></div>
+<h1 class="text-white text-lg font-bold">Megellan</h1>
+</div>
+<button class="text-slate-400 hover:text-white">
+<span class="material-symbols-outlined !text-2xl">menu_open</span>
+</button>
+</div>
+<nav class="flex flex-col gap-2">
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-surface-dark hover:text-white rounded-lg transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<p class="text-sm font-medium leading-normal">Dashboard</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-surface-dark text-white" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+<p class="text-sm font-medium leading-normal">New Analysis</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-surface-dark hover:text-white rounded-lg transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">history</span>
+<p class="text-sm font-medium leading-normal">History</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-surface-dark hover:text-white rounded-lg transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">smart_toy</span>
+<p class="text-sm font-medium leading-normal">Agents</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-surface-dark hover:text-white rounded-lg transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">settings</span>
+<p class="text-sm font-medium leading-normal">Settings</p>
+</a>
+</nav>
+<div class="mt-auto flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-surface-dark hover:text-white rounded-lg transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">help</span>
+<p class="text-sm font-medium leading-normal">Help</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-surface-dark hover:text-white rounded-lg transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">logout</span>
+<p class="text-sm font-medium leading-normal">Log Out</p>
+</a>
+</div>
+</aside>
+<main class="flex-1 flex flex-col h-screen">
+<header class="p-6 border-b border-border-dark flex-shrink-0">
+<div class="flex flex-wrap justify-between gap-3">
+<div class="flex flex-col gap-1">
+<p class="text-white text-2xl font-semibold leading-tight">QuantumLeap Inc. Analysis</p>
+<p class="text-slate-400 text-sm font-normal leading-normal">Observe AI agents collaborating in real-time to generate your report.</p>
+</div>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto p-6">
+<div class="max-w-4xl mx-auto space-y-8">
+<div class="flex items-start gap-4 group">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 flex-shrink-0" data-alt="Avatar for Master Agent, a complex neural network design" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBqHP_dIUo_HeHuatPovhilbLm5FZ2aNp37VLr7cqt5iNmTGxCznnNL9ASBoSSbX8TglJz5XRKl_UtG5ZYW5gouc9etMow6EW4_w-tw0O_A-qU0c54yc6hP-44PXPX0DVxnQLS1482d6eqvH9U_VMlp_qWtDqhtGtPZL4BqAXluWIDCmw71MCtkqM9k_-4rfbjDj1REKffITANSCZ-IoZFubDps0Ax93IT55IqgO7vXDUfc0x8Dubg5TwBQyv_xjPfSuEFL1kBLqXXd");'></div>
+<div class="flex-1 relative">
+<div class="flex items-center gap-3 mb-2">
+<p class="text-white text-base font-bold leading-tight tracking-[-0.015em]">Master Agent</p>
+<p class="text-slate-500 text-xs font-medium">Decomposing Task</p>
+</div>
+<div class="bg-surface-dark border border-border-dark rounded-xl rounded-tl-none p-4">
+<p class="text-slate-300 text-base font-normal leading-relaxed">
+                  I have received the query: 'Analyze the investment potential of QuantumLeap Inc.' I've broken down the problem into the following sub-tasks for the team to investigate.
+                </p>
+</div>
+</div>
+</div>
+<div class="space-y-6 relative pl-5">
+<div class="absolute left-5 top-0 bottom-0 w-px bg-border-dark -translate-x-1/2"></div>
+<div class="flex items-start gap-4 group relative">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 flex-shrink-0 z-10" data-alt="Avatar for Financial Analyst Agent, showing a chart icon" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuCeIopXRQ2ChuP5QD2ZlhmUpgbDsgLwS4eokkoFMIaBh4zX3_88wwKpmmJtFaTTFnXG72RSPuTEgSJKkQn4RJ_GqaBHfAKKUZdC8yl4xSzioHbeg3ovZJ0zysamsucF1VFjFK9AoCNB30zmgYVObU75V2uYIgzLlxQZ2FPS58yZlCvmGp4vImkS5zg-BY1Hke2_tvNjDzfDk-wzC7fzRKWrV4e7_rTUnwWI7oM8WbM058ZwxTfw9Qez3uMQAQBs9VSzzqHxQZflQhmt");'></div>
+<div class="flex-1 relative">
+<div class="flex items-center gap-3 mb-2">
+<p class="text-white text-base font-bold leading-tight">Financial Analyst</p>
+<p class="text-slate-500 text-xs font-normal leading-normal">9:41 AM</p>
+</div>
+<div class="bg-surface-dark border border-border-dark rounded-xl rounded-tl-none p-4">
+<p class="text-slate-300 text-base font-normal leading-relaxed">
+                          I'm analyzing the Profit &amp; Loss statements for QuantumLeap Inc. for the last 3 fiscal years. Initial findings show a consistent 15% YoY revenue growth, but a concerning increase in operational costs.
+                        </p>
+</div>
+</div>
+</div>
+<div class="flex items-start gap-4 group relative">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 flex-shrink-0 z-10" data-alt="Avatar for Market Risk Agent, showing a shield icon" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuAX-2S_aKQaWst91YdKOdcN3b1Lx7bgSaFSoHKnPa-5-hEcK6_UGh4g9fDfa5TnGywYLVdifcpja2KxRfFenlPiOLwPi6UrgKrGDpUz6ZpXZOWEcKSWl83VOqXJPuquDhq5CVN-XHYBa23_7YfMIuleFp06Q4d9Usp8Fv_IHj1nOFIj8IZ00fUY6Ieyjg5sGDQfCGFt7sv69v9KzMdvNo4JiermCp8lrw07cM1-FZrukBx-SxHCFcVI7_jz4tbMyUTKO_ZkDNYNBCzn");'></div>
+<div class="flex-1 space-y-3 relative">
+<div class="flex items-center gap-3">
+<p class="text-white text-base font-bold leading-tight">Market Risk Analyst</p>
+<p class="text-slate-500 text-xs font-normal leading-normal">9:42 AM</p>
+</div>
+<div class="bg-surface-dark border border-border-dark rounded-xl rounded-tl-none">
+<div class="p-4">
+<div class="border-l-2 border-orange-500 pl-4">
+<div class="flex items-center gap-2 text-sm text-orange-400 mb-2">
+<span class="material-symbols-outlined !text-lg">error</span>
+<span>Challenges Financial Analyst</span>
+</div>
+<p class="text-slate-300 text-base font-normal leading-relaxed">
+                                  I've identified a significant market volatility risk that your projection doesn't account for. New regulations are expected in this sector within 6 months.
+                                </p>
+</div>
+</div>
+<div class="border-t border-border-dark p-3 m-1 rounded-lg flex items-center gap-4 bg-background-dark/50">
+<span class="material-symbols-outlined text-slate-400">description</span>
+<p class="text-slate-300 text-sm font-medium leading-normal line-clamp-2 flex-1">Upcoming Regulatory Changes in the Tech Sector - Official Report.pdf</p>
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-lg size-10" data-alt="Thumbnail for the official report, showing a document icon" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuALykPs4Jmo28hMILwTiSgYljAnF4cR4ePryfMSJyw9G13MqtQoPF5F73Xfg6G2_f1-W9UqdtbCHzbXfc3HjoiqYG5S7NcWKVgUL-hBATNsyTCLY7jDKrQWgx-sDE_ei8ZrKRpjl6SPN_-o44Iy7Tlz9rq4PyO7cXIeXGJTpEI0XsaZzZDjXwWQ0c3JHHZEAae15LsKFoHUCHUHQQhIiEwWxNh5T1_f_bpgBHC4kECvugFwW4JHcVkmxoL33wWptCtbqOhVAgUqRkUJ");'></div>
+</div>
+</div>
+</div>
+</div>
+<div class="flex items-start gap-4 group relative">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 flex-shrink-0 z-10" data-alt="Avatar for Tech Trends Agent, showing a lightbulb icon" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDoy6LYtzSbs82Ee5i3RqOW6usa3czKyWWtdTl2hRf8y7qJEQES8k_XrVLnKo56jET93sqTDQ0Ly0C9qbVXe3_9jhlDbq5P4BrGaiBW710CzvRFJ1Fh0o5k4Sp3PAd_sSksQ8n6pFki-grMODMhH7Qd-jSfJSXRvXRl0nRoTMaxB0abj-ARulnwpv1SVojfBPuMWoRM3uqPUURXCEHiqc4iwgfEy-_WGR5ZMMtXMmSnVv1H84nGZqHa2Kbquj-iCHT9jIMZ4FPTrlhC");'></div>
+<div class="flex-1 relative">
+<div class="flex items-center gap-3 mb-2">
+<p class="text-white text-base font-bold leading-tight">Tech Trends Analyst</p>
+<p class="text-slate-500 text-xs font-normal leading-normal">9:43 AM</p>
+</div>
+<div class="bg-surface-dark border border-border-dark rounded-xl rounded-tl-none p-4">
+<div class="border-l-2 border-green-500 pl-4">
+<div class="flex items-center gap-2 text-sm text-green-400 mb-2">
+<span class="material-symbols-outlined !text-lg">thumb_up</span>
+<span>Supports Market Risk Analyst</span>
+</div>
+<p class="text-slate-300 text-base font-normal leading-relaxed">
+                               I agree. My data shows a disruptive technology emerging in this sector that could render QuantumLeap's current flagship product obsolete within 2 years.
+                            </p>
+</div>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-3 pt-4 pl-14">
+<div class="flex -space-x-2">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-6 ring-2 ring-background-dark" data-alt="Avatar for Financial Analyst Agent" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuCgQkofdtVdvZW1Fj0_jSZXaIqpyMtuSKWN8Z4pOBQSmI_jwTnpRFv6x85CMwdhTAAdy-dBgJeHrqJR06YdfXCrKmuXU1FqNYqS47ZAZIX2vdNPun1lxkOzCNBZJcjSlnh5XD2SuvJISuoJq-gU_9VvmEtYgWzm-kWruZUPQ4wEbDpzlK4buy-M64LpOS9cPvqxxbpCumhtaZ861SKrM4S1oUYOvDvjLhSnb6pIBGs9-ZGGEgoeGdnO7rgyJfUagaL0eu4hgSPOWxez");'></div>
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-6 ring-2 ring-background-dark" data-alt="Avatar for Master Agent" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDuc-m0GpeA2ByF3khagxGAQ3geEqx_3iqWP0iSbwQF-6LSokQhSveN65TUP_0E9hafsW5h4f_JKP6qfl_FyAwJtn5zi_vwAn2aoVP2mnOjYr4WzbiOih1b5vT6UyBVpq-ym_pqaxKl57kzX4QHHw0IfQ76OWOAzPrYOu6Zs18ZnVoVDpaSJK_UFO-qcehdKRAPrcavlnZxvgxlYWeOgW9gOIIiUyKPRUUsvQ4sFivOJP3PQRmwXhe2_16aiZ1Kob8WQq74rGFNdV_8");'></div>
+</div>
+<p class="text-slate-500 text-sm font-medium leading-normal animate-pulse">Agents are analyzing...</p>
+</div>
+</div>
+</div>
+</div>
+<footer class="p-6 mt-auto flex-shrink-0 bg-background-dark/80 backdrop-blur-sm border-t border-border-dark">
+<div class="max-w-4xl mx-auto">
+<div class="relative">
+<input class="w-full bg-surface-dark text-white border border-border-dark focus:border-primary focus:ring-2 focus:ring-primary/50 rounded-lg py-3 pl-4 pr-12 text-base transition-all placeholder:text-slate-500" placeholder="Ask a follow-up question..." type="text"/>
+<button class="absolute inset-y-0 right-0 flex items-center justify-center px-4 text-slate-400 hover:text-white transition-colors">
+<span class="material-symbols-outlined">send</span>
+</button>
+</div>
+</div>
+</footer>
+</main>
+</div>
+
+</body></html>

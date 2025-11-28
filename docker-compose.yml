@@ -1,25 +1,10 @@
 version: '3.8'
 
 services:
-  # The main brain of the application
-  report_orchestrator:
-    build:
-      context: ./backend/services/report_orchestrator
-      args:
-        - DOCKER_BUILDKIT=1
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./backend/services/report_orchestrator/app:/usr/src/app/app
-    environment:
-      - PYTHONUNBUFFERED=1
-
   # Service for handling file uploads
   file_service:
     build:
       context: ./backend/services/file_service
-      args:
-        - DOCKER_BUILDKIT=1
     ports:
       - "8001:8001"
     volumes:
@@ -28,26 +13,10 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
 
-  # Service for parsing PDF files
-  pdf_parser:
-    build:
-      context: ./backend/services/pdf_parser
-      args:
-        - DOCKER_BUILDKIT=1
-    ports:
-      - "8002:8002"
-    volumes:
-      - ./backend/services/pdf_parser/app:/usr/src/app/app
-      - uploads_volume:/var/uploads
-    environment:
-      - PYTHONUNBUFFERED=1
-
   # Service for parsing Excel files
   excel_parser:
     build:
       context: ./backend/services/excel_parser
-      args:
-        - DOCKER_BUILDKIT=1
     ports:
       - "8004:8004"
     volumes:
@@ -60,8 +29,6 @@ services:
   word_parser:
     build:
       context: ./backend/services/word_parser
-      args:
-        - DOCKER_BUILDKIT=1
     ports:
       - "8005:8005"
     volumes:
@@ -71,24 +38,41 @@ services:
       - PYTHONUNBUFFERED=1
 
   # Service for fetching public company data
-  public_data_service:
-    build:
-      context: ./backend/services/public_data_service
-      args:
-        - DOCKER_BUILDKIT=1
+  external_data_service:
+    build: ./backend/services/external_data_service
+    container_name: magellan-external_data_service
     ports:
       - "8006:8006"
+    networks:
+      - default
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8006 --reload
+
+  report_orchestrator:
+    build: ./backend/services/report_orchestrator
+    container_name: magellan-report_orchestrator
+    ports:
+      - "8000:8000"
     volumes:
-      - ./backend/services/public_data_service/app:/usr/src/app/app
+      - ./backend/services/report_orchestrator/app:/usr/src/app/app
+      - ./backend/services/report_orchestrator/config:/usr/src/app/config
+      - uploads_volume:/var/uploads
+    networks:
+      - default
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
+      - PUBLIC_DATA_URL=http://external_data_service:8006
+      - LLM_GATEWAY_URL=http://llm_gateway:8003
+      - USER_SERVICE_URL=http://user_service:8008
+      - REDIS_URL=redis://redis:6379
       - PYTHONUNBUFFERED=1
 
   # Service for managing user personas
   user_service:
     build:
       context: ./backend/services/user_service
-      args:
-        - DOCKER_BUILDKIT=1
     ports:
       - "8008:8008"
     volumes:
@@ -96,12 +80,34 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
 
+  internal_knowledge_service:
+    build: ./backend/services/internal_knowledge_service
+    container_name: magellan-internal_knowledge_service
+    ports:
+      - "8009:8009"
+    networks:
+      - default
+    depends_on:
+      - chroma
+    env_file:
+      - .env # Pass all environment variables from .env file
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8009 --reload
+
+  web_search_service:
+    build: ./backend/services/web_search_service
+    container_name: magellan-web_search_service
+    ports:
+      - "8010:8010"
+    networks:
+      - default
+    env_file:
+      - .env # Load TAVILY_API_KEY from .env file
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8010 --reload
+
   # Service acting as a gateway to Large Language Models
   llm_gateway:
     build:
       context: ./backend/services/llm_gateway
-      args:
-        - DOCKER_BUILDKIT=1
     env_file:
       - .env # Load environment variables from .env file
     ports:
@@ -117,6 +123,115 @@ services:
 
   # --- Infrastructure Dependencies ---
 
+  # Redis for session and report persistence
+  redis:
+    image: redis:7-alpine
+    container_name: magellan-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --appendfsync everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - default
+
+  chroma:
+    image: chromadb/chroma
+    ports:
+      - "8011:8000"
+    volumes:
+      - ./chroma_data:/chroma/.chroma/index
+
+  # Qdrant Vector Database (Phase 2 - Knowledge Base)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: magellan-qdrant
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC API
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    networks:
+      - default
+
+  # --- Kafka Message Queue Infrastructure ---
+
+  # Zookeeper for Kafka coordination
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: magellan-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kafka Message Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: magellan-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168  # 7 days
+      KAFKA_LOG_RETENTION_BYTES: 10737418240  # 10GB
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # Kafka UI for monitoring and management
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: magellan-kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: magellan
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - default
+
   # PostgreSQL Database (Temporarily disabled due to network issues)
   # postgres_db:
   #   image: postgres:15-alpine
@@ -126,7 +241,7 @@ services:
   #     - postgres_data:/var/lib/postgresql/data/
   #   environment:
   #     - POSTGRES_USER=admin
-  #     - POSTGRES_PASSWORD=secret
+  #     - POSTG-RES_PASSWORD=secret
   #     - POSTGRES_DB=investor_agent_db
 
   # RabbitMQ Message Broker (Temporarily disabled due to network issues)
@@ -139,3 +254,8 @@ services:
 volumes:
   # postgres_data:
   uploads_volume:
+  redis_data:
+  qdrant_storage:
+  zookeeper_data:
+  zookeeper_log:
+  kafka_data:

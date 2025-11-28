@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Megellan - Configuration Analysis</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.fill {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #135bec;
+            cursor: pointer;
+            border-radius: 9999px;
+            margin-top: -6px;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #135bec;
+            cursor: pointer;
+            border-radius: 9999px;
+        }
+    </style>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#135bec",
+              "background-light": "#f6f6f8",
+              "background-dark": "#101622",
+            },
+            fontFamily: {
+              "display": ["Manrope", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+</head>
+<body class="bg-background-dark font-display">
+<div class="relative flex min-h-screen w-full">
+<!-- SideNavBar -->
+<aside class="flex w-64 flex-col border-r border-slate-800 bg-[#111722] p-4">
+<div class="flex flex-col gap-4">
+<div class="flex items-center gap-3">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" data-alt="Megellan app logo, abstract geometric shape" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDpe__C9cDln2LPr2208mXyW68FfnnOiNkLVx344p3-lnQD9BVChHsMjmKUNgJWP5LAGp8mGhBYjzg338JEiUZmeXDGg89FCH31OP5t4BWCZzG2p1oerkLF_bU1PCO9Th3mKgHNCtyKXb20g-JUUOMnLy9g1H5vKUBH2kRFphspp4lC5XT_Yi8k1TB50NoZhT1UcdIyBHAeB1DhxxUqFTMnNiwIE7qP3ysQ_O2Q5evqaG0i8dBMdahM5-lYpIC0808fHkw-_B72jDPB");'></div>
+<div class="flex flex-col">
+<h1 class="text-white text-base font-bold leading-normal">Megellan</h1>
+<p class="text-slate-400 text-sm font-normal leading-normal">AI Investment Analysis</p>
+</div>
+</div>
+<nav class="flex flex-col gap-2 mt-4">
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined text-slate-400">dashboard</span>
+<p class="text-sm font-medium">Dashboard</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg bg-primary/20 px-3 py-2 text-primary" href="#">
+<span class="material-symbols-outlined fill">add_circle</span>
+<p class="text-sm font-medium">New Analysis</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined text-slate-400">article</span>
+<p class="text-sm font-medium">Reports</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined text-slate-400">settings</span>
+<p class="text-sm font-medium">Settings</p>
+</a>
+</nav>
+</div>
+<div class="mt-auto">
+<button class="flex w-full min-w-[84px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold leading-normal tracking-wide hover:bg-blue-600">
+<span class="truncate">Upgrade Plan</span>
+</button>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 overflow-y-auto p-8">
+<div class="mx-auto max-w-4xl">
+<!-- PageHeading -->
+<header class="flex flex-wrap items-center justify-between gap-4">
+<div class="flex min-w-72 flex-col gap-2">
+<p class="text-white text-4xl font-black leading-tight tracking-[-0.033em]">配置分析 (Configuration Analysis)</p>
+<p class="text-slate-400 text-base font-normal leading-normal">Set up the detailed parameters for your long-term investment analysis.</p>
+</div>
+<div class="flex items-center gap-2">
+<button class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-slate-800 text-slate-300 text-sm font-medium leading-normal hover:bg-slate-700">
+<span class="truncate">Save as Template</span>
+</button>
+<button class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold leading-normal tracking-wide hover:bg-blue-600">
+<span class="truncate">Start Analysis</span>
+</button>
+</div>
+</header>
+<!-- Accordions for settings -->
+<div class="mt-8 flex flex-col gap-4">
+<details class="flex flex-col rounded-xl border border-slate-800 bg-[#111722]/50 backdrop-blur-sm group" open="">
+<summary class="flex cursor-pointer list-none items-center justify-between gap-6 px-5 py-4">
+<p class="text-white text-base font-semibold leading-normal">增长模型选择 (Growth Model Selection)</p>
+<span class="material-symbols-outlined text-slate-400 transition-transform duration-300 group-open:rotate-180">expand_more</span>
+</summary>
+<div class="border-t border-slate-800 px-5 pb-5 pt-4">
+<!-- RadioList -->
+<div class="flex flex-col gap-3">
+<label class="flex cursor-pointer items-start gap-4 rounded-lg border border-slate-700 p-4 has-[:checked]:border-primary has-[:checked]:bg-primary/10">
+<input checked="" class="mt-1 h-5 w-5 shrink-0 appearance-none rounded-full border-2 border-slate-600 bg-transparent checked:border-primary checked:bg-[radial-gradient(circle,#135bec_40%,transparent_45%)] focus:outline-none focus:ring-0 focus:ring-offset-0 checked:focus:border-primary" name="growth-model" type="radio"/>
+<div class="flex grow flex-col">
+<p class="text-white text-sm font-medium leading-normal">S-Curve Growth</p>
+<p class="text-slate-400 text-sm font-normal leading-normal">Models growth that is initially exponential, then slows as saturation is reached.</p>
+</div>
+</label>
+<label class="flex cursor-pointer items-start gap-4 rounded-lg border border-slate-700 p-4 has-[:checked]:border-primary has-[:checked]:bg-primary/10">
+<input class="mt-1 h-5 w-5 shrink-0 appearance-none rounded-full border-2 border-slate-600 bg-transparent checked:border-primary checked:bg-[radial-gradient(circle,#135bec_40%,transparent_45%)] focus:outline-none focus:ring-0 focus:ring-offset-0 checked:focus:border-primary" name="growth-model" type="radio"/>
+<div class="flex grow flex-col">
+<p class="text-white text-sm font-medium leading-normal">Linear Growth</p>
+<p class="text-slate-400 text-sm font-normal leading-normal">Models a steady, constant rate of growth over time.</p>
+</div>
+</label>
+<label class="flex cursor-pointer items-start gap-4 rounded-lg border border-slate-700 p-4 has-[:checked]:border-primary has-[:checked]:bg-primary/10">
+<input class="mt-1 h-5 w-5 shrink-0 appearance-none rounded-full border-2 border-slate-600 bg-transparent checked:border-primary checked:bg-[radial-gradient(circle,#135bec_40%,transparent_45%)] focus:outline-none focus:ring-0 focus:ring-offset-0 checked:focus:border-primary" name="growth-model" type="radio"/>
+<div class="flex grow flex-col">
+<p class="text-white text-sm font-medium leading-normal">Exponential Growth</p>
+<p class="text-slate-400 text-sm font-normal leading-normal">Models accelerating growth where the rate itself increases over time.</p>
+</div>
+</label>
+</div>
+</div>
+</details>
+<details class="flex flex-col rounded-xl border border-slate-800 bg-[#111722]/50 backdrop-blur-sm group">
+<summary class="flex cursor-pointer list-none items-center justify-between gap-6 px-5 py-4">
+<p class="text-white text-base font-semibold leading-normal">竞争分析侧重 (Competition Analysis Focus)</p>
+<span class="material-symbols-outlined text-slate-400 transition-transform duration-300 group-open:rotate-180">expand_more</span>
+</summary>
+<div class="border-t border-slate-800 px-5 pb-5 pt-4">
+<!-- Chips -->
+<p class="mb-3 text-sm font-medium text-slate-300">Select frameworks to include:</p>
+<div class="flex flex-wrap gap-3">
+<label class="flex cursor-pointer items-center justify-center gap-x-2 rounded-lg bg-slate-800 h-9 px-3 has-[:checked]:bg-primary has-[:checked]:text-white">
+<input checked="" class="sr-only" type="checkbox"/>
+<span class="material-symbols-outlined text-lg">pie_chart</span>
+<p class="text-sm font-medium">Market Share</p>
+</label>
+<label class="flex cursor-pointer items-center justify-center gap-x-2 rounded-lg bg-slate-800 h-9 px-3 has-[:checked]:bg-primary has-[:checked]:text-white">
+<input checked="" class="sr-only" type="checkbox"/>
+<span class="material-symbols-outlined text-lg">select_all</span>
+<p class="text-sm font-medium">SWOT</p>
+</label>
+<label class="flex cursor-pointer items-center justify-center gap-x-2 rounded-lg bg-slate-800 h-9 px-3 has-[:checked]:bg-primary has-[:checked]:text-white">
+<input class="sr-only" type="checkbox"/>
+<span class="material-symbols-outlined text-lg">view_in_ar</span>
+<p class="text-sm font-medium">Porter's Five Forces</p>
+</label>
+<label class="flex cursor-pointer items-center justify-center gap-x-2 rounded-lg bg-slate-800 h-9 px-3 has-[:checked]:bg-primary has-[:checked]:text-white">
+<input class="sr-only" type="checkbox"/>
+<span class="material-symbols-outlined text-lg">grid_view</span>
+<p class="text-sm font-medium">Competitor Matrix</p>
+</label>
+</div>
+</div>
+</details>
+<details class="flex flex-col rounded-xl border border-slate-800 bg-[#111722]/50 backdrop-blur-sm group">
+<summary class="flex cursor-pointer list-none items-center justify-between gap-6 px-5 py-4">
+<p class="text-white text-base font-semibold leading-normal">市场前景评估 (Market Outlook Assessment)</p>
+<span class="material-symbols-outlined text-slate-400 transition-transform duration-300 group-open:rotate-180">expand_more</span>
+</summary>
+<div class="grid grid-cols-1 gap-6 border-t border-slate-800 px-5 pb-5 pt-4 md:grid-cols-2">
+<!-- Slider -->
+<div class="flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<label class="text-sm font-medium text-slate-300" for="market-size">TAM Forecast ($B)</label>
+<input class="w-20 rounded-md border-slate-700 bg-slate-800 p-1 text-center text-sm text-white focus:border-primary focus:ring-primary" id="market-size" type="number" value="50"/>
+</div>
+<input class="h-1 w-full cursor-pointer appearance-none rounded-full bg-slate-700" max="100" min="0" type="range" value="50"/>
+</div>
+<div class="flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<label class="text-sm font-medium text-slate-300" for="gdp-growth">Expected GDP Growth (%)</label>
+<input class="w-20 rounded-md border-slate-700 bg-slate-800 p-1 text-center text-sm text-white focus:border-primary focus:ring-primary" id="gdp-growth" step="0.1" type="number" value="3.5"/>
+</div>
+<input class="h-1 w-full cursor-pointer appearance-none rounded-full bg-slate-700" max="10" min="0" step="0.1" type="range" value="3.5"/>
+</div>
+</div>
+</details>
+<details class="flex flex-col rounded-xl border border-slate-800 bg-[#111722]/50 backdrop-blur-sm group">
+<summary class="flex cursor-pointer list-none items-center justify-between gap-6 px-5 py-4">
+<p class="text-white text-base font-semibold leading-normal">财务预测参数 (Financial Projections)</p>
+<span class="material-symbols-outlined text-slate-400 transition-transform duration-300 group-open:rotate-180">expand_more</span>
+</summary>
+<div class="grid grid-cols-1 gap-6 border-t border-slate-800 px-5 pb-5 pt-4 sm:grid-cols-3">
+<div>
+<label class="block text-sm font-medium text-slate-300" for="discount-rate">Discount Rate (WACC) %</label>
+<div class="relative mt-1">
+<input class="w-full rounded-lg border-slate-700 bg-slate-800 p-2 text-white placeholder:text-slate-500 focus:border-primary focus:ring-primary" id="discount-rate" type="number" value="8.5"/>
+</div>
+</div>
+<div>
+<label class="block text-sm font-medium text-slate-300" for="terminal-growth">Terminal Growth Rate %</label>
+<div class="relative mt-1">
+<input class="w-full rounded-lg border-slate-700 bg-slate-800 p-2 text-white placeholder:text-slate-500 focus:border-primary focus:ring-primary" id="terminal-growth" type="number" value="2.0"/>
+</div>
+</div>
+<div>
+<label class="block text-sm font-medium text-slate-300" for="forecast-period">Forecast Period (Years)</label>
+<div class="relative mt-1">
+<input class="w-full rounded-lg border-slate-700 bg-slate-800 p-2 text-white placeholder:text-slate-500 focus:border-primary focus:ring-primary" id="forecast-period" type="number" value="10"/>
+</div>
+</div>
+</div>
+</details>
+</div>
+</div>
+</main>
+</div>
+</body></html>

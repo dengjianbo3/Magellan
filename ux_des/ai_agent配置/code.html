@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Megellan - Agent Configuration</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#4f46e5",
+              "background-light": "#f6f6f8",
+              "background-dark": "#010409",
+              "secondary": {
+                 DEFAULT: "#0d1117",
+                 light: "#ffffff",
+                 dark: "#0d1117",
+              },
+              "text-main": {
+                light: "#101622",
+                dark: "#e6edf3",
+              },
+              "text-secondary": {
+                light: "#6b7280",
+                dark: "#848d97",
+              },
+              "border-color": {
+                light: "#e5e7eb",
+                dark: "#21262d",
+              }
+            },
+            fontFamily: {
+              "display": ["Manrope", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.375rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20;
+            font-size: 20px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 1rem;
+            height: 1rem;
+            background: #e6edf3;
+            border: 2px solid #4f46e5;
+            border-radius: 9999px;
+            cursor: pointer;
+            margin-top: -6px;}
+        input[type="range"]::-moz-range-thumb {
+            width: 1rem;
+            height: 1rem;
+            background: #e6edf3;
+            border: 2px solid #4f46e5;
+            border-radius: 9999px;
+            cursor: pointer;
+        }
+        input[type="range"] {
+           background-color: transparent;
+        }
+    </style>
+</head>
+<body class="bg-background-dark font-display text-text-main-dark">
+<div class="flex h-screen w-full">
+<aside class="group relative flex w-20 shrink-0 flex-col border-r border-border-color-dark bg-secondary p-4 transition-all duration-300 ease-in-out data-[collapsed=false]:w-64" data-collapsed="true">
+<div class="flex h-full flex-col overflow-hidden">
+<div class="mb-8 flex min-w-[200px] items-center gap-3 p-2">
+<svg class="size-8 flex-shrink-0 text-white" fill="none" height="32" viewBox="0 0 32 32" width="32" xmlns="http://www.w3.org/2000/svg">
+<path d="M12.0251 28.0002L3.52515 19.5002C2.42515 18.4002 2.42515 16.6002 3.52515 15.5002L12.0251 7.00024C13.1251 5.90024 14.8251 5.90024 16.0251 7.00024L18.4251 9.40024C19.0251 10.0002 19.0251 11.0002 18.4251 11.6002L13.8251 16.2002C13.2251 16.8002 13.2251 17.8002 13.8251 18.4002L18.4251 23.0002C19.0251 23.6002 19.0251 24.6002 18.4251 25.2002L16.0251 27.6002C14.9251 28.7002 13.1251 28.7002 12.0251 28.0002Z" fill="#4f46e5"></path>
+<path d="M20.0251 25.0002L28.5251 16.5002C29.6251 15.4002 29.6251 13.6002 28.5251 12.5002L20.0251 4.00024C18.9251 2.90024 17.2251 2.90024 16.0251 4.00024L13.6251 6.40024C13.0251 7.00024 13.0251 8.00024 13.6251 8.60024L18.2251 13.2002C18.8251 13.8002 18.8251 14.8002 18.2251 15.4002L13.6251 20.0002C13.0251 20.6002 13.0251 21.6002 13.6251 22.2002L16.0251 24.6002C17.1251 25.7002 18.9251 25.7002 20.0251 25.0002Z" fill="currentColor"></path>
+</svg>
+<h1 class="whitespace-nowrap text-xl font-bold leading-normal text-text-main-dark opacity-0 transition-opacity duration-200 group-data-[collapsed=false]:opacity-100">Megellan</h1>
+</div>
+<nav class="flex flex-col gap-2">
+<a class="flex min-w-[200px] items-center gap-3 rounded-md px-3 py-2 text-text-secondary-dark transition-colors duration-200 hover:bg-white/5 hover:text-text-main-dark" href="#">
+<span class="material-symbols-outlined flex-shrink-0">dashboard</span>
+<p class="whitespace-nowrap text-sm font-medium leading-normal opacity-0 transition-opacity duration-200 group-data-[collapsed=false]:opacity-100">Dashboard</p>
+</a>
+<a class="flex min-w-[200px] items-center gap-3 rounded-md px-3 py-2 text-text-secondary-dark transition-colors duration-200 hover:bg-white/5 hover:text-text-main-dark" href="#">
+<span class="material-symbols-outlined flex-shrink-0">description</span>
+<p class="whitespace-nowrap text-sm font-medium leading-normal opacity-0 transition-opacity duration-200 group-data-[collapsed=false]:opacity-100">Analysis Reports</p>
+</a>
+<a class="flex min-w-[200px] items-center gap-3 rounded-md bg-primary/20 px-3 py-2 text-text-main-dark" href="#">
+<span class="material-symbols-outlined flex-shrink-0 text-primary" style="font-variation-settings: 'FILL' 1;">smart_toy</span>
+<p class="whitespace-nowrap text-sm font-semibold leading-normal opacity-0 transition-opacity duration-200 group-data-[collapsed=false]:opacity-100">Agent Management</p>
+</a>
+<a class="flex min-w-[200px] items-center gap-3 rounded-md px-3 py-2 text-text-secondary-dark transition-colors duration-200 hover:bg-white/5 hover:text-text-main-dark" href="#">
+<span class="material-symbols-outlined flex-shrink-0">database</span>
+<p class="whitespace-nowrap text-sm font-medium leading-normal opacity-0 transition-opacity duration-200 group-data-[collapsed=false]:opacity-100">Data Sources</p>
+</a>
+<a class="flex min-w-[200px] items-center gap-3 rounded-md px-3 py-2 text-text-secondary-dark transition-colors duration-200 hover:bg-white/5 hover:text-text-main-dark" href="#">
+<span class="material-symbols-outlined flex-shrink-0">settings</span>
+<p class="whitespace-nowrap text-sm font-medium leading-normal opacity-0 transition-opacity duration-200 group-data-[collapsed=false]:opacity-100">Settings</p>
+</a>
+</nav>
+<div class="mt-auto">
+<div class="relative flex min-w-[200px] items-center gap-3 border-t border-border-color-dark pt-4">
+<div class="aspect-square size-10 flex-shrink-0 rounded-full bg-cover bg-center bg-no-repeat" data-alt="User profile picture for Alex Chen" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuAzZFA6y30HiMHA_xj5yaIWNAlvpYq8aPY-TQcPYOxzWP7PeoGdpeFtvAc-MDcEdm7RqtTcA7P0UJ8Mw_tjU2ZvdOj3PXKLoSfXF0QRywbq4vjvi-brDH4qD5P18PpuylFlppnm5ZCSVHkKbEFpm8C63CfuB76MtKWOhI9E8_KY91gl_EN4KAZiMemqR41VOWThGAxGbZFxEXKbX7x-4G6Z-Zr3C7J2Tk3_d5E_udQUPdxpU0JFN_5BQUGl-R37vHhZJW0yH_cBGzsl");'></div>
+<div class="flex flex-col whitespace-nowrap opacity-0 transition-opacity duration-200 group-data-[collapsed=false]:opacity-100">
+<h1 class="text-base font-semibold leading-normal text-text-main-dark">Alex Chen</h1>
+<p class="text-sm font-normal leading-normal text-text-secondary-dark">Investment Analyst</p>
+</div>
+</div>
+</div>
+<button class="absolute -right-3 top-16 z-10 flex size-6 items-center justify-center rounded-full border border-border-color-dark bg-secondary text-text-secondary-dark transition-all duration-300 hover:bg-white/10 group-data-[collapsed=false]:rotate-180">
+<span class="material-symbols-outlined !text-base">chevron_right</span>
+</button>
+</div>
+</aside>
+<main class="flex flex-1 overflow-y-auto bg-background-dark">
+<div class="flex w-full">
+<div class="flex w-[420px] flex-col border-r border-border-color-dark bg-secondary">
+<div class="border-b border-border-color-dark p-6">
+<div class="flex flex-col gap-1">
+<p class="text-xl font-semibold tracking-tight text-text-main-dark">AI Agent Management</p>
+<p class="text-sm font-normal text-text-secondary-dark">Configure agents to tailor your investment analysis.</p>
+</div>
+</div>
+<div class="flex-grow space-y-2 overflow-y-auto p-4">
+<div class="flex cursor-pointer justify-between gap-4 rounded-lg border border-primary bg-primary/10 p-4">
+<div class="flex items-center gap-4">
+<div class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/20 text-primary">
+<span class="material-symbols-outlined">database</span>
+</div>
+<div class="flex flex-1 flex-col justify-center">
+<p class="text-base font-semibold text-text-main-dark">Data Collection</p>
+<p class="text-sm font-normal text-text-secondary-dark">Gathers raw data from selected sources.</p>
+</div>
+</div>
+<div class="flex shrink-0 items-center">
+<div class="flex size-7 items-center justify-center"><div class="size-2.5 rounded-full bg-green-500 ring-4 ring-green-500/20"></div></div>
+</div>
+</div>
+<div class="flex cursor-pointer justify-between gap-4 rounded-lg border border-transparent bg-secondary p-4 transition-colors duration-200 hover:border-border-color-dark hover:bg-white/5">
+<div class="flex items-center gap-4">
+<div class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white/5 text-text-secondary-dark">
+<span class="material-symbols-outlined">analytics</span>
+</div>
+<div class="flex flex-1 flex-col justify-center">
+<p class="text-base font-semibold text-text-main-dark">Industry Analysis</p>
+<p class="text-sm font-normal text-text-secondary-dark">Analyzes industry trends &amp; competitors.</p>
+</div>
+</div>
+<div class="flex shrink-0 items-center">
+<div class="flex size-7 items-center justify-center"><div class="size-2.5 rounded-full bg-green-500 ring-4 ring-green-500/20"></div></div>
+</div>
+</div>
+<div class="flex cursor-pointer justify-between gap-4 rounded-lg border border-transparent bg-secondary p-4 transition-colors duration-200 hover:border-border-color-dark hover:bg-white/5">
+<div class="flex items-center gap-4">
+<div class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white/5 text-text-secondary-dark">
+<span class="material-symbols-outlined">monitoring</span>
+</div>
+<div class="flex flex-1 flex-col justify-center">
+<p class="text-base font-semibold text-text-main-dark">Financial Modeling</p>
+<p class="text-sm font-normal text-text-secondary-dark">Generates financial projections.</p>
+</div>
+</div>
+<div class="flex shrink-0 items-center">
+<div class="flex size-7 items-center justify-center"><div class="size-2.5 rounded-full bg-gray-500 ring-4 ring-gray-500/20"></div></div>
+</div>
+</div>
+<div class="flex cursor-pointer justify-between gap-4 rounded-lg border border-transparent bg-secondary p-4 transition-colors duration-200 hover:border-border-color-dark hover:bg-white/5">
+<div class="flex items-center gap-4">
+<div class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white/5 text-text-secondary-dark">
+<span class="material-symbols-outlined">gpp_maybe</span>
+</div>
+<div class="flex flex-1 flex-col justify-center">
+<p class="text-base font-semibold text-text-main-dark">Risk Assessment</p>
+<p class="text-sm font-normal text-text-secondary-dark">Evaluates investment risks.</p>
+</div>
+</div>
+<div class="flex shrink-0 items-center">
+<div class="flex size-7 items-center justify-center"><div class="size-2.5 rounded-full bg-red-500 ring-4 ring-red-500/20"></div></div>
+</div>
+</div>
+</div>
+<div class="border-t border-border-color-dark p-4">
+<button class="flex h-10 w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-md border border-border-color-dark bg-secondary px-5 text-sm font-semibold text-text-secondary-dark transition-colors duration-200 hover:bg-white/5 hover:text-text-main-dark">
+<span class="material-symbols-outlined">add</span>
+<span>Add New Agent</span>
+</button>
+</div>
+</div>
+<div class="flex flex-1 flex-col overflow-y-auto bg-background-dark p-8">
+<div class="flex items-center justify-between border-b border-border-color-dark pb-6">
+<h2 class="text-xl font-semibold tracking-tight text-text-main-dark">Data Collection Agent Configuration</h2>
+<div class="flex items-center gap-3">
+<span class="text-sm font-medium text-text-secondary-dark">Agent Status</span>
+<label class="relative inline-flex cursor-pointer items-center">
+<input checked="" class="peer sr-only" type="checkbox" value=""/>
+<div class="peer h-6 w-11 rounded-full border border-border-color-dark bg-secondary after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-border-color-dark after:bg-white after:transition-all after:content-[''] peer-checked:border-primary peer-checked:bg-primary peer-checked:after:translate-x-full peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary/50"></div>
+</label>
+</div>
+</div>
+<div class="mt-8 space-y-10">
+<div class="space-y-4">
+<h3 class="text-lg font-semibold text-text-main-dark">Agent Weight</h3>
+<p class="max-w-2xl text-sm text-text-secondary-dark">Controls the Agent's overall impact on the final investment report. Higher values give this agent's findings more influence.</p>
+<div class="flex items-center gap-4 pt-2">
+<div class="relative order-2 w-20">
+<input class="w-full rounded-md border border-border-color-dark bg-secondary px-3 py-2 text-center text-lg font-semibold text-primary focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary" type="text" value="75"/>
+<span class="absolute right-3 top-1/2 -translate-y-1/2 text-lg font-semibold text-text-secondary-dark">%</span>
+</div>
+<input class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-secondary accent-primary order-1" max="100" min="0" type="range" value="75"/>
+</div>
+</div>
+<div class="space-y-4">
+<h3 class="text-lg font-semibold text-text-main-dark">Data Sources</h3>
+<p class="max-w-2xl text-sm text-text-secondary-dark">Select the information feeds this Agent will use for its analysis. Active sources are highlighted.</p>
+<div class="grid grid-cols-1 gap-4 pt-2 md:grid-cols-2">
+<label class="flex cursor-pointer items-center gap-3 rounded-lg border border-primary bg-primary/10 p-4 transition-all duration-200">
+<input checked="" class="h-4 w-4 rounded-sm border-gray-600 bg-secondary text-primary focus:ring-primary checked:bg-primary" type="checkbox"/>
+<span class="font-medium text-text-main-dark">Bloomberg API</span>
+</label>
+<label class="flex cursor-pointer items-center gap-3 rounded-lg border border-primary bg-primary/10 p-4 transition-all duration-200">
+<input checked="" class="h-4 w-4 rounded-sm border-gray-600 bg-secondary text-primary focus:ring-primary checked:bg-primary" type="checkbox"/>
+<span class="font-medium text-text-main-dark">Capital IQ</span>
+</label>
+<label class="flex cursor-pointer items-center gap-3 rounded-lg border border-border-color-dark bg-secondary p-4 transition-all duration-200 hover:border-primary/50 hover:bg-white/5">
+<input class="h-4 w-4 rounded-sm border-gray-600 bg-secondary text-primary focus:ring-primary checked:bg-primary" type="checkbox"/>
+<span class="font-medium text-text-main-dark">Public News Feeds</span>
+</label>
+<label class="flex cursor-pointer items-center gap-3 rounded-lg border border-border-color-dark bg-secondary p-4 transition-all duration-200 hover:border-primary/50 hover:bg-white/5">
+<input class="h-4 w-4 rounded-sm border-gray-600 bg-secondary text-primary focus:ring-primary checked:bg-primary" type="checkbox"/>
+<span class="font-medium text-text-main-dark">SEC Filings</span>
+</label>
+</div>
+</div>
+<div class="space-y-4">
+<h3 class="text-lg font-semibold text-text-main-dark">Advanced Parameters</h3>
+<p class="max-w-2xl text-sm text-text-secondary-dark">Fine-tune the specific operational settings for this Agent to achieve higher precision in analysis.</p>
+<div class="grid grid-cols-1 gap-6 pt-2 md:grid-cols-2">
+<div>
+<label class="mb-2 block text-sm font-medium text-text-secondary-dark" for="timeframe">Analysis Timeframe</label>
+<select class="block w-full rounded-md border-border-color-dark bg-secondary px-3 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/50" id="timeframe">
+<option>Last 12 Months</option>
+<option>Last 24 Months</option>
+<option>Last 5 Years</option>
+</select>
+</div>
+<div>
+<label class="mb-2 block text-sm font-medium text-text-secondary-dark" for="depth">Data Collection Depth</label>
+<select class="block w-full rounded-md border-border-color-dark bg-secondary px-3 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/50" id="depth">
+<option>Level 1 (Headlines)</option>
+<option selected="">Level 2 (Summaries)</option>
+<option>Level 3 (Full Text)</option>
+</select>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-auto flex items-center justify-end gap-4 border-t border-border-color-dark pt-8">
+<button class="rounded-md px-4 py-2 text-sm font-semibold text-red-500 transition-colors duration-200 hover:bg-red-500/10">Delete Agent</button>
+<button class="rounded-md px-4 py-2 text-sm font-semibold text-text-secondary-dark transition-colors duration-200 hover:bg-white/10">Reset</button>
+<button class="flex h-10 min-w-[84px] cursor-pointer items-center justify-center overflow-hidden rounded-md bg-primary px-6 text-sm font-semibold tracking-wide text-white transition-colors duration-200 hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-gray-500/50">
+<span>Save</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+</div>
+
+</body></html>

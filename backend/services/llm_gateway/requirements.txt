@@ -1,9 +1,6 @@
-# Core web framework
 fastapi
-uvicorn[standard]
-
-# For environment variable management
+uvicorn
+google-genai>=1.52.0
 pydantic-settings
-
-# Google Gemini API client library
-google-generativeai
+python-multipart
+openai>=1.0.0

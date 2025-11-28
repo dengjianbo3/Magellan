@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Megellan - New Public Market Analysis</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&amp;display=swap" rel="stylesheet"/>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings:
+        'FILL' 0,
+        'wght' 400,
+        'GRAD' 0,
+        'opsz' 24;
+      font-size: 24px;
+    }
+  </style>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "primary": "#3A82F6", // As per user request for vibrant blue
+            "background-light": "#f6f6f8",
+            "background-dark": "#121826", // As per user request for dark navy/charcoal
+          },
+          fontFamily: {
+            "display": ["Manrope", "sans-serif"]
+          },
+          borderRadius: {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+        },
+      },
+    }
+  </script>
+</head>
+<body class="font-display">
+<div class="relative flex h-auto min-h-screen w-full flex-col bg-background-light dark:bg-background-dark overflow-x-hidden">
+<div class="flex h-full min-h-screen w-full">
+<!-- SideNavBar Component -->
+<aside class="flex-shrink-0 w-64 p-4 border-r border-white/10">
+<div class="flex h-full flex-col justify-between">
+<div class="flex flex-col gap-8">
+<div class="flex items-center gap-3 px-3">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" data-alt="Megellan brand logo abstract gradient" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDbvdltc3_VT27XXF6gKoviN0WvI___UhVM3vn8H4B8PH5iOk0V-INGdXgOguahlayP8_zmtBLFaFrCzfeE9QLsO7tuzJIuqADK8Cxpt5rbKCdGBiO6rHi2RuktfDZJ-IL6NWjm8_XRJQQUyJt3RAxacOuAfgA5D-tUdbHtyX_XmOs8wNcryUNU14Mz_oZYGnQSYNAnP2dZI6wuxLSW7cpP4H5egSiOG7ZZSxlJITaXt01Z2BlSleWHA1hpU-GX90BsB0cMoI9aP6MV");'></div>
+<div class="flex flex-col">
+<h1 class="text-white text-lg font-bold leading-normal">Megellan</h1>
+<p class="text-white/60 text-sm font-normal leading-normal">AI Investment Analysis</p>
+</div>
+</div>
+<nav class="flex flex-col gap-2">
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-primary/20 text-primary" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<p class="text-sm font-medium leading-normal">Dashboard</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-white/80 hover:bg-white/10 rounded-lg" href="#">
+<span class="material-symbols-outlined">history</span>
+<p class="text-sm font-medium leading-normal">Analysis History</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-white/80 hover:bg-white/10 rounded-lg" href="#">
+<span class="material-symbols-outlined">dataset</span>
+<p class="text-sm font-medium leading-normal">Data Sources</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-white/80 hover:bg-white/10 rounded-lg" href="#">
+<span class="material-symbols-outlined">settings</span>
+<p class="text-sm font-medium leading-normal">Settings</p>
+</a>
+</nav>
+</div>
+<div class="flex flex-col gap-1 border-t border-white/10 pt-4">
+<a class="flex items-center gap-3 px-3 py-2 text-white/80 hover:bg-white/10 rounded-lg" href="#">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-8" data-alt="User avatar image" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBVsFRw8H4sHVL4uDE3RfN0imW_TLpsLMqxKmtqNSfEvYq9KU4TliCTod_AsZW0rdsvWuVlZv23-z1Tz5iXSDtKeuGUd7xKeN1TjYxvXyfNsa6mrW1GaXl8HuHNceFqgm2_TOigEBsxC6h2oGIHBtSX8vw-dgspD30tBIveWjLceb8-6aIHvO6lOINcYUglwznx1bDEt4mKycSCcGgfZBNB-ix_PrIOq4SyLSXUUg5-2I3anbCKseukncpOZYbsfE_SqqWJyCt2Ga8B");'></div>
+<p class="text-sm font-medium leading-normal">User Profile</p>
+</a>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 p-8 overflow-y-auto">
+<div class="max-w-4xl mx-auto">
+<!-- PageHeading Component -->
+<div class="mb-8">
+<p class="text-[#E0E6F1] text-4xl font-black leading-tight tracking-[-0.033em]">New Public Market Analysis</p>
+</div>
+<!-- Form Container with Glassmorphism Effect -->
+<div class="bg-[rgba(30,40,60,0.5)] border border-white/10 rounded-xl shadow-2xl backdrop-blur-lg p-8 space-y-8">
+<!-- Section 1: Target Company -->
+<div class="space-y-3">
+<h2 class="text-[#E0E6F1] text-lg font-semibold">Target Company</h2>
+<!-- TextField Component -->
+<label class="flex flex-col min-w-40 flex-1">
+<p class="text-[#E0E6F1]/80 text-sm font-medium leading-normal pb-2">Enter Company Ticker or Name</p>
+<div class="flex w-full flex-1 items-stretch rounded-lg">
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-[#E0E6F1] focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-white/20 bg-black/30 focus:border-primary h-12 placeholder:text-white/40 px-4 text-base font-normal leading-normal" placeholder="Search for AAPL or Apple Inc." value=""/>
+</div>
+</label>
+</div>
+<!-- Section 2: Timeframe -->
+<div class="space-y-3">
+<h2 class="text-[#E0E6F1] text-lg font-semibold">Select Research Period</h2>
+<!-- SegmentedButtons Component -->
+<div class="flex h-12 items-center justify-center rounded-lg bg-black/30 p-1 border border-white/20">
+<label class="flex cursor-pointer h-full grow items-center justify-center overflow-hidden rounded-md px-2 has-[:checked]:bg-primary has-[:checked]:shadow-[0_0_8px_rgba(58,130,246,0.5)] has-[:checked]:text-white text-white/60 text-sm font-medium leading-normal transition-all duration-200">
+<span class="truncate">Quarterly</span>
+<input class="invisible w-0" name="analysis_period" type="radio" value="Quarterly"/>
+</label>
+<label class="flex cursor-pointer h-full grow items-center justify-center overflow-hidden rounded-md px-2 has-[:checked]:bg-primary has-[:checked]:shadow-[0_0_8px_rgba(58,130,246,0.5)] has-[:checked]:text-white text-white/60 text-sm font-medium leading-normal transition-all duration-200">
+<span class="truncate">Annually</span>
+<input checked="" class="invisible w-0" name="analysis_period" type="radio" value="Annually"/>
+</label>
+<label class="flex cursor-pointer h-full grow items-center justify-center overflow-hidden rounded-md px-2 has-[:checked]:bg-primary has-[:checked]:shadow-[0_0_8px_rgba(58,130,246,0.5)] has-[:checked]:text-white text-white/60 text-sm font-medium leading-normal transition-all duration-200">
+<span class="truncate">Custom Range</span>
+<input class="invisible w-0" name="analysis_period" type="radio" value="Custom Range"/>
+</label>
+</div>
+</div>
+<!-- Section 3: Focus Areas -->
+<div class="space-y-3">
+<h2 class="text-[#E0E6F1] text-lg font-semibold">Choose Key Metrics</h2>
+<!-- Chips Component -->
+<div class="flex gap-3 flex-wrap">
+<div class="flex h-9 shrink-0 cursor-pointer items-center justify-center gap-x-2 rounded-lg bg-primary/20 border border-primary/50 pl-4 pr-4">
+<p class="text-primary text-sm font-medium leading-normal">PE Ratio</p>
+</div>
+<div class="flex h-9 shrink-0 cursor-pointer items-center justify-center gap-x-2 rounded-lg bg-black/30 border border-white/20 hover:border-primary/50 pl-4 pr-4">
+<p class="text-white/80 text-sm font-medium leading-normal">Price-to-Sales</p>
+</div>
+<div class="flex h-9 shrink-0 cursor-pointer items-center justify-center gap-x-2 rounded-lg bg-black/30 border border-white/20 hover:border-primary/50 pl-4 pr-4">
+<p class="text-white/80 text-sm font-medium leading-normal">ROE</p>
+</div>
+<div class="flex h-9 shrink-0 cursor-pointer items-center justify-center gap-x-2 rounded-lg bg-black/30 border border-white/20 hover:border-primary/50 pl-4 pr-4">
+<p class="text-white/80 text-sm font-medium leading-normal">Debt-to-Equity</p>
+</div>
+<div class="flex h-9 shrink-0 cursor-pointer items-center justify-center gap-x-2 rounded-lg bg-black/30 border border-white/20 hover:border-primary/50 pl-4 pr-4">
+<p class="text-white/80 text-sm font-medium leading-normal">EBITDA Margin</p>
+</div>
+<div class="flex h-9 shrink-0 cursor-pointer items-center justify-center gap-x-2 rounded-lg bg-black/30 border-dashed border-2 border-white/20 hover:border-primary/50 hover:text-primary pl-4 pr-4">
+<span class="material-symbols-outlined !text-base">add</span>
+<p class="text-white/80 text-sm font-medium leading-normal">Add Metric</p>
+</div>
+</div>
+</div>
+<!-- Section 4: File Upload -->
+<div class="space-y-3">
+<h2 class="text-[#E0E6F1] text-lg font-semibold">Upload Filings or Research</h2>
+<div class="flex items-center justify-center w-full">
+<label class="flex flex-col items-center justify-center w-full h-40 border-2 border-white/20 border-dashed rounded-lg cursor-pointer bg-black/30 hover:bg-black/40" for="dropzone-file">
+<div class="flex flex-col items-center justify-center pt-5 pb-6">
+<span class="material-symbols-outlined text-white/60 !text-4xl">cloud_upload</span>
+<p class="mb-2 text-sm text-white/60"><span class="font-semibold">Click to upload</span> or drag and drop</p>
+<p class="text-xs text-white/40">SEC filings, research reports, or other relevant documents</p>
+</div>
+<input class="hidden" id="dropzone-file" type="file"/>
+</label>
+</div>
+</div>
+<!-- Section 5: CTA Button -->
+<div class="pt-4 border-t border-white/10 flex justify-end">
+<button class="flex items-center justify-center gap-2 h-12 px-8 bg-primary text-white font-bold text-base rounded-lg shadow-[0_0_12px_rgba(58,130,246,0.6)] hover:bg-primary/90 transition-all duration-200">
+<span class="material-symbols-outlined">auto_awesome</span>
+<span>Generate Analysis</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+</div>
+</div>
+</body></html>

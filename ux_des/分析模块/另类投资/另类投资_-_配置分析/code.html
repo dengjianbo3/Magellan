@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Magellan - Allocation Analysis</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#135bec",
+              "background-light": "#f6f6f8",
+              "background-dark": "#101622",
+            },
+            fontFamily: {
+              "display": ["Manrope", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            font-family: 'Manrope', sans-serif;
+        }
+        .material-symbols-outlined {
+          font-variation-settings:
+          'FILL' 0,
+          'wght' 400,
+          'GRAD' 0,
+          'opsz' 24
+        }
+        .glassmorphism {
+            background: rgba(23, 31, 50, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(50, 68, 103, 0.3);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-white">
+<div class="flex min-h-screen">
+<!-- SideNavBar -->
+<aside class="fixed top-0 left-0 h-full w-64 bg-[#111722] border-r border-solid border-[#324467]/30 p-4 flex flex-col justify-between">
+<div class="flex flex-col gap-8">
+<div class="flex items-center gap-3 px-3">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" data-alt="Magellan product logo, an abstract representation of a compass" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBkzTb2pWW7MMUAHiZMfYLhTZsihlnDHrdKy0gNM_g9zgaob8z7TdQfjsY3CkeDAPsl8jXm_2oLOtx9zaQEU1JIksFqKfVeumPK-Mvvz6nSMVXvP0oNpR5PdGbVf1YaZuuDoF_lRETNDxwAJks-ol6wlKTtnpKfjDI7TIODTayLpTrfBowro-0oByX2y7bnA9cv2Xj5T1p3WGKJ8Yv3Q5IfUpmazFBG3sshjw5R26ot_TDshqA05ToVDUAGjP_HBgHdHsXtQQ_1EmBe");'></div>
+<div class="flex flex-col">
+<h1 class="text-white text-base font-medium leading-normal">Magellan</h1>
+<p class="text-[#92a4c9] text-sm font-normal leading-normal">AI Investment Analysis</p>
+</div>
+</div>
+<nav class="flex flex-col gap-2">
+<a class="flex items-center gap-3 px-3 py-2 text-[#92a4c9] hover:text-white hover:bg-white/5 rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<p class="text-sm font-medium leading-normal">Dashboard</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-[#92a4c9] hover:text-white hover:bg-white/5 rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined">folder</span>
+<p class="text-sm font-medium leading-normal">Projects</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-primary/20 text-primary" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">monitoring</span>
+<p class="text-sm font-medium leading-normal">Analysis</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-[#92a4c9] hover:text-white hover:bg-white/5 rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+<p class="text-sm font-medium leading-normal">Settings</p>
+</a>
+</nav>
+</div>
+<div class="flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2 text-[#92a4c9] hover:text-white hover:bg-white/5 rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined">account_circle</span>
+<p class="text-sm font-medium leading-normal">User Account</p>
+</a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-64 w-[calc(100%-16rem)] p-8">
+<div class="mx-auto max-w-4xl">
+<!-- PageHeading -->
+<header class="mb-10">
+<p class="text-white text-4xl font-black leading-tight tracking-[-0.033em]">Allocation Analysis</p>
+<p class="text-[#92a4c9] text-base font-normal leading-normal mt-2">Configure the parameters for your alternative investment analysis report.</p>
+</header>
+<!-- Configuration Panel -->
+<div class="w-full rounded-xl glassmorphism p-8">
+<div class="flex flex-col gap-10">
+<!-- Valuation Model Section -->
+<section>
+<h2 class="text-white text-[22px] font-bold leading-tight tracking-[-0.015em] mb-4">Valuation Model</h2>
+<div class="flex flex-col gap-3" style="--radio-dot-svg: url('data:image/svg+xml,%3csvg viewBox=%270 0 16 16%27 fill=%27rgb(19,91,236)%27 xmlns=%27http://www.w3.org/2000/svg%27%3e%3ccircle cx=%278%27 cy=%278%27 r=%273%27/%3e%3c/svg%3e');">
+<label class="flex items-center gap-4 rounded-lg border border-solid border-[#324467] p-[15px] hover:border-primary/70 transition-colors cursor-pointer">
+<input checked="" class="h-5 w-5 border-2 border-[#324467] bg-transparent text-transparent rounded-full checked:border-[#135bec] checked:bg-[image:--radio-dot-svg] focus:outline-none focus:ring-0 focus:ring-offset-0 checked:focus:border-[#135bec]" name="valuation-model" type="radio"/>
+<div class="flex grow flex-col"><p class="text-white text-sm font-medium leading-normal">Discounted Cash Flow (DCF)</p></div>
+<span class="material-symbols-outlined text-[#92a4c9] text-base">info</span>
+</label>
+<label class="flex items-center gap-4 rounded-lg border border-solid border-[#324467] p-[15px] hover:border-primary/70 transition-colors cursor-pointer">
+<input class="h-5 w-5 border-2 border-[#324467] bg-transparent text-transparent rounded-full checked:border-[#135bec] checked:bg-[image:--radio-dot-svg] focus:outline-none focus:ring-0 focus:ring-offset-0 checked:focus:border-[#135bec]" name="valuation-model" type="radio"/>
+<div class="flex grow flex-col"><p class="text-white text-sm font-medium leading-normal">Comparable Company Analysis</p></div>
+<span class="material-symbols-outlined text-[#92a4c9] text-base">info</span>
+</label>
+<label class="flex items-center gap-4 rounded-lg border border-solid border-[#324467] p-[15px] hover:border-primary/70 transition-colors cursor-pointer">
+<input class="h-5 w-5 border-2 border-[#324467] bg-transparent text-transparent rounded-full checked:border-[#135bec] checked:bg-[image:--radio-dot-svg] focus:outline-none focus:ring-0 focus:ring-offset-0 checked:focus:border-[#135bec]" name="valuation-model" type="radio"/>
+<div class="flex grow flex-col"><p class="text-white text-sm font-medium leading-normal">Precedent Transactions</p></div>
+<span class="material-symbols-outlined text-[#92a4c9] text-base">info</span>
+</label>
+</div>
+</section>
+<!-- Due Diligence Focus Section -->
+<section>
+<h2 class="text-white text-[22px] font-bold leading-tight tracking-[-0.015em] mb-4">Due Diligence Focus</h2>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+<label class="flex items-center gap-4 rounded-lg border border-solid border-[#324467] p-4 hover:border-primary/70 transition-colors cursor-pointer">
+<input checked="" class="h-5 w-5 rounded border-2 border-[#324467] bg-transparent text-primary focus:ring-primary focus:ring-offset-background-dark" type="checkbox"/>
+<p class="text-white text-sm font-medium">Legal &amp; Compliance</p>
+</label>
+<label class="flex items-center gap-4 rounded-lg border border-solid border-[#324467] p-4 hover:border-primary/70 transition-colors cursor-pointer">
+<input checked="" class="h-5 w-5 rounded border-2 border-[#324467] bg-transparent text-primary focus:ring-primary focus:ring-offset-background-dark" type="checkbox"/>
+<p class="text-white text-sm font-medium">Operational Risk</p>
+</label>
+<label class="flex items-center gap-4 rounded-lg border border-solid border-[#324467] p-4 hover:border-primary/70 transition-colors cursor-pointer">
+<input class="h-5 w-5 rounded border-2 border-[#324467] bg-transparent text-primary focus:ring-primary focus:ring-offset-background-dark" type="checkbox"/>
+<p class="text-white text-sm font-medium">Financial Statements Integrity</p>
+</label>
+<label class="flex items-center gap-4 rounded-lg border border-solid border-[#324467] p-4 hover:border-primary/70 transition-colors cursor-pointer">
+<input class="h-5 w-5 rounded border-2 border-[#324467] bg-transparent text-primary focus:ring-primary focus:ring-offset-background-dark" type="checkbox"/>
+<p class="text-white text-sm font-medium">Market Competition</p>
+</label>
+</div>
+</section>
+<!-- Exit Strategy Preference Section -->
+<section>
+<h2 class="text-white text-[22px] font-bold leading-tight tracking-[-0.015em] mb-4">Exit Strategy Preference</h2>
+<div class="p-4 rounded-lg border border-solid border-[#324467]">
+<label class="flex justify-between items-center text-sm font-medium text-white mb-2" for="exit-strategy-slider">
+<span>IPO</span>
+<span>Strategic Acquisition (M&amp;A)</span>
+</label>
+<input class="w-full h-2 bg-[#324467] rounded-lg appearance-none cursor-pointer [&amp;::-webkit-slider-thumb]:appearance-none [&amp;::-webkit-slider-thumb]:h-4 [&amp;::-webkit-slider-thumb]:w-4 [&amp;::-webkit-slider-thumb]:rounded-full [&amp;::-webkit-slider-thumb]:bg-primary" id="exit-strategy-slider" max="100" min="0" type="range" value="70"/>
+</div>
+</section>
+</div>
+</div>
+<!-- Action Buttons -->
+<footer class="mt-8 flex justify-end gap-4">
+<button class="px-6 py-2.5 rounded-lg text-sm font-semibold bg-[#232f48] hover:bg-[#324467] transition-colors">Reset to Default</button>
+<button class="px-6 py-2.5 rounded-lg text-sm font-semibold bg-primary text-white hover:bg-primary/90 transition-colors">Generate Report</button>
+</footer>
+</div>
+</main>
+</div>
+</body></html>

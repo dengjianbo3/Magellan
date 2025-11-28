@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Investment Reports Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#4f46e5",
+              "background-light": "#f6f6f8",
+              "background-dark": "#0d1117",
+              "success": "#22c55e",
+              "warning": "#f59e0b",
+              "error": "#ef4444",
+              "slate": {
+                50: '#f8fafc',
+                100: '#f1f5f9',
+                200: '#e2e8f0',
+                300: '#cbd5e1',
+                400: '#94a3b8',
+                500: '#64748b',
+                600: '#475569',
+                700: '#334155',
+                800: '#1e293b',
+                900: '#0f172a',
+              },
+            },
+            fontFamily: {
+              "display": ["Manrope", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.5rem", "lg": "0.75rem", "xl": "1rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings:
+        'FILL' 0,
+        'wght' 400,
+        'GRAD' 0,
+        'opsz' 24
+      }
+    </style>
+</head>
+<body class="font-display bg-background-dark text-slate-300">
+<div class="flex h-screen min-h-[900px] w-full" x-data="{ sidebarCollapsed: false }">
+<aside :class="sidebarCollapsed ? 'w-20' : 'w-64'" class="flex flex-col border-r border-slate-800 bg-[#0d1117] p-4 relative transition-all duration-300 ease-in-out">
+<div :class="sidebarCollapsed ? 'justify-center' : 'justify-between'" class="flex items-center p-2 h-10">
+<div class="flex items-center gap-3 overflow-hidden">
+<svg class="h-8 w-8 text-white flex-shrink-0" fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3"></path><path d="M12 21C16.9706 21 21 16.9706 21 12"></path><path d="M3 12L12 3L21 12"></path></svg>
+<h1 :class="sidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100'" class="text-xl font-bold text-white whitespace-nowrap transition-opacity duration-300">Megellan</h1>
+</div>
+</div>
+<nav class="mt-8 flex flex-1 flex-col justify-between">
+<div class="flex flex-col gap-2">
+<a :class="sidebarCollapsed ? 'justify-center' : ''" class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-800 overflow-hidden" href="#">
+<span class="material-symbols-outlined text-2xl flex-shrink-0">dashboard</span>
+<p :class="sidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100'" class="text-sm font-medium whitespace-nowrap transition-opacity duration-300">Dashboard</p>
+</a>
+<a :class="sidebarCollapsed ? 'justify-center' : ''" class="flex items-center gap-3 rounded-lg bg-slate-800 px-3 py-2 text-white overflow-hidden" href="#">
+<span class="material-symbols-outlined text-2xl flex-shrink-0">description</span>
+<p :class="sidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100'" class="text-sm font-medium whitespace-nowrap transition-opacity duration-300">My Reports</p>
+</a>
+<a :class="sidebarCollapsed ? 'justify-center' : ''" class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-800 overflow-hidden" href="#">
+<span class="material-symbols-outlined text-2xl flex-shrink-0">add_circle</span>
+<p :class="sidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100'" class="text-sm font-medium whitespace-nowrap transition-opacity duration-300">New Analysis</p>
+</a>
+<a :class="sidebarCollapsed ? 'justify-center' : ''" class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-800 overflow-hidden" href="#">
+<span class="material-symbols-outlined text-2xl flex-shrink-0">settings</span>
+<p :class="sidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100'" class="text-sm font-medium whitespace-nowrap transition-opacity duration-300">Settings</p>
+</a>
+</div>
+<div class="flex flex-col gap-2">
+<div :class="sidebarCollapsed ? 'justify-center' : ''" class="flex items-center gap-3 px-3 py-2 overflow-hidden">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 flex-shrink-0" data-alt="User avatar of Olivia Chen" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuAcabs2-57FoxwHbghJftCxKalCfjrC6vaVd3IIdnPGrkEeXZy6HSKSsMwqmiW9KHxImO7dSkDM0FoRsJ5tJ_v23AJJNUQ0Urn5rvroKGDPsMLoV6uWJESsyewwY8VaqiCEU8dFZaBSpV61hAEUai8NpcPoOvAYCDwytpC2d34mfx6PKjj0ex6VS4kc5QnCRgZz0Fd2L3MxYAEi25daXimX8anVB9qDp-7AjJU95r0MlIKYhinWoIvOjPS2u7fPN4W68q67kYjRk8aZ");'></div>
+<div :class="sidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100'" class="flex flex-col overflow-hidden transition-opacity duration-300">
+<h2 class="text-sm font-semibold text-white whitespace-nowrap">Olivia Chen</h2>
+<p class="text-xs text-slate-400 whitespace-nowrap">olivia.chen@email.com</p>
+</div>
+</div>
+<a :class="sidebarCollapsed ? 'justify-center' : ''" class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-800 overflow-hidden" href="#">
+<span class="material-symbols-outlined text-2xl flex-shrink-0">logout</span>
+<p :class="sidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100'" class="text-sm font-medium whitespace-nowrap transition-opacity duration-300">Log Out</p>
+</a>
+</div>
+</nav>
+<button :class="sidebarCollapsed ? 'rotate-180' : ''" @click="sidebarCollapsed = !sidebarCollapsed" class="absolute -right-3 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full bg-slate-700 text-white hover:bg-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background-dark transition-transform duration-300">
+<span class="material-symbols-outlined text-base">chevron_left</span>
+</button>
+</aside>
+<main class="flex flex-1 flex-col overflow-y-auto bg-slate-900">
+<div class="flex-1 p-8">
+<div class="mx-auto max-w-7xl">
+<header class="flex flex-wrap items-center justify-between gap-4">
+<div class="flex flex-col gap-1">
+<h1 class="text-3xl font-bold tracking-tight text-white">My Reports</h1>
+<p class="text-slate-400">Manage and review your AI-generated investment reports.</p>
+</div>
+<button class="flex h-10 cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-lg bg-primary px-4 text-sm font-bold text-white shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90">
+<span class="material-symbols-outlined text-xl">add</span>
+<span class="truncate">Generate New Report</span>
+</button>
+</header>
+<div class="mt-8 flex flex-wrap items-center gap-4">
+<div class="flex-1 min-w-[300px]">
+<label class="flex h-12 w-full flex-col">
+<div class="flex h-full w-full flex-1 items-stretch rounded-lg border border-slate-700 bg-slate-800">
+<div class="flex items-center justify-center pl-4 text-slate-400">
+<span class="material-symbols-outlined text-2xl">search</span>
+</div>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-r-lg border-none bg-transparent px-3 text-base text-white placeholder:text-slate-400 focus:outline-0 focus:ring-0" placeholder="Search by report name or keyword..." value=""/>
+</div>
+</label>
+</div>
+<div class="flex flex-wrap gap-2">
+<button class="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-lg border border-slate-700 bg-slate-800 px-4 text-slate-300 hover:bg-slate-700">
+<p class="text-sm font-medium">Filter</p>
+<span class="material-symbols-outlined text-xl">filter_list</span>
+</button>
+<button class="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-lg border border-slate-700 bg-slate-800 px-4 text-slate-300 hover:bg-slate-700">
+<p class="text-sm font-medium">Sort</p>
+<span class="material-symbols-outlined text-xl">swap_vert</span>
+</button>
+</div>
+</div>
+<div class="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-3">
+<div class="lg:col-span-2">
+<div class="overflow-x-auto rounded-lg border border-slate-800 bg-[#0d1117]">
+<table class="min-w-full divide-y divide-slate-800">
+<thead class="bg-slate-800/50">
+<tr>
+<th class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-white sm:pl-6" scope="col">Report Name</th>
+<th class="px-3 py-3.5 text-left text-sm font-semibold text-white" scope="col">Status</th>
+<th class="px-3 py-3.5 text-left text-sm font-semibold text-white" scope="col">Creation Date</th>
+<th class="relative py-3.5 pl-3 pr-4 sm:pr-6" scope="col"><span class="sr-only">Actions</span></th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-800">
+<tr class="group hover:bg-slate-800/50">
+<td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-white sm:pl-6">Q3 2024 Analysis: Tesla Inc.</td>
+<td class="whitespace-nowrap px-3 py-4 text-sm text-slate-400">
+<span class="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2 py-1 text-xs font-medium text-success"><span class="size-1.5 rounded-full bg-success"></span>Completed</span>
+</td>
+<td class="whitespace-nowrap px-3 py-4 text-sm text-slate-400">Oct 26, 2023, 10:15 AM</td>
+<td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+<div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-700 hover:text-white" title="Download"><span class="material-symbols-outlined text-xl">download</span></button>
+<button class="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-700 hover:text-white" title="Edit"><span class="material-symbols-outlined text-xl">edit</span></button>
+<button class="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-700 hover:text-red-500" title="Delete"><span class="material-symbols-outlined text-xl">delete</span></button>
+</div>
+</td>
+</tr>
+<tr class="group bg-slate-800 hover:bg-slate-800/50">
+<td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-white sm:pl-6">Startup Due Diligence: Acme AI</td>
+<td class="whitespace-nowrap px-3 py-4 text-sm text-slate-400">
+<span class="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2 py-1 text-xs font-medium text-blue-400"><span class="h-1.5 w-1.5 animate-spin rounded-full border-2 border-current border-r-transparent"></span>Generating</span>
+</td>
+<td class="whitespace-nowrap px-3 py-4 text-sm text-slate-400">Oct 26, 2023, 09:30 AM</td>
+<td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+<div class="flex items-center justify-end gap-2">
+<button class="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-700 hover:text-white" title="Preview"><span class="material-symbols-outlined text-xl">visibility</span></button>
+</div>
+</td>
+</tr>
+<tr class="group hover:bg-slate-800/50">
+<td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-white sm:pl-6">Market Research: FinTech Trends</td>
+<td class="whitespace-nowrap px-3 py-4 text-sm text-slate-400">
+<span class="inline-flex items-center gap-1.5 rounded-full bg-error/10 px-2 py-1 text-xs font-medium text-error"><span class="size-1.5 rounded-full bg-error"></span>Failed</span>
+</td>
+<td class="whitespace-nowrap px-3 py-4 text-sm text-slate-400">Oct 25, 2023, 04:00 PM</td>
+<td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+<div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-700 hover:text-white" title="Retry"><span class="material-symbols-outlined text-xl">replay</span></button>
+<button class="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-700 hover:text-red-500" title="Delete"><span class="material-symbols-outlined text-xl">delete</span></button>
+</div>
+</td>
+</tr>
+<tr class="group hover:bg-slate-800/50">
+<td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-white sm:pl-6">Competitor Landscape: SaaS</td>
+<td class="whitespace-nowrap px-3 py-4 text-sm text-slate-400">
+<span class="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2 py-1 text-xs font-medium text-success"><span class="size-1.5 rounded-full bg-success"></span>Completed</span>
+</td>
+<td class="whitespace-nowrap px-3 py-4 text-sm text-slate-400">Oct 24, 2023, 11:00 AM</td>
+<td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+<div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-700 hover:text-white" title="Download"><span class="material-symbols-outlined text-xl">download</span></button>
+<button class="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-700 hover:text-white" title="Edit"><span class="material-symbols-outlined text-xl">edit</span></button>
+<button class="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-700 hover:text-red-500" title="Delete"><span class="material-symbols-outlined text-xl">delete</span></button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<nav aria-label="Pagination" class="mt-6 flex items-center justify-between border-t border-slate-800 px-4 py-3 sm:px-6">
+<div class="hidden sm:block">
+<p class="text-sm text-slate-300">
+                                    Showing
+                                    <span class="font-medium text-white">1</span>
+                                    to
+                                    <span class="font-medium text-white">4</span>
+                                    of
+                                    <span class="font-medium text-white">20</span>
+                                    results
+                                  </p>
+</div>
+<div class="flex flex-1 justify-between sm:justify-end gap-3">
+<a class="relative inline-flex items-center rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700" href="#">Previous</a>
+<a class="relative inline-flex items-center rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700" href="#">Next</a>
+</div>
+</nav>
+</div>
+<aside class="lg:col-span-1">
+<div class="sticky top-8 rounded-lg border border-slate-800 bg-[#0d1117] p-6">
+<h3 class="text-lg font-bold text-white">Report Preview</h3>
+<p class="text-sm text-slate-400 mt-1">Startup Due Diligence: Acme AI</p>
+<div class="mt-6 space-y-6">
+<div>
+<h4 class="text-sm font-semibold text-slate-300">Key Metrics</h4>
+<div class="mt-2 grid grid-cols-2 gap-4">
+<div class="rounded-lg bg-slate-800 p-3">
+<p class="text-xs text-slate-400">Investment Score</p>
+<p class="text-2xl font-bold text-white">8.5<span class="text-base font-medium text-slate-400">/10</span></p>
+</div>
+<div class="rounded-lg bg-slate-800 p-3">
+<p class="text-xs text-slate-400">Risk Level</p>
+<p class="text-2xl font-bold text-warning">Medium</p>
+</div>
+</div>
+</div>
+<div>
+<h4 class="text-sm font-semibold text-slate-300">Executive Summary</h4>
+<p class="mt-2 text-sm leading-relaxed text-slate-400">
+                                            Acme AI shows significant growth potential in the AI-driven automation sector. The technology is robust, but market competition is fierce...
+                                        </p>
+</div>
+<div>
+<h4 class="text-sm font-semibold text-slate-300">Content Sections</h4>
+<ul class="mt-2 space-y-2">
+<li><a class="flex items-center text-sm text-slate-300 hover:text-white hover:underline" href="#">Market Analysis <span class="material-symbols-outlined ml-1 text-base">arrow_forward</span></a></li>
+<li><a class="flex items-center text-sm text-slate-300 hover:text-white hover:underline" href="#">Financial Projections <span class="material-symbols-outlined ml-1 text-base">arrow_forward</span></a></li>
+<li><a class="flex items-center text-sm text-slate-300 hover:text-white hover:underline" href="#">Competitor Landscape <span class="material-symbols-outlined ml-1 text-base">arrow_forward</span></a></li>
+</ul>
+</div>
+<div class="mt-8 flex flex-col gap-3 border-t border-slate-800 pt-6">
+<button class="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90">
+<span class="material-symbols-outlined text-xl">open_in_new</span>
+                                            Open Full Report
+                                        </button>
+<button class="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-4 text-sm font-bold text-slate-200 transition-colors hover:bg-slate-700">
+<span class="material-symbols-outlined text-xl">download</span>
+                                            Download PDF
+                                        </button>
+</div>
+</div>
+</div>
+</aside>
+</div>
+</div>
+</div>
+</main>
+</div>
+<script defer="" src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</body></html>

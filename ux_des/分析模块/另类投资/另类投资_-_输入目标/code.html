@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>New Alternative Investment Analysis - Megellan</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#135bec",
+                        "background-light": "#f6f6f8",
+                        "background-dark": "#101622",
+                    },
+                    fontFamily: {
+                        "display": ["Manrope", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="font-display bg-background-light dark:bg-background-dark">
+<div class="relative flex min-h-screen w-full">
+<!-- SideNavBar -->
+<aside class="sticky top-0 h-screen w-64 flex-shrink-0 bg-[#1A2033]/80 dark:bg-[#1A2033]/80 backdrop-blur-lg border-r border-white/10 p-4 flex flex-col justify-between">
+<div class="flex flex-col gap-8">
+<div class="flex items-center gap-3 px-3 py-2">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" data-alt="Megellan brand logo with abstract geometric shapes" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuAg80LP7PlxQL-8vDGUh7HF3nJgDwPBwpFbZnZhfoGE-fsBtmONpa-JzUiYVDdil8RCPzfrpC8yxBMQuzJl_sz_QQLf6zQAK00u-QfHXuE34cvsw_7zV1jPLP9DSKFH55iD4bAZY27gHjFnJWVAAXiU9Cj0-93NxygFMFqFYDLgukntH3jxJhN1GXLx3tmjNsYJBSLoYW8ih6nmIdxopivKdDU7kjG-MZVLsv_EwHmPyru4P1rrgp8tBlDpxrdCWavKZE2bXNbMGFZh");'></div>
+<div class="flex flex-col">
+<h1 class="text-white text-base font-medium leading-normal">Megellan</h1>
+<p class="text-slate-400 dark:text-[#92a4c9] text-sm font-normal leading-normal">AI Investment Analysis</p>
+</div>
+</div>
+<nav class="flex flex-col gap-2">
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 dark:text-slate-300 hover:bg-primary/20 hover:text-white rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<p class="text-sm font-medium leading-normal">Dashboard</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 dark:text-slate-300 hover:bg-primary/20 hover:text-white rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined">article</span>
+<p class="text-sm font-medium leading-normal">My Reports</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-primary text-white" href="#">
+<span class="material-symbols-outlined">add_circle</span>
+<p class="text-sm font-medium leading-normal">New Analysis</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 dark:text-slate-300 hover:bg-primary/20 hover:text-white rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+<p class="text-sm font-medium leading-normal">Settings</p>
+</a>
+</nav>
+</div>
+<div class="flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 dark:text-slate-300 hover:bg-primary/20 hover:text-white rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined">account_circle</span>
+<p class="text-sm font-medium leading-normal">User Account</p>
+</a>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 p-8 overflow-y-auto">
+<div class="mx-auto max-w-4xl">
+<!-- PageHeading -->
+<div class="mb-10">
+<div class="flex flex-col gap-2">
+<p class="text-slate-800 dark:text-white text-4xl font-black leading-tight tracking-[-0.033em]">Analyze New Alternative Investment</p>
+<p class="text-slate-500 dark:text-[#92a4c9] text-base font-normal leading-normal">Input the following details to begin the AI-driven analysis of your project.</p>
+</div>
+</div>
+<div class="flex flex-col gap-8">
+<!-- Section 1: Project Overview -->
+<div class="bg-white/5 dark:bg-[#1A2033]/80 backdrop-blur-sm rounded-xl p-6 border border-white/10">
+<h2 class="text-slate-800 dark:text-white text-[22px] font-bold leading-tight tracking-[-0.015em] mb-6">Project Overview</h2>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Asset Class Dropdown -->
+<label class="flex flex-col">
+<p class="text-slate-800 dark:text-white text-base font-medium leading-normal pb-2">Asset Class</p>
+<select class="form-select w-full resize-none rounded-lg text-slate-800 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary border-slate-300 dark:border-[#324467] bg-slate-100 dark:bg-[#192233] focus:border-primary dark:focus:border-primary h-14 placeholder:text-slate-400 dark:placeholder:text-[#92a4c9] p-[15px] text-base font-normal leading-normal">
+<option>Select Asset Class</option>
+<option>Real Estate</option>
+<option>Private Equity</option>
+<option>Hedge Fund</option>
+<option>Venture Capital</option>
+</select>
+</label>
+<!-- Project Name Input -->
+<label class="flex flex-col">
+<p class="text-slate-800 dark:text-white text-base font-medium leading-normal pb-2">Project Name</p>
+<input class="form-input w-full resize-none rounded-lg text-slate-800 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary border-slate-300 dark:border-[#324467] bg-slate-100 dark:bg-[#192233] focus:border-primary dark:focus:border-primary h-14 placeholder:text-slate-400 dark:placeholder:text-[#92a4c9] p-[15px] text-base font-normal leading-normal" placeholder="Enter the project's official name" value=""/>
+</label>
+<!-- Investment Size Input -->
+<label class="flex flex-col">
+<p class="text-slate-800 dark:text-white text-base font-medium leading-normal pb-2">Investment Size</p>
+<div class="relative">
+<div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+<span class="text-slate-400 dark:text-[#92a4c9] text-base">$</span>
+</div>
+<input class="form-input w-full resize-none rounded-lg text-slate-800 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary border-slate-300 dark:border-[#324467] bg-slate-100 dark:bg-[#192233] focus:border-primary dark:focus:border-primary h-14 placeholder:text-slate-400 dark:placeholder:text-[#92a4c9] pl-8 pr-4 py-[15px] text-base font-normal leading-normal" placeholder="5,000,000" type="number"/>
+<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4">
+<span class="text-slate-400 dark:text-[#92a4c9] text-base">USD</span>
+</div>
+</div>
+</label>
+</div>
+</div>
+<!-- Section 2: Documentation -->
+<div class="bg-white/5 dark:bg-[#1A2033]/80 backdrop-blur-sm rounded-xl p-6 border border-white/10">
+<h2 class="text-slate-800 dark:text-white text-[22px] font-bold leading-tight tracking-[-0.015em] mb-6">Documentation</h2>
+<div>
+<p class="text-slate-800 dark:text-white text-base font-medium leading-normal pb-2">Due Diligence Report</p>
+<div class="flex items-center justify-center w-full">
+<label class="flex flex-col items-center justify-center w-full h-48 border-2 border-slate-300 dark:border-[#324467] border-dashed rounded-lg cursor-pointer bg-slate-100 dark:bg-[#192233] hover:bg-slate-200 dark:hover:bg-[#232f48] transition-colors" for="dropzone-file">
+<div class="flex flex-col items-center justify-center pt-5 pb-6">
+<span class="material-symbols-outlined text-4xl text-slate-400 dark:text-slate-500 mb-3">cloud_upload</span>
+<p class="mb-2 text-sm text-slate-500 dark:text-[#92a4c9]"><span class="font-semibold">Click to upload</span> or drag and drop</p>
+<p class="text-xs text-slate-500 dark:text-slate-500">PDF, DOCX, XLSX (MAX. 50MB)</p>
+</div>
+<input class="hidden" id="dropzone-file" type="file"/>
+</label>
+</div>
+</div>
+</div>
+<!-- Section 3: Key Stakeholders -->
+<div class="bg-white/5 dark:bg-[#1A2033]/80 backdrop-blur-sm rounded-xl p-6 border border-white/10">
+<h2 class="text-slate-800 dark:text-white text-[22px] font-bold leading-tight tracking-[-0.015em] mb-6">Key Stakeholders</h2>
+<div class="space-y-4">
+<p class="text-slate-800 dark:text-white text-base font-medium leading-normal">Project Team Members</p>
+<div class="flex items-end gap-4">
+<label class="flex flex-col flex-1">
+<p class="text-slate-600 dark:text-slate-400 text-sm font-normal pb-2">Name</p>
+<input class="form-input w-full resize-none rounded-lg text-slate-800 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary border-slate-300 dark:border-[#324467] bg-slate-100 dark:bg-[#192233] focus:border-primary dark:focus:border-primary h-14 placeholder:text-slate-400 dark:placeholder:text-[#92a4c9] p-[15px] text-base font-normal leading-normal" placeholder="e.g., Jane Doe"/>
+</label>
+<label class="flex flex-col flex-1">
+<p class="text-slate-600 dark:text-slate-400 text-sm font-normal pb-2">Role</p>
+<input class="form-input w-full resize-none rounded-lg text-slate-800 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary border-slate-300 dark:border-[#324467] bg-slate-100 dark:bg-[#192233] focus:border-primary dark:focus:border-primary h-14 placeholder:text-slate-400 dark:placeholder:text-[#92a4c9] p-[15px] text-base font-normal leading-normal" placeholder="e.g., Project Manager"/>
+</label>
+<button class="h-14 px-4 bg-transparent rounded-lg text-slate-400 dark:text-[#92a4c9] hover:text-red-500 transition-colors">
+<span class="material-symbols-outlined">delete</span>
+</button>
+</div>
+<button class="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-slate-300 dark:border-[#324467] rounded-lg text-slate-500 dark:text-[#92a4c9] hover:bg-primary/10 hover:border-primary hover:text-primary transition-colors">
+<span class="material-symbols-outlined">add</span>
+<span>Add Member</span>
+</button>
+</div>
+</div>
+<!-- Section 4: Analysis Directives -->
+<div class="bg-white/5 dark:bg-[#1A2033]/80 backdrop-blur-sm rounded-xl p-6 border border-white/10">
+<h2 class="text-slate-800 dark:text-white text-[22px] font-bold leading-tight tracking-[-0.015em] mb-6">Analysis Directives</h2>
+<label class="flex flex-col">
+<p class="text-slate-800 dark:text-white text-base font-medium leading-normal pb-2">Key Questions &amp; Notes for the AI (Optional)</p>
+<textarea class="form-textarea w-full resize-y min-h-32 rounded-lg text-slate-800 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary border-slate-300 dark:border-[#324467] bg-slate-100 dark:bg-[#192233] focus:border-primary dark:focus:border-primary placeholder:text-slate-400 dark:placeholder:text-[#92a4c9] p-[15px] text-base font-normal leading-normal" placeholder="e.g., Focus on market risk and compare with Project X returns..."></textarea>
+</label>
+</div>
+<!-- CTA Button -->
+<div class="flex justify-end pt-4">
+<button class="bg-primary hover:bg-blue-600 text-white font-bold py-4 px-8 rounded-lg transition-colors text-base disabled:bg-slate-400 dark:disabled:bg-slate-600 disabled:cursor-not-allowed">Start Analysis</button>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>
