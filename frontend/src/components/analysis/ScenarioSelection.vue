@@ -113,8 +113,17 @@ const rawScenarios = ref([]);
 const selectedScenario = ref(null);
 const usingMockData = ref(false);
 
+// Icon mapping: backend icon names to emojis
+const iconMap = {
+  'rocket': '🚀',
+  'chart': '📈',
+  'building': '🏛️',
+  'bitcoin': '💎',
+  'search': '🔍'
+};
+
 const scenarios = computed(() => {
-  // Map raw IDs to translated content
+  // Map raw IDs to translated content and fix icons
   return rawScenarios.value.map(s => {
     let translationKey = '';
     if (s.id === 'early-stage-investment') translationKey = 'earlyStage';
@@ -123,14 +132,18 @@ const scenarios = computed(() => {
     else if (s.id === 'industry-research') translationKey = 'industryResearch';
     else if (s.id === 'alternative-investment') translationKey = 'alternative';
 
+    // Map backend icon name to emoji
+    const icon = iconMap[s.icon] || s.icon;
+
     if (translationKey) {
       return {
         ...s,
+        icon,
         name: t(`scenarios.${translationKey}.name`) || s.name,
         description: t(`scenarios.${translationKey}.description`) || s.description
       };
     }
-    return s;
+    return { ...s, icon };
   });
 });
 
