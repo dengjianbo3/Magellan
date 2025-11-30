@@ -42,6 +42,7 @@ rank-bm25>=0.2.2  # BM25 ranking for hybrid search
 
 # For financial data retrieval (Phase 3)
 yfinance>=0.2.40  # Yahoo Finance API wrapper
+akshare>=1.14.0   # A股市场数据 (免费开源)
 
 # For technical analysis (Phase 3)
 pandas>=2.0.0  # Data manipulation

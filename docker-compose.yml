@@ -232,27 +232,48 @@ services:
     networks:
       - default
 
-  # PostgreSQL Database (Temporarily disabled due to network issues)
-  # postgres_db:
-  #   image: postgres:15-alpine
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data/
-  #   environment:
-  #     - POSTGRES_USER=admin
-  #     - POSTG-RES_PASSWORD=secret
-  #     - POSTGRES_DB=investor_agent_db
+  # PostgreSQL Database for Auth Service
+  postgres:
+    image: postgres:15-alpine
+    container_name: magellan-postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      - POSTGRES_USER=magellan
+      - POSTGRES_PASSWORD=magellan123
+      - POSTGRES_DB=magellan
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U magellan"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # RabbitMQ Message Broker (Temporarily disabled due to network issues)
-  # message_queue:
-  #   image: rabbitmq:3.12-management-alpine
-  #   ports:
-  #     - "5672:5672" # For application connection
-  #     - "15672:15672" # For web management UI
+  # Authentication Service
+  auth_service:
+    build:
+      context: ./backend/services/auth_service
+    container_name: magellan-auth_service
+    ports:
+      - "8007:8007"
+    volumes:
+      - ./backend/services/auth_service/app:/usr/src/app/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://magellan:magellan123@postgres:5432/magellan
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-super-secret-key-change-in-production}
+      - PYTHONUNBUFFERED=1
+    networks:
+      - default
 
 volumes:
-  # postgres_data:
+  postgres_data:
   uploads_volume:
   redis_data:
   qdrant_storage:

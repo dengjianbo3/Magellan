@@ -753,9 +753,76 @@ class OrderbookAnalyzerTool(Tool):
                     params={"symbol": f"{symbol}USDT", "limit": limit}
                 )
                 if response.status_code == 200:
-                    return response.json()
+                    data = response.json()
+                    data["_exchange"] = "Binance"
+                    return data
         except Exception as e:
             logger.warning(f"Binance orderbook error: {e}")
+        return None
+
+    async def _get_okx_orderbook(self, symbol: str, limit: int = 100) -> Dict[str, Any]:
+        """获取OKX订单簿 (备用)"""
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.get(
+                    "https://www.okx.com/api/v5/market/books",
+                    params={"instId": f"{symbol}-USDT", "sz": str(min(limit, 400))}
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("data") and len(data["data"]) > 0:
+                        book = data["data"][0]
+                        return {
+                            "bids": [[b[0], b[1]] for b in book.get("bids", [])],
+                            "asks": [[a[0], a[1]] for a in book.get("asks", [])],
+                            "_exchange": "OKX"
+                        }
+        except Exception as e:
+            logger.warning(f"OKX orderbook error: {e}")
+        return None
+
+    async def _get_bybit_orderbook(self, symbol: str, limit: int = 100) -> Dict[str, Any]:
+        """获取Bybit订单簿 (备用)"""
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.get(
+                    "https://api.bybit.com/v5/market/orderbook",
+                    params={"category": "spot", "symbol": f"{symbol}USDT", "limit": str(min(limit, 200))}
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("result"):
+                        book = data["result"]
+                        return {
+                            "bids": [[b[0], b[1]] for b in book.get("b", [])],
+                            "asks": [[a[0], a[1]] for a in book.get("a", [])],
+                            "_exchange": "Bybit"
+                        }
+        except Exception as e:
+            logger.warning(f"Bybit orderbook error: {e}")
+        return None
+
+    async def _get_orderbook_with_fallback(self, symbol: str, limit: int = 100) -> Dict[str, Any]:
+        """获取订单簿 (带fallback)"""
+        # 1. 尝试 Binance
+        orderbook = await self._get_binance_orderbook(symbol, limit)
+        if orderbook:
+            return orderbook
+
+        logger.info(f"Binance failed for {symbol}, trying OKX...")
+
+        # 2. 尝试 OKX
+        orderbook = await self._get_okx_orderbook(symbol, limit)
+        if orderbook:
+            return orderbook
+
+        logger.info(f"OKX failed for {symbol}, trying Bybit...")
+
+        # 3. 尝试 Bybit
+        orderbook = await self._get_bybit_orderbook(symbol, limit)
+        if orderbook:
+            return orderbook
+
         return None
 
     async def execute(
@@ -777,14 +844,18 @@ class OrderbookAnalyzerTool(Tool):
         symbol = symbol.upper()
 
         try:
-            orderbook = await self._get_binance_orderbook(symbol, min(depth * 5, 100))
+            # 使用带fallback的方法获取订单簿
+            orderbook = await self._get_orderbook_with_fallback(symbol, min(depth * 5, 100))
 
             if not orderbook:
                 return {
                     "success": False,
-                    "error": "无法获取订单簿数据",
-                    "summary": f"获取 {symbol} 订单簿失败"
+                    "error": "无法获取订单簿数据 (所有交易所均失败)",
+                    "summary": f"获取 {symbol} 订单簿失败 (Binance/OKX/Bybit)"
                 }
+
+            # 获取数据来源交易所
+            exchange = orderbook.get("_exchange", "Unknown")
 
             bids = [[float(p), float(q)] for p, q in orderbook.get("bids", [])[:depth]]
             asks = [[float(p), float(q)] for p, q in orderbook.get("asks", [])[:depth]]
@@ -822,7 +893,7 @@ class OrderbookAnalyzerTool(Tool):
             support_level = max(bids, key=lambda x: x[1])[0] if bids else 0
             resistance_level = max(asks, key=lambda x: x[1])[0] if asks else 0
 
-            summary = f"""【订单簿分析】{symbol}/USDT (Binance)
+            summary = f"""【订单簿分析】{symbol}/USDT ({exchange})
 
 📊 当前报价:
   买一: ${best_bid:,.2f}

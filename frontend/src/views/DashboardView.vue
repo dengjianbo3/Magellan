@@ -7,6 +7,7 @@
         <p class="text-text-secondary text-lg font-light">{{ t('dashboard.welcome') }}</p>
       </div>
       <button
+        @click="handleExportClick"
         class="group flex items-center gap-2 px-6 py-2.5 rounded-lg bg-gradient-to-r from-primary to-primary-dark text-white font-bold shadow-glow-sm hover:shadow-glow hover:scale-105 transition-all duration-300"
       >
         <span class="material-symbols-outlined group-hover:animate-bounce">download</span>
@@ -145,14 +146,23 @@
 import { ref, computed, onMounted } from 'vue';
 import Chart from 'chart.js/auto';
 import { useLanguage } from '../composables/useLanguage';
+import { useToast } from '../composables/useToast';
+import { API_BASE } from '@/config/api';
 import StatCard from '../components/dashboard/StatCard.vue';
 import ReportItem from '../components/dashboard/ReportItem.vue';
 import AgentCard from '../components/dashboard/AgentCard.vue';
 
 const { t } = useLanguage();
+const { info } = useToast();
 
 // Define emit for navigation events
 const emit = defineEmits(['navigate']);
+
+// Handle export report button - navigate to reports page
+const handleExportClick = () => {
+  info(t('dashboard.exportInfo') || 'Please select a report to export');
+  emit('navigate', 'reports');
+};
 
 const trendsChart = ref(null);
 const performanceChart = ref(null);
@@ -304,28 +314,28 @@ const fetchDashboardData = async () => {
     loading.value = true;
 
     // Fetch stats
-    const statsResponse = await fetch('http://localhost:8000/api/dashboard/stats');
+    const statsResponse = await fetch(`${API_BASE}/api/dashboard/stats`);
     if (statsResponse.ok) {
       const data = await statsResponse.json();
       statsData.value = data.stats;
     }
 
     // Fetch recent reports
-    const reportsResponse = await fetch('http://localhost:8000/api/dashboard/recent-reports?limit=4');
+    const reportsResponse = await fetch(`${API_BASE}/api/dashboard/recent-reports?limit=4`);
     if (reportsResponse.ok) {
       const data = await reportsResponse.json();
       recentReportsData.value = data.reports;
     }
 
     // Fetch trends data
-    const trendsResponse = await fetch('http://localhost:8000/api/dashboard/trends?days=7');
+    const trendsResponse = await fetch(`${API_BASE}/api/dashboard/trends?days=7`);
     if (trendsResponse.ok) {
       const data = await trendsResponse.json();
       trendsData.value = data;
     }
 
     // Fetch performance data
-    const performanceResponse = await fetch('http://localhost:8000/api/dashboard/agent-performance');
+    const performanceResponse = await fetch(`${API_BASE}/api/dashboard/agent-performance`);
     if (performanceResponse.ok) {
       const data = await performanceResponse.json();
       performanceData.value = data.performance;

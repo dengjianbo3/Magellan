@@ -15,19 +15,74 @@ import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend for server-side generation
 
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 import seaborn as sns
 import numpy as np
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Union
 import io
 import base64
 from datetime import datetime
+import os
+import logging
+
+# Type for output path - can be a file path string or a BytesIO object
+OutputPath = Union[str, io.BytesIO]
+
+logger = logging.getLogger(__name__)
 
 # Set style for professional charts
 sns.set_style("whitegrid")
+
 # Configure fonts for Chinese support
-# Prioritize macOS fonts (PingFang, Heiti, Arial Unicode) then Linux/Windows (SimHei, YaHei)
+# Search for available Chinese fonts in the system
+def _find_chinese_font():
+    """Find available Chinese font in the system"""
+    # Priority list of Chinese fonts
+    # Note: Noto Sans CJK JP/SC/TC all support CJK characters
+    chinese_fonts = [
+        'Noto Sans CJK JP',      # Common on Linux containers (supports all CJK)
+        'Noto Sans CJK SC',      # Linux (apt-get install fonts-noto-cjk)
+        'Noto Sans CJK TC',
+        'Noto Serif CJK JP',     # Serif variant
+        'Noto Serif CJK SC',
+        'Noto Sans SC',
+        'Noto Sans TC',
+        'WenQuanYi Micro Hei',   # Linux alternative
+        'WenQuanYi Zen Hei',
+        'Source Han Sans SC',    # Adobe Source Han
+        'Source Han Sans CN',
+        'PingFang SC',           # macOS
+        'Heiti SC',
+        'Heiti TC',
+        'Microsoft YaHei',       # Windows
+        'SimHei',
+        'SimSun',
+        'Arial Unicode MS',
+        'DejaVu Sans',           # Fallback
+    ]
+
+    # Get all available font names
+    available_fonts = set([f.name for f in fm.fontManager.ttflist])
+    logger.info(f"Available fonts: {len(available_fonts)} total")
+
+    # Log CJK fonts found
+    cjk_available = [f for f in available_fonts if 'CJK' in f or 'Noto' in f]
+    if cjk_available:
+        logger.info(f"CJK fonts found: {cjk_available}")
+
+    for font in chinese_fonts:
+        if font in available_fonts:
+            logger.info(f"Using Chinese font: {font}")
+            return font
+
+    # If no Chinese font found, log warning
+    logger.warning("No Chinese font found, charts may not display Chinese characters correctly")
+    return 'DejaVu Sans'
+
+# Find and set Chinese font
+_chinese_font = _find_chinese_font()
 plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'PingFang SC', 'Heiti TC', 'Microsoft YaHei', 'SimHei', 'WenQuanYi Micro Hei', 'DejaVu Sans', 'sans-serif']
+plt.rcParams['font.sans-serif'] = [_chinese_font, 'DejaVu Sans', 'sans-serif']
 plt.rcParams['axes.unicode_minus'] = False  # Ensure minus signs are shown correctly
 plt.rcParams['figure.figsize'] = (10, 6)
 plt.rcParams['axes.grid'] = True
@@ -59,21 +114,31 @@ class ChartGenerator:
 
     # ==================== FINANCIAL CHARTS ====================
 
+    def _save_figure(self, fig, output_path: OutputPath) -> OutputPath:
+        """Save figure to file or BytesIO"""
+        plt.tight_layout()
+        if isinstance(output_path, io.BytesIO):
+            plt.savefig(output_path, format='png', dpi=150, bbox_inches='tight')
+        else:
+            plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        return output_path
+
     def generate_revenue_chart(
         self,
         financial_data: Dict[str, Any],
-        output_path: str
-    ) -> str:
+        output_path: OutputPath
+    ) -> OutputPath:
         """
         Generate revenue trend chart
         生成收入趋势图
 
         Args:
             financial_data: Financial data with revenue over time
-            output_path: Path to save the chart
+            output_path: Path to save the chart (str or BytesIO)
 
         Returns:
-            Path to the generated chart
+            Path to the generated chart or BytesIO
         """
         fig, ax = plt.subplots(figsize=(12, 6))
 
@@ -107,17 +172,13 @@ class ChartGenerator:
                        fontsize=10,
                        fontweight='bold')
 
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=150, bbox_inches='tight')
-        plt.close()
-
-        return output_path
+        return self._save_figure(fig, output_path)
 
     def generate_profit_chart(
         self,
         financial_data: Dict[str, Any],
-        output_path: str
-    ) -> str:
+        output_path: OutputPath
+    ) -> OutputPath:
         """
         Generate profit margin chart
         生成利润率图表
@@ -168,17 +229,13 @@ class ChartGenerator:
                        f'{height*100:.1f}%',
                        ha='center', va='bottom', fontsize=9)
 
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=150, bbox_inches='tight')
-        plt.close()
-
-        return output_path
+        return self._save_figure(fig, output_path)
 
     def generate_financial_health_score(
         self,
         health_metrics: Dict[str, float],
-        output_path: str
-    ) -> str:
+        output_path: OutputPath
+    ) -> OutputPath:
         """
         Generate financial health scorecard
         生成财务健康度评分卡
@@ -232,19 +289,15 @@ class ChartGenerator:
         ax.axvline(x=50, color='gray', linestyle='--', alpha=0.5, linewidth=1)
         ax.axvline(x=70, color='gray', linestyle='--', alpha=0.5, linewidth=1)
 
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=150, bbox_inches='tight')
-        plt.close()
-
-        return output_path
+        return self._save_figure(fig, output_path)
 
     # ==================== MARKET ANALYSIS CHARTS ====================
 
     def generate_market_share_chart(
         self,
         market_data: Dict[str, Any],
-        output_path: str
-    ) -> str:
+        output_path: OutputPath
+    ) -> OutputPath:
         """
         Generate market share pie chart
         生成市场份额饼图
@@ -280,17 +333,13 @@ class ChartGenerator:
         title = "Market Share Distribution" if self.language == "en" else "市场份额分布"
         ax.set_title(title, fontsize=16, fontweight='bold', pad=20)
 
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=150, bbox_inches='tight')
-        plt.close()
-
-        return output_path
+        return self._save_figure(fig, output_path)
 
     def generate_market_growth_chart(
         self,
         market_data: Dict[str, Any],
-        output_path: str
-    ) -> str:
+        output_path: OutputPath
+    ) -> OutputPath:
         """
         Generate market growth trend chart
         生成市场增长趋势图
@@ -343,19 +392,15 @@ class ChartGenerator:
         lines2, labels2 = ax2.get_legend_handles_labels()
         ax.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
 
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=150, bbox_inches='tight')
-        plt.close()
-
-        return output_path
+        return self._save_figure(fig, output_path)
 
     # ==================== TEAM & RISK VISUALIZATIONS ====================
 
     def generate_risk_matrix(
         self,
         risks: List[Dict[str, Any]],
-        output_path: str
-    ) -> str:
+        output_path: OutputPath
+    ) -> OutputPath:
         """
         Generate risk assessment matrix (probability vs impact)
         生成风险评估矩阵图
@@ -430,17 +475,13 @@ class ChartGenerator:
         ax.set_xlim(0, 105)
         ax.set_ylim(0, 105)
 
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=150, bbox_inches='tight')
-        plt.close()
-
-        return output_path
+        return self._save_figure(fig, output_path)
 
     def generate_team_radar_chart(
         self,
         team_scores: Dict[str, float],
-        output_path: str
-    ) -> str:
+        output_path: OutputPath
+    ) -> OutputPath:
         """
         Generate team capability radar chart
         生成团队能力雷达图
@@ -499,11 +540,7 @@ class ChartGenerator:
         # Add gridlines
         ax.grid(True, linestyle='--', alpha=0.7)
 
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=150, bbox_inches='tight')
-        plt.close()
-
-        return output_path
+        return self._save_figure(fig, output_path)
 
 
 def generate_chart_for_report(

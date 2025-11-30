@@ -367,6 +367,7 @@ class KnowledgeBaseTool(Tool):
 
 from .yahoo_finance_tool import YahooFinanceTool
 from .sec_edgar_tool import SECEdgarTool
+from .akshare_tool import AkShareTool
 
 # Phase 1 增强工具
 from .enhanced_tools import (
@@ -426,6 +427,7 @@ def create_mcp_tools_for_agent(agent_role: str) -> List[Tool]:
         tools.append(PublicDataTool())
         tools.append(YahooFinanceTool())  # 添加股票市场数据工具
         tools.append(SECEdgarTool())      # 添加SEC官方数据工具
+        tools.append(AkShareTool())       # A股市场数据 (免费)
         tools.append(ChinaMarketDataTool())  # Phase 1: 中国市场数据 (A股/港股)
         tools.append(MCPFinancialDataTool()) # Phase 3: MCP金融数据服务
 
@@ -434,6 +436,7 @@ def create_mcp_tools_for_agent(agent_role: str) -> List[Tool]:
         tools.append(PublicDataTool())
         tools.append(YahooFinanceTool())  # 添加财报数据工具
         tools.append(SECEdgarTool())      # 添加SEC官方财报工具
+        tools.append(AkShareTool())       # A股财务数据 (免费)
         tools.append(ChinaMarketDataTool())  # Phase 1: 中国市场数据 (财务分析)
         tools.append(DCFCalculatorTool())      # Phase 2: DCF估值计算
         tools.append(ComparableAnalysisTool()) # Phase 2: 可比公司分析
@@ -466,12 +469,56 @@ def create_mcp_tools_for_agent(agent_role: str) -> List[Tool]:
 
     elif agent_role in ["TechnicalAnalyst", "技术分析师"]:
         # 技术分析师需要加密货币市场数据
+        tools.append(YahooFinanceTool())       # 免费: 股票价格和技术数据
         tools.append(MultiExchangeTool())      # Phase 4: 多交易所数据
         tools.append(OrderbookAnalyzerTool())  # Phase 4: 订单簿分析
 
     elif agent_role in ["Leader", "主持人", "Moderator"]:
         # Leader需要汇总和报告生成工具
         tools.append(SummaryChartTool())  # Phase 2: 汇总图表生成
+
+    # ========== Phase 2 新增 Agent 工具配置 ==========
+
+    elif agent_role in ["MacroEconomist", "宏观经济分析师"]:
+        # 宏观经济分析师需要宏观数据和市场趋势
+        tools.append(YahooFinanceTool())       # 免费: 市场指数和宏观数据
+        tools.append(AkShareTool())            # 免费: A股宏观数据
+        tools.append(ChinaMarketDataTool())    # 中国市场宏观数据
+
+    elif agent_role in ["ESGAnalyst", "ESG分析师"]:
+        # ESG分析师需要企业可持续发展信息
+        tools.append(YahooFinanceTool())       # 免费: 公司ESG评分
+        tools.append(SECEdgarTool())           # 免费: SEC ESG披露文件
+        tools.append(CompanyRegistryTool())    # 企业合规信息
+
+    elif agent_role in ["SentimentAnalyst", "情绪分析师"]:
+        # 情绪分析师需要舆情和市场情绪数据
+        tools.append(YahooFinanceTool())       # 免费: 新闻和市场数据
+        tools.append(SentimentMonitorTool())   # 舆情监控
+        tools.append(AkShareTool())            # 免费: A股龙虎榜等情绪指标
+
+    elif agent_role in ["QuantStrategist", "量化策略师"]:
+        # 量化策略师需要技术分析和量化工具
+        tools.append(YahooFinanceTool())       # 免费: 历史数据
+        tools.append(AkShareTool())            # 免费: A股量化数据
+        tools.append(MultiExchangeTool())      # 多交易所数据
+        tools.append(OrderbookAnalyzerTool())  # 订单簿分析
+
+    elif agent_role in ["DealStructurer", "交易结构师"]:
+        # 交易结构师需要估值和交易结构工具
+        tools.append(YahooFinanceTool())       # 免费: 估值数据
+        tools.append(SECEdgarTool())           # 免费: SEC交易披露
+        tools.append(DCFCalculatorTool())      # DCF估值
+        tools.append(ComparableAnalysisTool()) # 可比公司分析
+
+    elif agent_role in ["MAAdvisor", "并购顾问"]:
+        # 并购顾问需要企业信息和估值工具
+        tools.append(YahooFinanceTool())       # 免费: 目标公司财务
+        tools.append(SECEdgarTool())           # 免费: SEC并购披露 (8-K)
+        tools.append(CompanyRegistryTool())    # 企业工商信息
+        tools.append(DCFCalculatorTool())      # DCF估值
+        tools.append(ComparableAnalysisTool()) # 可比公司分析
+        tools.append(MCPCompanyIntelligenceTool()) # 企业情报
 
     # 知识库工具 - 所有专家都可以使用
     tools.append(KnowledgeBaseTool())

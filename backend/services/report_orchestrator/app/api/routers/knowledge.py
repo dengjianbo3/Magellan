@@ -61,7 +61,7 @@ async def upload_document(
     Supports: PDF, DOCX, TXT
     """
     # Import here to avoid circular imports
-    from ...agents.knowledge import DocumentParser
+    from ...services.document_parser import DocumentParser
 
     # Validate file type
     allowed_extensions = ['.pdf', '.docx', '.doc', '.txt']

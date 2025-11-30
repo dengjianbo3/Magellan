@@ -490,6 +490,7 @@
 import { ref, computed, nextTick, onUnmounted, onMounted } from 'vue';
 import { useLanguage } from '../composables/useLanguage';
 import { getRoundtableAgents } from '../config/agents';
+import { API_BASE } from '@/config/api';
 import { marked } from 'marked';
 
 const { t, locale } = useLanguage();
@@ -920,7 +921,7 @@ const generateMeetingSummary = async () => {
 
     // 调用后端API生成会议纪要
     const lang = locale.value.startsWith('zh') ? 'zh' : 'en'; // 转换为后端期望的格式
-    const response = await fetch('http://localhost:8000/api/roundtable/generate_summary', {
+    const response = await fetch('${API_BASE}/api/roundtable/generate_summary', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

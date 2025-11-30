@@ -32,12 +32,15 @@ from .core.session_store import SessionStore
 
 # Phase 4: Import API routers
 from .api.routers import health_router, reports_router, dashboard_router
+from .api.routers.agents import router as agents_router
 from .api.routers.knowledge import router as knowledge_router, set_vector_store, set_rag_service
 from .api.routers.roundtable import router as roundtable_router, set_active_meetings, set_llm_gateway_url
 from .api.routers.files import router as files_router
 from .api.routers.analysis import router as analysis_router
 from .api.routers.export import router as export_router, set_get_report_func
 from .api.routers.dd_workflow import router as dd_workflow_router, set_session_funcs
+from .api.routers.monitoring import router as monitoring_router
+from .middleware import RequestLoggingMiddleware, CachingMiddleware, response_cache
 
 # Phase 4: Import storage services
 from .services.storage import init_report_storage, get_report_storage
@@ -109,6 +112,12 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+# Request logging middleware
+app.add_middleware(RequestLoggingMiddleware)
+
+# Response caching middleware (added after logging so cache hits are logged)
+app.add_middleware(CachingMiddleware)
+
 # Global storage for active meeting instances (for Human-in-the-Loop support)
 active_meetings: Dict[str, Any] = {}
 
@@ -124,12 +133,14 @@ Instrumentator().instrument(app).expose(app, endpoint="/metrics", tags=["System 
 app.include_router(health_router, tags=["Health"])
 app.include_router(reports_router, prefix="/api/reports", tags=["Reports"])
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["Dashboard"])
+app.include_router(agents_router, prefix="/api/agents", tags=["Agents"])
 app.include_router(knowledge_router, prefix="/api/knowledge", tags=["Knowledge Base"])
 app.include_router(roundtable_router, prefix="/api/roundtable", tags=["Roundtable"])
 app.include_router(files_router, prefix="/api", tags=["File Upload"])
 app.include_router(analysis_router, prefix="/api/v2/analysis", tags=["Analysis V2"])
 app.include_router(export_router, prefix="/api/reports", tags=["Report Export"])
 app.include_router(dd_workflow_router, prefix="/api/dd", tags=["DD Workflow"])
+app.include_router(monitoring_router, prefix="/api/errors", tags=["Monitoring"])
 
 # --- Pydantic Models ---
 class AnalysisRequest(BaseModel):
@@ -966,7 +977,14 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
         create_team_evaluator,
         create_tech_specialist,
         create_legal_advisor,
-        create_technical_analyst  # 技术分析师 (K线/指标分析)
+        create_technical_analyst,  # 技术分析师 (K线/指标分析)
+        # Phase 2 新增 agents
+        create_macro_economist,
+        create_esg_analyst,
+        create_sentiment_analyst,
+        create_quant_strategist,
+        create_deal_structurer,
+        create_ma_advisor
     )
     from .core.agent_event_bus import AgentEventBus
 
@@ -979,7 +997,14 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
         'risk-assessor': create_risk_assessor,
         'tech-specialist': create_tech_specialist,
         'legal-advisor': create_legal_advisor,
-        'technical-analyst': create_technical_analyst  # 技术分析师 (K线/指标)
+        'technical-analyst': create_technical_analyst,  # 技术分析师 (K线/指标)
+        # Phase 2 新增 agents
+        'macro-economist': create_macro_economist,
+        'esg-analyst': create_esg_analyst,
+        'sentiment-analyst': create_sentiment_analyst,
+        'quant-strategist': create_quant_strategist,
+        'deal-structurer': create_deal_structurer,
+        'ma-advisor': create_ma_advisor
     }
 
     session_id = None

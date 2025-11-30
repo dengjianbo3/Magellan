@@ -20,7 +20,52 @@ export default {
     finish: 'Finish',
     close: 'Close',
     settings: 'Settings',
-    logout: 'Logout'
+    logout: 'Logout',
+    optional: 'Optional'
+  },
+
+  // Authentication
+  auth: {
+    // Login
+    loginTitle: 'Sign in to your account',
+    loginSubtitle: 'Welcome back to Magellan Investment Analysis Platform',
+    email: 'Email',
+    emailPlaceholder: 'Enter your email',
+    password: 'Password',
+    passwordPlaceholder: 'Enter your password',
+    rememberMe: 'Remember me',
+    forgotPassword: 'Forgot password?',
+    login: 'Sign in',
+    loggingIn: 'Signing in...',
+    noAccount: "Don't have an account?",
+    registerNow: 'Register now',
+
+    // Register
+    registerTitle: 'Create a new account',
+    registerSubtitle: 'Join Magellan and start intelligent investment analysis',
+    name: 'Name',
+    namePlaceholder: 'Enter your name',
+    organization: 'Organization',
+    organizationPlaceholder: 'Enter your organization name',
+    newPasswordPlaceholder: 'Enter new password',
+    confirmPassword: 'Confirm Password',
+    confirmPasswordPlaceholder: 'Re-enter your password',
+    passwordRequirements: 'Password must be at least 8 characters with uppercase, lowercase and numbers',
+    passwordMismatch: 'Passwords do not match',
+    acceptTerms: 'I have read and agree to the',
+    termsOfService: 'Terms of Service',
+    and: 'and',
+    privacyPolicy: 'Privacy Policy',
+    register: 'Register',
+    registering: 'Registering...',
+    hasAccount: 'Already have an account?',
+    loginNow: 'Sign in now',
+
+    // Errors
+    loginFailed: 'Login failed. Please check your email and password.',
+    registerFailed: 'Registration failed. Please try again later.',
+    sessionExpired: 'Session expired. Please sign in again.',
+    unauthorized: 'Unauthorized. Please sign in first.'
   },
 
   // Sidebar
@@ -394,6 +439,67 @@ export default {
       completed: 'Completed',
       inProgress: 'In Progress',
       draft: 'Draft'
+    },
+
+    // Report detail view
+    detail: {
+      backToList: 'Back to List',
+      reportDetails: 'Report Details',
+      reportType: 'Report Type',
+      saveTime: 'Saved At',
+      sessionId: 'Session ID',
+
+      // Roundtable specific
+      meetingMinutes: 'Meeting Minutes',
+      roundtableDiscussion: 'Roundtable Discussion',
+      participatingExperts: 'Participating Experts',
+      discussionHistory: 'Discussion History',
+      clickToExpand: 'Click to expand full discussion',
+      messages: 'messages',
+      conclusionReason: 'Conclusion Reason',
+      discussionTopic: 'Discussion Topic',
+      discussionDuration: 'Discussion Duration',
+
+      // Analysis sections
+      detailedAnalysis: 'Detailed Analysis Report',
+      investmentRecommendation: 'Investment Recommendation',
+      overallScore: 'Overall Score',
+      executiveSummary: 'Executive Summary',
+      keyFindings: 'Key Findings',
+      highlights: 'Highlights',
+      concerns: 'Concerns',
+      score: 'Score',
+      swotAnalysis: 'SWOT Analysis',
+      strengths: 'Strengths',
+      weaknesses: 'Weaknesses',
+      opportunities: 'Opportunities',
+      threats: 'Threats',
+      nextSteps: 'Next Steps',
+      ddQuestions: 'DD Questions',
+      executionSteps: 'Execution Steps',
+      dataVisualization: 'Data Visualization',
+      refresh: 'Refresh',
+
+      // Chart tabs
+      financialAnalysis: 'Financial Analysis',
+      marketAnalysis: 'Market Analysis',
+      teamAndRisk: 'Team & Risk',
+      revenueTrend: 'Revenue Trend',
+      profitMarginTrend: 'Profit Margin Trend',
+      marketShareDistribution: 'Market Share Distribution',
+      riskAssessmentMatrix: 'Risk Assessment Matrix',
+
+      // Actions
+      actions: 'Actions',
+      exportPdf: 'Export PDF',
+      exporting: 'Exporting...',
+      shareReport: 'Share Report',
+      deleteReport: 'Delete Report',
+      confirmDelete: 'Confirm Delete?',
+      deleteWarning: 'You are about to delete report',
+      deleteIrreversible: 'This action cannot be undone.',
+      cancel: 'Cancel',
+      confirmDeleteBtn: 'Confirm Delete'
     }
   },
 
@@ -731,6 +837,14 @@ export default {
     connectingWebSocket: 'Connecting to real-time channel...',
     waitingForResults: 'Waiting for analysis results...',
 
+    // Connection Status
+    reconnecting: 'Reconnecting...',
+    connectionLost: 'Connection lost, please check your network',
+    connectionRestored: 'Connection restored',
+    unknownError: 'Unknown error',
+    analysisError: 'An error occurred during analysis',
+    analysisTimeout: 'Analysis timed out, please retry',
+
     // Wizard Steps
     inputTarget: 'Input Target',
 
@@ -771,6 +885,20 @@ export default {
     // Alerts
     upgradeFeatureInDevelopment: 'Upgrade to standard analysis feature is under development...',
     exportFeatureInDevelopment: 'Export report feature is under development...',
+
+    // Session Recovery
+    sessionRecovery: 'Incomplete Analysis Detected',
+    sessionRecoveryDesc: 'You have an in-progress analysis. Would you like to continue?',
+    projectName: 'Project Name',
+    scenario: 'Analysis Scenario',
+    startedAt: 'Started At',
+    startNew: 'Start New',
+    continueSession: 'Continue',
+    sessionNotFound: 'Session not found',
+
+    // Errors
+    analysisError: 'Analysis Error',
+    unknownError: 'Unknown error',
   },
 
   // Roundtable Discussion

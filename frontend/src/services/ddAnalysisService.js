@@ -3,8 +3,10 @@
  * 处理Due Diligence分析的WebSocket连接和API调用
  */
 
-const DD_WS_URL = 'ws://localhost:8000/ws/start_dd_analysis';
-const DD_API_URL = 'http://localhost:8000';
+// Environment variables for API URLs
+const DD_API_URL = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+const DD_WS_URL = import.meta.env.VITE_WS_BASE || 'ws://localhost:8000';
+const DD_WS_ENDPOINT = `${DD_WS_URL}/ws/start_dd_analysis`;
 
 export class DDAnalysisService {
   constructor() {
@@ -102,7 +104,7 @@ export class DDAnalysisService {
         console.log(`[DD Service] ${isReconnecting ? 'Reconnecting' : 'Connecting'} to WebSocket...`);
 
         // 创建WebSocket连接
-        this.ws = new WebSocket(DD_WS_URL);
+        this.ws = new WebSocket(DD_WS_ENDPOINT);
 
         this.ws.onopen = () => {
           console.log('[DD Service] WebSocket connected');

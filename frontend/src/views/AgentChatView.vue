@@ -360,6 +360,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useLanguage } from '../composables/useLanguage';
 import { useToast } from '../composables/useToast';
+import { API_BASE } from '@/config/api';
 import { DDAnalysisService } from '../services/ddAnalysisService';
 
 const { t } = useLanguage();
@@ -597,7 +598,7 @@ const saveReport = async () => {
     info('正在保存报告...');
 
     // Call backend API to save report
-    const response = await fetch('http://localhost:8000/api/reports', {
+    const response = await fetch('${API_BASE}/api/reports', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

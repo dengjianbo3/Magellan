@@ -81,8 +81,43 @@ class ReportSynthesizerAgent:
     async def _quick_synthesis(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         快速综合 - 30秒内输出核心结论
+        使用LLM生成真实分析，失败时回退到本地逻辑
         """
-        logger.info("[ReportSynthesizer] 快速模式综合")
+        logger.info("[ReportSynthesizer] 快速模式综合 (LLM增强)")
+
+        # 🚀 优先尝试LLM生成快速报告
+        llm_report = await self._call_llm_for_quick_synthesis(context)
+
+        if llm_report:
+            logger.info("[ReportSynthesizer] ✅ 使用LLM生成的快速报告")
+            company_info = self._generate_company_info(context)
+
+            # 构建LLM增强的快速报告
+            sections = {}
+            detailed_analysis = llm_report.get('detailed_analysis', {})
+            for key in ['market', 'team', 'financial', 'risk', 'technology']:
+                if key in detailed_analysis:
+                    sections[key] = {'summary': detailed_analysis[key]}
+
+            return {
+                'report_id': self._generate_report_id(),
+                'scenario': context.get('scenario', 'unknown'),
+                'mode': 'quick',
+                'overall_recommendation': llm_report.get('overall_recommendation', 'observe'),
+                'investment_score': llm_report.get('investment_score', 50),
+                'confidence_level': llm_report.get('confidence_level', 'medium'),
+                'key_findings': llm_report.get('key_findings', []),
+                'scores_breakdown': self._extract_scores_from_llm_report(llm_report),
+                'summary': llm_report.get('executive_summary', ''),
+                'next_steps': llm_report.get('next_steps', []),
+                'sections': sections,
+                'company_info': company_info,
+                'team_section': {'summary': sections.get('team', {}).get('summary', '快速评估完成')},
+                'market_section': {'summary': sections.get('market', {}).get('summary', '快速评估完成')}
+            }
+
+        # Fallback: LLM失败时使用本地逻辑
+        logger.warning("[ReportSynthesizer] ⚠️ LLM快速报告失败，使用本地逻辑")
 
         # 提取关键分数
         scores = self._extract_scores(context)
@@ -95,7 +130,7 @@ class ReportSynthesizerAgent:
 
         # 识别关键发现
         key_findings = self._extract_key_findings_quick(context)
-        
+
         # 生成基础结构
         company_info = self._generate_company_info(context)
         sections = self._generate_detailed_sections(context)
@@ -111,7 +146,7 @@ class ReportSynthesizerAgent:
             'scores_breakdown': scores,
             'summary': self._generate_quick_summary(context, overall_score),
             'next_steps': recommendation['next_steps'],
-            
+
             # Frontend Compatibility Fields
             'sections': sections,
             'company_info': company_info,
@@ -827,6 +862,92 @@ class ReportSynthesizerAgent:
         except Exception as e:
             logger.error(f"[ReportSynthesizer] ❌ LLM调用失败: {e}")
             return None
+
+    async def _call_llm_for_quick_synthesis(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        快速模式LLM调用 - 简化提示词，更快响应
+        """
+        logger.info("[ReportSynthesizer] 🚀 调用LLM生成快速报告")
+
+        # 收集Agent输出
+        agent_outputs = []
+        for key, value in context.items():
+            if isinstance(value, dict):
+                if 'summary' in value or 'raw_output' in value or 'analysis' in value:
+                    output = value.get('summary', value.get('raw_output', value.get('analysis', '')))
+                    if output:
+                        agent_outputs.append(f"### {key}:\n{output[:500]}...")  # 限制长度
+
+        combined_analysis = "\n\n".join(agent_outputs[:5])  # 最多5个Agent输出
+
+        target_info = context.get('target', {})
+        company_name = (target_info.get('company_name') or
+                       target_info.get('target_name') or
+                       target_info.get('industry_name') or
+                       '分析目标')
+
+        # 简化的快速模式提示词
+        prompt = f"""你是投资分析师，需要快速评估投资机会。
+
+## 分析目标: {company_name}
+
+## 专家分析摘要:
+{combined_analysis}
+
+## 任务:
+基于以上信息，生成简洁的快速评估报告。请输出JSON格式：
+
+```json
+{{
+  "investment_score": <0-100分>,
+  "overall_recommendation": "<invest/observe/reject>",
+  "confidence_level": "<high/medium/low>",
+  "executive_summary": "<1-2句话的核心结论>",
+  "key_findings": [
+    {{"category": "核心优势", "key_points": ["优势1", "优势2"], "score": 75}},
+    {{"category": "主要风险", "key_points": ["风险1", "风险2"], "score": 60}}
+  ],
+  "next_steps": ["建议1", "建议2"],
+  "detailed_analysis": {{
+    "market": "<市场评估1-2句>",
+    "team": "<团队评估1-2句>",
+    "financial": "<财务评估1-2句>"
+  }}
+}}
+```
+
+要求：简洁、直接、有见地。直接输出JSON，无需其他说明。"""
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:  # 快速模式使用更短超时
+                response = await client.post(
+                    f"{self.llm_gateway_url}/chat",
+                    json={
+                        "history": [{"role": "user", "parts": [prompt]}]
+                    }
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                content = result.get("content", "")
+                logger.info(f"[ReportSynthesizer] ✅ LLM快速报告返回: {len(content)} chars")
+
+                # 解析JSON
+                json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+                json_str = json_match.group(1) if json_match else content
+
+                try:
+                    llm_report = json.loads(json_str)
+                    logger.info("[ReportSynthesizer] ✅ 快速报告JSON解析成功")
+                    return llm_report
+                except json.JSONDecodeError as e:
+                    logger.error(f"[ReportSynthesizer] ❌ 快速报告JSON解析失败: {e}")
+                    return None
+
+        except Exception as e:
+            logger.error(f"[ReportSynthesizer] ❌ 快速报告LLM调用失败: {e}")
+            return None
+
 
 async def synthesize_report(context: Dict[str, Any], quick_mode: bool = False) -> Dict[str, Any]:
     synthesizer = ReportSynthesizerAgent(quick_mode=quick_mode)

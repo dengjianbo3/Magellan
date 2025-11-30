@@ -4,6 +4,14 @@ FROM python:3.11-slim
 # Set the working directory in the container
 WORKDIR /usr/src/app
 
+# Install Chinese fonts for matplotlib
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-noto-cjk \
+    fonts-noto-cjk-extra \
+    fontconfig \
+    && rm -rf /var/lib/apt/lists/* \
+    && fc-cache -fv
+
 # Copy the requirements file into the container at /usr/src/app
 COPY requirements.txt ./
 
@@ -14,6 +22,9 @@ ARG HTTPS_PROXY
 RUN if [ -n "$HTTP_PROXY" ] ; then pip config set global.proxy $HTTP_PROXY ; fi
 RUN if [ -n "$HTTPS_PROXY" ] ; then pip config set global.proxy $HTTPS_PROXY ; fi
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Clear matplotlib font cache so it will detect newly installed fonts on first run
+RUN rm -rf /root/.cache/matplotlib /root/.matplotlib
 
 # Copy the rest of the application's code into the container
 COPY ./app ./app

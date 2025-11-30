@@ -28,7 +28,7 @@ class YahooFinanceTool(Tool):
         执行 Yahoo Finance 数据获取
 
         Args:
-            action: 操作类型 (price, history, financials, info, news)
+            action: 操作类型 (price, history, financials, info, news, valuation, dividends, holders)
             symbol: 股票代码 (如 AAPL, TSLA, 0700.HK)
             **kwargs: 其他参数
 
@@ -50,11 +50,17 @@ class YahooFinanceTool(Tool):
                 return await self._get_company_info(ticker, symbol)
             elif action == "news":
                 return await self._get_news(ticker, symbol)
+            elif action == "valuation":
+                return await self._get_valuation_metrics(ticker, symbol)
+            elif action == "dividends":
+                return await self._get_dividend_info(ticker, symbol)
+            elif action == "holders":
+                return await self._get_holders_info(ticker, symbol)
             else:
                 return {
                     "success": False,
                     "error": f"未知操作类型: {action}",
-                    "summary": f"不支持的操作: {action}。支持的操作: price, history, financials, info, news"
+                    "summary": f"不支持的操作: {action}。支持的操作: price, history, financials, info, news, valuation, dividends, holders"
                 }
 
         except Exception as e:
@@ -322,6 +328,301 @@ class YahooFinanceTool(Tool):
                 "summary": f"获取 {symbol} 新闻失败: {str(e)}"
             }
 
+    async def _get_valuation_metrics(self, ticker, symbol: str) -> Dict[str, Any]:
+        """获取全面的估值指标"""
+        try:
+            info = ticker.info
+
+            # 基础估值指标
+            pe_trailing = info.get('trailingPE')
+            pe_forward = info.get('forwardPE')
+            peg_ratio = info.get('pegRatio')
+            pb_ratio = info.get('priceToBook')
+            ps_ratio = info.get('priceToSalesTrailing12Months')
+
+            # 企业价值倍数
+            ev = info.get('enterpriseValue', 0)
+            ebitda = info.get('ebitda', 0)
+            revenue = info.get('totalRevenue', 0)
+            ev_to_ebitda = ev / ebitda if ev and ebitda else None
+            ev_to_revenue = ev / revenue if ev and revenue else None
+
+            # 盈利能力指标
+            roe = info.get('returnOnEquity')
+            roa = info.get('returnOnAssets')
+            profit_margin = info.get('profitMargins')
+            operating_margin = info.get('operatingMargins')
+            gross_margin = info.get('grossMargins')
+
+            # 成长性指标
+            earnings_growth = info.get('earningsGrowth')
+            revenue_growth = info.get('revenueGrowth')
+            earnings_quarterly_growth = info.get('earningsQuarterlyGrowth')
+
+            # 财务健康指标
+            current_ratio = info.get('currentRatio')
+            quick_ratio = info.get('quickRatio')
+            debt_to_equity = info.get('debtToEquity')
+            total_debt = info.get('totalDebt', 0)
+            total_cash = info.get('totalCash', 0)
+
+            # 股息指标
+            dividend_yield = info.get('dividendYield')
+            dividend_rate = info.get('dividendRate')
+            payout_ratio = info.get('payoutRatio')
+
+            # 市值和流动性
+            market_cap = info.get('marketCap', 0)
+            enterprise_value = info.get('enterpriseValue', 0)
+            beta = info.get('beta')
+            avg_volume = info.get('averageVolume', 0)
+
+            # 自由现金流收益率
+            free_cash_flow = info.get('freeCashflow', 0)
+            fcf_yield = (free_cash_flow / market_cap * 100) if market_cap and free_cash_flow else None
+
+            # 每股指标
+            eps_trailing = info.get('trailingEps')
+            eps_forward = info.get('forwardEps')
+            book_value_per_share = info.get('bookValue')
+
+            # 构建摘要
+            summary = f"""
+{symbol} 估值分析报告:
+
+📊 估值倍数:
+  - P/E (TTM): {pe_trailing:.2f if pe_trailing else 'N/A'}
+  - P/E (Forward): {pe_forward:.2f if pe_forward else 'N/A'}
+  - PEG: {peg_ratio:.2f if peg_ratio else 'N/A'}
+  - P/B: {pb_ratio:.2f if pb_ratio else 'N/A'}
+  - P/S: {ps_ratio:.2f if ps_ratio else 'N/A'}
+  - EV/EBITDA: {ev_to_ebitda:.2f if ev_to_ebitda else 'N/A'}
+  - EV/Revenue: {ev_to_revenue:.2f if ev_to_revenue else 'N/A'}
+
+💰 盈利能力:
+  - ROE: {roe*100:.2f}% if ROE else 'N/A'
+  - ROA: {roa*100:.2f}% if roa else 'N/A'
+  - 净利率: {profit_margin*100:.2f}% if profit_margin else 'N/A'
+  - 毛利率: {gross_margin*100:.2f}% if gross_margin else 'N/A'
+  - 营业利润率: {operating_margin*100:.2f}% if operating_margin else 'N/A'
+
+📈 成长性:
+  - 营收增长: {revenue_growth*100:.2f}% if revenue_growth else 'N/A'
+  - 盈利增长: {earnings_growth*100:.2f}% if earnings_growth else 'N/A'
+  - 季度盈利增长: {earnings_quarterly_growth*100:.2f}% if earnings_quarterly_growth else 'N/A'
+
+🏦 财务健康:
+  - 流动比率: {current_ratio:.2f if current_ratio else 'N/A'}
+  - 速动比率: {quick_ratio:.2f if quick_ratio else 'N/A'}
+  - 负债/权益比: {debt_to_equity:.2f if debt_to_equity else 'N/A'}
+  - 净现金: ${(total_cash - total_debt):,.0f}
+
+💵 股息与现金流:
+  - 股息率: {dividend_yield*100:.2f}% if dividend_yield else 'N/A'
+  - 派息率: {payout_ratio*100:.2f}% if payout_ratio else 'N/A'
+  - FCF收益率: {fcf_yield:.2f}% if fcf_yield else 'N/A'
+
+📋 每股指标:
+  - EPS (TTM): ${eps_trailing:.2f if eps_trailing else 'N/A'}
+  - EPS (Forward): ${eps_forward:.2f if eps_forward else 'N/A'}
+  - 每股净资产: ${book_value_per_share:.2f if book_value_per_share else 'N/A'}
+
+📊 市场数据:
+  - 市值: ${market_cap:,.0f}
+  - 企业价值: ${enterprise_value:,.0f}
+  - Beta: {beta:.2f if beta else 'N/A'}
+"""
+
+            return {
+                "success": True,
+                "summary": summary.strip(),
+                "data": {
+                    "symbol": symbol,
+                    "valuation_multiples": {
+                        "pe_trailing": pe_trailing,
+                        "pe_forward": pe_forward,
+                        "peg_ratio": peg_ratio,
+                        "pb_ratio": pb_ratio,
+                        "ps_ratio": ps_ratio,
+                        "ev_to_ebitda": ev_to_ebitda,
+                        "ev_to_revenue": ev_to_revenue
+                    },
+                    "profitability": {
+                        "roe": roe,
+                        "roa": roa,
+                        "profit_margin": profit_margin,
+                        "operating_margin": operating_margin,
+                        "gross_margin": gross_margin
+                    },
+                    "growth": {
+                        "revenue_growth": revenue_growth,
+                        "earnings_growth": earnings_growth,
+                        "earnings_quarterly_growth": earnings_quarterly_growth
+                    },
+                    "financial_health": {
+                        "current_ratio": current_ratio,
+                        "quick_ratio": quick_ratio,
+                        "debt_to_equity": debt_to_equity,
+                        "total_debt": total_debt,
+                        "total_cash": total_cash,
+                        "net_cash": total_cash - total_debt
+                    },
+                    "dividends": {
+                        "dividend_yield": dividend_yield,
+                        "dividend_rate": dividend_rate,
+                        "payout_ratio": payout_ratio
+                    },
+                    "cash_flow": {
+                        "free_cash_flow": free_cash_flow,
+                        "fcf_yield": fcf_yield
+                    },
+                    "per_share": {
+                        "eps_trailing": eps_trailing,
+                        "eps_forward": eps_forward,
+                        "book_value": book_value_per_share
+                    },
+                    "market_data": {
+                        "market_cap": market_cap,
+                        "enterprise_value": enterprise_value,
+                        "beta": beta,
+                        "avg_volume": avg_volume
+                    }
+                }
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "summary": f"获取 {symbol} 估值数据失败: {str(e)}"
+            }
+
+    async def _get_dividend_info(self, ticker, symbol: str) -> Dict[str, Any]:
+        """获取股息信息"""
+        try:
+            info = ticker.info
+            dividends = ticker.dividends
+
+            dividend_yield = info.get('dividendYield')
+            dividend_rate = info.get('dividendRate')
+            payout_ratio = info.get('payoutRatio')
+            ex_dividend_date = info.get('exDividendDate')
+
+            # 获取历史股息
+            recent_dividends = []
+            if not dividends.empty:
+                recent_div = dividends.tail(8)  # 最近8次派息
+                for date, amount in recent_div.items():
+                    recent_dividends.append({
+                        "date": date.strftime('%Y-%m-%d'),
+                        "amount": float(amount)
+                    })
+
+            # 计算股息增长率
+            dividend_growth = None
+            if len(recent_dividends) >= 4:
+                old_div = sum(d['amount'] for d in recent_dividends[:4])
+                new_div = sum(d['amount'] for d in recent_dividends[-4:])
+                if old_div > 0:
+                    dividend_growth = ((new_div / old_div) - 1) * 100
+
+            summary = f"""
+{symbol} 股息分析:
+
+💰 当前股息:
+  - 股息率: {dividend_yield*100:.2f}% if dividend_yield else 'N/A'
+  - 每股股息: ${dividend_rate:.2f if dividend_rate else 'N/A'}
+  - 派息率: {payout_ratio*100:.2f}% if payout_ratio else 'N/A'
+
+📅 历史派息 (最近8次):
+"""
+            for div in recent_dividends[-8:]:
+                summary += f"  - {div['date']}: ${div['amount']:.4f}\n"
+
+            if dividend_growth is not None:
+                summary += f"\n📈 年度股息增长率: {dividend_growth:.2f}%"
+
+            return {
+                "success": True,
+                "summary": summary.strip(),
+                "data": {
+                    "symbol": symbol,
+                    "current": {
+                        "yield": dividend_yield,
+                        "rate": dividend_rate,
+                        "payout_ratio": payout_ratio,
+                        "ex_date": ex_dividend_date
+                    },
+                    "history": recent_dividends,
+                    "growth_rate": dividend_growth
+                }
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "summary": f"获取 {symbol} 股息数据失败: {str(e)}"
+            }
+
+    async def _get_holders_info(self, ticker, symbol: str) -> Dict[str, Any]:
+        """获取持股人信息"""
+        try:
+            # 机构持股
+            institutional = ticker.institutional_holders
+            # 内部人持股
+            insiders = ticker.insider_transactions
+
+            info = ticker.info
+            insider_pct = info.get('heldPercentInsiders')
+            institution_pct = info.get('heldPercentInstitutions')
+
+            summary = f"""
+{symbol} 持股分析:
+
+📊 持股比例:
+  - 机构持股: {institution_pct*100:.2f}% if institution_pct else 'N/A'
+  - 内部人持股: {insider_pct*100:.2f}% if insider_pct else 'N/A'
+
+🏛️ 主要机构持股:
+"""
+            if institutional is not None and not institutional.empty:
+                for _, row in institutional.head(5).iterrows():
+                    holder = row.get('Holder', 'Unknown')
+                    shares = row.get('Shares', 0)
+                    value = row.get('Value', 0)
+                    summary += f"  - {holder}: {shares:,.0f}股 (${value:,.0f})\n"
+            else:
+                summary += "  无机构持股数据\n"
+
+            summary += "\n👔 最近内部人交易:\n"
+            if insiders is not None and not insiders.empty:
+                for _, row in insiders.head(5).iterrows():
+                    insider = row.get('Insider', 'Unknown')
+                    trans = row.get('Transaction', 'Unknown')
+                    shares = row.get('Shares', 0)
+                    summary += f"  - {insider}: {trans} {shares:,.0f}股\n"
+            else:
+                summary += "  无内部人交易数据\n"
+
+            return {
+                "success": True,
+                "summary": summary.strip(),
+                "data": {
+                    "symbol": symbol,
+                    "ownership": {
+                        "insider_percent": insider_pct,
+                        "institution_percent": institution_pct
+                    },
+                    "institutional_holders": institutional.to_dict('records') if institutional is not None and not institutional.empty else [],
+                    "insider_transactions": insiders.to_dict('records') if insiders is not None and not insiders.empty else []
+                }
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "summary": f"获取 {symbol} 持股数据失败: {str(e)}"
+            }
+
     def to_schema(self) -> Dict[str, Any]:
         """返回工具的 Schema"""
         return {
@@ -332,12 +633,12 @@ class YahooFinanceTool(Tool):
                 "properties": {
                     "action": {
                         "type": "string",
-                        "description": "操作类型",
-                        "enum": ["price", "history", "financials", "info", "news"]
+                        "description": "操作类型: price(实时价格), history(历史K线), financials(财务报表), info(公司信息), news(新闻), valuation(估值分析), dividends(股息分析), holders(持股分析)",
+                        "enum": ["price", "history", "financials", "info", "news", "valuation", "dividends", "holders"]
                     },
                     "symbol": {
                         "type": "string",
-                        "description": "股票代码（如 AAPL, TSLA, 0700.HK）"
+                        "description": "股票代码（如 AAPL, TSLA, 0700.HK, BTC-USD）"
                     },
                     "period": {
                         "type": "string",

@@ -331,6 +331,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useToast } from '../composables/useToast';
 import { useLanguage } from '../composables/useLanguage';
+import { API_BASE } from '@/config/api';
 
 const { success, error, warning } = useToast();
 const { t } = useLanguage();
@@ -424,7 +425,7 @@ const removeFile = (index) => {
 const fetchDocuments = async () => {
   loading.value = true;
   try {
-    const response = await fetch('http://localhost:8000/api/knowledge/documents?limit=100');
+    const response = await fetch(`${API_BASE}/api/knowledge/documents?limit=100`);
     if (!response.ok) throw new Error('Failed to fetch documents');
 
     const data = await response.json();
@@ -442,7 +443,7 @@ const fetchDocuments = async () => {
 
 const fetchStats = async () => {
   try {
-    const response = await fetch('http://localhost:8000/api/knowledge/stats');
+    const response = await fetch(`${API_BASE}/api/knowledge/stats`);
     if (!response.ok) throw new Error('Failed to fetch stats');
 
     stats.value = await response.json();
@@ -480,7 +481,7 @@ const uploadFiles = async () => {
       formData.append('category', uploadForm.value.category);
       formData.append('title', uploadForm.value.title || file.name);
 
-      const response = await fetch('http://localhost:8000/api/knowledge/upload', {
+      const response = await fetch(`${API_BASE}/api/knowledge/upload`, {
         method: 'POST',
         body: formData
       });
@@ -495,7 +496,7 @@ const uploadFiles = async () => {
 
     // Refresh BM25 index after upload
     try {
-      await fetch('http://localhost:8000/api/knowledge/refresh-index', {
+      await fetch(`${API_BASE}/api/knowledge/refresh-index`, {
         method: 'POST'
       });
     } catch (err) {
@@ -532,7 +533,7 @@ const deleteDocument = async () => {
 
   try {
     const response = await fetch(
-      `http://localhost:8000/api/knowledge/documents/${documentToDelete.value.id}`,
+      `${API_BASE}/api/knowledge/documents/${documentToDelete.value.id}`,
       { method: 'DELETE' }
     );
 
@@ -560,7 +561,7 @@ const performSearch = async () => {
   try {
     const categoryParam = selectedCategory.value !== 'all' ? `&category=${selectedCategory.value}` : '';
     const response = await fetch(
-      `http://localhost:8000/api/knowledge/hybrid-search?query=${encodeURIComponent(searchQuery.value)}&top_k=20&use_reranking=true${categoryParam}`
+      `${API_BASE}/api/knowledge/hybrid-search?query=${encodeURIComponent(searchQuery.value)}&top_k=20&use_reranking=true${categoryParam}`
     );
 
     if (!response.ok) throw new Error('Search failed');
