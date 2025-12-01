@@ -191,7 +191,7 @@
               {{ countdown }}
             </div>
             <p class="text-text-secondary text-sm mt-2">
-              {{ t('trading.interval') || 'Analysis every 4 hours' }}
+              {{ intervalText }}
             </p>
 
             <button
@@ -692,6 +692,17 @@ const totalPnlPercent = computed(() => {
   const initial = account.value.initialBalance || account.value.totalEquity;
   if (initial === 0) return 0;
   return (totalPnl.value / initial) * 100;
+});
+
+// Dynamic interval text based on actual scheduler state
+const intervalText = computed(() => {
+  // Prefer actual scheduler state over settings form
+  const hours = systemStatus.value.scheduler?.interval_hours || settingsForm.value.analysisInterval || 4;
+  const locale = localStorage.getItem('language') || 'zh-CN';
+  if (locale === 'en') {
+    return `Analysis every ${hours} hour${hours > 1 ? 's' : ''}`;
+  }
+  return `每 ${hours} 小时分析一次`;
 });
 
 // Methods
@@ -1196,7 +1207,12 @@ function updateCountdown() {
     return;
   }
 
-  const nextRun = new Date(systemStatus.value.scheduler.next_run);
+  // Backend returns UTC time without timezone suffix, so we need to append 'Z'
+  let nextRunStr = systemStatus.value.scheduler.next_run;
+  if (!nextRunStr.endsWith('Z') && !nextRunStr.includes('+')) {
+    nextRunStr += 'Z';
+  }
+  const nextRun = new Date(nextRunStr);
   const now = new Date();
   const diff = nextRun - now;
 

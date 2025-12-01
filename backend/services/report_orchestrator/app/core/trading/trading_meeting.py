@@ -84,6 +84,8 @@ class TradingMeeting(Meeting):
         self._final_signal: Optional[TradingSignal] = None
         self._execution_result: Optional[Dict] = None
         self._memory_store: Optional[AgentMemoryStore] = None
+        # Track executed tool calls (tool_name, params, result)
+        self._last_executed_tools: List[Dict[str, Any]] = []
 
     @property
     def final_signal(self) -> Optional[TradingSignal]:
@@ -219,15 +221,17 @@ class TradingMeeting(Meeting):
 **重要**: 你必须搜索最新信息，不能仅凭既有知识！
 
 请执行以下步骤:
-1. 使用 `tavily_search` 搜索最新的加密货币/宏观经济新闻
-2. 搜索 "Fed interest rate decision" 或 "美联储利率" 等关键词
-3. 搜索 "Bitcoin regulation news" 或 "加密货币监管" 等关键词
+1. 使用 `tavily_search` 搜索 "Bitcoin market news today" 或 "BTC price analysis"
+2. 搜索 "cryptocurrency market outlook" 或 "crypto institutional investment"
+3. 搜索 "DXY dollar index crypto correlation" 获取美元与加密货币相关性
 
 基于搜索结果分析:
-- 当前货币政策环境（利率、流动性）
-- 影响市场的重大政策/监管动态
-- 宏观经济对加密货币的影响
-- 你的宏观面评分和方向判断""",
+- 当前市场流动性状况
+- 机构投资者动向
+- 美元指数与加密货币的相关性
+- 你的宏观面评分和方向判断
+
+**注意**: 聚焦于市场数据和投资分析，避免讨论敏感话题。""",
 
             "SentimentAnalyst": f"""请分析 {self.config.symbol} 的当前市场情绪。
 
@@ -391,74 +395,102 @@ class TradingMeeting(Meeting):
 1. **综合分析**: 总结各专家的核心观点和分歧
 2. **评估信心度**: 根据专家意见一致性和市场信号强度，评估你的综合信心度 (0-100%)
 3. **形成决策**: 基于专家意见，决定是做多(long)、做空(short)还是观望(hold)
-4. **确定参数**:
+4. **确定参数** (如果交易):
    - 杠杆倍数 (根据信心度从上方指南中选择，范围1-{self.config.max_leverage})
    - 仓位百分比 (范围{int(self.config.min_position_percent * 100)}-{int(self.config.max_position_percent * 100)}%，建议{int(self.config.default_position_percent * 100)}%)
    - 止盈止损百分比 (默认止盈{self.config.default_tp_percent}%，止损{self.config.default_sl_percent}%)
-5. **直接执行**: 如果决定交易，使用工具直接执行
+5. **必须调用工具执行**: 无论什么决策，你都必须调用以下三个工具之一
 
-## 执行方式
+## 强制执行要求 (非常重要!)
 
-如果决定做多，请调用:
-[USE_TOOL: open_long(leverage="杠杆倍数", amount_usdt="金额", tp_price="止盈价", sl_price="止损价")]
+**你必须调用以下三个工具之一来执行你的决策，这是强制要求！**
 
-如果决定做空，请调用:
-[USE_TOOL: open_short(leverage="杠杆倍数", amount_usdt="金额", tp_price="止盈价", sl_price="止损价")]
+1. **做多** → 调用 `open_long` 工具
+2. **做空** → 调用 `open_short` 工具
+3. **观望** → 调用 `hold` 工具
 
-如果决定观望，请说明原因，不需要调用工具。
+⚠️ **禁止**: 不调用任何工具就结束回复
+⚠️ **禁止**: 只在文字中说"观望"但不调用 `hold` 工具
 
-请先给出你的分析总结，然后做出决策并执行。
+请先给出你的分析总结，然后**必须调用对应的工具**来执行决策。
 """
 
         response = await self._run_agent_turn(leader, prompt)
 
-        # Try to extract signal from the response for tracking purposes
-        signal = await self._parse_json_signal(response)
-        if not signal:
-            # If no JSON, try to parse from tool call results
-            signal = self._extract_signal_from_response(response)
+        # Extract signal ONLY from actually executed tools, not from text matching
+        signal = self._extract_signal_from_executed_tools(response)
 
         return signal
 
-    def _extract_signal_from_response(self, response: str) -> Optional[TradingSignal]:
-        """Extract trading signal from Leader's response (tool call or text)"""
+    def _extract_signal_from_executed_tools(self, response: str) -> Optional[TradingSignal]:
+        """
+        Extract trading signal ONLY from actually executed tool calls.
+        This prevents the bug where text mentions of 'open_long' would be mistaken for actual decisions.
+        """
         try:
-            from app.core.trading.price_service import get_current_btc_price
             import asyncio
 
-            # Default values from config
-            direction = "hold"
+            # Check if any decision tools were actually executed
+            decision_tools = ['open_long', 'open_short', 'hold']
+            executed_decision = None
+            executed_params = {}
+
+            for tool_exec in self._last_executed_tools:
+                tool_name = tool_exec.get('tool_name', '')
+                if tool_name in decision_tools:
+                    executed_decision = tool_name
+                    executed_params = tool_exec.get('params', {})
+                    logger.info(f"Found executed decision tool: {tool_name} with params: {executed_params}")
+                    break
+
+            # If no decision tool was executed, return None (no signal)
+            if not executed_decision:
+                logger.warning("No decision tool (open_long/open_short/hold) was executed by Leader")
+                # Return a hold signal by default when no tool is called
+                return self._create_hold_signal(response, "Leader did not call any decision tool")
+
+            # Map tool name to direction
+            if executed_decision == 'open_long':
+                direction = 'long'
+            elif executed_decision == 'open_short':
+                direction = 'short'
+            else:  # 'hold'
+                direction = 'hold'
+
+            logger.info(f"Extracted direction from executed tool: {direction}")
+
+            # Extract parameters from executed tool call
             leverage = 1
             amount_percent = self.config.default_position_percent
             tp_percent = self.config.default_tp_percent
             sl_percent = self.config.default_sl_percent
             confidence = self.config.min_confidence
 
-            # Parse direction from tool calls or text
-            if "open_long" in response.lower() or "做多" in response:
-                direction = "long"
-            elif "open_short" in response.lower() or "做空" in response:
-                direction = "short"
+            # Parse leverage from params
+            if 'leverage' in executed_params:
+                try:
+                    leverage = min(int(executed_params['leverage']), self.config.max_leverage)
+                except (ValueError, TypeError):
+                    pass
 
-            # Parse leverage from tool call
-            import re
-            lev_match = re.search(r'leverage["\s=:]+(\d+)', response, re.IGNORECASE)
-            if lev_match:
-                leverage = min(int(lev_match.group(1)), self.config.max_leverage)
-
-            # Parse amount
-            amt_match = re.search(r'amount_usdt["\s=:]+(\d+\.?\d*)', response, re.IGNORECASE)
-            if amt_match:
-                # Convert USDT to percent using configured default balance
-                amount_usdt = float(amt_match.group(1))
-                amount_percent = min(amount_usdt / self.config.default_balance, self.config.max_position_percent)
+            # Parse amount from params
+            if 'amount_usdt' in executed_params:
+                try:
+                    amount_usdt = float(executed_params['amount_usdt'])
+                    amount_percent = min(amount_usdt / self.config.default_balance, self.config.max_position_percent)
+                except (ValueError, TypeError):
+                    pass
 
             # Get current price for TP/SL calculation
             try:
                 loop = asyncio.get_event_loop()
-                current_price = loop.run_until_complete(get_current_btc_price())
+                if loop.is_running():
+                    # If in async context, we can't use run_until_complete
+                    current_price = self.config.fallback_price
+                else:
+                    current_price = loop.run_until_complete(get_current_btc_price())
             except:
-                current_price = self.config.fallback_price  # 使用配置的回退价格
+                current_price = self.config.fallback_price
 
             if direction == "long":
                 tp_price = current_price * (1 + tp_percent / 100)
@@ -485,8 +517,36 @@ class TradingMeeting(Meeting):
                 agents_consensus=consensus
             )
         except Exception as e:
-            logger.error(f"Error extracting signal from response: {e}")
+            logger.error(f"Error extracting signal from executed tools: {e}")
             return None
+
+    def _create_hold_signal(self, response: str, reason: str) -> TradingSignal:
+        """Create a hold signal when Leader doesn't call any decision tool"""
+        import asyncio
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                current_price = self.config.fallback_price
+            else:
+                current_price = loop.run_until_complete(get_current_btc_price())
+        except:
+            current_price = self.config.fallback_price
+
+        consensus = {v.agent_name: v.direction for v in self._agent_votes}
+
+        return TradingSignal(
+            direction="hold",
+            symbol=self.config.symbol,
+            leverage=1,
+            amount_percent=0,
+            entry_price=current_price,
+            take_profit_price=current_price,
+            stop_loss_price=current_price,
+            confidence=0,
+            reasoning=f"{reason}. Response: {response[:300]}",
+            agents_consensus=consensus
+        )
 
     async def _run_execution_phase(self, signal: TradingSignal):
         """Phase 5: Execution confirmation (trade already executed by Leader in consensus phase)"""
@@ -558,10 +618,18 @@ class TradingMeeting(Meeting):
             if not content:
                 content = f"[{agent.name}] 分析完成，暂无明确建议。"
 
+            # Handle blocked or empty responses from Gemini safety filter
+            if "[Response blocked or empty]" in content or not content.strip():
+                logger.warning(f"Agent {agent.name} response was blocked by content filter")
+                content = self._get_fallback_response(agent.id, agent.name)
+
             # ===== Tool Execution (copied from agent._parse_llm_response) =====
             # Check for tool calls in the content using [USE_TOOL: tool_name(params)] format
             tool_pattern = r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]'
             tool_matches = re.findall(tool_pattern, content)
+
+            # Clear previous tool executions for this agent turn
+            self._last_executed_tools = []
 
             if tool_matches and hasattr(agent, 'tools') and agent.tools:
                 logger.info(f"Agent {agent.name} has {len(tool_matches)} tool calls to execute")
@@ -587,6 +655,14 @@ class TradingMeeting(Meeting):
                             # Execute the tool
                             tool_result = await agent.tools[tool_name].execute(**params)
                             logger.info(f"[{agent.name}] Tool {tool_name} executed successfully")
+
+                            # Record executed tool call for signal extraction
+                            self._last_executed_tools.append({
+                                "tool_name": tool_name,
+                                "params": params,
+                                "result": tool_result
+                            })
+                            logger.info(f"[{agent.name}] Recorded tool execution: {tool_name} with params: {params}")
 
                             # Collect tool results
                             if isinstance(tool_result, dict) and "summary" in tool_result:
@@ -931,3 +1007,93 @@ class TradingMeeting(Meeting):
         except Exception as e:
             logger.error(f"Error parsing JSON signal: {e}")
             return await self._parse_signal(response)
+
+    def _get_fallback_response(self, agent_id: str, agent_name: str) -> str:
+        """
+        Generate fallback response when Gemini content filter blocks the response.
+        This provides a neutral, conservative response to keep the meeting going.
+        """
+        fallback_responses = {
+            "MacroEconomist": """## 宏观经济分析 (数据获取受限)
+
+我是**宏观经济分析师「全球视野」**。
+
+由于数据获取暂时受限，我基于历史经验提供以下分析框架：
+
+### 宏观评分: 5/10 (中性)
+
+### 当前观察要点:
+1. **利率环境**: 全球央行货币政策仍需关注
+2. **流动性状况**: 市场流动性变化可能影响加密资产
+3. **美元指数**: 美元走势与BTC通常呈负相关
+
+### 宏观面建议:
+- 建议方向: **观望**
+- 当前宏观环境不确定性较高
+- 建议等待更明确的宏观信号
+
+### 风险提示:
+宏观数据获取受限，建议更多依赖技术面和情绪面分析做出交易决策。""",
+
+            "TechnicalAnalyst": """## 技术分析 (数据获取受限)
+
+我是**技术分析师「图表大师」**。
+
+由于技术数据获取暂时受限，建议参考以下分析框架：
+
+### 技术评分: 5/10 (中性)
+
+### 建议:
+- 等待数据恢复后再进行详细技术分析
+- 短期内建议观望""",
+
+            "SentimentAnalyst": """## 情绪分析 (数据获取受限)
+
+我是**情绪分析专家「人心洞察」**。
+
+由于情绪数据获取暂时受限，提供以下参考：
+
+### 情绪评分: 5/10 (中性)
+
+### 建议:
+- 当前无法获取实时恐慌贪婪指数
+- 建议参考其他专家意见
+- 短期内持谨慎态度""",
+
+            "QuantStrategist": """## 量化分析 (数据获取受限)
+
+我是**量化策略师「数据猎手」**。
+
+由于量化数据获取暂时受限：
+
+### 量化评分: 5/10 (中性)
+
+### 建议:
+- 数据不足，无法提供量化信号
+- 建议观望等待数据恢复""",
+
+            "RiskAssessor": """## 风险评估 (审慎模式)
+
+我是**风险评估师「稳健守护」**。
+
+由于部分数据获取受限，启用审慎模式：
+
+### 风险评级: 中高
+
+### 建议:
+- 建议降低仓位比例
+- 适当降低杠杆倍数
+- 设置更严格的止损
+
+### 风险管理建议:
+数据不完整时应采取更保守的交易策略。"""
+        }
+
+        return fallback_responses.get(agent_id, f"""## {agent_name} 分析 (数据受限)
+
+由于数据获取暂时受限，无法提供完整分析。
+
+### 建议: 观望
+### 信心度: 50%
+
+建议参考其他专家意见做出决策。""")

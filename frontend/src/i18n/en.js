@@ -655,7 +655,8 @@ export default {
       llmProviderDesc: 'Select the LLM provider for AI analysis',
       providers: {
         gemini: 'Gemini (Google)',
-        kimi: 'Kimi (Moonshot AI)'
+        kimi: 'Kimi (Moonshot AI)',
+        deepseek: 'DeepSeek'
       },
       currentModel: 'Current Model',
       providerStatus: 'Status',

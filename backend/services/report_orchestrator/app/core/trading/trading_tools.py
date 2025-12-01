@@ -224,6 +224,23 @@ class TradingToolkit:
             func=self._close_position
         )
 
+        # Hold Decision Tool - 观望决策
+        self._tools['hold'] = FunctionTool(
+            name="hold",
+            description="决定观望，不进行任何交易操作。当市场不明朗或风险过高时调用此工具",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "description": "观望的原因说明"
+                    }
+                },
+                "required": ["reason"]
+            },
+            func=self._hold
+        )
+
         # Analysis Tools
         self._tools['get_fear_greed_index'] = FunctionTool(
             name="get_fear_greed_index",
@@ -281,8 +298,8 @@ class TradingToolkit:
         return [self._tools[name] for name in analysis_tool_names if name in self._tools]
 
     def get_execution_tools(self) -> List[FunctionTool]:
-        """Get only execution tools"""
-        exec_tool_names = ['open_long', 'open_short', 'close_position']
+        """Get only execution tools (including hold for decision making)"""
+        exec_tool_names = ['open_long', 'open_short', 'close_position', 'hold']
         return [self._tools[name] for name in exec_tool_names if name in self._tools]
 
     # ===== Tool Implementation Methods =====
@@ -824,6 +841,16 @@ class TradingToolkit:
         except Exception as e:
             logger.error(f"Error closing position: {e}")
             return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
+
+    async def _hold(self, reason: str = "市场不明朗") -> str:
+        """Hold decision - do not trade"""
+        logger.info(f"Hold decision made: {reason}")
+        return json.dumps({
+            "success": True,
+            "action": "hold",
+            "reason": reason,
+            "message": f"决定观望: {reason}"
+        }, ensure_ascii=False)
 
     async def _get_fear_greed_index(self) -> str:
         """Get crypto fear & greed index - fetches REAL data from alternative.me API"""

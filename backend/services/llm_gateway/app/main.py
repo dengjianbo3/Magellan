@@ -1,7 +1,7 @@
 # backend/services/llm_gateway/app/main.py
 """
 LLM Gateway Service - 支持多 LLM 提供商
-当前支持: Gemini (Google) 和 Kimi (Moonshot AI)
+当前支持: Gemini (Google), Kimi (Moonshot AI) 和 DeepSeek
 """
 import os
 import io
@@ -25,7 +25,7 @@ class GenerateRequest(BaseModel):
     # Temperature 参数 - 控制输出随机性
     temperature: Optional[float] = None
     # 指定 LLM 提供商 (可选，默认使用系统配置)
-    provider: Optional[Literal["gemini", "kimi"]] = None
+    provider: Optional[Literal["gemini", "kimi", "deepseek"]] = None
 
 class GenerateResponse(BaseModel):
     content: str
@@ -57,11 +57,12 @@ app.add_middleware(
 # --- 全局客户端 ---
 gemini_client = None
 kimi_client = None
+deepseek_client = None
 current_provider = settings.DEFAULT_LLM_PROVIDER
 
 @app.on_event("startup")
 def startup_event():
-    global gemini_client, kimi_client, current_provider
+    global gemini_client, kimi_client, deepseek_client, current_provider
 
     # 初始化 Gemini 客户端
     if settings.GOOGLE_API_KEY:
@@ -84,15 +85,40 @@ def startup_event():
         except Exception as e:
             print(f"[LLM Gateway] Failed to initialize Kimi client: {e}")
 
+    # 初始化 DeepSeek 客户端 (使用 OpenAI 兼容接口)
+    if settings.DEEPSEEK_API_KEY:
+        try:
+            from openai import OpenAI
+            deepseek_client = OpenAI(
+                api_key=settings.DEEPSEEK_API_KEY,
+                base_url=settings.DEEPSEEK_BASE_URL
+            )
+            print(f"[LLM Gateway] DeepSeek client initialized (model: {settings.DEEPSEEK_MODEL_NAME})")
+        except Exception as e:
+            print(f"[LLM Gateway] Failed to initialize DeepSeek client: {e}")
+
     # 确定默认提供商
     if current_provider == "gemini" and not gemini_client:
-        if kimi_client:
+        if deepseek_client:
+            current_provider = "deepseek"
+            print("[LLM Gateway] Gemini not available, falling back to DeepSeek")
+        elif kimi_client:
             current_provider = "kimi"
             print("[LLM Gateway] Gemini not available, falling back to Kimi")
     elif current_provider == "kimi" and not kimi_client:
-        if gemini_client:
+        if deepseek_client:
+            current_provider = "deepseek"
+            print("[LLM Gateway] Kimi not available, falling back to DeepSeek")
+        elif gemini_client:
             current_provider = "gemini"
             print("[LLM Gateway] Kimi not available, falling back to Gemini")
+    elif current_provider == "deepseek" and not deepseek_client:
+        if gemini_client:
+            current_provider = "gemini"
+            print("[LLM Gateway] DeepSeek not available, falling back to Gemini")
+        elif kimi_client:
+            current_provider = "kimi"
+            print("[LLM Gateway] DeepSeek not available, falling back to Kimi")
 
     print(f"[LLM Gateway] Current provider: {current_provider}")
 
@@ -240,6 +266,63 @@ async def call_kimi(request: GenerateRequest) -> str:
             print(f"[Kimi] Error: {e}")
             raise HTTPException(status_code=500, detail=f"Kimi error: {str(e)}")
 
+# --- DeepSeek 调用 ---
+async def call_deepseek(request: GenerateRequest) -> str:
+    """调用 DeepSeek API (OpenAI 兼容格式)"""
+    if not deepseek_client:
+        raise HTTPException(status_code=503, detail="DeepSeek client is not available")
+
+    max_retries = 3
+    retry_delay = 2
+
+    for attempt in range(max_retries):
+        try:
+            # 转换消息格式为 OpenAI 格式
+            messages = []
+            for msg in request.history:
+                # DeepSeek 使用 content 而不是 parts
+                content = "\n".join(msg.parts) if msg.parts else ""
+                # 映射 role: model -> assistant
+                role = "assistant" if msg.role == "model" else msg.role
+                messages.append({
+                    "role": role,
+                    "content": content
+                })
+
+            # DeepSeek 推荐 temperature=1.0 (范围 0-2)
+            temperature = request.temperature if request.temperature is not None else 1.0
+
+            print(f"[DeepSeek] Using temperature: {temperature}, model: {settings.DEEPSEEK_MODEL_NAME}")
+
+            # 使用同步调用（在异步上下文中）
+            import asyncio
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: deepseek_client.chat.completions.create(
+                    model=settings.DEEPSEEK_MODEL_NAME,
+                    messages=messages,
+                    temperature=temperature,
+                    stream=False
+                )
+            )
+
+            return response.choices[0].message.content
+
+        except Exception as e:
+            error_str = str(e)
+            # 检查是否是可重试的错误
+            is_retryable = "503" in error_str or "rate" in error_str.lower() or "timeout" in error_str.lower() or "overloaded" in error_str.lower()
+
+            if is_retryable and attempt < max_retries - 1:
+                print(f"[DeepSeek] Attempt {attempt + 1}/{max_retries} failed. Retrying in {retry_delay}s...")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2
+                continue
+
+            print(f"[DeepSeek] Error: {e}")
+            raise HTTPException(status_code=500, detail=f"DeepSeek error: {str(e)}")
+
 # --- API Endpoints ---
 
 @app.get("/providers", response_model=ProvidersResponse, tags=["Configuration"])
@@ -255,6 +338,11 @@ async def get_providers():
             name="kimi",
             available=kimi_client is not None,
             model=settings.KIMI_MODEL_NAME
+        ),
+        ProviderInfo(
+            name="deepseek",
+            available=deepseek_client is not None,
+            model=settings.DEEPSEEK_MODEL_NAME
         )
     ]
     return ProvidersResponse(
@@ -263,7 +351,7 @@ async def get_providers():
     )
 
 @app.post("/providers/{provider_name}", tags=["Configuration"])
-async def set_provider(provider_name: Literal["gemini", "kimi"]):
+async def set_provider(provider_name: Literal["gemini", "kimi", "deepseek"]):
     """切换当前 LLM 提供商"""
     global current_provider
 
@@ -271,6 +359,8 @@ async def set_provider(provider_name: Literal["gemini", "kimi"]):
         raise HTTPException(status_code=400, detail="Gemini is not configured. Please set GOOGLE_API_KEY in .env")
     if provider_name == "kimi" and not kimi_client:
         raise HTTPException(status_code=400, detail="Kimi is not configured. Please set KIMI_API_KEY in .env")
+    if provider_name == "deepseek" and not deepseek_client:
+        raise HTTPException(status_code=400, detail="DeepSeek is not configured. Please set DEEPSEEK_API_KEY in .env")
 
     current_provider = provider_name
     print(f"[LLM Gateway] Provider switched to: {current_provider}")
@@ -294,6 +384,8 @@ async def chat_handler(request: GenerateRequest):
         content = await call_gemini(request)
     elif provider == "kimi":
         content = await call_kimi(request)
+    elif provider == "deepseek":
+        content = await call_deepseek(request)
     else:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 
@@ -374,6 +466,8 @@ def health_check():
         "current_provider": current_provider,
         "gemini_available": gemini_client is not None,
         "kimi_available": kimi_client is not None,
+        "deepseek_available": deepseek_client is not None,
         "gemini_model": settings.GEMINI_MODEL_NAME,
-        "kimi_model": settings.KIMI_MODEL_NAME
+        "kimi_model": settings.KIMI_MODEL_NAME,
+        "deepseek_model": settings.DEEPSEEK_MODEL_NAME
     }

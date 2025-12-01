@@ -671,7 +671,8 @@ export default {
       llmProviderDesc: '选择用于 AI 分析的大语言模型提供商',
       providers: {
         gemini: 'Gemini (Google)',
-        kimi: 'Kimi (Moonshot AI)'
+        kimi: 'Kimi (Moonshot AI)',
+        deepseek: 'DeepSeek (深度求索)'
       },
       currentModel: '当前模型',
       providerStatus: '状态',

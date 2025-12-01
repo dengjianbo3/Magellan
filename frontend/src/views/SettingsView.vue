@@ -217,7 +217,7 @@
               <p class="text-sm text-text-secondary mb-4">{{ t('settings.api.llmProviderDesc') }}</p>
 
               <!-- Provider Cards -->
-              <div class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-3 gap-4">
                 <!-- Gemini Provider -->
                 <button
                   @click="switchProvider('gemini')"
@@ -293,6 +293,44 @@
                     </span>
                   </div>
                 </button>
+
+                <!-- DeepSeek Provider -->
+                <button
+                  @click="switchProvider('deepseek')"
+                  :disabled="providerSwitching || !providers.deepseek?.available"
+                  :class="[
+                    'p-5 rounded-xl border-2 transition-all text-left relative overflow-hidden group',
+                    currentProvider === 'deepseek'
+                      ? 'border-primary bg-primary/10 shadow-glow-sm'
+                      : providers.deepseek?.available
+                        ? 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10'
+                        : 'border-white/5 bg-white/5 opacity-50 cursor-not-allowed'
+                  ]"
+                >
+                  <!-- Selected indicator -->
+                  <div v-if="currentProvider === 'deepseek'" class="absolute top-3 right-3">
+                    <span class="material-symbols-outlined text-primary">check_circle</span>
+                  </div>
+
+                  <!-- Provider logo/icon -->
+                  <div class="flex items-center gap-3 mb-3">
+                    <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-700 flex items-center justify-center">
+                      <span class="text-white font-bold text-lg">D</span>
+                    </div>
+                    <div>
+                      <h3 class="font-bold text-white">{{ t('settings.api.providers.deepseek') || 'DeepSeek' }}</h3>
+                      <p class="text-xs text-text-secondary">{{ providers.deepseek?.model || 'deepseek-chat' }}</p>
+                    </div>
+                  </div>
+
+                  <!-- Status -->
+                  <div class="flex items-center gap-2">
+                    <span :class="['w-2 h-2 rounded-full', providers.deepseek?.available ? 'bg-green-500' : 'bg-red-500']"></span>
+                    <span class="text-xs text-text-secondary">
+                      {{ providers.deepseek?.available ? t('settings.api.available') : t('settings.api.unavailable') }}
+                    </span>
+                  </div>
+                </button>
               </div>
 
               <!-- Switching indicator -->
@@ -319,11 +357,13 @@
                     <div :class="['w-8 h-8 rounded-lg flex items-center justify-center',
                       currentProvider === 'gemini'
                         ? 'bg-gradient-to-br from-blue-500 to-purple-600'
-                        : 'bg-gradient-to-br from-orange-500 to-red-600']">
-                      <span class="text-white font-bold">{{ currentProvider === 'gemini' ? 'G' : 'K' }}</span>
+                        : currentProvider === 'deepseek'
+                          ? 'bg-gradient-to-br from-cyan-500 to-blue-700'
+                          : 'bg-gradient-to-br from-orange-500 to-red-600']">
+                      <span class="text-white font-bold">{{ currentProvider === 'gemini' ? 'G' : currentProvider === 'deepseek' ? 'D' : 'K' }}</span>
                     </div>
                     <div>
-                      <p class="font-bold text-white">{{ currentProvider === 'gemini' ? t('settings.api.providers.gemini') : t('settings.api.providers.kimi') }}</p>
+                      <p class="font-bold text-white">{{ currentProvider === 'gemini' ? t('settings.api.providers.gemini') : currentProvider === 'deepseek' ? (t('settings.api.providers.deepseek') || 'DeepSeek') : t('settings.api.providers.kimi') }}</p>
                       <p class="text-xs text-text-secondary font-mono">{{ providers[currentProvider]?.model || '-' }}</p>
                     </div>
                   </div>
@@ -434,7 +474,8 @@ const notifications = ref({
 const currentProvider = ref('gemini');
 const providers = ref({
   gemini: { available: false, model: '' },
-  kimi: { available: false, model: '' }
+  kimi: { available: false, model: '' },
+  deepseek: { available: false, model: '' }
 });
 const providerSwitching = ref(false);
 const providerError = ref('');
