@@ -77,7 +77,52 @@ export default defineConfig({
   // Server configuration
   server: {
     // Enable gzip compression in dev
-    middlewareMode: false
+    middlewareMode: false,
+    // Proxy API requests to backend
+    proxy: {
+      // Trading API -> report_orchestrator
+      '/api/trading': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        ws: true  // Enable WebSocket proxy
+      },
+      // Roundtable API -> report_orchestrator
+      '/api/roundtable': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        ws: true
+      },
+      // Analysis API -> report_orchestrator
+      '/api/analysis': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      // Reports API -> report_orchestrator
+      '/api/reports': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      // Session API -> report_orchestrator
+      '/api/sessions': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      // Auth API -> auth_service
+      '/api/auth': {
+        target: 'http://localhost:8007',
+        changeOrigin: true
+      },
+      // LLM Gateway API
+      '/api/llm': {
+        target: 'http://localhost:8003',
+        changeOrigin: true
+      },
+      // Web Search API
+      '/api/search': {
+        target: 'http://localhost:8004',
+        changeOrigin: true
+      }
+    }
   },
   // Optimize dependencies
   optimizeDeps: {

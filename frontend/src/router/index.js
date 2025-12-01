@@ -11,6 +11,7 @@ import RoundtableView from '@/views/RoundtableView.vue';
 import AgentsView from '@/views/AgentsView.vue';
 import KnowledgeView from '@/views/KnowledgeView.vue';
 import SettingsView from '@/views/SettingsView.vue';
+import AutoTradingView from '@/views/AutoTradingView.vue';
 import LoginView from '@/views/LoginView.vue';
 import RegisterView from '@/views/RegisterView.vue';
 
@@ -69,6 +70,11 @@ const routes = [
         path: 'settings',
         name: 'Settings',
         component: SettingsView
+      },
+      {
+        path: 'trading',
+        name: 'AutoTrading',
+        component: AutoTradingView
       }
     ]
   },

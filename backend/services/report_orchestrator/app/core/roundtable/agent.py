@@ -24,23 +24,45 @@ class Agent:
     def __init__(
         self,
         name: str,
-        role_prompt: str,
+        role_prompt: str = None,
         llm_gateway_url: str = "http://llm_gateway:8003",
         model: str = "gpt-4",
-        temperature: float = 0.7
+        temperature: float = 0.7,
+        # Extended parameters for trading agents
+        id: str = None,
+        role: str = None,
+        personality: str = None,
+        system_prompt: str = None,
+        expertise: List[str] = None,
+        avatar: str = None
     ):
         """
         初始化Agent
 
         Args:
-            name: Agent的唯一标识符(如"MarketAnalyst")
+            name: Agent的显示名称
             role_prompt: 定义Agent的人格、专长和目标的系统提示
             llm_gateway_url: LLM网关服务的URL
             model: 使用的模型名称
             temperature: 生成温度参数
+            id: Agent的唯一标识符（可选，默认使用name）
+            role: Agent的角色描述
+            personality: Agent的个性描述
+            system_prompt: 系统提示（与role_prompt可互换）
+            expertise: Agent的专长领域列表
+            avatar: Agent的头像图标
         """
+        self.id = id or name  # Use id if provided, otherwise use name
         self.name = name
-        self.role_prompt = role_prompt
+        self.role = role or name
+        self.personality = personality or ""
+        self.expertise = expertise or []
+        self.avatar = avatar or "person"
+
+        # System prompt can be specified as role_prompt or system_prompt
+        self.role_prompt = role_prompt or system_prompt or ""
+        self.system_prompt = self.role_prompt  # Alias for compatibility
+
         self.llm_gateway_url = llm_gateway_url
         self.model = model
         self.temperature = temperature

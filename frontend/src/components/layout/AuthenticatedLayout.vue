@@ -120,6 +120,7 @@ const pageTitles = {
   ReportsView: 'Reports',
   AnalysisWizard: 'Analysis',
   Roundtable: 'Roundtable Discussion',
+  AutoTrading: 'Auto Trading',
   Agents: 'AI Agents',
   Knowledge: 'Knowledge Base',
   Settings: 'Settings'
@@ -132,6 +133,7 @@ const currentTab = computed(() => {
     ReportsView: 'reports',
     AnalysisWizard: 'analysis',
     Roundtable: 'roundtable',
+    AutoTrading: 'trading',
     Agents: 'agents',
     Knowledge: 'knowledge',
     Settings: 'settings'
@@ -180,6 +182,7 @@ const handleNavigate = (tabId) => {
     reports: 'ReportsView',
     analysis: 'AnalysisWizard',
     roundtable: 'Roundtable',
+    trading: 'AutoTrading',
     agents: 'Agents',
     knowledge: 'Knowledge',
     settings: 'Settings'

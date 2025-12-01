@@ -37,7 +37,8 @@ class TechnicalAnalysisTools:
     """
 
     def __init__(self):
-        # API端点
+        # API端点 - OKX优先（在中国大陆可用），然后Binance，最后CoinGecko
+        self.okx_api = "https://www.okx.com/api/v5"
         self.binance_api = "https://api.binance.com/api/v3"
         self.coingecko_api = "https://api.coingecko.com/api/v3"
 
@@ -76,9 +77,15 @@ class TechnicalAnalysisTools:
         timeframe: str,
         limit: int
     ) -> pd.DataFrame:
-        """从Binance、CoinGecko或Yahoo Finance获取加密货币K线数据"""
+        """从OKX、Binance、CoinGecko或Yahoo Finance获取加密货币K线数据"""
 
-        # 首先尝试Binance API
+        # 首先尝试OKX API（在中国大陆可用）
+        try:
+            return await self._get_crypto_ohlcv_okx(symbol, timeframe, limit)
+        except Exception as e:
+            print(f"OKX API failed: {e}, trying Binance...")
+
+        # 然后尝试Binance API
         try:
             return await self._get_crypto_ohlcv_binance(symbol, timeframe, limit)
         except Exception as e:
@@ -92,6 +99,68 @@ class TechnicalAnalysisTools:
 
         # 最后尝试Yahoo Finance (BTC-USD, ETH-USD等)
         return await self._get_crypto_ohlcv_yfinance(symbol, timeframe, limit)
+
+    async def _get_crypto_ohlcv_okx(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int
+    ) -> pd.DataFrame:
+        """从OKX获取加密货币K线数据（首选，在中国大陆可用）"""
+
+        # 标准化symbol到OKX格式 (BTC-USDT)
+        clean_symbol = symbol.replace("/", "").upper()
+        if clean_symbol.endswith("USDT"):
+            okx_symbol = clean_symbol.replace("USDT", "-USDT")
+        else:
+            okx_symbol = f"{clean_symbol}-USDT"
+
+        # 转换timeframe到OKX格式
+        tf_map = {
+            "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
+            "1h": "1H", "4h": "4H", "1d": "1D", "1w": "1W", "1M": "1M"
+        }
+        bar = tf_map.get(timeframe, "1D")
+
+        url = f"{self.okx_api}/market/candles"
+        params = {
+            "instId": okx_symbol,
+            "bar": bar,
+            "limit": str(min(limit, 300))  # OKX最大300
+        }
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(url, params=params)
+
+            if response.status_code != 200:
+                raise Exception(f"OKX API error: {response.status_code} - {response.text}")
+
+            data = response.json()
+
+            if data.get("code") != "0":
+                raise Exception(f"OKX API error: {data.get('msg', 'Unknown error')}")
+
+            candles = data.get("data", [])
+            if not candles:
+                raise Exception(f"No data returned for {okx_symbol}")
+
+        # OKX返回格式: [timestamp, open, high, low, close, vol, volCcy, volCcyQuote, confirm]
+        # 注意: OKX数据是降序排列（最新的在前），需要反转
+        df = pd.DataFrame(candles, columns=[
+            'timestamp', 'open', 'high', 'low', 'close', 'volume',
+            'vol_ccy', 'vol_ccy_quote', 'confirm'
+        ])
+
+        # 反转顺序使最旧的在前
+        df = df.iloc[::-1].reset_index(drop=True)
+
+        df['timestamp'] = pd.to_datetime(df['timestamp'].astype(int), unit='ms')
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            df[col] = df[col].astype(float)
+
+        print(f"[TechnicalTools] Fetched {len(df)} candles from OKX: {okx_symbol}, latest close: ${df['close'].iloc[-1]:,.2f}")
+
+        return df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
 
     async def _get_crypto_ohlcv_yfinance(
         self,

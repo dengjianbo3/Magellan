@@ -54,3 +54,7 @@ aiokafka>=0.10.0  # Async Kafka client
 
 # For configuration management
 pyyaml>=6.0.0  # YAML config loading
+
+# For auto trading system (Experimental)
+ccxt>=4.0.0  # Unified exchange API (OKX, Binance, etc.)
+apscheduler>=3.10.0  # Task scheduling

@@ -40,6 +40,7 @@ from .api.routers.analysis import router as analysis_router
 from .api.routers.export import router as export_router, set_get_report_func
 from .api.routers.dd_workflow import router as dd_workflow_router, set_session_funcs
 from .api.routers.monitoring import router as monitoring_router
+from .api.trading_routes import router as trading_router
 from .middleware import RequestLoggingMiddleware, CachingMiddleware, response_cache
 
 # Phase 4: Import storage services
@@ -141,6 +142,7 @@ app.include_router(analysis_router, prefix="/api/v2/analysis", tags=["Analysis V
 app.include_router(export_router, prefix="/api/reports", tags=["Report Export"])
 app.include_router(dd_workflow_router, prefix="/api/dd", tags=["DD Workflow"])
 app.include_router(monitoring_router, prefix="/api/errors", tags=["Monitoring"])
+app.include_router(trading_router, tags=["Auto Trading"])
 
 # --- Pydantic Models ---
 class AnalysisRequest(BaseModel):
@@ -403,31 +405,6 @@ async def websocket_analysis_endpoint(websocket: WebSocket):
 # NOTE: Deprecated endpoints removed in Phase 4 refactoring:
 # - /start_analysis, /continue_analysis (use /ws/start_analysis instead)
 
-
-@app.post("/generate_full_report", response_model=FullReportResponse, tags=["Agent Workflow"])
-async def generate_full_report(
-    ticker: str = Form(...),
-    files: List[UploadFile] = File(...)
-):
-    """
-    **V2 Sprint 4 Workflow:**
-    1. Receives uploaded files and a ticker.
-    2. Simulates a multi-step analysis process.
-    3. Returns a final, structured report.
-    """
-    file_names = [file.filename for file in files]
-    await asyncio.sleep(2) # Simulate document parsing
-    await asyncio.sleep(3) # Simulate LLM generating sections
-
-    mock_sections = [
-        ReportSection(section_title="Executive Summary", content=f"This is a comprehensive analysis of {ticker}, incorporating insights from {len(file_names)} uploaded documents and public market data. The company shows strong potential in its core market..."),
-        ReportSection(section_title="Financial Analysis", content="The company's revenue has grown steadily over the past three years. Key metrics indicate a healthy financial position... (Data would be here)"),
-        ReportSection(section_title="Market Position", content="The company is a major player in its industry, though it faces competition from several key rivals..."),
-        ReportSection(section_title="Risk Assessment", content="Potential risks include market volatility, regulatory changes, and supply chain disruptions..."),
-        ReportSection(section_title="Investment Recommendation", content="Based on the analysis, our recommendation is a 'BUY' with a target price of... This is a mock recommendation.")
-    ]
-    
-    
 
 @app.post("/get_instant_feedback", response_model=InstantFeedbackResponse, tags=["Agent Workflow"])
 async def get_instant_feedback(request: InstantFeedbackRequest):

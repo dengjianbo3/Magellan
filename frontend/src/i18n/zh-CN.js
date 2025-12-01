@@ -90,6 +90,7 @@ export default {
     reports: '报告',
     analysis: '分析',
     roundtable: '圆桌讨论',
+    trading: '自动交易',
     agents: 'AI 智能体',
     knowledge: '知识库',
     settings: '设置',
@@ -1013,6 +1014,98 @@ export default {
       interventionSent: '补充信息已发送，Leader将根据您的信息重新规划讨论',
       interventionError: '发送补充信息失败'
     }
+  },
+
+  // Auto Trading
+  trading: {
+    title: '自动交易系统',
+    subtitle: 'AI 驱动的加密货币自动交易',
+    status: '状态',
+    running: '运行中',
+    stopped: '已停止',
+    start: '启动交易',
+    stop: '停止交易',
+
+    // Account
+    account: '账户概览',
+    equity: '总权益',
+    available: '可用余额',
+    unrealizedPnl: '未实现盈亏',
+    totalPnl: '总盈亏',
+
+    // Position
+    position: '当前持仓',
+    entry: '开仓价',
+    current: '当前价',
+    takeProfit: '止盈',
+    stopLoss: '止损',
+    pnl: '盈亏',
+    noPosition: '当前无持仓',
+
+    // Next Analysis
+    nextAnalysis: '下次分析',
+    interval: '每 4 小时分析一次',
+    triggerNow: '立即触发',
+
+    // Charts
+    equityCurve: '权益曲线',
+    startingCapital: '初始资金',
+
+    // Agent Team
+    agentTeam: '交易专家团队',
+    winRate: '胜率',
+
+    // Discussion
+    discussion: '实时讨论',
+    noMessages: '等待分析开始...',
+
+    // Trade History
+    history: '交易历史',
+    time: '时间',
+    direction: '方向',
+    leverage: '杠杆',
+    exit: '平仓价',
+    noTrades: '暂无交易记录',
+
+    // Settings
+    settings: '交易设置',
+    closePosition: '平仓',
+    tradingMode: '交易模式',
+    analysisInterval: '分析间隔（小时）',
+    maxLeverage: '最大杠杆',
+    maxPositionPercent: '最大仓位（占余额百分比）',
+
+    // Agent Performance
+    agentPerformance: 'Agent 表现',
+    noAgentData: '暂无 Agent 表现数据',
+    teamSummary: '团队汇总',
+    totalTrades: '总交易数',
+    wins: '盈利次数',
+    totalPnlLabel: '总盈亏',
+    avgPnl: '平均盈亏',
+    latestLesson: '最新经验',
+    agent: 'Agent',
+
+    // Settings Modal
+    loadingConfig: '加载配置中...',
+    okxDemoTrading: 'OKX 模拟交易',
+    localPaperTrading: '本地模拟交易',
+    okxDemo: 'OKX 模拟',
+    okxApiWarning: '需要在后端配置 OKX API 凭证',
+    hour1: '1 小时',
+    hour2: '2 小时',
+    hour4: '4 小时',
+    hour6: '6 小时',
+    hour12: '12 小时',
+    hour24: '24 小时',
+    noLeverage: '（无杠杆）',
+    resetSystem: '重置系统',
+    resetDescription: '停止交易、平仓、清除历史记录和记忆',
+    reset: '重置',
+    resetting: '重置中...',
+    saving: '保存中...',
+    closing: '平仓中...',
+    holding: '持仓中'
   },
 
   // Early Stage Investment

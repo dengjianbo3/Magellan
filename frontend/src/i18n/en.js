@@ -74,6 +74,7 @@ export default {
     reports: 'Reports',
     analysis: 'Analysis',
     roundtable: 'Roundtable',
+    trading: 'Auto Trading',
     agents: 'AI Agents',
     knowledge: 'Knowledge Base',
     settings: 'Settings',
@@ -980,6 +981,98 @@ export default {
       interventionSent: 'Your input has been sent. The Leader will re-plan the discussion.',
       interventionError: 'Failed to send input'
     }
+  },
+
+  // Auto Trading
+  trading: {
+    title: 'Auto Trading System',
+    subtitle: 'AI-powered automated cryptocurrency trading',
+    status: 'Status',
+    running: 'Running',
+    stopped: 'Stopped',
+    start: 'Start Trading',
+    stop: 'Stop Trading',
+
+    // Account
+    account: 'Account Overview',
+    equity: 'Total Equity',
+    available: 'Available',
+    unrealizedPnl: 'Unrealized PnL',
+    totalPnl: 'Total P&L',
+
+    // Position
+    position: 'Current Position',
+    entry: 'Entry',
+    current: 'Current',
+    takeProfit: 'Take Profit',
+    stopLoss: 'Stop Loss',
+    pnl: 'P&L',
+    noPosition: 'No open position',
+
+    // Next Analysis
+    nextAnalysis: 'Next Analysis',
+    interval: 'Analysis every 4 hours',
+    triggerNow: 'Trigger Now',
+
+    // Charts
+    equityCurve: 'Equity Curve',
+    startingCapital: 'Starting',
+
+    // Agent Team
+    agentTeam: 'Trading Expert Team',
+    winRate: 'Win Rate',
+
+    // Discussion
+    discussion: 'Live Discussion',
+    noMessages: 'Waiting for analysis...',
+
+    // Trade History
+    history: 'Trade History',
+    time: 'Time',
+    direction: 'Direction',
+    leverage: 'Leverage',
+    exit: 'Exit',
+    noTrades: 'No trades yet',
+
+    // Settings
+    settings: 'Trading Settings',
+    closePosition: 'Close Position',
+    tradingMode: 'Trading Mode',
+    analysisInterval: 'Analysis Interval (hours)',
+    maxLeverage: 'Max Leverage',
+    maxPositionPercent: 'Max Position (% of Balance)',
+
+    // Agent Performance
+    agentPerformance: 'Agent Performance',
+    noAgentData: 'No agent performance data yet',
+    teamSummary: 'Team Summary',
+    totalTrades: 'Total Trades',
+    wins: 'Wins',
+    totalPnlLabel: 'Total PnL',
+    avgPnl: 'Avg PnL',
+    latestLesson: 'Latest Lesson',
+    agent: 'Agent',
+
+    // Settings Modal
+    loadingConfig: 'Loading configuration...',
+    okxDemoTrading: 'OKX Demo Trading',
+    localPaperTrading: 'Local Paper Trading',
+    okxDemo: 'OKX Demo',
+    okxApiWarning: 'Requires OKX API credentials configured in the backend',
+    hour1: '1 hour',
+    hour2: '2 hours',
+    hour4: '4 hours',
+    hour6: '6 hours',
+    hour12: '12 hours',
+    hour24: '24 hours',
+    noLeverage: '(No Leverage)',
+    resetSystem: 'Reset System',
+    resetDescription: 'Stop trading, close positions, clear history and memories',
+    reset: 'Reset',
+    resetting: 'Resetting...',
+    saving: 'Saving...',
+    closing: 'Closing...',
+    holding: 'Holding'
   },
 
   // Early Stage Investment

@@ -62,6 +62,8 @@ services:
       redis:
         condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file:
+      - .env  # Load OKX and other credentials from .env
     environment:
       - PUBLIC_DATA_URL=http://external_data_service:8006
       - LLM_GATEWAY_URL=http://llm_gateway:8003

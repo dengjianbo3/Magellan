@@ -1,0 +1,12 @@
+apikey = "f2a96d12-fbbf-4115-982a-229d991c0163"
+secretkey = "9CF26024BC290B3F0D2B422C3F6F180C"
+IP = ""
+备注名 = "test_quant"
+权限 = "读取/交易"
+
+## demo
+apikey = "3bb25505-53d5-4f11-8d18-8a77aeccfffd"
+secretkey = "6AB2457533613EFC7D1474F11568758D"
+IP = ""
+备注名 = "sim_test"
+权限 = "读取/交易"

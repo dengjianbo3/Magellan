@@ -138,7 +138,36 @@ async def call_gemini(request: GenerateRequest) -> str:
                 config=config
             )
 
-            return response.text
+            # Ensure we return a string
+            text = response.text
+
+            # Check if text is None or empty
+            if not text:
+                print(f"[Gemini] Response text is empty or None: '{text}'")
+
+                # Try to extract from parts
+                if hasattr(response, 'candidates') and response.candidates:
+                    try:
+                        candidate = response.candidates[0]
+                        # Check finish reason
+                        if hasattr(candidate, 'finish_reason'):
+                            print(f"[Gemini] Finish reason: {candidate.finish_reason}")
+                        if hasattr(candidate, 'content') and candidate.content:
+                            parts = candidate.content.parts
+                            text = "".join(part.text for part in parts if hasattr(part, 'text'))
+                            print(f"[Gemini] Extracted from parts: {len(text)} chars")
+                    except Exception as e:
+                        print(f"[Gemini] Failed to extract from parts: {e}")
+
+                # Check for safety ratings / block reason
+                if hasattr(response, 'prompt_feedback'):
+                    print(f"[Gemini] Prompt feedback: {response.prompt_feedback}")
+
+                if not text:
+                    print(f"[Gemini] WARNING: Empty response. Candidates: {response.candidates if hasattr(response, 'candidates') else 'N/A'}")
+                    text = "[Response blocked or empty]"
+
+            return str(text)
 
         except Exception as e:
             from google.genai.errors import ServerError
