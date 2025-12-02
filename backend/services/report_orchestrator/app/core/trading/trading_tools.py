@@ -156,7 +156,7 @@ class TradingToolkit:
         # Trading Execution Tools
         self._tools['open_long'] = FunctionTool(
             name="open_long",
-            description=f"开多仓（做多），需要指定杠杆、金额、止盈止损价格",
+            description=f"开多仓（做多）。必须指定杠杆、金额、止盈百分比和止损百分比。止盈止损是强制要求的风控参数！",
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -174,23 +174,31 @@ class TradingToolkit:
                         "type": "number",
                         "description": "投入的USDT金额"
                     },
-                    "tp_price": {
+                    "tp_percent": {
                         "type": "number",
-                        "description": "止盈价格"
+                        "description": "止盈百分比，例如5表示涨5%止盈（必填）",
+                        "minimum": 0.5,
+                        "maximum": 50
                     },
-                    "sl_price": {
+                    "sl_percent": {
                         "type": "number",
-                        "description": "止损价格"
+                        "description": "止损百分比，例如2表示跌2%止损（必填）",
+                        "minimum": 0.5,
+                        "maximum": 20
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "开仓理由"
                     }
                 },
-                "required": ["leverage", "amount_usdt"]
+                "required": ["leverage", "amount_usdt", "tp_percent", "sl_percent"]
             },
             func=self._open_long
         )
 
         self._tools['open_short'] = FunctionTool(
             name="open_short",
-            description=f"开空仓（做空），需要指定杠杆、金额、止盈止损价格",
+            description=f"开空仓（做空）。必须指定杠杆、金额、止盈百分比和止损百分比。止盈止损是强制要求的风控参数！",
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -208,16 +216,24 @@ class TradingToolkit:
                         "type": "number",
                         "description": "投入的USDT金额"
                     },
-                    "tp_price": {
+                    "tp_percent": {
                         "type": "number",
-                        "description": "止盈价格"
+                        "description": "止盈百分比，例如5表示跌5%止盈（必填）",
+                        "minimum": 0.5,
+                        "maximum": 50
                     },
-                    "sl_price": {
+                    "sl_percent": {
                         "type": "number",
-                        "description": "止损价格"
+                        "description": "止损百分比，例如2表示涨2%止损（必填）",
+                        "minimum": 0.5,
+                        "maximum": 20
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "开仓理由"
                     }
                 },
-                "required": ["leverage", "amount_usdt"]
+                "required": ["leverage", "amount_usdt", "tp_percent", "sl_percent"]
             },
             func=self._open_short
         )
@@ -827,6 +843,25 @@ class TradingToolkit:
             amount_usdt = float(amount_usdt) if amount_usdt else 100
             tp_price = float(tp_price) if tp_price else None
             sl_price = float(sl_price) if sl_price else None
+            tp_percent = float(tp_percent) if tp_percent else None
+            sl_percent = float(sl_percent) if sl_percent else None
+
+            # 校验：必须提供止盈止损参数
+            if not tp_percent and not tp_price:
+                return json.dumps({
+                    "success": False,
+                    "error": "缺少止盈参数！请提供 tp_percent（止盈百分比，如5表示涨5%止盈）。这是风控强制要求！",
+                    "retry_required": True,
+                    "missing_params": ["tp_percent"]
+                }, ensure_ascii=False)
+
+            if not sl_percent and not sl_price:
+                return json.dumps({
+                    "success": False,
+                    "error": "缺少止损参数！请提供 sl_percent（止损百分比，如2表示跌2%止损）。这是风控强制要求！",
+                    "retry_required": True,
+                    "missing_params": ["sl_percent"]
+                }, ensure_ascii=False)
 
             # If tp_percent/sl_percent provided, calculate tp_price/sl_price
             if (tp_percent or sl_percent) and not (tp_price and sl_price):
@@ -839,8 +874,22 @@ class TradingToolkit:
                             tp_price = current_price * (1 + float(tp_percent) / 100)
                         if sl_percent and not sl_price:
                             sl_price = current_price * (1 - float(sl_percent) / 100)
+                        logger.info(f"[TradingTools] Calculated TP/SL for LONG: TP={tp_price:.2f} (+{tp_percent}%), SL={sl_price:.2f} (-{sl_percent}%)")
                 except Exception as e:
                     logger.warning(f"Could not calculate tp/sl prices from percent: {e}")
+                    return json.dumps({
+                        "success": False,
+                        "error": f"无法计算止盈止损价格: {e}",
+                        "retry_required": True
+                    }, ensure_ascii=False)
+
+            # 最终校验：确保 tp_price 和 sl_price 都已设置
+            if not tp_price or not sl_price:
+                return json.dumps({
+                    "success": False,
+                    "error": "止盈止损价格计算失败，请重新调用并提供正确的 tp_percent 和 sl_percent 参数",
+                    "retry_required": True
+                }, ensure_ascii=False)
 
             if self.paper_trader:
                 result = await self.paper_trader.open_long(
@@ -884,6 +933,25 @@ class TradingToolkit:
             amount_usdt = float(amount_usdt) if amount_usdt else 100
             tp_price = float(tp_price) if tp_price else None
             sl_price = float(sl_price) if sl_price else None
+            tp_percent = float(tp_percent) if tp_percent else None
+            sl_percent = float(sl_percent) if sl_percent else None
+
+            # 校验：必须提供止盈止损参数
+            if not tp_percent and not tp_price:
+                return json.dumps({
+                    "success": False,
+                    "error": "缺少止盈参数！请提供 tp_percent（止盈百分比，如5表示跌5%止盈）。这是风控强制要求！",
+                    "retry_required": True,
+                    "missing_params": ["tp_percent"]
+                }, ensure_ascii=False)
+
+            if not sl_percent and not sl_price:
+                return json.dumps({
+                    "success": False,
+                    "error": "缺少止损参数！请提供 sl_percent（止损百分比，如2表示涨2%止损）。这是风控强制要求！",
+                    "retry_required": True,
+                    "missing_params": ["sl_percent"]
+                }, ensure_ascii=False)
 
             # If tp_percent/sl_percent provided, calculate tp_price/sl_price (reversed for short)
             if (tp_percent or sl_percent) and not (tp_price and sl_price):
@@ -896,8 +964,22 @@ class TradingToolkit:
                             tp_price = current_price * (1 - float(tp_percent) / 100)  # Short: TP is below
                         if sl_percent and not sl_price:
                             sl_price = current_price * (1 + float(sl_percent) / 100)  # Short: SL is above
+                        logger.info(f"[TradingTools] Calculated TP/SL for SHORT: TP={tp_price:.2f} (-{tp_percent}%), SL={sl_price:.2f} (+{sl_percent}%)")
                 except Exception as e:
                     logger.warning(f"Could not calculate tp/sl prices from percent: {e}")
+                    return json.dumps({
+                        "success": False,
+                        "error": f"无法计算止盈止损价格: {e}",
+                        "retry_required": True
+                    }, ensure_ascii=False)
+
+            # 最终校验：确保 tp_price 和 sl_price 都已设置
+            if not tp_price or not sl_price:
+                return json.dumps({
+                    "success": False,
+                    "error": "止盈止损价格计算失败，请重新调用并提供正确的 tp_percent 和 sl_percent 参数",
+                    "retry_required": True
+                }, ensure_ascii=False)
 
             if self.paper_trader:
                 result = await self.paper_trader.open_short(
