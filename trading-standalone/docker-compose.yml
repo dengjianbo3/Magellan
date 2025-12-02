@@ -71,19 +71,16 @@ services:
       # LLM
       - LLM_GATEWAY_URL=http://llm_gateway:8003
       - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-gemini}
-      # OKX
+      # OKX 交易所
       - OKX_API_KEY=${OKX_API_KEY}
       - OKX_SECRET_KEY=${OKX_SECRET_KEY}
       - OKX_PASSPHRASE=${OKX_PASSPHRASE}
       - OKX_DEMO_MODE=${OKX_DEMO_MODE:-true}
-      # Trading Config
+      # 交易对
       - TRADING_SYMBOL=${TRADING_SYMBOL:-BTC-USDT-SWAP}
-      - TRADING_LEVERAGE=${TRADING_LEVERAGE:-10}
-      - TRADING_POSITION_SIZE=${TRADING_POSITION_SIZE:-100}
-      - TRADING_TP_PERCENT=${TRADING_TP_PERCENT:-5.0}
-      - TRADING_SL_PERCENT=${TRADING_SL_PERCENT:-3.0}
+      # 调度间隔
       - SCHEDULER_INTERVAL_HOURS=${SCHEDULER_INTERVAL_HOURS:-4}
-      # Email
+      # 邮件 (可选)
       - EMAIL_ENABLED=${EMAIL_ENABLED:-false}
       - SMTP_SERVER=${SMTP_SERVER}
       - SMTP_PORT=${SMTP_PORT:-587}
@@ -91,9 +88,9 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - EMAIL_FROM=${EMAIL_FROM}
       - EMAIL_TO=${EMAIL_TO}
-      # Logging
+      # 日志
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      # Mode
+      # 模式
       - STANDALONE_MODE=true
     ports:
       - "8000:8000"
