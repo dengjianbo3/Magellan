@@ -7,11 +7,23 @@ Runs every 4 hours by default, or immediately when TP/SL is triggered.
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Optional, Callable, Any, Dict
 from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+
+def _get_env_int(key: str, default: int) -> int:
+    """Get integer from environment variable"""
+    val = os.getenv(key)
+    if val:
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    return default
 
 
 class SchedulerState(Enum):
@@ -256,11 +268,14 @@ class CooldownManager:
 
     def __init__(
         self,
-        max_consecutive_losses: int = 3,
-        cooldown_hours: int = 24
+        max_consecutive_losses: int = None,
+        cooldown_hours: int = None
     ):
-        self.max_consecutive_losses = max_consecutive_losses
-        self.cooldown_hours = cooldown_hours
+        # Read from environment variables with fallback to defaults
+        self.max_consecutive_losses = max_consecutive_losses if max_consecutive_losses is not None else _get_env_int("MAX_CONSECUTIVE_LOSSES", 3)
+        self.cooldown_hours = cooldown_hours if cooldown_hours is not None else _get_env_int("COOLDOWN_HOURS", 24)
+
+        logger.info(f"CooldownManager initialized: max_consecutive_losses={self.max_consecutive_losses}, cooldown_hours={self.cooldown_hours}")
 
         self._consecutive_losses = 0
         self._in_cooldown = False
