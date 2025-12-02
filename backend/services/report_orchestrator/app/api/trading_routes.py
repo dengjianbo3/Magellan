@@ -204,9 +204,12 @@ class TradingSystem:
 
         try:
             # Run trading meeting
+            logger.info(f"[SIGNAL_DEBUG] Starting trading meeting for cycle #{cycle_number}")
             signal = await self._run_trading_meeting(reason)
+            logger.info(f"[SIGNAL_DEBUG] Trading meeting returned signal: {signal}")
 
             if signal:
+                logger.info(f"[SIGNAL_DEBUG] Signal is not None, direction={signal.direction}")
                 await self._broadcast({
                     "type": "signal_generated",
                     "signal": signal.model_dump()
@@ -215,14 +218,17 @@ class TradingSystem:
                 # Record all decisions to history (including hold)
                 if signal.direction == "hold":
                     # Record hold decision
+                    logger.info(f"[SIGNAL_DEBUG] Recording HOLD signal to history")
                     self._trade_history.append({
                         "timestamp": datetime.now().isoformat(),
                         "signal": signal.model_dump(),
                         "status": "hold",
                         "trade_result": {"action": "hold", "message": "观望，不执行交易"}
                     })
+                    logger.info(f"[SIGNAL_DEBUG] History now has {len(self._trade_history)} entries")
                 else:
                     # Execute trade
+                    logger.info(f"[SIGNAL_DEBUG] Recording {signal.direction} signal to history")
                     trade_result = await self._execute_signal(signal)
                     self._trade_history.append({
                         "timestamp": datetime.now().isoformat(),
@@ -230,6 +236,7 @@ class TradingSystem:
                         "status": "executed" if trade_result.get("success") else "failed",
                         "trade_result": trade_result
                     })
+                    logger.info(f"[SIGNAL_DEBUG] History now has {len(self._trade_history)} entries")
 
                     # Broadcast trade executed event so frontend can refresh data
                     await self._broadcast({
@@ -240,12 +247,14 @@ class TradingSystem:
                     })
             else:
                 # No signal generated - record this too
+                logger.info(f"[SIGNAL_DEBUG] Signal is None, recording no_signal status")
                 self._trade_history.append({
                     "timestamp": datetime.now().isoformat(),
                     "signal": None,
                     "status": "no_signal",
                     "trade_result": {"action": "none", "message": "未产生有效决策信号"}
                 })
+                logger.info(f"[SIGNAL_DEBUG] History now has {len(self._trade_history)} entries")
 
         except Exception as e:
             logger.error(f"Error in analysis cycle: {e}")
