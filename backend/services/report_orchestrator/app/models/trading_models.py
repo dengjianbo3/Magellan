@@ -4,6 +4,7 @@ Trading Data Models
 Pydantic models for the auto trading system.
 """
 
+import os
 from datetime import datetime
 from typing import Optional, Dict, List, Literal
 from pydantic import BaseModel, Field
@@ -156,11 +157,49 @@ class RiskLimits(BaseModel):
     min_confidence: int = 60  # Minimum confidence to execute trade
 
 
+def _get_env_int(key: str, default: int) -> int:
+    """Get integer from environment variable"""
+    val = os.getenv(key)
+    if val:
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    return default
+
+
+def _get_env_float(key: str, default: float) -> float:
+    """Get float from environment variable"""
+    val = os.getenv(key)
+    if val:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    return default
+
+
+def _get_env_bool(key: str, default: bool) -> bool:
+    """Get boolean from environment variable"""
+    val = os.getenv(key)
+    if val:
+        return val.lower() in ('true', '1', 'yes')
+    return default
+
+
 class TradingConfig(BaseModel):
     """Trading system configuration"""
-    analysis_interval_hours: int = 4
-    symbol: str = "BTC-USDT-SWAP"
+    # Read from SCHEDULER_INTERVAL_HOURS env var, default to 4
+    analysis_interval_hours: int = Field(
+        default_factory=lambda: _get_env_int("SCHEDULER_INTERVAL_HOURS", 4)
+    )
+    # Read from TRADING_SYMBOL env var
+    symbol: str = Field(
+        default_factory=lambda: os.getenv("TRADING_SYMBOL", "BTC-USDT-SWAP")
+    )
     initial_capital: float = 10000.0
     risk_limits: RiskLimits = Field(default_factory=RiskLimits)
     enabled: bool = True
-    demo_mode: bool = False  # False = use real CoinGecko price
+    demo_mode: bool = Field(
+        default_factory=lambda: _get_env_bool("OKX_DEMO_MODE", False)
+    )
