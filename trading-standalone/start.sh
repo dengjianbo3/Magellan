@@ -148,11 +148,18 @@ if ! docker info &> /dev/null; then
     exit 1
 fi
 
+# Detect docker compose command (v2 uses "docker compose", v1 uses "docker-compose")
+if docker compose version &> /dev/null; then
+    DOCKER_COMPOSE="docker compose"
+else
+    DOCKER_COMPOSE="docker-compose"
+fi
+
 # Build and start services
 echo -e "${BLUE}Starting Docker services...${NC}"
 echo ""
 
-docker-compose up -d --build
+$DOCKER_COMPOSE up -d --build
 
 # Wait for services to be healthy
 echo ""
@@ -162,7 +169,7 @@ max_attempts=30
 attempt=0
 
 while [ $attempt -lt $max_attempts ]; do
-    if docker-compose ps | grep -q "healthy"; then
+    if $DOCKER_COMPOSE ps | grep -q "healthy"; then
         break
     fi
     attempt=$((attempt + 1))
@@ -174,11 +181,11 @@ echo ""
 # Check service status
 echo ""
 echo -e "${BLUE}Service Status:${NC}"
-docker-compose ps
+$DOCKER_COMPOSE ps
 
 # Start trading if all services are up
 echo ""
-if docker-compose ps | grep -q "Up"; then
+if $DOCKER_COMPOSE ps | grep -q "Up"; then
     echo -e "${GREEN}╔═══════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║  Trading Service Started Successfully!    ║${NC}"
     echo -e "${GREEN}╚═══════════════════════════════════════════╝${NC}"

@@ -82,8 +82,15 @@ echo -e "${BLUE}║  Magellan Trading Standalone - Logs       ║${NC}"
 echo -e "${BLUE}╚═══════════════════════════════════════════╝${NC}"
 echo ""
 
+# Detect docker compose command
+if docker compose version &> /dev/null; then
+    DOCKER_COMPOSE="docker compose"
+else
+    DOCKER_COMPOSE="docker-compose"
+fi
+
 # Build command
-CMD="docker-compose logs"
+CMD="$DOCKER_COMPOSE logs"
 
 if [ "$FOLLOW" = true ]; then
     CMD="$CMD -f"

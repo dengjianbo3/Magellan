@@ -18,9 +18,16 @@ echo -e "${BLUE}║  Magellan Trading Standalone - Status     ║${NC}"
 echo -e "${BLUE}╚═══════════════════════════════════════════╝${NC}"
 echo ""
 
+# Detect docker compose command
+if docker compose version &> /dev/null; then
+    DOCKER_COMPOSE="docker compose"
+else
+    DOCKER_COMPOSE="docker-compose"
+fi
+
 # Docker service status
 echo -e "${CYAN}=== Docker Services ===${NC}"
-docker-compose ps
+$DOCKER_COMPOSE ps
 echo ""
 
 # Check trading status
@@ -63,4 +70,4 @@ echo ""
 
 # Recent logs
 echo -e "${CYAN}=== Recent Activity (last 5 lines) ===${NC}"
-docker-compose logs --tail=5 trading_service 2>/dev/null | grep -v "^$" | tail -5
+$DOCKER_COMPOSE logs --tail=5 trading_service 2>/dev/null | grep -v "^$" | tail -5

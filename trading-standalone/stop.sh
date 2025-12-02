@@ -22,9 +22,16 @@ echo -e "${YELLOW}Stopping trading...${NC}"
 curl -s -X POST http://localhost:8000/api/trading/stop 2>/dev/null || true
 sleep 2
 
+# Detect docker compose command
+if docker compose version &> /dev/null; then
+    DOCKER_COMPOSE="docker compose"
+else
+    DOCKER_COMPOSE="docker-compose"
+fi
+
 # Stop Docker services
 echo -e "${YELLOW}Stopping Docker services...${NC}"
-docker-compose down
+$DOCKER_COMPOSE down
 
 echo ""
 echo -e "${GREEN}All services stopped.${NC}"
