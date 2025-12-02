@@ -36,6 +36,9 @@ services:
       context: ../backend/services/llm_gateway
       dockerfile: Dockerfile
     container_name: trading-llm-gateway
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     environment:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - KIMI_API_KEY=${KIMI_API_KEY}
@@ -65,6 +68,9 @@ services:
       context: ../backend/services/report_orchestrator
       dockerfile: Dockerfile
     container_name: trading-service
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     environment:
       # Redis
       - REDIS_HOST=redis
