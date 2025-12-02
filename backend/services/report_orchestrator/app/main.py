@@ -87,6 +87,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Kafka initialization failed (will use HTTP fallback): {e}")
 
+    # Auto-start trading in standalone mode
+    standalone_mode = os.getenv("STANDALONE_MODE", "false").lower() == "true"
+    if standalone_mode:
+        logger.info("STANDALONE_MODE detected, auto-starting trading system...")
+        asyncio.create_task(_auto_start_trading())
+
     yield
 
     # Shutdown: Close Kafka connections
@@ -96,6 +102,20 @@ async def lifespan(app: FastAPI):
         logger.info("Kafka messaging closed")
     except Exception as e:
         logger.warning(f"Error closing Kafka: {e}")
+
+
+async def _auto_start_trading():
+    """Auto-start trading system after a short delay to ensure all services are ready."""
+    await asyncio.sleep(10)  # Wait for services to be ready
+    try:
+        from .api.trading_routes import get_trading_system
+        logger.info("Auto-starting trading system...")
+        system = await get_trading_system()
+        await system.start()
+        logger.info("Trading system auto-started successfully")
+    except Exception as e:
+        logger.error(f"Failed to auto-start trading system: {e}")
+
 
 app = FastAPI(
     title="Orchestrator Agent Service",
