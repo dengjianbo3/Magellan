@@ -1,0 +1,124 @@
+# ===========================================
+# Magellan Trading Standalone - Docker Compose
+# ===========================================
+# 最小化 Docker 配置，仅包含自动交易必需的服务
+# 预计内存使用: ~1.5GB
+
+services:
+  # ========== Redis (状态存储) ==========
+  redis:
+    image: redis:7-alpine
+    container_name: trading-redis
+    command: >
+      redis-server
+      --maxmemory ${REDIS_MAX_MEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+      --appendonly no
+      --save ""
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+
+  # ========== LLM Gateway ==========
+  llm_gateway:
+    build:
+      context: ../backend/services/llm_gateway
+      dockerfile: Dockerfile
+    container_name: trading-llm-gateway
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - KIMI_API_KEY=${KIMI_API_KEY}
+      - KIMI_BASE_URL=${KIMI_BASE_URL:-https://api.moonshot.cn/v1}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-gemini}
+      - WORKERS=${LLM_WORKERS:-1}
+    ports:
+      - "8003:8003"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ========== Trading Service ==========
+  trading_service:
+    build:
+      context: ../backend/services/report_orchestrator
+      dockerfile: Dockerfile
+    container_name: trading-service
+    environment:
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # LLM
+      - LLM_GATEWAY_URL=http://llm_gateway:8003
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-gemini}
+      # OKX
+      - OKX_API_KEY=${OKX_API_KEY}
+      - OKX_SECRET_KEY=${OKX_SECRET_KEY}
+      - OKX_PASSPHRASE=${OKX_PASSPHRASE}
+      - OKX_DEMO_MODE=${OKX_DEMO_MODE:-true}
+      # Trading Config
+      - TRADING_SYMBOL=${TRADING_SYMBOL:-BTC-USDT-SWAP}
+      - TRADING_LEVERAGE=${TRADING_LEVERAGE:-10}
+      - TRADING_POSITION_SIZE=${TRADING_POSITION_SIZE:-100}
+      - TRADING_TP_PERCENT=${TRADING_TP_PERCENT:-5.0}
+      - TRADING_SL_PERCENT=${TRADING_SL_PERCENT:-3.0}
+      - SCHEDULER_INTERVAL_HOURS=${SCHEDULER_INTERVAL_HOURS:-4}
+      # Email
+      - EMAIL_ENABLED=${EMAIL_ENABLED:-false}
+      - SMTP_SERVER=${SMTP_SERVER}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - EMAIL_FROM=${EMAIL_FROM}
+      - EMAIL_TO=${EMAIL_TO}
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Mode
+      - STANDALONE_MODE=true
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      llm_gateway:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+      - ./config.yaml:/app/config.yaml:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+volumes:
+  redis_data:
+
+networks:
+  default:
+    name: trading-network

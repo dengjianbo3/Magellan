@@ -1,0 +1,114 @@
+# ===========================================
+# Magellan Trading Standalone - Configuration
+# ===========================================
+# 自动交易系统独立配置文件
+# 编辑此文件后运行 ./start.sh 启动服务
+
+# ========== 交易参数 ==========
+trading:
+  # 交易对
+  symbol: "BTC-USDT-SWAP"
+
+  # 杠杆倍数 (1-100)
+  leverage: 10
+
+  # 每次交易仓位 (USDT)
+  position_size: 100
+
+  # 止盈百分比
+  take_profit_percent: 5.0
+
+  # 止损百分比
+  stop_loss_percent: 3.0
+
+  # 是否使用模拟盘
+  demo_mode: true
+
+# ========== 分析调度 ==========
+scheduler:
+  # 分析间隔 (小时)
+  interval_hours: 4
+
+  # 连续亏损后冷却时间 (小时)
+  cooldown_hours: 24
+
+  # 最大连续亏损次数 (触发冷却)
+  max_consecutive_losses: 3
+
+# ========== LLM 配置 ==========
+llm:
+  # 模型提供商: gemini, kimi, deepseek
+  provider: "gemini"
+
+  # 各提供商模型名称
+  models:
+    gemini: "gemini-2.5-flash"
+    kimi: "moonshot-v1-8k"
+    deepseek: "deepseek-chat"
+
+# ========== API Keys ==========
+# 注意: 生产环境建议使用环境变量而非配置文件
+api_keys:
+  # Google Gemini
+  google_api_key: "${GOOGLE_API_KEY}"
+
+  # Moonshot Kimi
+  kimi_api_key: "${KIMI_API_KEY}"
+
+  # DeepSeek
+  deepseek_api_key: "${DEEPSEEK_API_KEY}"
+
+  # Tavily (Web Search)
+  tavily_api_key: "${TAVILY_API_KEY}"
+
+# ========== OKX 交易所 ==========
+okx:
+  api_key: "${OKX_API_KEY}"
+  secret_key: "${OKX_SECRET_KEY}"
+  passphrase: "${OKX_PASSPHRASE}"
+  # 模拟盘 (true) 或 实盘 (false)
+  demo_mode: true
+
+# ========== 邮件通知 ==========
+email:
+  # 是否启用邮件通知
+  enabled: true
+
+  # SMTP 配置
+  smtp_server: "smtp.gmail.com"
+  smtp_port: 587
+  smtp_user: "${EMAIL_USER}"
+  smtp_password: "${EMAIL_PASSWORD}"
+
+  # 发送者和接收者
+  from_address: "${EMAIL_USER}"
+  to_addresses:
+    - "${EMAIL_TO}"
+
+  # 通知事件
+  notify_on:
+    - decision       # 每次交易决策
+    - execution      # 交易执行
+    - tp_hit         # 止盈触发
+    - sl_hit         # 止损触发
+    - error          # 系统错误
+    - daily_summary  # 每日汇总
+
+# ========== 日志配置 ==========
+logging:
+  # 日志级别: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+
+  # 日志保留天数
+  retention_days: 30
+
+  # 是否输出到控制台
+  console_output: false
+
+# ========== 资源限制 ==========
+resources:
+  # Redis 最大内存
+  redis_max_memory: "256mb"
+
+  # LLM Gateway worker 数量
+  llm_workers: 1

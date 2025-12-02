@@ -1,0 +1,13 @@
+# Environment variables (contains secrets)
+.env
+
+# Logs
+logs/*.log
+logs/**/*.log
+
+# Python cache
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
