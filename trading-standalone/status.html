@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magellan Trading Status</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            padding: 10px;
+            min-height: 100vh;
+        }
+        .header {
+            text-align: center;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+        .header h1 { font-size: 1.3em; }
+        .header p { font-size: 0.8em; opacity: 0.8; margin-top: 5px; }
+        .card {
+            background: #16213e;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .card-title {
+            font-size: 0.9em;
+            color: #667eea;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #333;
+        }
+        .row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 0.85em;
+        }
+        .label { color: #888; }
+        .value { font-weight: 500; }
+        .positive { color: #4ade80; }
+        .negative { color: #f87171; }
+        .neutral { color: #fbbf24; }
+        .position-card {
+            background: linear-gradient(135deg, #1e3a5f 0%, #16213e 100%);
+            border: 1px solid #334;
+        }
+        .position-direction {
+            font-size: 1.5em;
+            font-weight: bold;
+            text-align: center;
+            padding: 10px;
+        }
+        .position-direction.long { color: #4ade80; }
+        .position-direction.short { color: #f87171; }
+        .position-direction.none { color: #888; }
+        .pnl-display {
+            text-align: center;
+            font-size: 1.8em;
+            font-weight: bold;
+            padding: 15px;
+        }
+        .trade-item {
+            background: #1e293b;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 8px;
+            font-size: 0.8em;
+        }
+        .trade-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        .trade-direction {
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .trade-direction.long { background: #166534; color: #4ade80; }
+        .trade-direction.short { background: #991b1b; color: #f87171; }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-secondary {
+            background: #334155;
+            color: #eee;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #888;
+        }
+        .error {
+            background: #7f1d1d;
+            color: #fca5a5;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .last-update {
+            text-align: center;
+            font-size: 0.75em;
+            color: #666;
+            margin-top: 10px;
+        }
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-dot.running { background: #4ade80; }
+        .status-dot.stopped { background: #f87171; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Magellan Trading</h1>
+        <p>Auto Trading Status Monitor</p>
+    </div>
+
+    <div id="content">
+        <div class="loading">Loading...</div>
+    </div>
+
+    <div style="margin-top: 15px;">
+        <button class="btn btn-primary" onclick="refresh()">Refresh</button>
+        <button class="btn btn-secondary" onclick="toggleAutoRefresh()">
+            Auto Refresh: <span id="autoRefreshStatus">OFF</span>
+        </button>
+    </div>
+
+    <div class="last-update" id="lastUpdate"></div>
+
+    <script>
+        const SERVER = 'http://45.76.159.149:8000';
+        let autoRefresh = false;
+        let refreshInterval = null;
+
+        async function fetchData(endpoint) {
+            try {
+                const response = await fetch(`${SERVER}/api/trading/${endpoint}`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                return await response.json();
+            } catch (e) {
+                console.error(`Error fetching ${endpoint}:`, e);
+                return null;
+            }
+        }
+
+        function formatNumber(num, decimals = 2) {
+            if (num === null || num === undefined) return 'N/A';
+            return Number(num).toLocaleString('en-US', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals
+            });
+        }
+
+        function formatPnL(pnl) {
+            const cls = pnl >= 0 ? 'positive' : 'negative';
+            const sign = pnl >= 0 ? '+' : '';
+            return `<span class="${cls}">${sign}$${formatNumber(pnl)}</span>`;
+        }
+
+        async function refresh() {
+            const content = document.getElementById('content');
+            content.innerHTML = '<div class="loading">Loading...</div>';
+
+            try {
+                const [status, account, position, history] = await Promise.all([
+                    fetchData('status'),
+                    fetchData('account'),
+                    fetchData('position'),
+                    fetchData('history?limit=5')
+                ]);
+
+                if (!status) {
+                    content.innerHTML = '<div class="error">Cannot connect to server</div>';
+                    return;
+                }
+
+                let html = '';
+
+                // System Status
+                const isRunning = status.enabled;
+                html += `
+                    <div class="card">
+                        <div class="card-title">System Status</div>
+                        <div class="row">
+                            <span class="label">Status</span>
+                            <span class="value">
+                                <span class="status-dot ${isRunning ? 'running' : 'stopped'}"></span>
+                                ${isRunning ? 'Running' : 'Stopped'}
+                            </span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Mode</span>
+                            <span class="value">${status.demo_mode ? 'Demo' : 'Live'}</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Symbol</span>
+                            <span class="value">${status.symbol || 'N/A'}</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Next Analysis</span>
+                            <span class="value">${status.scheduler?.next_run?.substring(11, 19) || 'N/A'}</span>
+                        </div>
+                    </div>
+                `;
+
+                // Account
+                if (account) {
+                    const balance = account.balance || account.total_balance || 0;
+                    const equity = account.equity || account.total_equity || balance;
+                    html += `
+                        <div class="card">
+                            <div class="card-title">Account</div>
+                            <div class="row">
+                                <span class="label">Balance</span>
+                                <span class="value">$${formatNumber(balance)}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Equity</span>
+                                <span class="value">$${formatNumber(equity)}</span>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Position
+                if (position) {
+                    const hasPos = position.has_position;
+                    const direction = position.direction || position.side || 'none';
+                    const pnl = position.unrealized_pnl || 0;
+                    const pnlPct = position.pnl_percent || 0;
+
+                    html += `
+                        <div class="card position-card">
+                            <div class="card-title">Current Position</div>
+                            <div class="position-direction ${hasPos ? direction : 'none'}">
+                                ${hasPos ? direction.toUpperCase() : 'NO POSITION'}
+                            </div>
+                    `;
+
+                    if (hasPos) {
+                        html += `
+                            <div class="pnl-display ${pnl >= 0 ? 'positive' : 'negative'}">
+                                ${pnl >= 0 ? '+' : ''}$${formatNumber(pnl)}
+                                <div style="font-size: 0.5em;">(${pnl >= 0 ? '+' : ''}${formatNumber(pnlPct)}%)</div>
+                            </div>
+                            <div class="row">
+                                <span class="label">Entry</span>
+                                <span class="value">$${formatNumber(position.entry_price)}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Current</span>
+                                <span class="value">$${formatNumber(position.current_price || position.mark_price)}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Leverage</span>
+                                <span class="value">${position.leverage || 1}x</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">TP / SL</span>
+                                <span class="value">
+                                    <span class="positive">$${formatNumber(position.tp_price)}</span> /
+                                    <span class="negative">$${formatNumber(position.sl_price)}</span>
+                                </span>
+                            </div>
+                        `;
+                    }
+                    html += `</div>`;
+                }
+
+                // Trade History
+                if (history && history.trades && history.trades.length > 0) {
+                    html += `
+                        <div class="card">
+                            <div class="card-title">Recent Trades</div>
+                    `;
+                    for (const trade of history.trades.slice(-5).reverse()) {
+                        const dir = trade.direction || trade.side || 'N/A';
+                        const pnl = trade.pnl || trade.realized_pnl || 0;
+                        html += `
+                            <div class="trade-item">
+                                <div class="trade-header">
+                                    <span class="trade-direction ${dir}">${dir.toUpperCase()}</span>
+                                    ${formatPnL(pnl)}
+                                </div>
+                                <div class="row">
+                                    <span class="label">Entry → Exit</span>
+                                    <span class="value">$${formatNumber(trade.entry_price)} → $${formatNumber(trade.exit_price || trade.close_price)}</span>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    html += `</div>`;
+                } else {
+                    html += `
+                        <div class="card">
+                            <div class="card-title">Recent Trades</div>
+                            <div style="text-align: center; color: #666; padding: 20px;">
+                                No trades yet
+                            </div>
+                        </div>
+                    `;
+                }
+
+                content.innerHTML = html;
+                document.getElementById('lastUpdate').textContent =
+                    `Last updated: ${new Date().toLocaleTimeString()}`;
+
+            } catch (e) {
+                content.innerHTML = `<div class="error">Error: ${e.message}</div>`;
+            }
+        }
+
+        function toggleAutoRefresh() {
+            autoRefresh = !autoRefresh;
+            document.getElementById('autoRefreshStatus').textContent = autoRefresh ? 'ON (30s)' : 'OFF';
+
+            if (autoRefresh) {
+                refreshInterval = setInterval(refresh, 30000);
+            } else {
+                clearInterval(refreshInterval);
+            }
+        }
+
+        // Initial load
+        refresh();
+    </script>
+</body>
+</html>

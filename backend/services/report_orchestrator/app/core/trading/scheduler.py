@@ -146,39 +146,62 @@ class TradingScheduler:
     async def _run_loop(self):
         """Main scheduler loop"""
         # Run first analysis immediately
-        await self._execute_cycle(reason="startup")
+        logger.info(f"Scheduler starting first analysis cycle...")
+        try:
+            await asyncio.wait_for(
+                self._execute_cycle(reason="startup"),
+                timeout=600  # 10 minute timeout for analysis
+            )
+        except asyncio.TimeoutError:
+            logger.error("First analysis cycle timed out after 10 minutes")
+        except Exception as e:
+            logger.error(f"Error in first analysis cycle: {e}")
+
+        logger.info(f"Scheduler entering main loop with {self.interval_hours}h ({self.interval_seconds}s) interval")
 
         while not self._stop_event.is_set():
             try:
                 # Calculate next run time
                 self._next_run = datetime.now() + timedelta(seconds=self.interval_seconds)
-                logger.info(f"Next analysis scheduled at: {self._next_run}")
+                logger.info(f"Next analysis scheduled at: {self._next_run} (in {self.interval_seconds}s)")
 
                 # Wait for next interval or stop event
-                try:
-                    await asyncio.wait_for(
-                        self._stop_event.wait(),
-                        timeout=self.interval_seconds
-                    )
-                    # If we get here, stop was requested
-                    break
-                except asyncio.TimeoutError:
-                    # Normal timeout, proceed with analysis
-                    pass
+                # Use asyncio.sleep with periodic checks instead of wait_for
+                elapsed = 0
+                check_interval = 30  # Check every 30 seconds
+                while elapsed < self.interval_seconds:
+                    if self._stop_event.is_set():
+                        logger.info("Stop event received, exiting scheduler loop")
+                        return
+
+                    await asyncio.sleep(min(check_interval, self.interval_seconds - elapsed))
+                    elapsed += check_interval
+
+                    # Log progress every 5 minutes
+                    if elapsed % 300 == 0:
+                        remaining = self.interval_seconds - elapsed
+                        logger.debug(f"Scheduler waiting... {remaining}s until next analysis")
 
                 # Check if paused
                 if self._state == SchedulerState.PAUSED:
                     logger.info("Scheduler paused, skipping cycle")
                     continue
 
-                # Execute analysis cycle
-                await self._execute_cycle(reason="scheduled")
+                # Execute analysis cycle with timeout
+                logger.info(f"Starting scheduled analysis cycle #{self._run_count + 1}")
+                try:
+                    await asyncio.wait_for(
+                        self._execute_cycle(reason="scheduled"),
+                        timeout=600  # 10 minute timeout
+                    )
+                except asyncio.TimeoutError:
+                    logger.error("Scheduled analysis cycle timed out after 10 minutes")
 
             except asyncio.CancelledError:
                 logger.info("Scheduler loop cancelled")
                 break
             except Exception as e:
-                logger.error(f"Error in scheduler loop: {e}")
+                logger.error(f"Error in scheduler loop: {e}", exc_info=True)
                 await asyncio.sleep(60)  # Wait before retrying
 
     async def _execute_cycle(self, reason: str = "scheduled"):
