@@ -307,6 +307,23 @@ class TradingToolkit:
                         "type": "integer",
                         "description": "返回结果数量，默认5条",
                         "default": 5
+                    },
+                    "time_range": {
+                        "type": "string",
+                        "description": "时间范围: day(最近24小时), week(最近一周), month(最近一月)",
+                        "enum": ["day", "week", "month"],
+                        "default": None
+                    },
+                    "topic": {
+                        "type": "string",
+                        "description": "搜索主题: general(通用), news(新闻)",
+                        "enum": ["general", "news"],
+                        "default": "general"
+                    },
+                    "days": {
+                        "type": "integer",
+                        "description": "限制搜索结果的天数范围(1-30)",
+                        "default": None
                     }
                 },
                 "required": ["query"]
@@ -1007,13 +1024,16 @@ class TradingToolkit:
             "message": "暂无交易记录"
         }, ensure_ascii=False)
 
-    async def _tavily_search(self, query: str, max_results: int = 5) -> str:
+    async def _tavily_search(self, query: str, max_results: int = 5, time_range: str = None, topic: str = "general", days: int = None) -> str:
         """
         Search for cryptocurrency news and market information using Tavily API.
 
         Args:
             query: Search query string
             max_results: Maximum number of results to return (default 5)
+            time_range: Time range filter - "day", "week", or "month" (optional)
+            topic: Search topic - "general" or "news" (default "general")
+            days: Number of days to limit search results (1-30, optional)
 
         Returns:
             JSON string with search results
@@ -1035,21 +1055,31 @@ class TradingToolkit:
             max_results = int(max_results) if max_results else 5
             max_results = min(max(1, max_results), 10)  # Limit between 1-10
 
-            logger.info(f"[TradingTools] Tavily search: '{query}' (max_results={max_results})")
+            # Build request payload
+            request_payload = {
+                "api_key": tavily_api_key,
+                "query": query,
+                "search_depth": "basic",
+                "include_answer": True,
+                "include_raw_content": False,
+                "max_results": max_results,
+                "include_domains": [],
+                "exclude_domains": []
+            }
+
+            # Add optional parameters if provided
+            if topic and topic in ["general", "news"]:
+                request_payload["topic"] = topic
+
+            if days and isinstance(days, int) and 1 <= days <= 30:
+                request_payload["days"] = days
+
+            logger.info(f"[TradingTools] Tavily search: '{query}' (max_results={max_results}, time_range={time_range}, topic={topic}, days={days})")
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     "https://api.tavily.com/search",
-                    json={
-                        "api_key": tavily_api_key,
-                        "query": query,
-                        "search_depth": "basic",
-                        "include_answer": True,
-                        "include_raw_content": False,
-                        "max_results": max_results,
-                        "include_domains": [],
-                        "exclude_domains": []
-                    }
+                    json=request_payload
                 )
 
                 if response.status_code == 200:
