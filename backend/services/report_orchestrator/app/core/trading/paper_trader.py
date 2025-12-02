@@ -12,6 +12,7 @@ Paper Trading Simulator
 
 import asyncio
 import logging
+import os
 import uuid
 import random
 from datetime import datetime, timedelta
@@ -26,6 +27,17 @@ from app.core.trading.price_service import get_price_service, PriceService
 logger = logging.getLogger(__name__)
 
 
+def _get_env_float(key: str, default: float) -> float:
+    """Get float from environment variable"""
+    val = os.getenv(key)
+    if val:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    return default
+
+
 @dataclass
 class PaperTraderConfig:
     """Paper Trader 配置"""
@@ -35,6 +47,9 @@ class PaperTraderConfig:
     max_price: float = 500000.0  # 最高价格限制（用于价格模拟）
     redis_url: str = "redis://redis:6379"
     demo_mode: bool = False  # False = use real CoinGecko price, True = simulated price
+    # 默认止盈止损百分比 - 从环境变量读取
+    default_tp_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_TP_PERCENT", 5.0))
+    default_sl_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_SL_PERCENT", 2.0))
 
 
 @dataclass
