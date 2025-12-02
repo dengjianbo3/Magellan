@@ -9,7 +9,10 @@ trading:
   # 交易对
   symbol: "BTC-USDT-SWAP"
 
-  # 是否使用模拟盘 (强烈建议先用模拟盘测试)
+  # 是否使用 OKX 模拟盘 (Demo Trading)
+  # true = 使用 OKX 模拟盘 (需要模拟盘 API Key，在 OKX 网站单独申请)
+  # false = 使用 OKX 实盘 (真实交易，请谨慎！)
+  # 注意: 模拟盘和实盘的 API Key 是不同的
   demo_mode: true
 
   # 注意: 以下参数由 Agent 圆桌会议自动决定，无需手动配置:
