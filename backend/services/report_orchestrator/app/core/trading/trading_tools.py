@@ -442,11 +442,18 @@ class TradingToolkit:
         self,
         symbol: str = "BTC-USDT-SWAP",
         timeframe: str = "4h",
-        limit: int = 100
+        limit: int = 100,
+        interval: str = None,  # Alias for timeframe (LLM sometimes uses this name)
+        **kwargs  # Accept any extra params from LLM
     ) -> str:
         """Get K-line data - fetches REAL data from Binance"""
         # 确保类型正确
         limit = int(limit) if limit else 100
+        # Handle interval as alias for timeframe
+        if interval and not timeframe:
+            timeframe = interval
+        elif interval:
+            timeframe = interval  # Prefer interval if both provided
 
         try:
             # Map timeframe to Binance interval
@@ -556,9 +563,17 @@ class TradingToolkit:
     async def _calculate_indicators(
         self,
         symbol: str = "BTC-USDT-SWAP",
-        timeframe: str = "4h"
+        timeframe: str = "4h",
+        interval: str = None,  # Alias for timeframe (LLM sometimes uses this name)
+        **kwargs  # Accept any extra params from LLM
     ) -> str:
         """Calculate technical indicators - calculates from REAL Binance data"""
+        # Handle interval as alias for timeframe
+        if interval and not timeframe:
+            timeframe = interval
+        elif interval:
+            timeframe = interval  # Prefer interval if both provided
+
         try:
             # First, fetch real K-line data
             import httpx
