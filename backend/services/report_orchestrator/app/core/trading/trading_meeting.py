@@ -485,17 +485,16 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
         response = await self._run_agent_turn(leader, prompt)
 
         # Extract signal ONLY from actually executed tools, not from text matching
-        signal = self._extract_signal_from_executed_tools(response)
+        signal = await self._extract_signal_from_executed_tools(response)
 
         return signal
 
-    def _extract_signal_from_executed_tools(self, response: str) -> Optional[TradingSignal]:
+    async def _extract_signal_from_executed_tools(self, response: str) -> Optional[TradingSignal]:
         """
         Extract trading signal ONLY from actually executed tool calls.
         This prevents the bug where text mentions of 'open_long' would be mistaken for actual decisions.
         """
         try:
-            import asyncio
 
             # Check if any decision tools were actually executed
             decision_tools = ['open_long', 'open_short', 'hold']
@@ -514,7 +513,7 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
             if not executed_decision:
                 logger.warning("No decision tool (open_long/open_short/hold) was executed by Leader")
                 # Return a hold signal by default when no tool is called
-                return self._create_hold_signal(response, "Leader did not call any decision tool")
+                return await self._create_hold_signal(response, "Leader did not call any decision tool")
 
             # Map tool name to direction
             if executed_decision == 'open_long':
@@ -548,15 +547,12 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
                 except (ValueError, TypeError):
                     pass
 
-            # Get current price for TP/SL calculation
+            # Get current price for TP/SL calculation (now using await since method is async)
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # If in async context, we can't use run_until_complete
-                    current_price = self.config.fallback_price
-                else:
-                    current_price = loop.run_until_complete(get_current_btc_price())
-            except:
+                current_price = await get_current_btc_price()
+                logger.info(f"Got real-time BTC price: ${current_price:,.2f}")
+            except Exception as e:
+                logger.warning(f"Failed to get real-time price: {e}, using fallback")
                 current_price = self.config.fallback_price
 
             if direction == "long":
@@ -587,17 +583,13 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
             logger.error(f"Error extracting signal from executed tools: {e}")
             return None
 
-    def _create_hold_signal(self, response: str, reason: str) -> TradingSignal:
+    async def _create_hold_signal(self, response: str, reason: str) -> TradingSignal:
         """Create a hold signal when Leader doesn't call any decision tool"""
-        import asyncio
-
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                current_price = self.config.fallback_price
-            else:
-                current_price = loop.run_until_complete(get_current_btc_price())
-        except:
+            current_price = await get_current_btc_price()
+            logger.info(f"Got real-time BTC price for hold signal: ${current_price:,.2f}")
+        except Exception as e:
+            logger.warning(f"Failed to get real-time price for hold signal: {e}, using fallback")
             current_price = self.config.fallback_price
 
         consensus = {v.agent_name: v.direction for v in self._agent_votes}
