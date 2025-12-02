@@ -799,7 +799,11 @@ class TradingToolkit:
         leverage: int = 1,
         amount_usdt: float = 100,
         tp_price: Optional[float] = None,
-        sl_price: Optional[float] = None
+        sl_price: Optional[float] = None,
+        tp_percent: Optional[float] = None,
+        sl_percent: Optional[float] = None,
+        reason: str = "",
+        **kwargs  # Accept any extra params from LLM
     ) -> str:
         """Open long position"""
         try:
@@ -808,6 +812,20 @@ class TradingToolkit:
             amount_usdt = float(amount_usdt) if amount_usdt else 100
             tp_price = float(tp_price) if tp_price else None
             sl_price = float(sl_price) if sl_price else None
+
+            # If tp_percent/sl_percent provided, calculate tp_price/sl_price
+            if (tp_percent or sl_percent) and not (tp_price and sl_price):
+                try:
+                    from .market_data import MarketDataService
+                    market_service = MarketDataService()
+                    current_price = await market_service.get_current_price(symbol)
+                    if current_price:
+                        if tp_percent and not tp_price:
+                            tp_price = current_price * (1 + float(tp_percent) / 100)
+                        if sl_percent and not sl_price:
+                            sl_price = current_price * (1 - float(sl_percent) / 100)
+                except Exception as e:
+                    logger.warning(f"Could not calculate tp/sl prices from percent: {e}")
 
             if self.paper_trader:
                 result = await self.paper_trader.open_long(
@@ -838,7 +856,11 @@ class TradingToolkit:
         leverage: int = 1,
         amount_usdt: float = 100,
         tp_price: Optional[float] = None,
-        sl_price: Optional[float] = None
+        sl_price: Optional[float] = None,
+        tp_percent: Optional[float] = None,
+        sl_percent: Optional[float] = None,
+        reason: str = "",
+        **kwargs  # Accept any extra params from LLM
     ) -> str:
         """Open short position"""
         try:
@@ -847,6 +869,20 @@ class TradingToolkit:
             amount_usdt = float(amount_usdt) if amount_usdt else 100
             tp_price = float(tp_price) if tp_price else None
             sl_price = float(sl_price) if sl_price else None
+
+            # If tp_percent/sl_percent provided, calculate tp_price/sl_price (reversed for short)
+            if (tp_percent or sl_percent) and not (tp_price and sl_price):
+                try:
+                    from .market_data import MarketDataService
+                    market_service = MarketDataService()
+                    current_price = await market_service.get_current_price(symbol)
+                    if current_price:
+                        if tp_percent and not tp_price:
+                            tp_price = current_price * (1 - float(tp_percent) / 100)  # Short: TP is below
+                        if sl_percent and not sl_price:
+                            sl_price = current_price * (1 + float(sl_percent) / 100)  # Short: SL is above
+                except Exception as e:
+                    logger.warning(f"Could not calculate tp/sl prices from percent: {e}")
 
             if self.paper_trader:
                 result = await self.paper_trader.open_short(
@@ -894,7 +930,7 @@ class TradingToolkit:
             logger.error(f"Error closing position: {e}")
             return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
 
-    async def _hold(self, reason: str = "市场不明朗") -> str:
+    async def _hold(self, reason: str = "市场不明朗", **kwargs) -> str:
         """Hold decision - do not trade"""
         logger.info(f"Hold decision made: {reason}")
         return json.dumps({

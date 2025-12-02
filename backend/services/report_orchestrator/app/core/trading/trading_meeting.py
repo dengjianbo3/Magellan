@@ -236,10 +236,15 @@ class TradingMeeting(Meeting):
 
 **重要**: 你必须使用工具获取实时数据，不能凭空编造！
 
+**工具调用格式** (必须严格遵守):
+```
+[USE_TOOL: tool_name(param1="value1", param2="value2")]
+```
+
 请执行以下步骤:
-1. 使用 `get_market_price` 获取当前价格
-2. 使用 `get_klines` 获取K线数据
-3. 使用 `calculate_technical_indicators` 计算技术指标
+1. [USE_TOOL: get_market_price(symbol="{self.config.symbol}")]
+2. [USE_TOOL: get_klines(symbol="{self.config.symbol}", timeframe="4h", limit="100")]
+3. [USE_TOOL: calculate_technical_indicators(symbol="{self.config.symbol}", timeframe="4h")]
 
 基于真实数据分析:
 - 当前价格和24h涨跌幅
@@ -251,10 +256,14 @@ class TradingMeeting(Meeting):
 
 **重要**: 你必须搜索最新信息，不能仅凭既有知识！
 
-请执行以下步骤:
-1. 使用 `tavily_search` 搜索 "Bitcoin market news today" 或 "BTC price analysis"
-2. 搜索 "cryptocurrency market outlook" 或 "crypto institutional investment"
-3. 搜索 "DXY dollar index crypto correlation" 获取美元与加密货币相关性
+**工具调用格式** (必须严格遵守):
+```
+[USE_TOOL: tool_name(param1="value1", param2="value2")]
+```
+
+请执行以下步骤 (直接复制这些工具调用):
+1. [USE_TOOL: tavily_search(query="Bitcoin BTC market news today price analysis")]
+2. [USE_TOOL: tavily_search(query="cryptocurrency institutional investment outlook")]
 
 基于搜索结果分析:
 - 当前市场流动性状况
@@ -268,10 +277,15 @@ class TradingMeeting(Meeting):
 
 **重要**: 你必须获取实时数据和搜索最新信息！
 
-请执行以下步骤:
-1. 使用 `get_fear_greed_index` 获取恐慌贪婪指数
-2. 使用 `get_funding_rate` 获取资金费率
-3. 使用 `tavily_search` 搜索 "Bitcoin sentiment" 或 "BTC market sentiment" 获取市场情绪新闻
+**工具调用格式** (必须严格遵守):
+```
+[USE_TOOL: tool_name(param1="value1", param2="value2")]
+```
+
+请执行以下步骤 (直接复制这些工具调用):
+1. [USE_TOOL: get_fear_greed_index()]
+2. [USE_TOOL: get_funding_rate(symbol="{self.config.symbol}")]
+3. [USE_TOOL: tavily_search(query="Bitcoin BTC market sentiment social media")]
 
 基于真实数据分析:
 - 恐慌贪婪指数数值和含义
@@ -283,10 +297,15 @@ class TradingMeeting(Meeting):
 
 **重要**: 你必须使用工具获取实时数据进行量化分析！
 
-请执行以下步骤:
-1. 使用 `get_market_price` 获取当前价格和成交量
-2. 使用 `get_klines` 获取历史K线数据
-3. 使用 `calculate_technical_indicators` 计算技术指标
+**工具调用格式** (必须严格遵守):
+```
+[USE_TOOL: tool_name(param1="value1", param2="value2")]
+```
+
+请执行以下步骤 (直接复制这些工具调用):
+1. [USE_TOOL: get_market_price(symbol="{self.config.symbol}")]
+2. [USE_TOOL: get_klines(symbol="{self.config.symbol}", timeframe="1h", limit="200")]
+3. [USE_TOOL: calculate_technical_indicators(symbol="{self.config.symbol}", timeframe="1h")]
 
 基于真实数据进行量化分析:
 - 价格波动率和成交量分析
@@ -434,16 +453,33 @@ class TradingMeeting(Meeting):
 
 ## 强制执行要求 (非常重要!)
 
-**你必须调用以下三个工具之一来执行你的决策，这是强制要求！**
+**你必须使用以下格式调用决策工具，这是强制要求！**
 
-1. **做多** → 调用 `open_long` 工具
-2. **做空** → 调用 `open_short` 工具
-3. **观望** → 调用 `hold` 工具
+**工具调用格式** (必须严格遵守):
+```
+[USE_TOOL: tool_name(param1="value1", param2="value2")]
+```
+
+**三选一，必须调用其中之一：**
+
+1. **做多** → `[USE_TOOL: open_long(leverage="3", amount_usdt="1000", reason="综合分析看多")]`
+2. **做空** → `[USE_TOOL: open_short(leverage="3", amount_usdt="1000", reason="综合分析看空")]`
+3. **观望** → `[USE_TOOL: hold(reason="市场不明朗，暂时观望")]`
 
 ⚠️ **禁止**: 不调用任何工具就结束回复
 ⚠️ **禁止**: 只在文字中说"观望"但不调用 `hold` 工具
+⚠️ **禁止**: 使用 python 代码格式调用工具
 
-请先给出你的分析总结，然后**必须调用对应的工具**来执行决策。
+**正确示例**:
+分析完成后，我决定做多。
+[USE_TOOL: open_long(leverage="5", amount_usdt="2000", reason="技术面看涨，多头趋势明确")]
+
+**错误示例** (不要这样做):
+```python
+open_long(leverage=5, amount_usdt=2000)  # 错误！
+```
+
+请先给出你的分析总结，然后**必须使用 [USE_TOOL: ...] 格式调用对应的工具**来执行决策。
 """
 
         response = await self._run_agent_turn(leader, prompt)
@@ -607,7 +643,12 @@ class TradingMeeting(Meeting):
             memory_context = memory.get_context_for_prompt()
 
             # Build enhanced system prompt with memory
-            base_system_prompt = agent.system_prompt or agent.role_prompt
+            # Use _get_system_prompt() which includes tool usage instructions
+            if hasattr(agent, '_get_system_prompt'):
+                base_system_prompt = agent._get_system_prompt()
+            else:
+                base_system_prompt = agent.system_prompt or agent.role_prompt
+
             if memory.total_trades > 0:
                 # Only inject memory if agent has trading history
                 enhanced_system_prompt = f"""{base_system_prompt}
