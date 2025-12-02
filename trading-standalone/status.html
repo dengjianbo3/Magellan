@@ -160,9 +160,16 @@
             try {
                 const response = await fetch(`${SERVER}/api/trading/${endpoint}`, {
                     method: 'GET',
+                    mode: 'cors',
                     headers: { 'Accept': 'application/json' }
                 });
-                return await response.json();
+                if (!response.ok) {
+                    console.error(`HTTP error ${response.status} for ${endpoint}`);
+                    return null;
+                }
+                const data = await response.json();
+                console.log(`[DEBUG] ${endpoint}:`, data);
+                return data;
             } catch (e) {
                 console.error(`Error fetching ${endpoint}:`, e);
                 return null;
@@ -294,6 +301,8 @@
                 }
 
                 // Decision History (signals)
+                console.log('[DEBUG] History data:', history);
+                console.log('[DEBUG] Signals:', history?.signals);
                 if (history && history.signals && history.signals.length > 0) {
                     html += `
                         <div class="card">
