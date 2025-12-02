@@ -26,17 +26,30 @@ from app.core.trading.price_service import get_current_btc_price, PriceServiceEr
 logger = logging.getLogger(__name__)
 
 
+def _get_env_int(key: str, default: int) -> int:
+    """Get integer from environment variable"""
+    val = os.getenv(key)
+    if val:
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    return default
+
+
 class TradingToolkitConfig:
-    """Configuration for TradingToolkit"""
+    """Configuration for TradingToolkit - reads from environment variables"""
     def __init__(
         self,
-        max_leverage: int = 20,
+        max_leverage: int = None,
         default_balance: float = 10000.0,
-        symbol: str = "BTC-USDT-SWAP"
+        symbol: str = None
     ):
-        self.max_leverage = max_leverage
+        # Read from environment variables with fallback to defaults
+        self.max_leverage = max_leverage if max_leverage is not None else _get_env_int("MAX_LEVERAGE", 20)
         self.default_balance = default_balance
-        self.symbol = symbol
+        self.symbol = symbol if symbol is not None else os.getenv("TRADING_SYMBOL", "BTC-USDT-SWAP")
+        logger.info(f"TradingToolkitConfig initialized: max_leverage={self.max_leverage}, symbol={self.symbol}")
 
 
 class TradingToolkit:
@@ -277,6 +290,28 @@ class TradingToolkit:
                 }
             },
             func=self._get_trade_history
+        )
+
+        # Web Search Tool - Tavily
+        self._tools['tavily_search'] = FunctionTool(
+            name="tavily_search",
+            description="使用Tavily搜索引擎搜索加密货币相关新闻和市场信息，获取最新的市场动态、重大事件、监管消息等",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "搜索查询词，如'BTC news today'或'Bitcoin regulation 2024'"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "返回结果数量，默认5条",
+                        "default": 5
+                    }
+                },
+                "required": ["query"]
+            },
+            func=self._tavily_search
         )
 
     def get_tools(self) -> List[FunctionTool]:
@@ -971,3 +1006,91 @@ class TradingToolkit:
             "trades": [],
             "message": "暂无交易记录"
         }, ensure_ascii=False)
+
+    async def _tavily_search(self, query: str, max_results: int = 5) -> str:
+        """
+        Search for cryptocurrency news and market information using Tavily API.
+
+        Args:
+            query: Search query string
+            max_results: Maximum number of results to return (default 5)
+
+        Returns:
+            JSON string with search results
+        """
+        try:
+            import httpx
+
+            # Get Tavily API key from environment
+            tavily_api_key = os.getenv("TAVILY_API_KEY")
+            if not tavily_api_key:
+                logger.warning("[TradingTools] TAVILY_API_KEY not set, web search unavailable")
+                return json.dumps({
+                    "success": False,
+                    "error": "Tavily API key not configured",
+                    "message": "网络搜索功能未配置，请设置TAVILY_API_KEY环境变量"
+                }, ensure_ascii=False)
+
+            # Ensure max_results is valid
+            max_results = int(max_results) if max_results else 5
+            max_results = min(max(1, max_results), 10)  # Limit between 1-10
+
+            logger.info(f"[TradingTools] Tavily search: '{query}' (max_results={max_results})")
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    "https://api.tavily.com/search",
+                    json={
+                        "api_key": tavily_api_key,
+                        "query": query,
+                        "search_depth": "basic",
+                        "include_answer": True,
+                        "include_raw_content": False,
+                        "max_results": max_results,
+                        "include_domains": [],
+                        "exclude_domains": []
+                    }
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+
+                    # Extract relevant information
+                    results = []
+                    for item in data.get("results", [])[:max_results]:
+                        results.append({
+                            "title": item.get("title", ""),
+                            "url": item.get("url", ""),
+                            "content": item.get("content", "")[:500],  # Truncate long content
+                            "score": item.get("score", 0)
+                        })
+
+                    answer = data.get("answer", "")
+
+                    logger.info(f"[TradingTools] Tavily search returned {len(results)} results")
+
+                    return json.dumps({
+                        "success": True,
+                        "query": query,
+                        "answer": answer,
+                        "results": results,
+                        "result_count": len(results),
+                        "source": "Tavily Search API",
+                        "message": f"搜索'{query}'返回{len(results)}条结果"
+                    }, ensure_ascii=False)
+                else:
+                    error_msg = f"Tavily API error: {response.status_code}"
+                    logger.error(f"[TradingTools] {error_msg}")
+                    return json.dumps({
+                        "success": False,
+                        "error": error_msg,
+                        "message": f"搜索失败: {error_msg}"
+                    }, ensure_ascii=False)
+
+        except Exception as e:
+            logger.error(f"[TradingTools] Tavily search error: {e}")
+            return json.dumps({
+                "success": False,
+                "error": str(e),
+                "message": f"搜索出错: {str(e)}"
+            }, ensure_ascii=False)

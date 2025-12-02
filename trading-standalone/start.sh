@@ -73,6 +73,16 @@ export OKX_DEMO_MODE=$(grep "demo_mode:" config.yaml | tail -1 | sed 's/.*://' |
 export SCHEDULER_INTERVAL_HOURS=$(grep "interval_hours:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
 export COOLDOWN_HOURS=$(grep "cooldown_hours:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
 export MAX_CONSECUTIVE_LOSSES=$(grep "max_consecutive_losses:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
+
+# Risk control config
+export MAX_LEVERAGE=$(grep "max_leverage:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
+export MAX_POSITION_PERCENT=$(grep "max_position_percent:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
+export MIN_POSITION_PERCENT=$(grep "min_position_percent:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
+export DEFAULT_POSITION_PERCENT=$(grep "default_position_percent:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
+export MIN_CONFIDENCE=$(grep "min_confidence:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
+export DEFAULT_TP_PERCENT=$(grep "default_tp_percent:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
+export DEFAULT_SL_PERCENT=$(grep "default_sl_percent:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
+
 export DEFAULT_LLM_PROVIDER=$(grep "provider:" config.yaml | head -1 | sed 's/.*://' | tr -d ' "')
 export LOG_LEVEL=$(grep "level:" config.yaml | head -1 | sed 's/.*://' | tr -d ' "')
 export REDIS_MAX_MEMORY=$(grep "redis_max_memory:" config.yaml | sed 's/.*://' | tr -d ' "')
@@ -84,12 +94,19 @@ export EMAIL_ENABLED=$(grep "enabled:" config.yaml | head -1 | sed 's/.*://' | t
 echo ""
 echo -e "${GREEN}Configuration loaded:${NC}"
 echo "  Symbol:          ${TRADING_SYMBOL:-BTC-USDT-SWAP}"
-echo "  Leverage:        ${TRADING_LEVERAGE:-10}x"
-echo "  Position Size:   ${TRADING_POSITION_SIZE:-100} USDT"
-echo "  Take Profit:     ${TRADING_TP_PERCENT:-5.0}%"
-echo "  Stop Loss:       ${TRADING_SL_PERCENT:-3.0}%"
 echo "  Demo Mode:       ${OKX_DEMO_MODE:-true}"
 echo "  Analysis Interval: ${SCHEDULER_INTERVAL_HOURS:-4} hours"
+echo ""
+echo -e "${GREEN}Risk Control Settings:${NC}"
+echo "  Max Leverage:    ${MAX_LEVERAGE:-20}x"
+echo "  Position Range:  ${MIN_POSITION_PERCENT:-10}% - ${MAX_POSITION_PERCENT:-30}%"
+echo "  Default Position: ${DEFAULT_POSITION_PERCENT:-20}%"
+echo "  Min Confidence:  ${MIN_CONFIDENCE:-60}%"
+echo "  Default TP/SL:   +${DEFAULT_TP_PERCENT:-5.0}% / -${DEFAULT_SL_PERCENT:-2.0}%"
+echo ""
+echo -e "${GREEN}Other Settings:${NC}"
+echo "  Cooldown Hours:  ${COOLDOWN_HOURS:-24}"
+echo "  Max Losses:      ${MAX_CONSECUTIVE_LOSSES:-3}"
 echo "  LLM Provider:    ${DEFAULT_LLM_PROVIDER:-gemini}"
 echo "  Email Enabled:   ${EMAIL_ENABLED:-false}"
 echo ""

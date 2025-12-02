@@ -8,12 +8,37 @@ Extends the base Meeting class with trading-specific phases and signal generatio
 import asyncio
 import logging
 import json
+import os
 import re
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.core.roundtable.meeting import Meeting
+
+
+def _get_env_int(key: str, default: int) -> int:
+    """Get integer from environment variable"""
+    val = os.getenv(key)
+    if val:
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    return default
+
+
+def _get_env_float(key: str, default: float) -> float:
+    """Get float from environment variable"""
+    val = os.getenv(key)
+    if val:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    return default
+
+
 from app.core.roundtable.agent import Agent
 from app.models.trading_models import TradingSignal, AgentVote
 from app.core.trading.retry_handler import (
@@ -28,22 +53,28 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TradingMeetingConfig:
-    """Configuration for trading meeting"""
-    symbol: str = "BTC-USDT-SWAP"
-    max_leverage: int = 20
-    max_position_percent: float = 0.3  # 最大仓位百分比 (30%)
-    min_position_percent: float = 0.1  # 最小仓位百分比 (10%)
-    default_position_percent: float = 0.2  # 默认仓位百分比 (20%)
-    min_confidence: int = 60
+    """Configuration for trading meeting - reads from environment variables"""
+    symbol: str = field(default_factory=lambda: os.getenv("TRADING_SYMBOL", "BTC-USDT-SWAP"))
+    max_leverage: int = field(default_factory=lambda: _get_env_int("MAX_LEVERAGE", 20))
+    max_position_percent: float = field(default_factory=lambda: _get_env_float("MAX_POSITION_PERCENT", 30) / 100)  # Convert from % to decimal
+    min_position_percent: float = field(default_factory=lambda: _get_env_float("MIN_POSITION_PERCENT", 10) / 100)  # Convert from % to decimal
+    default_position_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_POSITION_PERCENT", 20) / 100)  # Convert from % to decimal
+    min_confidence: int = field(default_factory=lambda: _get_env_int("MIN_CONFIDENCE", 60))
     max_rounds: int = 3
     require_risk_manager_approval: bool = True
     # 默认止盈止损百分比
-    default_tp_percent: float = 5.0
-    default_sl_percent: float = 2.0
+    default_tp_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_TP_PERCENT", 5.0))
+    default_sl_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_SL_PERCENT", 2.0))
     # 默认余额（用于计算，如果无法获取实际余额）
     default_balance: float = 10000.0
     # 回退价格（仅在无法获取实时价格时使用）
     fallback_price: float = 95000.0
+
+    def __post_init__(self):
+        """Log the configuration after initialization"""
+        logger.info(f"TradingMeetingConfig initialized: max_leverage={self.max_leverage}, "
+                   f"position_range={self.min_position_percent*100:.0f}%-{self.max_position_percent*100:.0f}%, "
+                   f"min_confidence={self.min_confidence}%, tp/sl={self.default_tp_percent}%/{self.default_sl_percent}%")
 
 
 class TradingMeeting(Meeting):
