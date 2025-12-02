@@ -212,8 +212,17 @@ class TradingSystem:
                     "signal": signal.model_dump()
                 })
 
-                # Execute trade if not hold
-                if signal.direction != "hold":
+                # Record all decisions to history (including hold)
+                if signal.direction == "hold":
+                    # Record hold decision
+                    self._trade_history.append({
+                        "timestamp": datetime.now().isoformat(),
+                        "signal": signal.model_dump(),
+                        "status": "hold",
+                        "trade_result": {"action": "hold", "message": "观望，不执行交易"}
+                    })
+                else:
+                    # Execute trade
                     trade_result = await self._execute_signal(signal)
                     self._trade_history.append({
                         "timestamp": datetime.now().isoformat(),
@@ -229,6 +238,14 @@ class TradingSystem:
                         "success": trade_result.get("success", False),
                         "trade_result": trade_result
                     })
+            else:
+                # No signal generated - record this too
+                self._trade_history.append({
+                    "timestamp": datetime.now().isoformat(),
+                    "signal": None,
+                    "status": "no_signal",
+                    "trade_result": {"action": "none", "message": "未产生有效决策信号"}
+                })
 
         except Exception as e:
             logger.error(f"Error in analysis cycle: {e}")

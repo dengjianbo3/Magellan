@@ -293,11 +293,70 @@
                     html += `</div>`;
                 }
 
+                // Decision History (signals)
+                if (history && history.signals && history.signals.length > 0) {
+                    html += `
+                        <div class="card">
+                            <div class="card-title">Decision History</div>
+                    `;
+                    for (const item of history.signals.slice(-5).reverse()) {
+                        const signal = item.signal;
+                        const status = item.status;
+                        const timestamp = item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN') : 'N/A';
+
+                        let dirClass = 'none';
+                        let dirText = '未知';
+                        let confidence = 0;
+                        let reason = item.trade_result?.message || '';
+
+                        if (signal) {
+                            const dir = signal.direction || 'hold';
+                            dirClass = dir === 'long' ? 'long' : (dir === 'short' ? 'short' : 'none');
+                            dirText = dir === 'long' ? '做多' : (dir === 'short' ? '做空' : '观望');
+                            confidence = signal.confidence || 0;
+                            reason = signal.reasoning || reason;
+                        } else if (status === 'no_signal') {
+                            dirText = '无信号';
+                        }
+
+                        html += `
+                            <div class="trade-item">
+                                <div class="trade-header">
+                                    <span class="trade-direction ${dirClass}">${dirText.toUpperCase()}</span>
+                                    <span style="font-size: 0.8em; color: #888;">${timestamp}</span>
+                                </div>
+                                ${confidence > 0 ? `<div class="row">
+                                    <span class="label">置信度</span>
+                                    <span class="value">${confidence}%</span>
+                                </div>` : ''}
+                                ${signal?.leverage ? `<div class="row">
+                                    <span class="label">杠杆</span>
+                                    <span class="value">${signal.leverage}x</span>
+                                </div>` : ''}
+                                ${reason ? `<div class="row" style="display: block;">
+                                    <span class="label">理由</span>
+                                    <div style="font-size: 0.75em; color: #aaa; margin-top: 4px; line-height: 1.4;">${reason.substring(0, 100)}${reason.length > 100 ? '...' : ''}</div>
+                                </div>` : ''}
+                            </div>
+                        `;
+                    }
+                    html += `</div>`;
+                } else {
+                    html += `
+                        <div class="card">
+                            <div class="card-title">Decision History</div>
+                            <div style="text-align: center; color: #666; padding: 20px;">
+                                No decisions yet
+                            </div>
+                        </div>
+                    `;
+                }
+
                 // Trade History
                 if (history && history.trades && history.trades.length > 0) {
                     html += `
                         <div class="card">
-                            <div class="card-title">Recent Trades</div>
+                            <div class="card-title">Closed Trades</div>
                     `;
                     for (const trade of history.trades.slice(-5).reverse()) {
                         const dir = trade.direction || trade.side || 'N/A';
@@ -316,15 +375,6 @@
                         `;
                     }
                     html += `</div>`;
-                } else {
-                    html += `
-                        <div class="card">
-                            <div class="card-title">Recent Trades</div>
-                            <div style="text-align: center; color: #666; padding: 20px;">
-                                No trades yet
-                            </div>
-                        </div>
-                    `;
                 }
 
                 content.innerHTML = html;
