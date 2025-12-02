@@ -427,6 +427,31 @@ class PaperTrader:
         position_value = amount_usdt * leverage
         size = position_value / current_price
 
+        # 重新计算止盈止损价格（基于实际入场价，而不是 LLM 预期的价格）
+        # 如果传入的 tp/sl 价格与实际入场价不匹配，使用默认百分比重新计算
+        if tp_price is not None and sl_price is not None:
+            if direction == "long":
+                # 做多：止盈应该高于入场价，止损应该低于入场价
+                if tp_price <= current_price or sl_price >= current_price:
+                    # 止盈止损价格不合理，使用默认百分比重新计算
+                    logger.warning(
+                        f"止盈止损价格不合理 (tp={tp_price}, sl={sl_price}, entry={current_price})，"
+                        f"使用默认百分比重新计算"
+                    )
+                    tp_price = current_price * (1 + self.config.default_tp_percent / 100)
+                    sl_price = current_price * (1 - self.config.default_sl_percent / 100)
+            else:  # short
+                # 做空：止盈应该低于入场价，止损应该高于入场价
+                if tp_price >= current_price or sl_price <= current_price:
+                    logger.warning(
+                        f"止盈止损价格不合理 (tp={tp_price}, sl={sl_price}, entry={current_price})，"
+                        f"使用默认百分比重新计算"
+                    )
+                    tp_price = current_price * (1 - self.config.default_tp_percent / 100)
+                    sl_price = current_price * (1 + self.config.default_sl_percent / 100)
+
+        logger.info(f"开仓参数: entry={current_price}, tp={tp_price}, sl={sl_price}")
+
         # 创建持仓
         self._position = PaperPosition(
             id=str(uuid.uuid4()),
