@@ -91,6 +91,20 @@ services:
         limits:
           memory: 512M
 
+  # ========== Web Dashboard (Nginx) ==========
+  web_dashboard:
+    image: nginx:alpine
+    container_name: trading-dashboard
+    ports:
+      - "8888:80"
+    volumes:
+      - ./status.html:/usr/share/nginx/html/index.html:ro
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 50M
+
   # ========== Trading Service ==========
   trading_service:
     build:
