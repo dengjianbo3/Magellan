@@ -293,14 +293,10 @@
                                 <span class="value">${position.leverage || 1}x</span>
                             </div>
                             <div class="row">
-                                <span class="label">Position %</span>
-                                <span class="value">${formatNumber(position.position_percent || 0)}%</span>
-                            </div>
-                            <div class="row">
                                 <span class="label">TP / SL</span>
                                 <span class="value">
-                                    <span class="positive">$${formatNumber(position.take_profit_price || position.tp_price)}</span> /
-                                    <span class="negative">$${formatNumber(position.stop_loss_price || position.sl_price)}</span>
+                                    <span class="positive">$${formatNumber(position.take_profit_price)}</span> /
+                                    <span class="negative">$${formatNumber(position.stop_loss_price)}</span>
                                 </span>
                             </div>
                         `;
