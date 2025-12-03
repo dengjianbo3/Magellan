@@ -85,6 +85,7 @@
         }
         .trade-direction.long { background: #166534; color: #4ade80; }
         .trade-direction.short { background: #991b1b; color: #f87171; }
+        .trade-direction.neutral { background: #854d0e; color: #fbbf24; }
         .btn {
             display: block;
             width: 100%;
@@ -327,8 +328,19 @@
 
                         if (signal) {
                             const dir = signal.direction || 'hold';
-                            dirClass = dir === 'long' ? 'long' : (dir === 'short' ? 'short' : 'none');
-                            dirText = dir === 'long' ? '做多' : (dir === 'short' ? '做空' : '观望');
+                            if (dir === 'long') {
+                                dirClass = 'long';
+                                dirText = '做多';
+                            } else if (dir === 'short') {
+                                dirClass = 'short';
+                                dirText = '做空';
+                            } else if (dir === 'hold') {
+                                dirClass = 'neutral';
+                                dirText = '观望';
+                            } else {
+                                dirClass = 'none';
+                                dirText = '未知';
+                            }
                             confidence = signal.confidence || 0;
                             reason = signal.reasoning || reason;
                         } else if (status === 'no_signal') {
