@@ -487,7 +487,23 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
         # Extract signal ONLY from actually executed tools, not from text matching
         signal = await self._extract_signal_from_executed_tools(response)
 
+        # Log meeting summary for monitoring
+        vote_summary = self._get_vote_summary()
+        logger.info(f"[Meeting Summary] Votes: {len(self._agent_votes)} collected, "
+                   f"Decision: {signal.direction if signal else 'None'}, "
+                   f"Vote breakdown: {vote_summary}")
+
         return signal
+
+    def _get_vote_summary(self) -> str:
+        """Get vote summary for logging"""
+        if not self._agent_votes:
+            return "no votes"
+        directions = [v.direction for v in self._agent_votes]
+        long_count = directions.count("long")
+        short_count = directions.count("short")
+        hold_count = directions.count("hold")
+        return f"{long_count}L/{short_count}S/{hold_count}H"
 
     async def _extract_signal_from_executed_tools(self, response: str) -> Optional[TradingSignal]:
         """
@@ -902,8 +918,20 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
             )
 
         except Exception as e:
-            logger.error(f"Error parsing vote: {e}")
-            return None
+            logger.error(f"[{agent_name}] Error parsing vote: {e}")
+            logger.error(f"[{agent_name}] Response content: {response[:500]}")
+
+            # Return default hold vote instead of None to preserve consensus completeness
+            return AgentVote(
+                agent_id=agent_id,
+                agent_name=agent_name,
+                direction="hold",
+                confidence=0,
+                reasoning=f"Failed to parse vote: {str(e)[:100]}",
+                suggested_leverage=1,
+                suggested_tp_percent=self.config.default_tp_percent,
+                suggested_sl_percent=self.config.default_sl_percent
+            )
 
     async def _parse_signal(self, response: str) -> Optional[TradingSignal]:
         """Parse final trading signal from leader's response"""
