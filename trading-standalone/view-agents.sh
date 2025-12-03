@@ -2,7 +2,7 @@
 # View agent discussions and tool calls only - Clean output
 # 只显示agent讨论内容和工具调用结果,过滤掉prompt、API调用等噪音
 
-docker-compose logs -f trading-service 2>&1 | python3 -c "
+docker-compose logs -f trading_service 2>&1 | python3 -c "
 import sys
 import codecs
 import re
