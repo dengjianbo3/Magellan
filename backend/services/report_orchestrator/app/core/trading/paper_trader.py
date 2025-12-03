@@ -324,11 +324,17 @@ class PaperTrader:
         self._last_price_update = datetime.now()
 
     async def get_account(self) -> Dict:
-        """获取账户信息"""
+        """获取账户信息 - 包含真实可用保证金"""
         await self._update_equity()
+
+        # 真实可用保证金 = 总权益 - 已用保证金
+        # 这考虑了未实现盈亏对可用资金的影响
+        true_available_margin = self._account.total_equity - self._account.used_margin
+
         return {
             "total_equity": self._account.total_equity,
             "available_balance": self._account.balance,
+            "true_available_margin": true_available_margin,  # 新增: 真实可用保证金
             "used_margin": self._account.used_margin,
             "unrealized_pnl": self._account.unrealized_pnl,
             "realized_pnl": self._account.realized_pnl,
@@ -413,7 +419,7 @@ class PaperTrader:
         tp_price: Optional[float] = None,
         sl_price: Optional[float] = None
     ) -> Dict:
-        """开仓"""
+        """开仓 - 增强版余额检查"""
         if self._position:
             return {
                 "success": False,
@@ -430,11 +436,33 @@ class PaperTrader:
                 "error": f"参数类型错误: {e}"
             }
 
-        # 检查余额
-        if amount_usdt > self._account.balance:
+        # 更新权益,计算真实可用保证金
+        await self._update_equity()
+        true_available_margin = self._account.total_equity - self._account.used_margin
+
+        # 检查1: 真实可用保证金是否足够
+        if amount_usdt > true_available_margin:
             return {
                 "success": False,
-                "error": f"余额不足，可用: ${self._account.balance:.2f}"
+                "error": (
+                    f"保证金不足! 需要: ${amount_usdt:.2f}, "
+                    f"真实可用: ${true_available_margin:.2f} "
+                    f"(总权益: ${self._account.total_equity:.2f} - "
+                    f"已用: ${self._account.used_margin:.2f})"
+                )
+            }
+
+        # 检查2: 账户余额是否足够 (用于扣款)
+        if amount_usdt > self._account.balance:
+            unrealized_loss = -self._account.unrealized_pnl if self._account.unrealized_pnl < 0 else 0
+            return {
+                "success": False,
+                "error": (
+                    f"账户余额不足! 需要: ${amount_usdt:.2f}, "
+                    f"可用余额: ${self._account.balance:.2f}. "
+                    f"{'持仓浮亏: $' + f'{unrealized_loss:.2f}, ' if unrealized_loss > 0 else ''}"
+                    f"建议先平仓或减少开仓金额"
+                )
             }
 
         # 限制杠杆 (1-max_leverage倍)
@@ -492,7 +520,8 @@ class PaperTrader:
 
         logger.info(
             f"开仓成功: {direction.upper()} {size:.6f} BTC @ ${current_price:.2f}, "
-            f"杠杆: {leverage}x, 保证金: ${amount_usdt:.2f}"
+            f"杠杆: {leverage}x, 保证金: ${amount_usdt:.2f}, "
+            f"剩余可用: ${self._account.balance:.2f}"
         )
 
         return {
@@ -504,7 +533,9 @@ class PaperTrader:
             "leverage": leverage,
             "margin": amount_usdt,
             "take_profit": tp_price,
-            "stop_loss": sl_price
+            "stop_loss": sl_price,
+            "remaining_balance": self._account.balance,  # 新增: 返回剩余余额
+            "remaining_available_margin": self._account.total_equity - self._account.used_margin  # 新增: 返回真实可用保证金
         }
 
     async def close_position(self, symbol: str = "BTC-USDT-SWAP", reason: str = "manual") -> Dict:

@@ -133,7 +133,12 @@ class TradingToolkit:
         # Account Tools
         self._tools['get_account_balance'] = FunctionTool(
             name="get_account_balance",
-            description="获取账户余额和可用资金",
+            description=(
+                "获取账户余额和可用资金。"
+                "⚠️ 重要: 使用 'true_available_margin' 字段来判断可用于开仓的资金！"
+                "这个值考虑了未实现盈亏对保证金的影响。"
+                "'available_balance' 仅显示账户现金余额，不考虑持仓浮动盈亏。"
+            ),
             parameters_schema={"type": "object", "properties": {}},
             func=self._get_account_balance
         )
@@ -776,8 +781,11 @@ class TradingToolkit:
             if self.paper_trader:
                 account = await self.paper_trader.get_account()
                 return json.dumps({
+                    "⚠️ 使用这个值开仓": "↓ true_available_margin ↓",
+                    "true_available_margin": f"${account['true_available_margin']:,.2f}",
+                    "说明": "真实可用保证金 = 总权益 - 已用保证金 (考虑了浮动盈亏)",
                     "total_equity": f"${account['total_equity']:,.2f}",
-                    "available_balance": f"${account['available_balance']:,.2f}",
+                    "available_balance": f"${account['available_balance']:,.2f} (仅现金余额)",
                     "used_margin": f"${account['used_margin']:,.2f}",
                     "unrealized_pnl": f"${account['unrealized_pnl']:,.2f}",
                     "realized_pnl": f"${account['realized_pnl']:,.2f}",
@@ -789,6 +797,7 @@ class TradingToolkit:
             logger.error(f"Error getting balance: {e}")
 
         return json.dumps({
+            "true_available_margin": f"${self.config.default_balance:,.2f}",
             "total_equity": f"${self.config.default_balance:,.2f}",
             "available_balance": f"${self.config.default_balance:,.2f}",
             "used_margin": "$0.00",
