@@ -715,6 +715,25 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
             # Clear previous tool executions for this agent turn
             self._last_executed_tools = []
 
+            # Deduplicate decision tools - only allow the FIRST open_long/open_short/hold call
+            # This prevents Leader from accidentally calling the same trading tool multiple times
+            decision_tools = {'open_long', 'open_short', 'hold'}
+            seen_decision_tool = False
+            filtered_matches = []
+            for tool_name, params_str in tool_matches:
+                if tool_name in decision_tools:
+                    if not seen_decision_tool:
+                        filtered_matches.append((tool_name, params_str))
+                        seen_decision_tool = True
+                        logger.info(f"[{agent.name}] Found first decision tool: {tool_name}, will skip any duplicates")
+                    else:
+                        logger.warning(f"[{agent.name}] Skipping duplicate decision tool call: {tool_name} (already have a decision)")
+                else:
+                    # Non-decision tools can be called multiple times
+                    filtered_matches.append((tool_name, params_str))
+
+            tool_matches = filtered_matches
+
             if tool_matches and hasattr(agent, 'tools') and agent.tools:
                 logger.info(f"Agent {agent.name} has {len(tool_matches)} tool calls to execute")
                 tool_results = []
