@@ -21,6 +21,15 @@ from .agent import Agent
 from .tool import Tool
 import httpx
 
+# Import timeout configurations
+from ..config_timeouts import (
+    AGENT_ACTION_TIMEOUT,
+    TOOL_EXECUTION_TIMEOUT,
+    MEETING_TOTAL_TIMEOUT,
+    HTTP_CLIENT_TIMEOUT,
+    log_timeout_warning
+)
+
 # 配置日志
 logger = logging.getLogger(__name__)
 
@@ -217,13 +226,13 @@ class ReWOOAgent(Agent):
 
             # 创建带超时的任务
             try:
-                # 每个工具30秒超时
+                # 使用配置的工具执行超时
                 task = asyncio.wait_for(
                     tool.execute(**tool_params),
-                    timeout=30.0
+                    timeout=TOOL_EXECUTION_TIMEOUT
                 )
                 tasks.append(task)
-                logger.debug(f"[{self.name}] Step {i+1}: {tool_name}({tool_params}) - {purpose}")
+                logger.debug(f"[{self.name}] Step {i+1}: {tool_name}({tool_params}) - {purpose} (timeout: {TOOL_EXECUTION_TIMEOUT}s)")
             except Exception as e:
                 logger.error(f"[{self.name}] Failed to create task for {tool_name}: {e}")
                 error_result = {
@@ -240,11 +249,11 @@ class ReWOOAgent(Agent):
         processed_observations = []
         for i, obs in enumerate(observations):
             if isinstance(obs, asyncio.TimeoutError):
-                logger.error(f"[{self.name}] Step {i+1} timed out after 30s")
+                logger.error(f"[{self.name}] Step {i+1} timed out after {TOOL_EXECUTION_TIMEOUT}s")
                 processed_observations.append({
                     "success": False,
                     "error": "Tool execution timeout",
-                    "summary": f"工具执行超时(30s)"
+                    "summary": f"工具执行超时({TOOL_EXECUTION_TIMEOUT}s)"
                 })
             elif isinstance(obs, Exception):
                 logger.error(f"[{self.name}] Step {i+1} failed with exception: {obs}")
@@ -522,7 +531,7 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
 
         for attempt in range(max_retries):
             try:
-                async with httpx.AsyncClient(timeout=120.0) as client:
+                async with httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT) as client:
                     # 转换消息格式为LLM Gateway期待的格式
                     # Gemini只支持 "user" 和 "model" role,不支持 "system"
                     history = []

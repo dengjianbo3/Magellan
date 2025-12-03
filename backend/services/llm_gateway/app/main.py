@@ -14,6 +14,12 @@ import json
 
 from .core.config import settings
 
+# Import timeout configurations
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "report_orchestrator" / "app" / "core"))
+from config_timeouts import LLM_REQUEST_TIMEOUT
+
 # --- Pydantic Models (Legacy) ---
 class ChatMessage(BaseModel):
     role: str
@@ -100,9 +106,10 @@ def startup_event():
             from openai import OpenAI
             kimi_client = OpenAI(
                 api_key=settings.KIMI_API_KEY,
-                base_url=settings.KIMI_BASE_URL
+                base_url=settings.KIMI_BASE_URL,
+                timeout=LLM_REQUEST_TIMEOUT  # 应用超时配置
             )
-            print(f"[LLM Gateway] Kimi client initialized (model: {settings.KIMI_MODEL_NAME})")
+            print(f"[LLM Gateway] Kimi client initialized (model: {settings.KIMI_MODEL_NAME}, timeout: {LLM_REQUEST_TIMEOUT}s)")
         except Exception as e:
             print(f"[LLM Gateway] Failed to initialize Kimi client: {e}")
 
@@ -112,9 +119,10 @@ def startup_event():
             from openai import OpenAI
             deepseek_client = OpenAI(
                 api_key=settings.DEEPSEEK_API_KEY,
-                base_url=settings.DEEPSEEK_BASE_URL
+                base_url=settings.DEEPSEEK_BASE_URL,
+                timeout=LLM_REQUEST_TIMEOUT  # 应用超时配置
             )
-            print(f"[LLM Gateway] DeepSeek client initialized (model: {settings.DEEPSEEK_MODEL_NAME})")
+            print(f"[LLM Gateway] DeepSeek client initialized (model: {settings.DEEPSEEK_MODEL_NAME}, timeout: {LLM_REQUEST_TIMEOUT}s)")
         except Exception as e:
             print(f"[LLM Gateway] Failed to initialize DeepSeek client: {e}")
 
@@ -367,7 +375,12 @@ def convert_openai_to_gemini_tools(openai_tools: List[Dict[str, Any]]) -> List[A
     return function_declarations
 
 def convert_openai_to_gemini_messages(messages: List[ChatCompletionMessage]) -> List[Any]:
-    """Convert OpenAI messages format to Gemini contents format"""
+    """Convert OpenAI messages format to Gemini contents format
+
+    Note: Gemini 3.0 requires preserving 'thought signatures' across turns.
+    These signatures are automatically handled by the native Gemini API when
+    using Parts correctly. We need to ensure we don't lose any metadata.
+    """
     from google.genai import types
 
     contents = []
@@ -404,6 +417,8 @@ def convert_openai_to_gemini_messages(messages: List[ChatCompletionMessage]) -> 
                     except:
                         args = {}
 
+                # Gemini 3.0: FunctionCall parts may contain signatures
+                # The native API handles this automatically when using Python SDK
                 parts.append(types.Part(
                     function_call=types.FunctionCall(
                         name=func.get("name"),
@@ -414,6 +429,7 @@ def convert_openai_to_gemini_messages(messages: List[ChatCompletionMessage]) -> 
         # Handle tool responses (results from tool execution)
         if role == "user" and msg.tool_call_id:
             # This is a tool result
+            # Gemini 3.0: Ensure we return function responses correctly
             parts.append(types.Part(
                 function_response=types.FunctionResponse(
                     name=msg.name or "unknown",
