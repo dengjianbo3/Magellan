@@ -1159,7 +1159,7 @@ class TradingToolkit:
 
     async def _tavily_search(self, query: str, max_results: int = 5, time_range: str = None, topic: str = "general", days: int = None) -> str:
         """
-        Search for cryptocurrency news and market information using Tavily API.
+        Search for cryptocurrency news and market information using MCP.
 
         Args:
             query: Search query string
@@ -1172,83 +1172,66 @@ class TradingToolkit:
             JSON string with search results
         """
         try:
-            import httpx
+            # 使用 MCP Client 调用 web-search 服务
+            from app.core.roundtable.mcp_tools import get_mcp_client
 
-            # Get Tavily API key from environment
-            tavily_api_key = os.getenv("TAVILY_API_KEY")
-            if not tavily_api_key:
-                logger.warning("[TradingTools] TAVILY_API_KEY not set, web search unavailable")
-                return json.dumps({
-                    "success": False,
-                    "error": "Tavily API key not configured",
-                    "message": "网络搜索功能未配置，请设置TAVILY_API_KEY环境变量"
-                }, ensure_ascii=False)
+            mcp_client = get_mcp_client()
 
-            # Ensure max_results is valid
+            # 确保参数类型正确
             max_results = int(max_results) if max_results else 5
             max_results = min(max(1, max_results), 10)  # Limit between 1-10
 
-            # Build request payload
-            request_payload = {
-                "api_key": tavily_api_key,
+            # 构建 MCP 调用参数
+            params = {
                 "query": query,
-                "search_depth": "basic",
-                "include_answer": True,
-                "include_raw_content": False,
                 "max_results": max_results,
-                "include_domains": [],
-                "exclude_domains": []
+                "topic": topic or "general"
             }
 
-            # Add optional parameters if provided
-            if topic and topic in ["general", "news"]:
-                request_payload["topic"] = topic
-
+            # 添加可选参数
+            if time_range and time_range in ["day", "week", "month", "year"]:
+                params["time_range"] = time_range
             if days and isinstance(days, int) and 1 <= days <= 30:
-                request_payload["days"] = days
+                params["days"] = days
 
-            logger.info(f"[TradingTools] Tavily search: '{query}' (max_results={max_results}, time_range={time_range}, topic={topic}, days={days})")
+            logger.info(f"[TradingTools] MCP Tavily search: '{query}' (params={params})")
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    "https://api.tavily.com/search",
-                    json=request_payload
-                )
+            # 通过 MCP 调用
+            result = await mcp_client.call_tool(
+                server_name="web-search",
+                tool_name="search",
+                **params
+            )
 
-                if response.status_code == 200:
-                    data = response.json()
+            # MCP 响应已经是正确格式
+            if result.get("success"):
+                logger.info(f"[TradingTools] MCP search success: {len(result.get('result', {}).get('results', []))} results")
+                # 重新格式化为trading_tools期望的格式
+                mcp_results = result.get("result", {}).get("results", [])
+                formatted_results = [{
+                    "title": r.get("title", ""),
+                    "url": r.get("url", ""),
+                    "content": r.get("content", "")[:500],
+                    "score": 1.0  # MCP结果没有score，默认1.0
+                } for r in mcp_results]
 
-                    # Extract relevant information
-                    results = []
-                    for item in data.get("results", [])[:max_results]:
-                        results.append({
-                            "title": item.get("title", ""),
-                            "url": item.get("url", ""),
-                            "content": item.get("content", "")[:500],  # Truncate long content
-                            "score": item.get("score", 0)
-                        })
-
-                    answer = data.get("answer", "")
-
-                    logger.info(f"[TradingTools] Tavily search returned {len(results)} results")
-
-                    return json.dumps({
-                        "success": True,
-                        "query": query,
-                        "answer": answer,
-                        "results": results,
-                        "result_count": len(results),
-                        "source": "Tavily Search API",
-                        "message": f"搜索'{query}'返回{len(results)}条结果"
-                    }, ensure_ascii=False)
-                else:
-                    error_msg = f"Tavily API error: {response.status_code}"
-                    logger.error(f"[TradingTools] {error_msg}")
-                    return json.dumps({
-                        "success": False,
-                        "error": error_msg,
-                        "message": f"搜索失败: {error_msg}"
-                    }, ensure_ascii=False)
+                return json.dumps({
+                    "success": True,
+                    "query": query,
+                    "answer": result.get("result", {}).get("summary", ""),
+                    "results": formatted_results,
+                    "result_count": len(formatted_results),
+                    "source": "MCP Web Search",
+                    "message": f"搜索'{query}'返回{len(formatted_results)}条结果"
+                }, ensure_ascii=False)
+            else:
+                error_msg = result.get("error", "Unknown error")
+                logger.error(f"[TradingTools] MCP search failed: {error_msg}")
+                return json.dumps({
+                    "success": False,
+                    "error": error_msg,
+                    "message": f"搜索失败: {error_msg}"
+                }, ensure_ascii=False)
 
         except Exception as e:
             logger.error(f"[TradingTools] Tavily search error: {e}")

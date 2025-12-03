@@ -9,11 +9,12 @@ import asyncio
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict, Any, Union
+import json
 
 from .core.config import settings
 
-# --- Pydantic Models ---
+# --- Pydantic Models (Legacy) ---
 class ChatMessage(BaseModel):
     role: str
     parts: List[str]
@@ -29,6 +30,26 @@ class GenerateRequest(BaseModel):
 
 class GenerateResponse(BaseModel):
     content: str
+
+# --- OpenAI Compatible Models (Tool Calling) ---
+class ChatCompletionMessage(BaseModel):
+    role: Literal["system", "user", "assistant", "tool"]
+    content: Optional[str] = None
+    tool_calls: Optional[List[Dict[str, Any]]] = None  # OpenAI tool_calls format
+    tool_call_id: Optional[str] = None  # For tool role messages
+    name: Optional[str] = None  # For tool role messages
+
+class ChatCompletionRequest(BaseModel):
+    messages: List[ChatCompletionMessage]
+    tools: Optional[List[Dict[str, Any]]] = None  # OpenAI tools schema
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = "auto"  # auto, none, or specific tool
+    temperature: Optional[float] = None
+    provider: Optional[Literal["gemini", "kimi", "deepseek"]] = None
+
+class ChatCompletionResponse(BaseModel):
+    choices: List[Dict[str, Any]]  # [{"message": {"role", "content", "tool_calls"}}]
+    model: str
+    usage: Optional[Dict[str, Any]] = None
 
 class ProviderInfo(BaseModel):
     name: str
@@ -323,6 +344,258 @@ async def call_deepseek(request: GenerateRequest) -> str:
             print(f"[DeepSeek] Error: {e}")
             raise HTTPException(status_code=500, detail=f"DeepSeek error: {str(e)}")
 
+# --- Tool Calling Helper Functions ---
+
+def convert_openai_to_gemini_tools(openai_tools: List[Dict[str, Any]]) -> List[Any]:
+    """Convert OpenAI tools format to Gemini function declarations"""
+    from google.genai import types
+
+    function_declarations = []
+    for tool in openai_tools:
+        if tool.get("type") != "function":
+            continue
+
+        func = tool.get("function", {})
+        function_declarations.append(
+            types.FunctionDeclaration(
+                name=func.get("name"),
+                description=func.get("description", ""),
+                parameters=func.get("parameters", {})
+            )
+        )
+
+    return function_declarations
+
+def convert_openai_to_gemini_messages(messages: List[ChatCompletionMessage]) -> List[Any]:
+    """Convert OpenAI messages format to Gemini contents format"""
+    from google.genai import types
+
+    contents = []
+    for msg in messages:
+        role = msg.role
+
+        # Map OpenAI roles to Gemini roles
+        if role == "system":
+            # Gemini doesn't have system role, prepend to first user message
+            # or add as separate user message
+            role = "user"
+        elif role == "assistant":
+            role = "model"
+        elif role == "tool":
+            # Tool results go to user role in Gemini
+            role = "user"
+
+        # Build parts
+        parts = []
+
+        # Add text content if present
+        if msg.content:
+            parts.append(types.Part(text=msg.content))
+
+        # Handle tool calls (assistant calling tools)
+        if msg.tool_calls:
+            for tool_call in msg.tool_calls:
+                func = tool_call.get("function", {})
+                # Parse arguments if they're a string
+                args = func.get("arguments", {})
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except:
+                        args = {}
+
+                parts.append(types.Part(
+                    function_call=types.FunctionCall(
+                        name=func.get("name"),
+                        args=args
+                    )
+                ))
+
+        # Handle tool responses (results from tool execution)
+        if role == "user" and msg.tool_call_id:
+            # This is a tool result
+            parts.append(types.Part(
+                function_response=types.FunctionResponse(
+                    name=msg.name or "unknown",
+                    response={"result": msg.content}
+                )
+            ))
+
+        if parts:
+            contents.append(types.Content(role=role, parts=parts))
+
+    return contents
+
+def convert_gemini_to_openai_response(gemini_response: Any, model_name: str) -> Dict[str, Any]:
+    """Convert Gemini response to OpenAI chat completion format"""
+    if not hasattr(gemini_response, 'candidates') or not gemini_response.candidates:
+        return {
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "[Empty response from Gemini]"
+                },
+                "finish_reason": "stop"
+            }],
+            "model": model_name
+        }
+
+    candidate = gemini_response.candidates[0]
+    content_parts = candidate.content.parts if hasattr(candidate, 'content') else []
+
+    message = {"role": "assistant"}
+    tool_calls = []
+    text_parts = []
+
+    for part in content_parts:
+        # Check for function call
+        if hasattr(part, 'function_call') and part.function_call:
+            fc = part.function_call
+            tool_calls.append({
+                "id": f"call_{len(tool_calls)}",
+                "type": "function",
+                "function": {
+                    "name": fc.name,
+                    "arguments": json.dumps(dict(fc.args)) if hasattr(fc, 'args') else "{}"
+                }
+            })
+
+        # Check for text
+        if hasattr(part, 'text') and part.text:
+            text_parts.append(part.text)
+
+    # Set message content and tool_calls
+    if tool_calls:
+        message["tool_calls"] = tool_calls
+        # OpenAI format: when there are tool_calls, content can be None or empty
+        message["content"] = None
+    else:
+        message["content"] = "".join(text_parts) if text_parts else None
+
+    return {
+        "choices": [{
+            "message": message,
+            "finish_reason": "tool_calls" if tool_calls else "stop"
+        }],
+        "model": model_name
+    }
+
+# --- Tool Calling Functions ---
+
+async def call_gemini_with_tools(request: ChatCompletionRequest) -> Dict[str, Any]:
+    """Call Gemini API with tool calling support"""
+    from google.genai import types
+
+    if not gemini_client:
+        raise HTTPException(status_code=503, detail="Gemini client is not available")
+
+    # Convert messages
+    contents = convert_openai_to_gemini_messages(request.messages)
+
+    # Convert tools if present
+    tools_config = None
+    if request.tools:
+        function_declarations = convert_openai_to_gemini_tools(request.tools)
+        if function_declarations:
+            tools_config = [types.Tool(function_declarations=function_declarations)]
+            print(f"[Gemini Tool Calling] Configured {len(function_declarations)} tools")
+
+    # Build config
+    config_dict = {}
+    if tools_config:
+        config_dict["tools"] = tools_config
+    if request.temperature is not None:
+        config_dict["temperature"] = request.temperature
+
+    config = types.GenerateContentConfig(**config_dict) if config_dict else None
+
+    try:
+        response = gemini_client.models.generate_content(
+            model=settings.GEMINI_MODEL_NAME,
+            contents=contents,
+            config=config
+        )
+
+        return convert_gemini_to_openai_response(response, settings.GEMINI_MODEL_NAME)
+
+    except Exception as e:
+        print(f"[Gemini Tool Calling] Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Gemini error: {str(e)}")
+
+async def call_deepseek_with_tools(request: ChatCompletionRequest) -> Dict[str, Any]:
+    """Call DeepSeek API with tool calling support (OpenAI compatible)"""
+    if not deepseek_client:
+        raise HTTPException(status_code=503, detail="DeepSeek client is not available")
+
+    try:
+        # Convert messages to OpenAI format
+        messages = [msg.dict(exclude_none=True) for msg in request.messages]
+
+        # DeepSeek uses OpenAI SDK natively
+        import asyncio
+        loop = asyncio.get_event_loop()
+
+        # Prepare kwargs
+        kwargs = {
+            "model": settings.DEEPSEEK_MODEL_NAME,
+            "messages": messages,
+            "temperature": request.temperature if request.temperature is not None else 1.0
+        }
+
+        # Add tools if present
+        if request.tools:
+            kwargs["tools"] = request.tools
+            kwargs["tool_choice"] = request.tool_choice
+            print(f"[DeepSeek Tool Calling] Configured {len(request.tools)} tools")
+
+        response = await loop.run_in_executor(
+            None,
+            lambda: deepseek_client.chat.completions.create(**kwargs)
+        )
+
+        return response.model_dump()
+
+    except Exception as e:
+        print(f"[DeepSeek Tool Calling] Error: {e}")
+        raise HTTPException(status_code=500, detail=f"DeepSeek error: {str(e)}")
+
+async def call_kimi_with_tools(request: ChatCompletionRequest) -> Dict[str, Any]:
+    """Call Kimi API with tool calling support (OpenAI compatible)"""
+    if not kimi_client:
+        raise HTTPException(status_code=503, detail="Kimi client is not available")
+
+    try:
+        # Convert messages to OpenAI format
+        messages = [msg.dict(exclude_none=True) for msg in request.messages]
+
+        # Kimi uses OpenAI SDK
+        import asyncio
+        loop = asyncio.get_event_loop()
+
+        # Prepare kwargs
+        kwargs = {
+            "model": settings.KIMI_MODEL_NAME,
+            "messages": messages,
+            "temperature": request.temperature if request.temperature is not None else 0.6
+        }
+
+        # Add tools if present
+        if request.tools:
+            kwargs["tools"] = request.tools
+            kwargs["tool_choice"] = request.tool_choice
+            print(f"[Kimi Tool Calling] Configured {len(request.tools)} tools")
+
+        response = await loop.run_in_executor(
+            None,
+            lambda: kimi_client.chat.completions.create(**kwargs)
+        )
+
+        return response.model_dump()
+
+    except Exception as e:
+        print(f"[Kimi Tool Calling] Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Kimi error: {str(e)}")
+
 # --- API Endpoints ---
 
 @app.get("/providers", response_model=ProvidersResponse, tags=["Configuration"])
@@ -390,6 +663,30 @@ async def chat_handler(request: GenerateRequest):
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 
     return GenerateResponse(content=content)
+
+@app.post("/v1/chat/completions", response_model=ChatCompletionResponse, tags=["AI Generation"])
+async def chat_completions(request: ChatCompletionRequest):
+    """
+    OpenAI 兼容的 Chat Completions API (支持 Tool Calling)
+
+    - 支持 OpenAI 格式的 messages、tools 和 tool_choice
+    - 返回 OpenAI 格式的响应，包括 tool_calls
+    - 可以通过 request.provider 指定提供商，否则使用全局 current_provider
+    """
+    provider = request.provider or current_provider
+
+    print(f"[LLM Gateway] Chat completions request using provider: {provider}")
+    if request.tools:
+        print(f"[LLM Gateway] Tool calling enabled with {len(request.tools)} tools")
+
+    if provider == "gemini":
+        return await call_gemini_with_tools(request)
+    elif provider == "deepseek":
+        return await call_deepseek_with_tools(request)
+    elif provider == "kimi":
+        return await call_kimi_with_tools(request)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 
 @app.post("/generate_from_file", response_model=GenerateResponse, tags=["AI Generation"])
 async def generate_from_file(

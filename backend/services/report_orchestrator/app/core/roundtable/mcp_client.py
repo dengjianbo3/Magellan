@@ -127,7 +127,7 @@ class HTTPMCPConnection(MCPServerConnection):
         try:
             # 标准MCP调用格式
             response = await self.client.post(
-                f"/tools/{tool_name}",
+                f"/mcp/tools/{tool_name}",
                 json=params
             )
             response.raise_for_status()
@@ -136,17 +136,26 @@ class HTTPMCPConnection(MCPServerConnection):
             # 尝试备用端点格式
             try:
                 response = await self.client.post(
-                    f"/{tool_name}",
+                    f"/tools/{tool_name}",
                     json=params
                 )
                 response.raise_for_status()
                 return response.json()
             except:
-                return {
-                    "success": False,
-                    "error": f"HTTP error: {e.response.status_code}",
-                    "summary": f"MCP调用失败: {str(e)}"
-                }
+                # 再尝试直接工具名
+                try:
+                    response = await self.client.post(
+                        f"/{tool_name}",
+                        json=params
+                    )
+                    response.raise_for_status()
+                    return response.json()
+                except:
+                    return {
+                        "success": False,
+                        "error": f"HTTP error: {e.response.status_code}",
+                        "summary": f"MCP调用失败: {str(e)}"
+                    }
         except Exception as e:
             return {
                 "success": False,

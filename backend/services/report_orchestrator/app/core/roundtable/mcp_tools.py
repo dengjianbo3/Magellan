@@ -3,28 +3,47 @@ MCP Tools for Roundtable Discussion Agents
 为圆桌讨论专家提供的 MCP 工具集
 """
 import os
-import httpx
 from typing import Any, Dict, List, Optional
 from .tool import Tool
+from .mcp_client import MCPClient
+
+
+# 全局 MCP Client 实例 (懒加载)
+_mcp_client: Optional[MCPClient] = None
+
+def get_mcp_client() -> MCPClient:
+    """获取全局 MCP Client 实例"""
+    global _mcp_client
+    if _mcp_client is None:
+        # 加载 MCP 配置 (绝对路径或相对路径)
+        config_path = os.path.join(
+            os.path.dirname(__file__),
+            "../../../config/mcp_config.yaml"
+        )
+        # 规范化路径
+        config_path = os.path.abspath(config_path)
+        print(f"[get_mcp_client] Loading MCP config from: {config_path}")
+        _mcp_client = MCPClient(config_path=config_path)
+    return _mcp_client
 
 
 class TavilySearchTool(Tool):
     """
     Tavily 网络搜索工具 (MCP方式)
 
-    通过 Web Search Service 调用 Tavily API
+    通过 MCP Client 调用 Web Search Service
     支持时间过滤功能
     """
 
     def __init__(
         self,
-        web_search_url: str = "http://web_search_service:8010",
-        max_results: int = 3
+        max_results: int = 3,
+        mcp_client: Optional[MCPClient] = None
     ):
         """
         Args:
-            web_search_url: Web Search Service 的 URL
             max_results: 最大搜索结果数
+            mcp_client: MCP Client 实例 (可选，默认使用全局实例)
         """
         super().__init__(
             name="tavily_search",
@@ -36,8 +55,8 @@ class TavilySearchTool(Tool):
 
 示例: 搜索最近一周的新闻，设置time_range="week"或topic="news"且days=7"""
         )
-        self.web_search_url = web_search_url
         self.max_results = max_results
+        self.mcp_client = mcp_client or get_mcp_client()
 
     async def execute(self, query: str, **kwargs) -> Dict[str, Any]:
         """
@@ -60,65 +79,32 @@ class TavilySearchTool(Tool):
         days = kwargs.get("days", None)
 
         try:
-            # Build request payload
-            request_data = {
+            # 准备 MCP 调用参数
+            params = {
                 "query": query,
                 "max_results": max_results,
-                "topic": topic,
-                "include_date": True
+                "topic": topic
             }
 
             # Add time filtering if specified
             if time_range and time_range in ["day", "week", "month", "year"]:
-                request_data["time_range"] = time_range
+                params["time_range"] = time_range
 
             if days and topic == "news":
-                request_data["days"] = days
+                params["days"] = days
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.web_search_url}/search",
-                    json=request_data
-                )
-                response.raise_for_status()
-                result = response.json()
+            # 通过 MCP Client 调用 web-search 服务的 search 工具
+            result = await self.mcp_client.call_tool(
+                server_name="web-search",
+                tool_name="search",
+                **params
+            )
 
-                # 格式化结果为易读的文本
-                results = result.get("results", [])
-                if not results:
-                    return {
-                        "success": True,
-                        "summary": f"未找到关于'{query}'的相关信息",
-                        "results": []
-                    }
-
-                # 构建摘要 (包含日期信息)
-                time_filter_info = ""
-                if time_range:
-                    time_filter_info = f" (时间范围: {time_range})"
-                elif days and topic == "news":
-                    time_filter_info = f" (最近{days}天新闻)"
-
-                summary_parts = [f"找到 {len(results)} 条关于'{query}'的搜索结果{time_filter_info}:\n"]
-                for i, res in enumerate(results, 1):
-                    date_info = ""
-                    if res.get('published_date'):
-                        date_info = f"\n   发布日期: {res['published_date']}"
-                    summary_parts.append(
-                        f"\n{i}. {res['title']}{date_info}\n"
-                        f"   来源: {res['url']}\n"
-                        f"   内容: {res['content'][:200]}..."
-                    )
-
-                return {
-                    "success": True,
-                    "summary": "".join(summary_parts),
-                    "results": results,
-                    "query": query
-                }
+            # MCP 响应已经包含 success, summary, results
+            return result
 
         except Exception as e:
-            print(f"[TavilySearchTool] Search failed: {e}")
+            print(f"[TavilySearchTool] MCP call failed: {e}")
             return {
                 "success": False,
                 "error": str(e),

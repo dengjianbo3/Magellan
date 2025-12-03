@@ -238,7 +238,7 @@ class Agent:
 
     async def _call_llm(self, messages: List[Dict[str, str]], max_retries: int = 3) -> Dict[str, Any]:
         """
-        调用LLM网关进行推理（带重试机制）
+        调用LLM网关进行推理（带重试机制，支持 Tool Calling）
 
         Args:
             messages: 符合OpenAI格式的消息列表
@@ -251,86 +251,138 @@ class Agent:
 
         last_exception = None
 
-        # 转换为 LLM Gateway 格式
-        # LLM Gateway 期望: {"history": [{"role": "user", "parts": ["text"]}]}
-        history = []
-        for msg in messages:
-            role = msg["role"]
-            content = msg["content"]
-            # Convert role: system/user/assistant -> user/model
-            if role == "system" or role == "user":
-                history.append({"role": "user", "parts": [content]})
-            elif role == "assistant":
-                history.append({"role": "model", "parts": [content]})
+        # 检查是否有工具可用
+        has_tools = len(self.tools) > 0
 
-        request_data = {
-            "history": history,
-            "temperature": self.temperature  # 传递temperature参数
-        }
+        # 如果有工具，使用新的 Tool Calling 端点
+        if has_tools:
+            # 使用 OpenAI 兼容的 /v1/chat/completions 端点
+            tools_schema = self.get_tools_schema()
 
-        for attempt in range(max_retries):
-            try:
-                async with httpx.AsyncClient(timeout=180.0) as client:
-                    response = await client.post(
-                        f"{self.llm_gateway_url}/chat",
-                        json=request_data
-                    )
-                    response.raise_for_status()
-                    result = response.json()
+            request_data = {
+                "messages": messages,  # 直接传递 OpenAI 格式的 messages
+                "tools": tools_schema,
+                "tool_choice": "auto",
+                "temperature": self.temperature
+            }
 
-                    # 调试：打印响应类型和内容
-                    print(f"[Agent:{self.name}] LLM response type: {type(result)}")
+            print(f"[Agent:{self.name}] Using Tool Calling with {len(tools_schema)} tools")
 
-                    # 转换响应格式，使其兼容 OpenAI 格式的解析
-                    # LLM Gateway 返回: {"content": "text"}
-                    # 转换为: {"choices": [{"message": {"content": "text"}}]}
+            for attempt in range(max_retries):
+                try:
+                    async with httpx.AsyncClient(timeout=180.0) as client:
+                        response = await client.post(
+                            f"{self.llm_gateway_url}/v1/chat/completions",
+                            json=request_data
+                        )
+                        response.raise_for_status()
+                        result = response.json()
 
-                    # 处理两种可能的响应格式
-                    if isinstance(result, str):
-                        # 如果result是字符串，直接使用
-                        content = result
-                    elif isinstance(result, dict):
-                        # 如果是字典，提取content字段
-                        content = result.get("content", str(result))
-                    else:
-                        # 其他类型，转为字符串
-                        content = str(result)
+                        # result is already in OpenAI format
+                        return result
 
-                    return {
-                        "choices": [
-                            {
-                                "message": {
-                                    "role": "assistant",
-                                    "content": content
+                except httpx.ReadTimeout as e:
+                    last_exception = e
+                    print(f"[Agent:{self.name}] LLM timeout on attempt {attempt + 1}/{max_retries}")
+                    if attempt < max_retries - 1:
+                        wait_time = 2 ** (attempt + 1)
+                        print(f"[Agent:{self.name}] Retrying in {wait_time} seconds...")
+                        await asyncio.sleep(wait_time)
+                    continue
+
+                except Exception as e:
+                    last_exception = e
+                    print(f"[Agent:{self.name}] LLM call failed on attempt {attempt + 1}/{max_retries}: {e}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2)
+                    continue
+
+            # 所有重试都失败
+            print(f"[Agent:{self.name}] All {max_retries} LLM call attempts failed")
+            raise last_exception
+
+        else:
+            # 没有工具，使用旧的 /chat 端点（向后兼容）
+            # 转换为 LLM Gateway 格式
+            # LLM Gateway 期望: {"history": [{"role": "user", "parts": ["text"]}]}
+            history = []
+            for msg in messages:
+                role = msg["role"]
+                content = msg["content"]
+                # Convert role: system/user/assistant -> user/model
+                if role == "system" or role == "user":
+                    history.append({"role": "user", "parts": [content]})
+                elif role == "assistant":
+                    history.append({"role": "model", "parts": [content]})
+
+            request_data = {
+                "history": history,
+                "temperature": self.temperature  # 传递temperature参数
+            }
+
+            for attempt in range(max_retries):
+                try:
+                    async with httpx.AsyncClient(timeout=180.0) as client:
+                        response = await client.post(
+                            f"{self.llm_gateway_url}/chat",
+                            json=request_data
+                        )
+                        response.raise_for_status()
+                        result = response.json()
+
+                        # 调试：打印响应类型和内容
+                        print(f"[Agent:{self.name}] LLM response type: {type(result)}")
+
+                        # 转换响应格式，使其兼容 OpenAI 格式的解析
+                        # LLM Gateway 返回: {"content": "text"}
+                        # 转换为: {"choices": [{"message": {"content": "text"}}]}
+
+                        # 处理两种可能的响应格式
+                        if isinstance(result, str):
+                            # 如果result是字符串，直接使用
+                            content = result
+                        elif isinstance(result, dict):
+                            # 如果是字典，提取content字段
+                            content = result.get("content", str(result))
+                        else:
+                            # 其他类型，转为字符串
+                            content = str(result)
+
+                        return {
+                            "choices": [
+                                {
+                                    "message": {
+                                        "role": "assistant",
+                                        "content": content
+                                    }
                                 }
-                            }
-                        ]
-                    }
+                            ]
+                        }
 
-            except httpx.ReadTimeout as e:
-                last_exception = e
-                print(f"[Agent:{self.name}] LLM timeout on attempt {attempt + 1}/{max_retries}")
-                if attempt < max_retries - 1:
-                    # 指数退避：2秒, 4秒, 8秒...
-                    wait_time = 2 ** (attempt + 1)
-                    print(f"[Agent:{self.name}] Retrying in {wait_time} seconds...")
-                    await asyncio.sleep(wait_time)
-                continue
+                except httpx.ReadTimeout as e:
+                    last_exception = e
+                    print(f"[Agent:{self.name}] LLM timeout on attempt {attempt + 1}/{max_retries}")
+                    if attempt < max_retries - 1:
+                        # 指数退避：2秒, 4秒, 8秒...
+                        wait_time = 2 ** (attempt + 1)
+                        print(f"[Agent:{self.name}] Retrying in {wait_time} seconds...")
+                        await asyncio.sleep(wait_time)
+                    continue
 
-            except Exception as e:
-                last_exception = e
-                print(f"[Agent:{self.name}] LLM call failed on attempt {attempt + 1}/{max_retries}: {e}")
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(2)
-                continue
+                except Exception as e:
+                    last_exception = e
+                    print(f"[Agent:{self.name}] LLM call failed on attempt {attempt + 1}/{max_retries}: {e}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2)
+                    continue
 
-        # 所有重试都失败
-        print(f"[Agent:{self.name}] All {max_retries} LLM call attempts failed")
-        raise last_exception
+            # 所有重试都失败
+            print(f"[Agent:{self.name}] All {max_retries} LLM call attempts failed")
+            raise last_exception
 
     async def _parse_llm_response(self, llm_response: Dict[str, Any]) -> List[Message]:
         """
-        解析LLM的响应并生成消息
+        解析LLM的响应并生成消息（支持原生 Tool Calling）
 
         Args:
             llm_response: LLM的原始响应
@@ -344,22 +396,70 @@ class Agent:
             choice = llm_response["choices"][0]
             message = choice["message"]
 
+            # 检查是否有原生的 tool_calls (OpenAI 格式)
+            if message.get("tool_calls") and self.tools:
+                # 原生 Tool Calling
+                self.status = "tool_using"
+                tool_results = []
+
+                for tool_call in message["tool_calls"]:
+                    tool_name = tool_call["function"]["name"]
+                    tool_args_str = tool_call["function"]["arguments"]
+
+                    if tool_name in self.tools:
+                        print(f"[Agent:{self.name}] Native Tool Calling: {tool_name}")
+
+                        try:
+                            # 解析 JSON 参数
+                            import json
+                            tool_args = json.loads(tool_args_str) if isinstance(tool_args_str, str) else tool_args_str
+
+                            print(f"[Agent:{self.name}] Tool arguments: {tool_args}")
+
+                            # 执行工具
+                            tool_result = await self.tools[tool_name].execute(**tool_args)
+                            print(f"[Agent:{self.name}] Tool {tool_name} result: {tool_result}")
+
+                            # 收集工具结果
+                            if isinstance(tool_result, dict) and "summary" in tool_result:
+                                tool_results.append(f"\n[{tool_name}结果]: {tool_result['summary']}")
+                            else:
+                                tool_results.append(f"\n[{tool_name}结果]: {str(tool_result)[:500]}")
+
+                        except Exception as e:
+                            print(f"[Agent:{self.name}] Tool execution failed: {e}")
+                            tool_results.append(f"\n[{tool_name}错误]: {str(e)}")
+                    else:
+                        print(f"[Agent:{self.name}] Unknown tool: {tool_name}")
+
+                # 返回工具结果作为消息
+                if tool_results:
+                    combined_result = "".join(tool_results)
+                    messages_to_send.append(Message(
+                        agent_name=self.name,
+                        content=combined_result,
+                        message_type=MessageType.INFORMATION
+                    ))
+
+                self.status = "idle"
+                return messages_to_send
+
             # 提取文本内容
             content = message.get("content", "")
 
-            # 检测工具调用 - 使用自定义格式 [USE_TOOL: tool_name(params)]
+            # 向后兼容：检测自定义格式的工具调用 [USE_TOOL: tool_name(params)]
             import re
             tool_pattern = r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]'
             tool_matches = re.findall(tool_pattern, content)
 
             if tool_matches and self.tools:
-                # 有工具调用
+                # 有工具调用（向后兼容模式）
                 self.status = "tool_using"
                 tool_results = []
 
                 for tool_name, params_str in tool_matches:
                     if tool_name in self.tools:
-                        print(f"[Agent:{self.name}] Using tool: {tool_name}")
+                        print(f"[Agent:{self.name}] Legacy tool calling: {tool_name}")
 
                         # 解析参数
                         try:
