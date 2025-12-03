@@ -311,6 +311,8 @@
                 // Decision History (signals)
                 console.log('[DEBUG] History data:', history);
                 console.log('[DEBUG] Signals:', history?.signals);
+                console.log('[DEBUG] Signals length:', history?.signals?.length);
+                console.log('[DEBUG] Check passed:', !!(history && history.signals && history.signals.length > 0));
                 if (history && history.signals && history.signals.length > 0) {
                     html += `
                         <div class="card">
