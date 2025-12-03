@@ -564,9 +564,10 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
             elif direction == "short":
                 tp_price = current_price * (1 - tp_percent / 100)
                 sl_price = current_price * (1 + sl_percent / 100)
-            else:
+            else:  # hold
                 tp_price = current_price
                 sl_price = current_price
+                amount_percent = 0  # Hold means no position, so amount_percent must be 0
 
             consensus = {v.agent_name: v.direction for v in self._agent_votes}
 
