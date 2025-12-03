@@ -875,9 +875,8 @@ class TradingToolkit:
             # If tp_percent/sl_percent provided, calculate tp_price/sl_price
             if (tp_percent or sl_percent) and not (tp_price and sl_price):
                 try:
-                    from .market_data import MarketDataService
-                    market_service = MarketDataService()
-                    current_price = await market_service.get_current_price(symbol)
+                    # Use the existing price service to get current price
+                    current_price = await get_current_btc_price()
                     if current_price:
                         if tp_percent and not tp_price:
                             tp_price = current_price * (1 + float(tp_percent) / 100)
@@ -965,9 +964,8 @@ class TradingToolkit:
             # If tp_percent/sl_percent provided, calculate tp_price/sl_price (reversed for short)
             if (tp_percent or sl_percent) and not (tp_price and sl_price):
                 try:
-                    from .market_data import MarketDataService
-                    market_service = MarketDataService()
-                    current_price = await market_service.get_current_price(symbol)
+                    # Use the existing price service to get current price
+                    current_price = await get_current_btc_price()
                     if current_price:
                         if tp_percent and not tp_price:
                             tp_price = current_price * (1 - float(tp_percent) / 100)  # Short: TP is below

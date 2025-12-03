@@ -921,17 +921,9 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
             logger.error(f"[{agent_name}] Error parsing vote: {e}")
             logger.error(f"[{agent_name}] Response content: {response[:500]}")
 
-            # Return default hold vote instead of None to preserve consensus completeness
-            return AgentVote(
-                agent_id=agent_id,
-                agent_name=agent_name,
-                direction="hold",
-                confidence=0,
-                reasoning=f"Failed to parse vote: {str(e)[:100]}",
-                suggested_leverage=1,
-                suggested_tp_percent=self.config.default_tp_percent,
-                suggested_sl_percent=self.config.default_sl_percent
-            )
+            # Return None to signal parsing failure - caller will handle it
+            # This makes parsing errors distinguishable from genuine "hold" votes
+            return None
 
     async def _parse_signal(self, response: str) -> Optional[TradingSignal]:
         """Parse final trading signal from leader's response"""
