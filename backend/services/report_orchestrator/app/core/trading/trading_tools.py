@@ -161,7 +161,7 @@ class TradingToolkit:
         # Trading Execution Tools
         self._tools['open_long'] = FunctionTool(
             name="open_long",
-            description=f"开多仓（做多）。必须指定杠杆、金额、止盈百分比和止损百分比。止盈止损是强制要求的风控参数！",
+            description=f"开多仓（做多）。⚠️ 必须提供全部4个参数: leverage, amount_usdt, tp_percent, sl_percent! 如果缺少任何一个参数，调用将失败!",
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -171,23 +171,23 @@ class TradingToolkit:
                     },
                     "leverage": {
                         "type": "integer",
-                        "description": f"杠杆倍数(1-{self.config.max_leverage})",
+                        "description": f"【必填】杠杆倍数(1-{self.config.max_leverage})",
                         "minimum": 1,
                         "maximum": self.config.max_leverage
                     },
                     "amount_usdt": {
                         "type": "number",
-                        "description": "投入的USDT金额"
+                        "description": "【必填】投入的USDT金额"
                     },
                     "tp_percent": {
                         "type": "number",
-                        "description": "止盈百分比，例如5表示涨5%止盈（必填）",
+                        "description": "【必填】止盈百分比，例如5表示涨5%止盈",
                         "minimum": 0.5,
                         "maximum": 50
                     },
                     "sl_percent": {
                         "type": "number",
-                        "description": "止损百分比，例如2表示跌2%止损（必填）",
+                        "description": "【必填】止损百分比，例如2表示跌2%止损",
                         "minimum": 0.5,
                         "maximum": 20
                     },
@@ -203,7 +203,7 @@ class TradingToolkit:
 
         self._tools['open_short'] = FunctionTool(
             name="open_short",
-            description=f"开空仓（做空）。必须指定杠杆、金额、止盈百分比和止损百分比。止盈止损是强制要求的风控参数！",
+            description=f"开空仓（做空）。⚠️ 必须提供全部4个参数: leverage, amount_usdt, tp_percent, sl_percent! 如果缺少任何一个参数，调用将失败!",
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -213,23 +213,23 @@ class TradingToolkit:
                     },
                     "leverage": {
                         "type": "integer",
-                        "description": f"杠杆倍数(1-{self.config.max_leverage})",
+                        "description": f"【必填】杠杆倍数(1-{self.config.max_leverage})",
                         "minimum": 1,
                         "maximum": self.config.max_leverage
                     },
                     "amount_usdt": {
                         "type": "number",
-                        "description": "投入的USDT金额"
+                        "description": "【必填】投入的USDT金额"
                     },
                     "tp_percent": {
                         "type": "number",
-                        "description": "止盈百分比，例如5表示跌5%止盈（必填）",
+                        "description": "【必填】止盈百分比，例如5表示跌5%止盈",
                         "minimum": 0.5,
                         "maximum": 50
                     },
                     "sl_percent": {
                         "type": "number",
-                        "description": "止损百分比，例如2表示涨2%止损（必填）",
+                        "description": "【必填】止损百分比，例如2表示涨2%止损",
                         "minimum": 0.5,
                         "maximum": 20
                     },
