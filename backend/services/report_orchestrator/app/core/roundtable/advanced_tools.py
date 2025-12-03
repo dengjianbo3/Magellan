@@ -604,13 +604,18 @@ class MultiExchangeTool(Tool):
         获取多交易所数据
 
         Args:
-            symbol: 币种 (BTC/ETH/等)
+            symbol: 币种 (BTC/ETH/等) 或交易对格式 (BTC-USDT)
             exchanges: 指定交易所列表（可选）
 
         Returns:
             多交易所数据对比
         """
+        # 处理不同的输入格式: BTC-USDT / BTC/USDT / BTCUSDT / BTC
         symbol = symbol.upper()
+        # 移除常见的分隔符和USDT后缀
+        symbol = symbol.replace('-USDT', '').replace('/USDT', '').replace('USDT', '')
+        # 处理其他可能的格式
+        symbol = symbol.replace('-', '').replace('/', '').strip()
         if exchanges is None:
             exchanges = ["binance", "okx", "bybit"]
 
