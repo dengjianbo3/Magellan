@@ -304,7 +304,7 @@
                     html += `</div>`;
                 }
 
-                // Decision History (signals)
+                // Decision History (signals) - 模仿 remote-status.sh line 174-183
                 console.log('[DEBUG] History data:', history);
                 console.log('[DEBUG] Signals:', history?.signals);
                 console.log('[DEBUG] Signals length:', history?.signals?.length);
@@ -312,12 +312,15 @@
                 if (history && history.signals && history.signals.length > 0) {
                     html += `
                         <div class="card">
-                            <div class="card-title">Decision History</div>
+                            <div class="card-title">Recent Signals</div>
                     `;
                     for (const item of history.signals.slice(-5).reverse()) {
                         const signal = item.signal;
-                        const status = item.status;
-                        const timestamp = item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN') : 'N/A';
+                        const status = item.status || 'N/A';
+                        const timestamp = item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN', {
+                            year: 'numeric', month: '2-digit', day: '2-digit',
+                            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+                        }).replace(/\//g, '-') : 'N/A';
 
                         let dirClass = 'none';
                         let dirText = '未知';
@@ -339,6 +342,7 @@
                                 dirClass = 'none';
                                 dirText = '未知';
                             }
+                            // 修复confidence显示 - 避免5500%的错误
                             confidence = signal.confidence || 0;
                             reason = signal.reasoning || reason;
                         } else if (status === 'no_signal') {
@@ -351,17 +355,21 @@
                                     <span class="trade-direction ${dirClass}">${dirText.toUpperCase()}</span>
                                     <span style="font-size: 0.8em; color: #888;">${timestamp}</span>
                                 </div>
-                                ${confidence > 0 ? `<div class="row">
+                                <div class="row">
                                     <span class="label">置信度</span>
                                     <span class="value">${confidence}%</span>
-                                </div>` : ''}
+                                </div>
                                 ${signal?.leverage ? `<div class="row">
                                     <span class="label">杠杆</span>
                                     <span class="value">${signal.leverage}x</span>
                                 </div>` : ''}
+                                <div class="row">
+                                    <span class="label">状态</span>
+                                    <span class="value">${status}</span>
+                                </div>
                                 ${reason ? `<div class="row" style="display: block;">
                                     <span class="label">理由</span>
-                                    <div style="font-size: 0.75em; color: #aaa; margin-top: 4px; line-height: 1.4;">${reason.substring(0, 100)}${reason.length > 100 ? '...' : ''}</div>
+                                    <div style="font-size: 0.75em; color: #aaa; margin-top: 4px; line-height: 1.4;">${reason.substring(0, 150)}${reason.length > 150 ? '...' : ''}</div>
                                 </div>` : ''}
                             </div>
                         `;
@@ -370,9 +378,9 @@
                 } else {
                     html += `
                         <div class="card">
-                            <div class="card-title">Decision History</div>
+                            <div class="card-title">Recent Signals</div>
                             <div style="text-align: center; color: #666; padding: 20px;">
-                                No decisions yet
+                                No signals recorded yet
                             </div>
                         </div>
                     `;
