@@ -73,10 +73,10 @@ def should_skip_line(line):
         r'Sending.*via WebSocket',
 
         # Skip raw JSON dumps (but keep parsed results)
-        r'^\s*{\\"messages\\"',
-        r'^\s*{\\"id\\":',
-        r'^\s*\\"role\\":',
-        r'^\s*\\"content\\":',
+        r'^\s*\{\"messages\"',
+        r'^\s*\{\"id\":',
+        r'^\s*\"role\":',
+        r'^\s*\"content\":',
     ]
 
     for pattern in skip_patterns:
