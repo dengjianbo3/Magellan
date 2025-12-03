@@ -14,11 +14,10 @@ import json
 
 from .core.config import settings
 
-# Import timeout configurations
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "report_orchestrator" / "app" / "core"))
-from config_timeouts import LLM_REQUEST_TIMEOUT
+# LLM Request timeout configuration
+# Use environment variable or default to 180 seconds (3 minutes)
+# This matches the timeout configuration in config_timeouts.py
+LLM_REQUEST_TIMEOUT = int(os.getenv("LLM_REQUEST_TIMEOUT", "180"))
 
 # --- Pydantic Models (Legacy) ---
 class ChatMessage(BaseModel):
