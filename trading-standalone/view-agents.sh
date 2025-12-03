@@ -45,11 +45,22 @@ def should_skip_line(line):
         r'Response from provider',
         r'llm_gateway',
 
-        # Skip prompt construction
+        # Skip prompt construction and messages
         r'System prompt:',
         r'User prompt:',
         r'Prompt tokens:',
         r'Completion tokens:',
+        r'Sending prompt to',
+        r'role.*:.*system',
+        r'role.*:.*user',
+
+        # Skip prompt content indicators
+        r'You are.*expert',
+        r'You are.*analyst',
+        r'Your task is',
+        r'Please analyze',
+        r'Based on.*provide',
+        r'Consider.*factors',
 
         # Skip generic INFO logs
         r'INFO:.*uvicorn',
@@ -62,10 +73,10 @@ def should_skip_line(line):
         r'Sending.*via WebSocket',
 
         # Skip raw JSON dumps (but keep parsed results)
-        r'^\s*{\"messages\"',
-        r'^\s*{\"id\":',
-        r'^\s*\"role\":',
-        r'^\s*\"content\":',
+        r'^\s*{\\"messages\\"',
+        r'^\s*{\\"id\\":',
+        r'^\s*\\"role\\":',
+        r'^\s*\\"content\\":',
     ]
 
     for pattern in skip_patterns:
@@ -156,22 +167,25 @@ for line in sys.stdin:
             print_colored(decoded.strip(), RED)
             continue
 
-        # Print other relevant lines
-        if decoded.strip() and not decoded.strip().startswith('{'):
-            # Skip pure JSON lines
+        # Print other relevant lines (only if from agent response context)
+        # Only print if we've seen an agent header recently (within agent response)
+        if current_agent and decoded.strip() and not decoded.strip().startswith('{'):
+            # Skip pure JSON lines and prompt-like content
+            # Only print lines that look like agent responses (short, actionable)
             if any(keyword in decoded for keyword in [
                 '做多', '做空', '观望',  # Trading decisions
                 'long', 'short', 'hold',  # English trading decisions
                 '信心度', 'confidence',  # Confidence
                 '杠杆', 'leverage',  # Leverage
-                '风险', 'risk',  # Risk
-                '价格', 'price',  # Price
                 '建议', 'recommend',  # Recommendations
-                '分析', 'analysis',  # Analysis
-                '数据', 'data',  # Data
-                '市场', 'market',  # Market
+                '投票', 'vote',  # Voting
+                '决策', 'decision',  # Decisions
             ]):
-                print(decoded.strip())
+                # Extra filter: skip if it looks like a prompt instruction
+                if not any(prompt_word in decoded.lower() for prompt_word in [
+                    'you are', 'your task', 'please', 'consider', 'based on'
+                ]):
+                    print(decoded.strip())
 
     except Exception as e:
         # Silently skip lines that cause errors
