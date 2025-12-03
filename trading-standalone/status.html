@@ -207,6 +207,9 @@
                     return;
                 }
 
+                console.log('[DEBUG] Position data:', position);
+                console.log('[DEBUG] has_position:', position?.has_position);
+
                 let html = '';
 
                 // System Status
@@ -260,7 +263,7 @@
                     const hasPos = position.has_position;
                     const direction = position.direction || position.side || 'none';
                     const pnl = position.unrealized_pnl || 0;
-                    const pnlPct = position.pnl_percent || 0;
+                    const pnlPct = position.unrealized_pnl_percent || position.pnl_percent || 0;
 
                     html += `
                         <div class="card position-card">
@@ -289,10 +292,14 @@
                                 <span class="value">${position.leverage || 1}x</span>
                             </div>
                             <div class="row">
+                                <span class="label">Position %</span>
+                                <span class="value">${formatNumber(position.position_percent || 0)}%</span>
+                            </div>
+                            <div class="row">
                                 <span class="label">TP / SL</span>
                                 <span class="value">
-                                    <span class="positive">$${formatNumber(position.tp_price)}</span> /
-                                    <span class="negative">$${formatNumber(position.sl_price)}</span>
+                                    <span class="positive">$${formatNumber(position.take_profit_price || position.tp_price)}</span> /
+                                    <span class="negative">$${formatNumber(position.stop_loss_price || position.sl_price)}</span>
                                 </span>
                             </div>
                         `;

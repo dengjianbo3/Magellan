@@ -347,6 +347,9 @@ class PaperTrader:
         current_price = await self.get_current_price(symbol)
         pnl, pnl_percent = self._position.calculate_pnl(current_price)
 
+        # 计算仓位百分比 (margin / initial_balance * 100)
+        position_percent = (self._position.margin / self.initial_balance * 100) if self.initial_balance > 0 else 0
+
         return {
             "has_position": True,
             "symbol": self._position.symbol,
@@ -356,6 +359,7 @@ class PaperTrader:
             "current_price": current_price,
             "leverage": self._position.leverage,
             "margin": self._position.margin,
+            "position_percent": position_percent,  # 仓位百分比
             "unrealized_pnl": pnl,
             "unrealized_pnl_percent": pnl_percent,
             "take_profit_price": self._position.take_profit_price,

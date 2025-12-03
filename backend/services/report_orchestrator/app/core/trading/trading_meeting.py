@@ -543,7 +543,10 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
             if 'amount_usdt' in executed_params:
                 try:
                     amount_usdt = float(executed_params['amount_usdt'])
-                    amount_percent = min(amount_usdt / self.config.default_balance, self.config.max_position_percent)
+                    # Clamp amount_percent between min and max
+                    raw_percent = amount_usdt / self.config.default_balance
+                    amount_percent = max(self.config.min_position_percent, min(raw_percent, self.config.max_position_percent))
+                    logger.info(f"Position percent: {raw_percent*100:.1f}% -> clamped to {amount_percent*100:.1f}% (min={self.config.min_position_percent*100:.0f}%, max={self.config.max_position_percent*100:.0f}%)")
                 except (ValueError, TypeError):
                     pass
 
@@ -937,7 +940,9 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
             # Parse position size
             pos_match = re.search(r'仓位[：:]\s*(\d+\.?\d*)', response)
             if pos_match:
-                amount_percent = min(float(pos_match.group(1)) / 100, self.config.max_position_percent)
+                raw_percent = float(pos_match.group(1)) / 100
+                amount_percent = max(self.config.min_position_percent, min(raw_percent, self.config.max_position_percent))
+                logger.info(f"Parsed position percent: {raw_percent*100:.1f}% -> clamped to {amount_percent*100:.1f}%")
 
             # Parse TP/SL percentages
             tp_match = re.search(r'止盈[：:]\s*(\d+\.?\d*)', response)
@@ -1022,7 +1027,8 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
             leverage = max(1, min(leverage, self.config.max_leverage))
 
             position_percent = float(decision.get("position_percent", self.config.default_position_percent * 100))
-            amount_percent = min(position_percent / 100, self.config.max_position_percent)
+            raw_percent = position_percent / 100
+            amount_percent = max(self.config.min_position_percent, min(raw_percent, self.config.max_position_percent))
 
             tp_percent = float(decision.get("take_profit_percent", self.config.default_tp_percent))
             sl_percent = float(decision.get("stop_loss_percent", self.config.default_sl_percent))

@@ -42,54 +42,61 @@ fi
 # Load environment variables
 source .env 2>/dev/null || true
 
-# Parse config.yaml and export as environment variables
-echo -e "${BLUE}Loading configuration from config.yaml...${NC}"
+# Configuration loading priority: .env > config.yaml > defaults
+echo -e "${BLUE}Loading configuration (.env takes priority over config.yaml)...${NC}"
 
-# Function to parse YAML (simple parser for our flat structure)
-parse_yaml() {
-    local yaml_file=$1
-    local prefix=$2
-    local s='[[:space:]]*'
-    local w='[a-zA-Z0-9_]*'
-
-    # Extract key values using grep and sed
-    grep -E "^${s}[a-zA-Z_]+:" "$yaml_file" | while read line; do
-        key=$(echo "$line" | sed 's/:.*//' | tr -d ' ')
-        value=$(echo "$line" | sed 's/[^:]*://' | tr -d ' "' | sed 's/#.*//')
-
-        if [[ -n "$value" && "$value" != "\${" && ! "$value" =~ ^\$ ]]; then
-            echo "export ${prefix}${key}=\"${value}\""
-        fi
-    done
+# Helper function: get value from config.yaml
+get_yaml_value() {
+    local key=$1
+    grep "${key}:" config.yaml 2>/dev/null | head -1 | sed 's/.*://' | tr -d ' "' | sed 's/#.*//'
 }
 
-# Export trading config
-export TRADING_SYMBOL=$(grep "symbol:" config.yaml | head -1 | sed 's/.*://' | tr -d ' "')
-export TRADING_LEVERAGE=$(grep "leverage:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
-export TRADING_POSITION_SIZE=$(grep "position_size:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
-export TRADING_TP_PERCENT=$(grep "take_profit_percent:" config.yaml | sed 's/.*://' | tr -d ' ')
-export TRADING_SL_PERCENT=$(grep "stop_loss_percent:" config.yaml | sed 's/.*://' | tr -d ' ')
-export OKX_DEMO_MODE=$(grep "demo_mode:" config.yaml | tail -1 | sed 's/.*://' | tr -d ' ')
-export SCHEDULER_INTERVAL_HOURS=$(grep "interval_hours:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
-export COOLDOWN_HOURS=$(grep "cooldown_hours:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
-export MAX_CONSECUTIVE_LOSSES=$(grep "max_consecutive_losses:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
+# Helper function: set env var if not already set (priority: .env > yaml > default)
+set_if_empty() {
+    local var_name=$1
+    local yaml_key=$2
+    local default_val=$3
+
+    # If already set from .env, keep it
+    if [ -n "${!var_name}" ]; then
+        return
+    fi
+
+    # Try to get from config.yaml
+    local yaml_val=$(get_yaml_value "$yaml_key")
+    if [ -n "$yaml_val" ]; then
+        export "$var_name"="$yaml_val"
+        return
+    fi
+
+    # Use default
+    if [ -n "$default_val" ]; then
+        export "$var_name"="$default_val"
+    fi
+}
+
+# Trading config (priority: .env > config.yaml > defaults)
+set_if_empty TRADING_SYMBOL "symbol" "BTC-USDT-SWAP"
+set_if_empty OKX_DEMO_MODE "demo_mode" "true"
+
+# Scheduler config
+set_if_empty SCHEDULER_INTERVAL_HOURS "interval_hours" "4"
+set_if_empty COOLDOWN_HOURS "cooldown_hours" "24"
+set_if_empty MAX_CONSECUTIVE_LOSSES "max_consecutive_losses" "3"
 
 # Risk control config
-export MAX_LEVERAGE=$(grep "max_leverage:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
-export MAX_POSITION_PERCENT=$(grep "max_position_percent:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
-export MIN_POSITION_PERCENT=$(grep "min_position_percent:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
-export DEFAULT_POSITION_PERCENT=$(grep "default_position_percent:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
-export MIN_CONFIDENCE=$(grep "min_confidence:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
-export DEFAULT_TP_PERCENT=$(grep "default_tp_percent:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
-export DEFAULT_SL_PERCENT=$(grep "default_sl_percent:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
+set_if_empty MAX_LEVERAGE "max_leverage" "20"
+set_if_empty MAX_POSITION_PERCENT "max_position_percent" "30"
+set_if_empty MIN_POSITION_PERCENT "min_position_percent" "10"
+set_if_empty DEFAULT_POSITION_PERCENT "default_position_percent" "20"
+set_if_empty MIN_CONFIDENCE "min_confidence" "60"
+set_if_empty DEFAULT_TP_PERCENT "default_tp_percent" "5.0"
+set_if_empty DEFAULT_SL_PERCENT "default_sl_percent" "2.0"
 
-export DEFAULT_LLM_PROVIDER=$(grep "provider:" config.yaml | head -1 | sed 's/.*://' | tr -d ' "')
-export LOG_LEVEL=$(grep "level:" config.yaml | head -1 | sed 's/.*://' | tr -d ' "')
-export REDIS_MAX_MEMORY=$(grep "redis_max_memory:" config.yaml | sed 's/.*://' | tr -d ' "')
-export LLM_WORKERS=$(grep "llm_workers:" config.yaml | sed 's/.*://' | tr -d ' ')
-
-# Email config
-export EMAIL_ENABLED=$(grep "enabled:" config.yaml | head -1 | sed 's/.*://' | tr -d ' ')
+# Other config
+set_if_empty DEFAULT_LLM_PROVIDER "provider" "deepseek"
+set_if_empty LOG_LEVEL "level" "INFO"
+set_if_empty EMAIL_ENABLED "enabled" "false"
 
 echo ""
 echo -e "${GREEN}Configuration loaded:${NC}"

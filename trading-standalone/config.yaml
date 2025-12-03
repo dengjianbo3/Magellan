@@ -54,7 +54,7 @@ scheduler:
 # ========== LLM 配置 ==========
 llm:
   # 模型提供商: gemini, kimi, deepseek
-  provider: "gemini"
+  provider: "deepseek"
 
   # 各提供商模型名称 (可选，有默认值)
   models:

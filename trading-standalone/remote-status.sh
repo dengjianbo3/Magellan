@@ -112,9 +112,10 @@ try:
         size = d.get('size', d.get('position_size', 0))
         leverage = d.get('leverage', 1)
         pnl = d.get('unrealized_pnl', 0)
-        pnl_pct = d.get('pnl_percent', 0)
-        tp = d.get('tp_price', 'N/A')
-        sl = d.get('sl_price', 'N/A')
+        pnl_pct = d.get('unrealized_pnl_percent', d.get('pnl_percent', 0))
+        pos_pct = d.get('position_percent', 0)
+        tp = d.get('take_profit_price', d.get('tp_price', 'N/A'))
+        sl = d.get('stop_loss_price', d.get('sl_price', 'N/A'))
 
         color = '\\033[0;32m' if pnl >= 0 else '\\033[0;31m'
         nc = '\\033[0m'
@@ -124,6 +125,7 @@ try:
         print(f\"  Current Price:  \${current:,.2f}\")
         print(f\"  Size:           {size}\")
         print(f\"  Leverage:       {leverage}x\")
+        print(f\"  Position:       {pos_pct:.1f}%\")
         print(f\"  Take Profit:    \${tp:,.2f}\" if isinstance(tp, (int, float)) else f\"  Take Profit:    {tp}\")
         print(f\"  Stop Loss:      \${sl:,.2f}\" if isinstance(sl, (int, float)) else f\"  Stop Loss:      {sl}\")
         print(f\"  Unrealized PnL: {color}\${pnl:+,.2f} ({pnl_pct:+.2f}%){nc}\")
