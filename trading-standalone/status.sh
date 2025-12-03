@@ -71,3 +71,9 @@ echo ""
 # Recent logs
 echo -e "${CYAN}=== Recent Activity (last 5 lines) ===${NC}"
 $DOCKER_COMPOSE logs --tail=5 trading_service 2>/dev/null | grep -v "^$" | tail -5
+echo ""
+
+# Dashboard link
+echo -e "${GREEN}=== Web Dashboard ===${NC}"
+echo "  http://localhost:8888/    - Trading status dashboard"
+echo ""

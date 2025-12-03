@@ -222,6 +222,9 @@ if $DOCKER_COMPOSE ps | grep -q "Up"; then
     echo "  ./stop.sh          - Stop all services"
     echo "  ./status.sh        - Check service status"
     echo ""
+    echo -e "${GREEN}Web Dashboard:${NC}"
+    echo "  http://localhost:8888/    - Trading status dashboard"
+    echo ""
 
     # Auto-start trading
     echo -e "${YELLOW}Starting automatic trading...${NC}"
