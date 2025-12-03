@@ -165,7 +165,13 @@ class TradingSystem:
                     trigger = await self.paper_trader.check_tp_sl()
                     if trigger:
                         # TP or SL hit, trigger new analysis
-                        await self.scheduler.trigger_now(reason=f"{trigger}_triggered")
+                        # Only trigger if scheduler is not currently analyzing
+                        from app.core.trading.scheduler import SchedulerState
+                        if self.scheduler and self.scheduler._state != SchedulerState.ANALYZING:
+                            logger.info(f"TP/SL trigger detected: {trigger}, triggering new analysis")
+                            await self.scheduler.trigger_now(reason=f"{trigger}_triggered")
+                        else:
+                            logger.info(f"TP/SL trigger detected: {trigger}, but skipping (already analyzing)")
 
                     # Update equity
                     account = await self.paper_trader.get_account()
