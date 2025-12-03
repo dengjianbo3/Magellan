@@ -147,16 +147,6 @@ class TradingSessionState(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
 
 
-class RiskLimits(BaseModel):
-    """Risk management limits"""
-    max_leverage: int = 10
-    max_position_percent: float = 0.3  # 30% of capital
-    max_daily_loss_percent: float = 0.1  # 10% daily loss limit
-    consecutive_loss_limit: int = 3  # Pause after 3 consecutive losses
-    cooldown_hours: int = 24  # Cooldown period after hitting limits
-    min_confidence: int = 60  # Minimum confidence to execute trade
-
-
 def _get_env_int(key: str, default: int) -> int:
     """Get integer from environment variable"""
     val = os.getenv(key)
@@ -185,6 +175,29 @@ def _get_env_bool(key: str, default: bool) -> bool:
     if val:
         return val.lower() in ('true', '1', 'yes')
     return default
+
+
+class RiskLimits(BaseModel):
+    """Risk management limits - read from environment variables"""
+    max_leverage: int = Field(
+        default_factory=lambda: _get_env_int("MAX_LEVERAGE", 20)
+    )
+    max_position_percent: float = Field(
+        default_factory=lambda: _get_env_float("MAX_POSITION_PERCENT", 30) / 100  # Convert to decimal
+    )
+    min_position_percent: float = Field(
+        default_factory=lambda: _get_env_float("MIN_POSITION_PERCENT", 10) / 100  # Convert to decimal
+    )
+    max_daily_loss_percent: float = 0.1  # 10% daily loss limit
+    consecutive_loss_limit: int = Field(
+        default_factory=lambda: _get_env_int("MAX_CONSECUTIVE_LOSSES", 3)
+    )
+    cooldown_hours: int = Field(
+        default_factory=lambda: _get_env_int("COOLDOWN_HOURS", 24)
+    )
+    min_confidence: int = Field(
+        default_factory=lambda: _get_env_int("MIN_CONFIDENCE", 60)
+    )
 
 
 class TradingConfig(BaseModel):
