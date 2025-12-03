@@ -78,17 +78,23 @@ def create_trading_agents(toolkit=None) -> List[Any]:
         execution_tools = toolkit.get_execution_tools()
 
         for agent in agents:
-            # All agents get analysis tools (price, indicators, sentiment, etc.)
-            for tool in analysis_tools:
-                agent.register_tool(tool)
+            # Analysis agents get analysis tools to perform their analysis
+            # Leader does NOT need analysis tools - it only synthesizes expert opinions
+            is_leader = hasattr(agent, 'id') and agent.id == "Leader"
 
-            # Only Leader gets execution tools (open_long, open_short, close_position)
+            if not is_leader:
+                # Analysis agents (TechnicalAnalyst, MacroEconomist, etc.) get analysis tools
+                for tool in analysis_tools:
+                    agent.register_tool(tool)
+                logger.info(f"Registered {len(analysis_tools)} analysis tools to {agent.name}")
+
+            # Only Leader gets execution tools (open_long, open_short, close_position, hold)
             # Leader synthesizes all expert opinions and executes the final decision
-            # Agent.id equals agent.name (PascalCase) when no explicit id is set
-            if hasattr(agent, 'id') and agent.id == "Leader":
+            # Leader does NOT need analysis tools - experts have already done the analysis
+            if is_leader:
                 for tool in execution_tools:
                     agent.register_tool(tool)
-                logger.info(f"Registered execution tools to Leader: {[t.name for t in execution_tools]}")
+                logger.info(f"Registered {len(execution_tools)} execution tools to Leader (no analysis tools needed)")
 
     return agents
 
