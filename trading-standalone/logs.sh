@@ -61,7 +61,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Map service names to docker-compose service names
+# Map service names to docker compose service names
 case $SERVICE in
     trading)
         DOCKER_SERVICE="trading_service"
@@ -86,7 +86,7 @@ echo ""
 if docker compose version &> /dev/null; then
     DOCKER_COMPOSE="docker compose"
 else
-    DOCKER_COMPOSE="docker-compose"
+    DOCKER_COMPOSE="docker compose"
 fi
 
 # Build command

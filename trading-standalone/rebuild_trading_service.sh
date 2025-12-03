@@ -5,22 +5,22 @@ echo ""
 
 # Step 1: 停止服务
 echo "Step 1: 停止 trading-service..."
-docker-compose stop trading-service
+docker compose stop trading-service
 
 # Step 2: 删除旧容器
 echo ""
 echo "Step 2: 删除旧容器..."
-docker-compose rm -f trading-service
+docker compose rm -f trading-service
 
 # Step 3: 重新构建镜像（使用 --no-cache 确保完全重建）
 echo ""
 echo "Step 3: 重新构建镜像..."
-docker-compose build --no-cache trading-service
+docker compose build --no-cache trading-service
 
 # Step 4: 启动新容器
 echo ""
 echo "Step 4: 启动新容器..."
-docker-compose up -d trading-service
+docker compose up -d trading-service
 
 # Step 5: 等待启动
 echo ""
@@ -30,12 +30,12 @@ sleep 5
 # Step 6: 检查状态
 echo ""
 echo "Step 6: 检查服务状态..."
-docker-compose ps | grep trading-service
+docker compose ps | grep trading-service
 
 # Step 7: 检查日志
 echo ""
 echo "Step 7: 检查最近日志..."
-docker-compose logs --tail 10 trading-service
+docker compose logs --tail 10 trading-service
 
 # Step 8: 测试 status.html
 echo ""

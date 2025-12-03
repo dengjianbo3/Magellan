@@ -1,7 +1,7 @@
 #!/bin/bash
 # View Docker logs with proper Chinese character encoding
 
-docker-compose logs -f trading_service 2>&1 | python3 -c "
+docker compose logs -f trading_service 2>&1 | python3 -c "
 import sys
 import codecs
 

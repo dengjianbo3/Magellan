@@ -35,7 +35,7 @@ chmod 755 data/redis
 
 echo ""
 echo "5. 重新启动服务..."
-docker-compose up -d redis
+docker compose up -d redis
 
 echo ""
 echo "6. 等待Redis启动..."

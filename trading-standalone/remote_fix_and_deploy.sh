@@ -5,7 +5,7 @@ echo ""
 
 # Step 1: Stop all services
 echo "Step 1: Stopping all services..."
-docker-compose down -v
+docker compose down -v
 sleep 3
 
 # Step 2: Find and remove all Redis data files
@@ -76,7 +76,7 @@ sleep 15
 # Step 8: Check service health
 echo ""
 echo "Step 8: Checking service status..."
-docker-compose ps
+docker compose ps
 
 echo ""
 echo "=== Redis Container Status ==="

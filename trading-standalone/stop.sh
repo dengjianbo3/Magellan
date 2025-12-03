@@ -26,7 +26,7 @@ sleep 2
 if docker compose version &> /dev/null; then
     DOCKER_COMPOSE="docker compose"
 else
-    DOCKER_COMPOSE="docker-compose"
+    DOCKER_COMPOSE="docker compose"
 fi
 
 # Stop Docker services
