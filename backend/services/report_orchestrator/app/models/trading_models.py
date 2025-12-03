@@ -15,7 +15,7 @@ class TradingSignal(BaseModel):
     direction: Literal["long", "short", "hold"]
     symbol: str = "BTC-USDT-SWAP"
     leverage: int = Field(ge=1, le=10, default=1)
-    amount_percent: float = Field(ge=0.001, le=1.0, default=0.1)  # Max 100% of capital, validated by RiskLimits
+    amount_percent: float = Field(ge=0, le=1.0, default=0.1)  # 0 for hold, max 100% for trades, validated by RiskLimits
     entry_price: float
     take_profit_price: float
     stop_loss_price: float
