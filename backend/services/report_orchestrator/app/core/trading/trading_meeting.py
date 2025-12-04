@@ -48,6 +48,7 @@ from app.core.trading.retry_handler import (
 from app.core.trading.agent_memory import get_memory_store, AgentMemoryStore
 from app.core.trading.price_service import get_current_btc_price
 from app.core.trading.position_context import PositionContext
+from app.core.trading.trade_executor_agent import TradeExecutorAgent
 
 logger = logging.getLogger(__name__)
 
@@ -171,19 +172,20 @@ class TradingMeeting(Meeting):
             # Phase 3: Risk Assessment (with position context)
             await self._run_risk_assessment_phase(position_context)
 
-            # Phase 4: Consensus Building (Leader with position awareness)
-            signal = await self._run_consensus_phase(position_context)
+            # Phase 4: Consensus Building (Leader总结会议)
+            _temp_signal = await self._run_consensus_phase(position_context)
+            # 注：Phase 4不再产生最终signal，只是Leader的总结
 
-            if signal:
-                self._final_signal = signal
-
+            # Phase 5: Trade Execution (TradeExecutor分析并决策)
+            # 🆕 NEW: TradeExecutor会分析Leader的总结并做出决策
+            # 不管Leader说了什么，TradeExecutor都会运行
+            await self._run_execution_phase(_temp_signal, position_context)
+            
+            # 最终signal来自TradeExecutor
+            if self._final_signal:
                 # Notify callback
                 if self.on_signal:
-                    await self.on_signal(signal)
-
-                # Phase 5: Execution (if not hold)
-                if signal.direction != "hold":
-                    await self._run_execution_phase(signal, position_context)
+                    await self.on_signal(self._final_signal)
 
             return self._final_signal
 
@@ -561,15 +563,22 @@ class TradingMeeting(Meeting):
 """
 
     async def _run_consensus_phase(self, position_context: PositionContext) -> Optional[TradingSignal]:
-        """Phase 4: Consensus Building - Leader makes final decision (WITHOUT execution)"""
+        """
+        Phase 4: Consensus Building - Leader总结会议
+        
+        NEW ARCHITECTURE:
+        - Leader只负责总结会议讨论和专家意见
+        - 不再输出结构化的交易决策
+        - 决策由TradeExecutor在Phase 5做出
+        """
         self._add_message(
             agent_id="system",
             agent_name="系统",
-            content="## 阶段4: 共识形成\n\n请主持人综合各方意见，形成最终交易决策。",
+            content="## 阶段4: 共识形成\n\n请主持人总结各位专家的意见，给出会议结论。",
             message_type="phase"
         )
 
-        # Use Leader for final decision (NO execution)
+        # Use Leader for meeting summary
         leader = self._get_agent_by_id("Leader")
         if not leader:
             logger.error("Leader not found")
@@ -578,8 +587,8 @@ class TradingMeeting(Meeting):
         # 🆕 生成持仓感知的决策指导
         decision_guidance = self._generate_decision_guidance(position_context)
 
-        # 🔧 ARCHITECTURE CHANGE: Leader只决策，不执行
-        prompt = f"""作为圆桌主持人，请综合以上所有讨论内容和专家意见，形成最终交易决策。
+        # 🔧 NEW PROMPT: Leader作为主持人总结会议
+        prompt = f"""作为圆桌主持人，请综合总结本次会议的讨论内容和专家意见。
 
 {position_context.to_summary()}
 
@@ -593,70 +602,76 @@ class TradingMeeting(Meeting):
 - 量化策略师 (QuantStrategist): 量化指标、统计分析
 - 风险评估师 (RiskAssessor): 风险评估和建议
 
-## 交易参数限制
-- 最大杠杆: {self.config.max_leverage}倍
-- 最大仓位: {int(self.config.max_position_percent * 100)}% 资金
-- 最低信心度要求: {self.config.min_confidence}%
+## 你的任务
 
-## 杠杆选择规则
-**你必须严格按照信心度选择对应区间的杠杆倍数！**
-- **高信心度 (>80%)**: **必须**使用 {int(self.config.max_leverage * 0.5)}-{self.config.max_leverage}倍杠杆
-- **中信心度 (60-80%)**: **必须**使用 {int(self.config.max_leverage * 0.25)}-{int(self.config.max_leverage * 0.5)}倍杠杆
-- **低信心度 (<60%)**: 使用 1-{int(self.config.max_leverage * 0.25)}倍杠杆 或选择观望
+作为主持人，请：
 
-## 🎯 你的职责（重要）
+1. **总结专家共识**:
+   - 有多少专家看多？多少看空？多少观望？
+   - 各专家意见的核心理由是什么？
+   - 专家之间有哪些一致性和分歧？
 
-⚠️ **关键：你只负责决策，不负责执行**
-1. 你是决策者，不是执行者
-2. 你的决策会传递给"交易执行专员"（TradeExecutor）
-3. **不要调用任何工具！** 你没有工具执行权限
-4. 只需要用结构化格式输出你的决策
+2. **综合市场判断**:
+   - 基于所有讨论，你对当前市场的总体看法
+   - 技术面、基本面、情绪面各方面的综合评估
+   - 当前持仓状态下应该考虑的因素
 
-## 决策流程
+3. **风险和机会评估**:
+   - 当前的主要风险是什么？
+   - 潜在的交易机会在哪里？
+   - 对于当前持仓（如果有）的建议
 
-1. **分析当前状态**: 根据上方"当前持仓状况"，判断是无持仓还是有持仓
-2. **综合专家意见**: 总结各专家的核心观点、一致性和分歧点
-3. **评估信心度**: 根据专家意见一致性和市场信号强度，评估综合信心度 (0-100%)
-4. **选择合适策略**: 根据持仓状态和专家意见，选择最合适的操作
-5. **输出结构化决策**: 按照下面的格式输出
+4. **给出会议结论**:
+   - 基于所有分析，你认为应该采取什么策略？
+   - 建议的风险水平和仓位规模
+   - 你的信心度如何？
 
-## 📋 决策输出格式（必须严格遵守）
+## 📋 输出格式
 
-请按以下格式输出你的决策：
+请自由表达你的总结和建议，**不需要严格遵守特定格式**。
 
-```
-【最终决策】
-- 决策: [做多/做空/观望/平仓/追加多仓/追加空仓]
-- 标的: {self.config.symbol}
-- 杠杆倍数: [1-{self.config.max_leverage}]
-- 仓位比例: [0-100]%
-- 止盈价格: [具体价格] USDT
-- 止损价格: [具体价格] USDT
-- 信心度: [0-100]%
-- 决策理由: [综合分析，包括对当前持仓的考虑]
-```
+你可以自然地表达，例如：
+
+"综合各位专家的意见，我认为...
+- TechnicalAnalyst 和 SentimentAnalyst 都看多，理由是...
+- 但 MacroEconomist 建议谨慎，因为...
+- 考虑到当前{('无持仓' if not position_context.has_position else f'{position_context.direction}仓')}的状态...
+我建议采取...策略，理由是...
+建议的杠杆是...，仓位规模是...，我的信心度大约是...%"
 
 ⚠️ **重要提醒**:
-- ❌ **不要调用任何工具**（你没有工具权限）
-- ❌ 不要使用 [USE_TOOL: ...] 语法
-- ✅ 只需要输出【最终决策】格式的文字
-- ✅ 你的决策会由"交易执行专员"来执行
+- ✅ 用自然语言表达你的总结和建议
+- ✅ 包含专家意见、你的判断、建议策略
+- ✅ 不需要【最终决策】这样的标记
+- ✅ 你的总结会传递给交易执行专员，他会根据你的建议做出最终决策
 
-请开始你的决策分析！
+请开始你的总结！
 """
 
         response = await self._run_agent_turn(leader, prompt)
 
-        # Extract signal from Leader's structured text output
-        signal = await self._extract_signal_from_text(response)
-
         # Log meeting summary for monitoring
         vote_summary = self._get_vote_summary()
         logger.info(f"[Meeting Summary] Votes: {len(self._agent_votes)} collected, "
-                   f"Decision: {signal.direction if signal else 'None'}, "
                    f"Vote breakdown: {vote_summary}")
+        logger.info(f"[Leader Summary] {response[:200]}...")
 
-        return signal
+        # 🆕 NEW: 不再在这里提取signal
+        # Phase 5的TradeExecutor会根据这个总结做决策
+        # 这里返回一个临时signal只是为了保持接口兼容
+        return TradingSignal(
+            direction="pending",  # 待定，等TradeExecutor决策
+            symbol=self.config.symbol,
+            leverage=1,
+            amount_percent=0.0,
+            entry_price=0.0,
+            take_profit_price=0.0,
+            stop_loss_price=0.0,
+            confidence=0,
+            reasoning=response[:500],
+            agents_consensus=self.agents_consensus,
+            timestamp=datetime.now()
+        )
     
     def _generate_decision_guidance(self, position_context: PositionContext) -> str:
         """
@@ -1259,63 +1274,189 @@ class TradingMeeting(Meeting):
             }
 
     async def _run_execution_phase(self, signal: TradingSignal, position_context: PositionContext = None):
-        """Phase 5: Trade Execution - TradeExecutor executes the Leader's decision"""
+        """
+        Phase 5: Trade Execution - NEW Intelligent TradeExecutor
+        
+        TradeExecutor现在是一个真正的决策Agent，它会：
+        1. 理解Leader的会议总结
+        2. 分析所有专家的投票
+        3. 考虑当前持仓状态
+        4. 做出独立的交易决策
+        5. 执行交易
+        
+        不再依赖固定格式或标记！
+        """
         self._add_message(
             agent_id="system",
             agent_name="系统",
-            content=f"## 阶段5: 交易执行\n\n交易执行专员正在执行Leader的决策...",
+            content=f"## 阶段5: 交易执行\n\n交易执行专员正在分析会议结果并做出决策...",
             message_type="phase"
         )
         
-        # Import TradeExecutor
-        from app.core.trading.trade_executor import TradeExecutor
-        
-        # Get paper_trader from toolkit if available
-        paper_trader = None
-        if hasattr(self, 'toolkit') and hasattr(self.toolkit, 'paper_trader'):
-            paper_trader = self.toolkit.paper_trader
-        
-        # Create TradeExecutor
-        executor = TradeExecutor(
-            toolkit=self.toolkit if hasattr(self, 'toolkit') else None,
-            paper_trader=paper_trader
-        )
-        
-        # Get current position info for executor
-        position_info = await self._get_position_info_dict()
-        
-        # Execute the signal
-        logger.info(f"[Execution] Passing signal to TradeExecutor: {signal.direction}")
-        execution_result = await executor.execute_signal(signal, position_info)
-        
-        # Log execution result
-        logger.info(f"[Execution] TradeExecutor result: {execution_result}")
-        
-        # Update message based on execution result
-        if execution_result.get('status') == 'success':
-            self._add_message(
-                agent_id="TradeExecutor",
-                agent_name="交易执行专员",
-                content=f"✅ 执行成功\n\n操作: {execution_result.get('action')}\n理由: {execution_result.get('reason')}",
-                message_type="execution"
+        try:
+            # Step 1: 创建TradeExecutor Agent
+            logger.info("[ExecutionPhase] 🤖 创建TradeExecutor Agent...")
+            
+            # 创建TradeExecutor的agent实例
+            trade_executor_agent_instance = await self._create_trade_executor_agent_instance()
+            
+            # 创建智能TradeExecutor
+            trade_executor = TradeExecutorAgent(
+                agent_instance=trade_executor_agent_instance,
+                toolkit=self.toolkit if hasattr(self, 'toolkit') else None,
+                config=self.config
             )
-        elif execution_result.get('status') == 'rejected':
-            self._add_message(
-                agent_id="TradeExecutor",
-                agent_name="交易执行专员",
-                content=f"⚠️ 执行被拒绝\n\n原因: {execution_result.get('reason')}",
-                message_type="execution"
+            
+            # Step 2: 获取Leader的会议总结
+            leader_summary = self._get_leader_final_summary()
+            logger.info(f"[ExecutionPhase] 📝 Leader总结长度: {len(leader_summary)} 字符")
+            
+            # Step 3: 收集专家投票
+            agents_votes = self.agents_consensus or {}
+            logger.info(f"[ExecutionPhase] 🗳️ 专家投票: {agents_votes}")
+            
+            # Step 4: TradeExecutor分析并做出决策
+            logger.info("[ExecutionPhase] 🔍 TradeExecutor开始分析...")
+            final_signal = await trade_executor.analyze_and_decide(
+                meeting_summary=leader_summary,
+                agents_votes=agents_votes,
+                position_context=position_context,
+                message_history=self.message_bus.messages
             )
-        else:
-            self._add_message(
-                agent_id="TradeExecutor",
-                agent_name="交易执行专员",
-                content=f"❌ 执行失败\n\n错误: {execution_result.get('reason')}",
-                message_type="execution"
+            
+            logger.info(
+                f"[ExecutionPhase] ✅ TradeExecutor决策完成: {final_signal.direction.upper()} "
+                f"| 杠杆 {final_signal.leverage}x "
+                f"| 仓位 {final_signal.amount_percent*100:.0f}%"
             )
+            
+            # Step 5: 添加决策消息
+            self._add_message(
+                agent_id="trade_executor",
+                agent_name="交易执行专员",
+                content=f"""## TradeExecutor的最终决策
+
+**决策**: {final_signal.direction.upper()}
+**杠杆**: {final_signal.leverage}x
+**仓位**: {final_signal.amount_percent*100:.0f}%
+**信心度**: {final_signal.confidence}%
+
+**止盈**: ${final_signal.take_profit_price:,.2f}
+**止损**: ${final_signal.stop_loss_price:,.2f}
+
+**决策理由**:
+{final_signal.reasoning}
+""",
+                metadata={"signal": final_signal.dict()}
+            )
+            
+            # Step 6: 执行交易（如果不是hold）
+            if final_signal.direction != "hold":
+                logger.info(f"[ExecutionPhase] 🚀 开始执行交易: {final_signal.direction}")
+                
+                # Import old TradeExecutor for actual execution
+                from app.core.trading.trade_executor import TradeExecutor as LegacyExecutor
+                
+                # Get paper_trader
+                paper_trader = None
+                if hasattr(self, 'toolkit') and hasattr(self.toolkit, 'paper_trader'):
+                    paper_trader = self.toolkit.paper_trader
+                
+                # Create executor
+                executor = LegacyExecutor(
+                    toolkit=self.toolkit if hasattr(self, 'toolkit') else None,
+                    paper_trader=paper_trader
+                )
+                
+                # Get position info
+                position_info = await self._get_position_info_dict()
+                
+                # Execute
+                execution_result = await executor.execute_signal(final_signal, position_info)
+                
+                logger.info(f"[ExecutionPhase] 执行结果: {execution_result}")
+                
+                # Add execution result message
+                if execution_result.get('status') == 'success':
+                    self._add_message(
+                        agent_id="trade_executor",
+                        agent_name="交易执行专员",
+                        content=f"✅ 交易执行成功\n\n操作: {execution_result.get('action')}\n详情: {execution_result.get('reason')}",
+                        message_type="execution"
+                    )
+                elif execution_result.get('status') == 'rejected':
+                    self._add_message(
+                        agent_id="trade_executor",
+                        agent_name="交易执行专员",
+                        content=f"⚠️ 交易被拒绝\n\n原因: {execution_result.get('reason')}",
+                        message_type="execution"
+                    )
+                else:
+                    self._add_message(
+                        agent_id="trade_executor",
+                        agent_name="交易执行专员",
+                        content=f"❌ 交易执行失败\n\n错误: {execution_result.get('reason')}",
+                        message_type="execution"
+                    )
+                
+                self._execution_result = execution_result
+            else:
+                logger.info("[ExecutionPhase] 观望决策，不执行交易")
+                self._add_message(
+                    agent_id="trade_executor",
+                    agent_name="交易执行专员",
+                    content="⚪ 决策为观望，不执行交易",
+                    message_type="execution"
+                )
+            
+            # Store final signal
+            self._final_signal = final_signal
+            
+        except Exception as e:
+            logger.error(f"[ExecutionPhase] ❌ 执行阶段失败: {e}", exc_info=True)
+            self._add_message(
+                agent_id="system",
+                agent_name="系统",
+                content=f"❌ 交易执行阶段失败: {str(e)}",
+                message_type="error"
+            )
+            # 返回hold信号
+            self._final_signal = await self._create_hold_signal(
+                "",
+                f"执行阶段失败: {str(e)}"
+            )
+    
+    async def _create_trade_executor_agent_instance(self) -> Agent:
+        """创建TradeExecutor的Agent实例"""
+        from app.core.agent_factory import AgentFactory
         
-        # Store execution result
-        self._execution_result = execution_result
+        # 使用simple_agent或类似的轻量级agent
+        # TradeExecutor不需要工具，只需要LLM能力
+        factory = AgentFactory()
+        
+        agent_config = {
+            "type": "simple_agent",
+            "name": "TradeExecutor",
+            "role": "交易执行决策专员",
+            "system_prompt": "你是交易执行专员，负责分析会议结果并做出最终交易决策。",
+            "language": "zh"
+        }
+        
+        agent = await factory.create_agent("trade_executor", agent_config)
+        return agent
+    
+    def _get_leader_final_summary(self) -> str:
+        """获取Leader的最后一条消息作为会议总结"""
+        # 从消息历史中找Leader的最后一条消息
+        leader_messages = [
+            msg for msg in self.message_bus.messages
+            if msg.get("agent_name") == "Leader" or msg.get("agent_id") == "leader"
+        ]
+        
+        if leader_messages:
+            return leader_messages[-1].get("content", "")
+        
+        return "无Leader总结"
 
     async def _run_agent_turn(self, agent: Agent, prompt: str) -> str:
         """Run a single agent's turn using agent's own LLM call method with tool execution"""
