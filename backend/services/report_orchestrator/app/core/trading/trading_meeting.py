@@ -1442,31 +1442,226 @@ class TradingMeeting(Meeting):
         """
         创建TradeExecutor的Agent实例
         
-        简化方案：使用已有的Leader agent的LLM配置
-        创建一个简单的Agent包装器
+        🆕 NEW: TradeExecutor应该能够通过Tool Calling执行交易
+        
+        架构:
+        Leader总结 → TradeExecutor分析 → TradeExecutor调用交易工具 → 执行
         """
         # 获取Leader的LLM配置
         leader = self._get_agent_by_id("Leader")
         if not leader:
             raise RuntimeError("Leader agent not found, cannot create TradeExecutor")
         
-        # 使用Leader的LLM服务创建一个简单的Agent
-        # TradeExecutor不需要工具，只需要LLM能力
-        
-        class SimpleAgent:
-            """简单的Agent包装器，只用于LLM调用"""
-            def __init__(self, llm_service, name, role):
+        # 🆕 创建一个有交易工具的Agent
+        class TradeExecutorAgentWithTools:
+            """
+            TradeExecutor Agent包装器
+            
+            关键特性:
+            - 能够理解Leader的总结
+            - 通过Tool Calling执行交易
+            - 工具包括: open_long, open_short, close_position, hold
+            """
+            def __init__(self, llm_service, toolkit, name, role):
                 self.llm_service = llm_service
+                self.toolkit = toolkit
                 self.name = name
                 self.role = role
                 self.id = "trade_executor"
+                self.tools = self._build_trading_tools()
+            
+            def _build_trading_tools(self):
+                """
+                构建交易执行工具
+                
+                这些工具会暴露给LLM，让LLM通过tool calling来执行交易
+                """
+                tools = []
+                
+                # 🔧 工具1: 开多仓
+                async def open_long(leverage: int, amount_percent: float, take_profit: float = None, stop_loss: float = None):
+                    """
+                    开多仓
+                    
+                    Args:
+                        leverage: 杠杆倍数 (1-20)
+                        amount_percent: 仓位比例 (0.0-1.0, 例如0.4表示40%)
+                        take_profit: 止盈价格 (可选)
+                        stop_loss: 止损价格 (可选)
+                    """
+                    if not self.toolkit or not self.toolkit.paper_trader:
+                        return {"success": False, "message": "Paper trader不可用"}
+                    
+                    try:
+                        result = await self.toolkit.paper_trader.open_position(
+                            direction="long",
+                            leverage=leverage,
+                            amount_percent=amount_percent,
+                            take_profit_price=take_profit,
+                            stop_loss_price=stop_loss
+                        )
+                        return {
+                            "success": True,
+                            "message": f"成功开多仓: {leverage}x杠杆, {amount_percent*100:.0f}%仓位",
+                            "details": result
+                        }
+                    except Exception as e:
+                        return {"success": False, "message": f"开多仓失败: {str(e)}"}
+                
+                # 🔧 工具2: 开空仓
+                async def open_short(leverage: int, amount_percent: float, take_profit: float = None, stop_loss: float = None):
+                    """
+                    开空仓
+                    
+                    Args:
+                        leverage: 杠杆倍数 (1-20)
+                        amount_percent: 仓位比例 (0.0-1.0)
+                        take_profit: 止盈价格 (可选)
+                        stop_loss: 止损价格 (可选)
+                    """
+                    if not self.toolkit or not self.toolkit.paper_trader:
+                        return {"success": False, "message": "Paper trader不可用"}
+                    
+                    try:
+                        result = await self.toolkit.paper_trader.open_position(
+                            direction="short",
+                            leverage=leverage,
+                            amount_percent=amount_percent,
+                            take_profit_price=take_profit,
+                            stop_loss_price=stop_loss
+                        )
+                        return {
+                            "success": True,
+                            "message": f"成功开空仓: {leverage}x杠杆, {amount_percent*100:.0f}%仓位",
+                            "details": result
+                        }
+                    except Exception as e:
+                        return {"success": False, "message": f"开空仓失败: {str(e)}"}
+                
+                # 🔧 工具3: 平仓
+                async def close_position():
+                    """平仓当前持仓"""
+                    if not self.toolkit or not self.toolkit.paper_trader:
+                        return {"success": False, "message": "Paper trader不可用"}
+                    
+                    try:
+                        result = await self.toolkit.paper_trader.close_position()
+                        return {
+                            "success": True,
+                            "message": "成功平仓",
+                            "details": result
+                        }
+                    except Exception as e:
+                        return {"success": False, "message": f"平仓失败: {str(e)}"}
+                
+                # 🔧 工具4: 观望（不操作）
+                async def hold(reason: str = "观望"):
+                    """
+                    观望，不进行任何交易
+                    
+                    Args:
+                        reason: 观望的原因
+                    """
+                    return {
+                        "success": True,
+                        "message": f"决策为观望: {reason}"
+                    }
+                
+                # 🔧 工具5: 获取当前价格（辅助工具）
+                async def get_current_price():
+                    """获取BTC当前价格"""
+                    if self.toolkit and hasattr(self.toolkit, '_get_market_price'):
+                        result = await self.toolkit._get_market_price()
+                        return result
+                    return "价格获取失败"
+                
+                # 注册工具
+                tools.append({
+                    'name': 'open_long',
+                    'description': '开多仓（做多BTC）',
+                    'parameters': {
+                        'leverage': 'int, 杠杆倍数1-20',
+                        'amount_percent': 'float, 仓位比例0.0-1.0',
+                        'take_profit': 'float, 止盈价格(可选)',
+                        'stop_loss': 'float, 止损价格(可选)'
+                    },
+                    'func': open_long
+                })
+                
+                tools.append({
+                    'name': 'open_short',
+                    'description': '开空仓（做空BTC）',
+                    'parameters': {
+                        'leverage': 'int, 杠杆倍数1-20',
+                        'amount_percent': 'float, 仓位比例0.0-1.0',
+                        'take_profit': 'float, 止盈价格(可选)',
+                        'stop_loss': 'float, 止损价格(可选)'
+                    },
+                    'func': open_short
+                })
+                
+                tools.append({
+                    'name': 'close_position',
+                    'description': '平仓当前持仓',
+                    'parameters': {},
+                    'func': close_position
+                })
+                
+                tools.append({
+                    'name': 'hold',
+                    'description': '观望，不进行交易',
+                    'parameters': {
+                        'reason': 'str, 观望原因'
+                    },
+                    'func': hold
+                })
+                
+                tools.append({
+                    'name': 'get_current_price',
+                    'description': '获取BTC当前价格',
+                    'parameters': {},
+                    'func': get_current_price
+                })
+                
+                return tools
             
             async def run(self, prompt: str) -> str:
-                """调用LLM"""
+                """
+                调用LLM，期望LLM通过tool calling执行交易
+                
+                流程:
+                1. 发送prompt + 可用工具列表给LLM
+                2. LLM分析Leader的总结
+                3. LLM调用交易工具 (如: open_long(leverage=5, amount_percent=0.4))
+                4. 执行工具并返回结果
+                """
+                
+                # 构建包含工具信息的system prompt
+                tools_desc = "\n".join([
+                    f"- {t['name']}: {t['description']}" 
+                    for t in self.tools
+                ])
+                
                 messages = [
                     {
                         "role": "system",
-                        "content": "你是交易执行专员，负责分析会议结果并做出最终交易决策。"
+                        "content": f"""你是交易执行专员 (TradeExecutor)。
+
+你的职责:
+1. 分析Leader的会议总结和专家投票
+2. 根据分析结果，调用交易工具执行交易
+
+可用工具:
+{tools_desc}
+
+重要规则:
+- 必须通过调用工具来执行交易，不要只输出建议
+- 如果决定做多，调用: open_long(leverage=..., amount_percent=...)
+- 如果决定做空，调用: open_short(leverage=..., amount_percent=...)
+- 如果决定观望，调用: hold(reason="...")
+- 如果需要平仓，调用: close_position()
+
+请分析会议内容，然后调用相应的工具。"""
                     },
                     {
                         "role": "user",
@@ -1476,21 +1671,60 @@ class TradingMeeting(Meeting):
                 
                 # 使用Leader的LLM服务
                 if hasattr(self.llm_service, 'chat'):
-                    response = await self.llm_service.chat(messages)
-                    return response.get("content", "")
+                    try:
+                        # 🔧 TODO: 这里需要支持tool calling protocol
+                        # 目前先返回LLM的文本响应
+                        # 实际应该检测LLM是否调用了工具，然后执行工具
+                        response = await self.llm_service.chat(messages)
+                        content = response.get("content", "")
+                        
+                        # 🔧 简化版: 从响应中检测工具调用
+                        # 格式: [USE_TOOL: tool_name(param=value)]
+                        tool_call_match = re.search(r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]', content)
+                        if tool_call_match:
+                            tool_name = tool_call_match.group(1)
+                            tool_params_str = tool_call_match.group(2)
+                            
+                            # 找到对应的工具
+                            tool = next((t for t in self.tools if t['name'] == tool_name), None)
+                            if tool:
+                                logger.info(f"[TradeExecutor] 检测到工具调用: {tool_name}({tool_params_str})")
+                                
+                                # 解析参数 (简化版)
+                                # 实际应该更健壮
+                                params = {}
+                                if tool_params_str:
+                                    for param in tool_params_str.split(','):
+                                        if '=' in param:
+                                            key, value = param.split('=', 1)
+                                            key = key.strip()
+                                            value = value.strip()
+                                            # 简单类型转换
+                                            if value.replace('.', '').isdigit():
+                                                value = float(value) if '.' in value else int(value)
+                                            params[key] = value
+                                
+                                # 执行工具
+                                result = await tool['func'](**params)
+                                return f"工具执行结果: {result}"
+                        
+                        return content
+                    except Exception as e:
+                        logger.error(f"[TradeExecutor] LLM调用失败: {e}", exc_info=True)
+                        return ""
                 else:
-                    # Fallback: 使用简单的文本返回
-                    logger.warning("[TradeExecutor] LLM service不可用，使用fallback")
+                    logger.warning("[TradeExecutor] LLM service不可用")
                     return ""
         
-        # 创建SimpleAgent实例
-        trade_executor_agent = SimpleAgent(
+        # 创建TradeExecutorAgentWithTools实例
+        trade_executor_agent = TradeExecutorAgentWithTools(
             llm_service=self.llm_service if hasattr(self, 'llm_service') else None,
+            toolkit=self.toolkit if hasattr(self, 'toolkit') else None,
             name="TradeExecutor",
             role="交易执行决策专员"
         )
         
-        logger.info("[TradeExecutor] ✅ 创建SimpleAgent成功")
+        logger.info("[TradeExecutor] ✅ 创建TradeExecutorAgentWithTools成功，包含交易工具")
         return trade_executor_agent
     
     def _get_leader_final_summary(self) -> str:

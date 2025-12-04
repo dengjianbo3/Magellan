@@ -67,17 +67,22 @@ class TradeExecutorAgent:
         """
         安全地获取当前价格
         
-        提供多层fallback机制，支持多种toolkit实现
+        优先级:
+        1. 从LLM的JSON响应中提取（如果已经提供）
+        2. TradeExecutor Agent自己调用工具获取
+        3. 直接调用toolkit方法（fallback）
         """
         try:
-            # 方法1: 使用price_service（如果存在）
-            if hasattr(self.toolkit, 'price_service') and self.toolkit.price_service:
-                price = await self.toolkit.price_service.get_current_price()
-                if price and price > 0:
-                    self.logger.info(f"[TradeExecutor] 通过price_service获取价格: ${price:,.2f}")
-                    return price
+            # 方法1: 检查agent是否有工具调用能力
+            # 如果agent可以调用工具，让它自己去获取价格
+            if hasattr(self.agent, 'tools') and self.agent.tools:
+                self.logger.info("[TradeExecutor] Agent有工具能力，让Agent自己获取价格")
+                # Agent会在决策过程中自己调用工具
+                # 这里返回一个占位符，实际价格会在决策中获取
+                # 但为了兼容性，我们还是提供fallback
+                pass
             
-            # 方法2: 使用_get_market_price方法（TradingToolkit）
+            # 方法2: 使用toolkit的_get_market_price方法（TradingToolkit）
             if hasattr(self.toolkit, '_get_market_price'):
                 result = await self.toolkit._get_market_price()
                 # _get_market_price返回格式化的字符串，需要解析
@@ -97,7 +102,14 @@ class TradeExecutorAgent:
                         self.logger.info(f"[TradeExecutor] 通过_get_market_price获取价格: ${price:,.2f}")
                         return price
             
-            # 方法3: 直接从paper_trader获取
+            # 方法3: 使用price_service（如果存在）
+            if hasattr(self.toolkit, 'price_service') and self.toolkit.price_service:
+                price = await self.toolkit.price_service.get_current_price()
+                if price and price > 0:
+                    self.logger.info(f"[TradeExecutor] 通过price_service获取价格: ${price:,.2f}")
+                    return price
+            
+            # 方法4: 直接从paper_trader获取
             if hasattr(self.toolkit, 'paper_trader') and self.toolkit.paper_trader:
                 if hasattr(self.toolkit.paper_trader, 'current_price'):
                     price = self.toolkit.paper_trader.current_price
