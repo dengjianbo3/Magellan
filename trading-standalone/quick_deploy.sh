@@ -8,6 +8,19 @@ echo "🚀 开始部署 v1.1.0 - Position-Aware System"
 echo "========================================"
 echo ""
 
+# Detect docker compose command
+if docker compose version &> /dev/null 2>&1; then
+    DOCKER_COMPOSE="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
+else
+    echo "❌ Error: Neither 'docker compose' nor 'docker-compose' is available."
+    exit 1
+fi
+
+echo "Using: $DOCKER_COMPOSE"
+echo ""
+
 # 1. 检查当前分支
 echo "📌 Step 1: 检查Git分支"
 current_branch=$(git rev-parse --abbrev-ref HEAD)
@@ -33,20 +46,20 @@ echo ""
 
 # 4. 停止现有服务
 echo "🛑 Step 4: 停止现有服务"
-docker-compose down
+$DOCKER_COMPOSE down
 echo "   ✅ 服务已停止"
 
 # 5. 重新构建镜像
 echo ""
 echo "🔨 Step 5: 重新构建trading-service镜像"
 echo "   (这可能需要2-3分钟...)"
-docker-compose build --no-cache trading-service
+$DOCKER_COMPOSE build --no-cache trading-service
 echo "   ✅ 镜像构建完成"
 
 # 6. 启动服务
 echo ""
 echo "▶️  Step 6: 启动服务"
-docker-compose up -d
+$DOCKER_COMPOSE up -d
 echo "   ✅ 服务已启动"
 
 # 7. 等待服务就绪
@@ -57,13 +70,13 @@ sleep 30
 # 8. 检查服务状态
 echo ""
 echo "🔍 Step 8: 检查服务状态"
-docker-compose ps
+$DOCKER_COMPOSE ps
 echo ""
 
 # 9. 检查日志
 echo "📄 Step 9: 最近日志 (最后20行)"
 echo "========================================"
-docker-compose logs trading-service | tail -20
+$DOCKER_COMPOSE logs trading-service | tail -20
 echo "========================================"
 echo ""
 
@@ -86,7 +99,7 @@ echo "   1. 触发分析:"
 echo "      curl -X POST http://localhost:8000/api/trading/start"
 echo ""
 echo "   2. 监控日志:"
-echo "      docker-compose logs -f trading-service | grep -E \"(持仓|Position|决策)\""
+echo "      $DOCKER_COMPOSE logs -f trading-service | grep -E \"(持仓|Position|决策)\""
 echo ""
 echo "   3. 查看持仓:"
 echo "      curl http://localhost:8000/api/trading/position | jq '.'"

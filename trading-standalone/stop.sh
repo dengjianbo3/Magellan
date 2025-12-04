@@ -22,11 +22,14 @@ echo -e "${YELLOW}Stopping trading...${NC}"
 curl -s -X POST http://localhost:8000/api/trading/stop 2>/dev/null || true
 sleep 2
 
-# Detect docker compose command
+# Detect docker compose command (v2 uses "docker compose", v1 uses "docker-compose")
 if docker compose version &> /dev/null; then
     DOCKER_COMPOSE="docker compose"
+elif docker-compose version &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
 else
-    DOCKER_COMPOSE="docker compose"
+    echo -e "${RED}Error: Neither 'docker compose' nor 'docker-compose' is available.${NC}"
+    exit 1
 fi
 
 # Stop Docker services
