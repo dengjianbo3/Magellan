@@ -191,23 +191,23 @@ class TradeExecutor:
             return {"ok": True, "reason": ""}
         
         try:
-            # 获取账户信息
-            account = self.paper_trader.get_account_status()
-            balance = account.get('balance', 0)
+            # 🔧 FIX: 使用正确的方法名 get_account() 而不是 get_account_status()
+            account = await self.paper_trader.get_account()
+            available_balance = account.get('available_balance', 0)
             
             # 检查余额是否充足
             min_balance_required = 10  # 至少10 USDT
-            if balance < min_balance_required:
+            if available_balance < min_balance_required:
                 return {
                     "ok": False, 
-                    "reason": f"余额不足: {balance:.2f} USDT < {min_balance_required} USDT",
-                    "balance": balance
+                    "reason": f"可用余额不足: {available_balance:.2f} USDT < {min_balance_required} USDT",
+                    "available_balance": available_balance
                 }
             
-            return {"ok": True, "reason": "", "balance": balance}
+            return {"ok": True, "reason": "", "available_balance": available_balance}
             
         except Exception as e:
-            logger.error(f"[{self.name}] 检查账户状态失败: {e}")
+            logger.error(f"[{self.name}] 检查账户状态失败: {e}", exc_info=True)
             return {"ok": False, "reason": f"账户检查异常: {str(e)}"}
     
     def _check_position_conflict(
@@ -336,25 +336,46 @@ class TradeExecutor:
         
         # Long/Short - 开仓
         if direction in ["long", "short"]:
-            # 准备参数
-            params = {
-                "symbol": signal.symbol,
-                "leverage": signal.leverage,
-                "amount_percent": signal.amount_percent,
-                "take_profit_price": signal.take_profit_price,
-                "stop_loss_price": signal.stop_loss_price,
-                "reason": signal.reasoning or f"Leader决策做{direction}"
-            }
-            
-            # 调用工具
+            # 🔧 FIX: 计算实际的USDT金额
+            # PaperTrader需要的是amount_usdt，而signal提供的是amount_percent
             if self.paper_trader:
+                # 获取账户余额
+                account = await self.paper_trader.get_account()
+                available_balance = account.get('available_balance', 0)
+                
+                # 计算USDT金额：available_balance * amount_percent
+                # 注意：amount_percent已经是小数（0-1），不需要再除以100
+                amount_usdt = available_balance * signal.amount_percent
+                
+                logger.info(f"[{self.name}] 可用余额: {available_balance:.2f} USDT")
+                logger.info(f"[{self.name}] 仓位比例: {signal.amount_percent * 100:.1f}%")
+                logger.info(f"[{self.name}] 开仓金额: {amount_usdt:.2f} USDT")
+                
+                # 准备参数（使用amount_usdt）
+                params = {
+                    "symbol": signal.symbol,
+                    "leverage": signal.leverage,
+                    "amount_usdt": amount_usdt,  # 使用USDT金额
+                    "tp_price": signal.take_profit_price,
+                    "sl_price": signal.stop_loss_price
+                }
+                
                 # 直接调用paper_trader
                 if direction == "long":
                     result = await self.paper_trader.open_long(**params)
                 else:
                     result = await self.paper_trader.open_short(**params)
             else:
-                # 使用toolkit
+                # 使用toolkit（toolkit的工具可能接受amount_percent）
+                params = {
+                    "symbol": signal.symbol,
+                    "leverage": signal.leverage,
+                    "amount_percent": signal.amount_percent,
+                    "take_profit_price": signal.take_profit_price,
+                    "stop_loss_price": signal.stop_loss_price,
+                    "reason": signal.reasoning or f"Leader决策做{direction}"
+                }
+                
                 tool_name = "open_long" if direction == "long" else "open_short"
                 tool = self.toolkit._tools.get(tool_name)
                 if not tool:
