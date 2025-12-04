@@ -1427,23 +1427,59 @@ class TradingMeeting(Meeting):
             )
     
     async def _create_trade_executor_agent_instance(self) -> Agent:
-        """创建TradeExecutor的Agent实例"""
-        from app.core.agent_factory import AgentFactory
+        """
+        创建TradeExecutor的Agent实例
         
-        # 使用simple_agent或类似的轻量级agent
+        简化方案：使用已有的Leader agent的LLM配置
+        创建一个简单的Agent包装器
+        """
+        # 获取Leader的LLM配置
+        leader = self._get_agent_by_id("Leader")
+        if not leader:
+            raise RuntimeError("Leader agent not found, cannot create TradeExecutor")
+        
+        # 使用Leader的LLM服务创建一个简单的Agent
         # TradeExecutor不需要工具，只需要LLM能力
-        factory = AgentFactory()
         
-        agent_config = {
-            "type": "simple_agent",
-            "name": "TradeExecutor",
-            "role": "交易执行决策专员",
-            "system_prompt": "你是交易执行专员，负责分析会议结果并做出最终交易决策。",
-            "language": "zh"
-        }
+        class SimpleAgent:
+            """简单的Agent包装器，只用于LLM调用"""
+            def __init__(self, llm_service, name, role):
+                self.llm_service = llm_service
+                self.name = name
+                self.role = role
+                self.id = "trade_executor"
+            
+            async def run(self, prompt: str) -> str:
+                """调用LLM"""
+                messages = [
+                    {
+                        "role": "system",
+                        "content": "你是交易执行专员，负责分析会议结果并做出最终交易决策。"
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
+                
+                # 使用Leader的LLM服务
+                if hasattr(self.llm_service, 'chat'):
+                    response = await self.llm_service.chat(messages)
+                    return response.get("content", "")
+                else:
+                    # Fallback: 使用简单的文本返回
+                    logger.warning("[TradeExecutor] LLM service不可用，使用fallback")
+                    return ""
         
-        agent = await factory.create_agent("trade_executor", agent_config)
-        return agent
+        # 创建SimpleAgent实例
+        trade_executor_agent = SimpleAgent(
+            llm_service=self.llm_service if hasattr(self, 'llm_service') else None,
+            name="TradeExecutor",
+            role="交易执行决策专员"
+        )
+        
+        logger.info("[TradeExecutor] ✅ 创建SimpleAgent成功")
+        return trade_executor_agent
     
     def _get_leader_final_summary(self) -> str:
         """获取Leader的最后一条消息作为会议总结"""
