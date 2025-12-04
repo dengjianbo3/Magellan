@@ -434,81 +434,81 @@ class PaperTrader:
                     "error": f"已有持仓（{self._position.direction}），请先平仓"
                 }
 
-        # 确保类型正确（防止从LLM解析时传入字符串）
-        try:
-            amount_usdt = float(amount_usdt)
-            leverage = int(leverage)
-        except (TypeError, ValueError) as e:
-            return {
-                "success": False,
-                "error": f"参数类型错误: {e}"
-            }
+            # 确保类型正确（防止从LLM解析时传入字符串）
+            try:
+                amount_usdt = float(amount_usdt)
+                leverage = int(leverage)
+            except (TypeError, ValueError) as e:
+                return {
+                    "success": False,
+                    "error": f"参数类型错误: {e}"
+                }
 
-        # 更新权益,计算真实可用保证金
-        await self._update_equity()
-        true_available_margin = self._account.total_equity - self._account.used_margin
+            # 更新权益,计算真实可用保证金
+            await self._update_equity()
+            true_available_margin = self._account.total_equity - self._account.used_margin
 
-        # 检查1: 真实可用保证金是否足够
-        if amount_usdt > true_available_margin:
-            return {
-                "success": False,
-                "error": (
-                    f"保证金不足! 需要: ${amount_usdt:.2f}, "
-                    f"真实可用: ${true_available_margin:.2f} "
-                    f"(总权益: ${self._account.total_equity:.2f} - "
-                    f"已用: ${self._account.used_margin:.2f})"
-                )
-            }
-
-        # 检查2: 账户余额是否足够 (用于扣款)
-        if amount_usdt > self._account.balance:
-            unrealized_loss = -self._account.unrealized_pnl if self._account.unrealized_pnl < 0 else 0
-            return {
-                "success": False,
-                "error": (
-                    f"账户余额不足! 需要: ${amount_usdt:.2f}, "
-                    f"可用余额: ${self._account.balance:.2f}. "
-                    f"{'持仓浮亏: $' + f'{unrealized_loss:.2f}, ' if unrealized_loss > 0 else ''}"
-                    f"建议先平仓或减少开仓金额"
-                )
-            }
-
-        # 限制杠杆 (1-max_leverage倍)
-        leverage = min(max(1, leverage), self.config.max_leverage)
-
-        current_price = await self.get_current_price(symbol)
-
-        # 计算持仓数量
-        position_value = amount_usdt * leverage
-        size = position_value / current_price
-
-        # 重新计算止盈止损价格（基于实际入场价，而不是 LLM 预期的价格）
-        # 如果传入的 tp/sl 价格与实际入场价不匹配，使用默认百分比重新计算
-        if tp_price is not None and sl_price is not None:
-            if direction == "long":
-                # 做多：止盈应该高于入场价，止损应该低于入场价
-                if tp_price <= current_price or sl_price >= current_price:
-                    # 止盈止损价格不合理，使用默认百分比重新计算
-                    logger.warning(
-                        f"止盈止损价格不合理 (tp={tp_price}, sl={sl_price}, entry={current_price})，"
-                        f"使用默认百分比重新计算"
+            # 检查1: 真实可用保证金是否足够
+            if amount_usdt > true_available_margin:
+                return {
+                    "success": False,
+                    "error": (
+                        f"保证金不足! 需要: ${amount_usdt:.2f}, "
+                        f"真实可用: ${true_available_margin:.2f} "
+                        f"(总权益: ${self._account.total_equity:.2f} - "
+                        f"已用: ${self._account.used_margin:.2f})"
                     )
-                    tp_price = current_price * (1 + self.config.default_tp_percent / 100)
-                    sl_price = current_price * (1 - self.config.default_sl_percent / 100)
-            else:  # short
-                # 做空：止盈应该低于入场价，止损应该高于入场价
-                if tp_price >= current_price or sl_price <= current_price:
-                    logger.warning(
-                        f"止盈止损价格不合理 (tp={tp_price}, sl={sl_price}, entry={current_price})，"
-                        f"使用默认百分比重新计算"
+                }
+
+            # 检查2: 账户余额是否足够 (用于扣款)
+            if amount_usdt > self._account.balance:
+                unrealized_loss = -self._account.unrealized_pnl if self._account.unrealized_pnl < 0 else 0
+                return {
+                    "success": False,
+                    "error": (
+                        f"账户余额不足! 需要: ${amount_usdt:.2f}, "
+                        f"可用余额: ${self._account.balance:.2f}. "
+                        f"{'持仓浮亏: $' + f'{unrealized_loss:.2f}, ' if unrealized_loss > 0 else ''}"
+                        f"建议先平仓或减少开仓金额"
                     )
-                    tp_price = current_price * (1 - self.config.default_tp_percent / 100)
-                    sl_price = current_price * (1 + self.config.default_sl_percent / 100)
+                }
 
-        logger.info(f"开仓参数: entry={current_price}, tp={tp_price}, sl={sl_price}")
+            # 限制杠杆 (1-max_leverage倍)
+            leverage = min(max(1, leverage), self.config.max_leverage)
 
-        # 创建持仓
-        self._position = PaperPosition(
+            current_price = await self.get_current_price(symbol)
+
+            # 计算持仓数量
+            position_value = amount_usdt * leverage
+            size = position_value / current_price
+
+            # 重新计算止盈止损价格（基于实际入场价，而不是 LLM 预期的价格）
+            # 如果传入的 tp/sl 价格与实际入场价不匹配，使用默认百分比重新计算
+            if tp_price is not None and sl_price is not None:
+                if direction == "long":
+                    # 做多：止盈应该高于入场价，止损应该低于入场价
+                    if tp_price <= current_price or sl_price >= current_price:
+                        # 止盈止损价格不合理，使用默认百分比重新计算
+                        logger.warning(
+                            f"止盈止损价格不合理 (tp={tp_price}, sl={sl_price}, entry={current_price})，"
+                            f"使用默认百分比重新计算"
+                        )
+                        tp_price = current_price * (1 + self.config.default_tp_percent / 100)
+                        sl_price = current_price * (1 - self.config.default_sl_percent / 100)
+                else:  # short
+                    # 做空：止盈应该低于入场价，止损应该高于入场价
+                    if tp_price >= current_price or sl_price <= current_price:
+                        logger.warning(
+                            f"止盈止损价格不合理 (tp={tp_price}, sl={sl_price}, entry={current_price})，"
+                            f"使用默认百分比重新计算"
+                        )
+                        tp_price = current_price * (1 - self.config.default_tp_percent / 100)
+                        sl_price = current_price * (1 + self.config.default_sl_percent / 100)
+
+            logger.info(f"开仓参数: entry={current_price}, tp={tp_price}, sl={sl_price}")
+
+            # 创建持仓
+            self._position = PaperPosition(
             id=str(uuid.uuid4()),
             symbol=symbol,
             direction=direction,
@@ -524,28 +524,28 @@ class PaperTrader:
         self._account.balance -= amount_usdt
         self._account.used_margin += amount_usdt
 
-            await self._save_state()
+        await self._save_state()
 
-            logger.info(
-                f"✅ [TRADE_LOCK] 开仓成功: {direction.upper()} {size:.6f} BTC @ ${current_price:.2f}, "
-                f"杠杆: {leverage}x, 保证金: ${amount_usdt:.2f}, "
-                f"剩余可用: ${self._account.balance:.2f}"
-            )
-            logger.info(f"[TRADE_LOCK] Releasing lock after successful {direction} position")
+        logger.info(
+            f"✅ [TRADE_LOCK] 开仓成功: {direction.upper()} {size:.6f} BTC @ ${current_price:.2f}, "
+            f"杠杆: {leverage}x, 保证金: ${amount_usdt:.2f}, "
+            f"剩余可用: ${self._account.balance:.2f}"
+        )
+        logger.info(f"[TRADE_LOCK] Releasing lock after successful {direction} position")
 
-            return {
-                "success": True,
-                "order_id": self._position.id,
-                "direction": direction,
-                "executed_price": current_price,
-                "executed_amount": size,
-                "leverage": leverage,
-                "margin": amount_usdt,
-                "take_profit": tp_price,
-                "stop_loss": sl_price,
-                "remaining_balance": self._account.balance,  # 新增: 返回剩余余额
-                "remaining_available_margin": self._account.total_equity - self._account.used_margin  # 新增: 返回真实可用保证金
-            }
+        return {
+            "success": True,
+            "order_id": self._position.id,
+            "direction": direction,
+            "executed_price": current_price,
+            "executed_amount": size,
+            "leverage": leverage,
+            "margin": amount_usdt,
+            "take_profit": tp_price,
+            "stop_loss": sl_price,
+            "remaining_balance": self._account.balance,
+            "remaining_available_margin": self._account.total_equity - self._account.used_margin
+        }
 
     async def close_position(self, symbol: str = "BTC-USDT-SWAP", reason: str = "manual") -> Dict:
         """平仓"""
