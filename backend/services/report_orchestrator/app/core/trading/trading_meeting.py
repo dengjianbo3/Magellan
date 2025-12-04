@@ -1049,102 +1049,138 @@ class TradingMeeting(Meeting):
         Returns:
             PositionContext: 完整的持仓上下文对象
         """
-        # 获取当前持仓
-        position = await self.toolkit.paper_trader.get_position()
-        has_position = position.get('has_position', False)
+        try:
+            # 获取当前持仓
+            position = await self.toolkit.paper_trader.get_position()
+            if position is None:
+                logger.warning("[PositionContext] get_position() returned None, using default empty position")
+                position = {'has_position': False}
+            
+            has_position = position.get('has_position', False)
+            
+            # 获取账户信息
+            account = await self.toolkit.paper_trader.get_account()
+            if account is None:
+                logger.warning("[PositionContext] get_account() returned None, using default balance")
+                account = {
+                    'available_balance': self.config.default_balance,
+                    'total_equity': self.config.default_balance,
+                    'used_margin': 0
+                }
+            
+            # 如果无持仓，返回简化的context
+            if not has_position:
+                return PositionContext(
+                    has_position=False,
+                    available_balance=account.get('available_balance', self.config.default_balance),
+                    total_equity=account.get('total_equity', self.config.default_balance),
+                    used_margin=account.get('used_margin', 0),
+                    max_position_percent=self.config.max_position_percent,
+                    can_add_position=False
+                )
+            
+            # 有持仓，收集详细信息
+            current_position = position.get('position', {})
+            if not current_position:
+                logger.warning("[PositionContext] position.position is empty, treating as no position")
+                return PositionContext(
+                    has_position=False,
+                    available_balance=account.get('available_balance', self.config.default_balance),
+                    total_equity=account.get('total_equity', self.config.default_balance),
+                    used_margin=account.get('used_margin', 0),
+                    max_position_percent=self.config.max_position_percent,
+                    can_add_position=False
+                )
+            
+            direction = current_position.get('direction', '')
+            entry_price = current_position.get('entry_price', 0)
+            current_price = current_position.get('current_price', 0)
+            size = current_position.get('size', 0)
+            leverage = current_position.get('leverage', 1)
+            margin_used = current_position.get('margin', 0)
+            unrealized_pnl = current_position.get('unrealized_pnl', 0)
+            unrealized_pnl_percent = current_position.get('unrealized_pnl_percent', 0)
+            liquidation_price = current_position.get('liquidation_price', 0)
+            take_profit_price = current_position.get('take_profit_price')
+            stop_loss_price = current_position.get('stop_loss_price')
+            opened_at_str = current_position.get('opened_at')
+            
+            # 计算距离止盈止损的距离
+            distance_to_tp_percent = 0.0
+            distance_to_sl_percent = 0.0
+            if take_profit_price and current_price:
+                distance_to_tp_percent = ((take_profit_price - current_price) / current_price) * 100
+            if stop_loss_price and current_price:
+                distance_to_sl_percent = ((stop_loss_price - current_price) / current_price) * 100
+            
+            # 计算距离强平的距离
+            distance_to_liquidation_percent = 0.0
+            if liquidation_price and current_price:
+                if direction == "long":
+                    distance_to_liquidation_percent = ((current_price - liquidation_price) / current_price) * 100
+                else:  # short
+                    distance_to_liquidation_percent = ((liquidation_price - current_price) / current_price) * 100
+            
+            # 计算当前仓位占比
+            total_equity = account.get('total_equity', self.config.default_balance)
+            current_position_percent = margin_used / total_equity if total_equity > 0 else 0
+            
+            # 计算是否可以追加
+            max_margin = total_equity * self.config.max_position_percent
+            available_balance = account.get('available_balance', 0)
+            can_add_position = (margin_used < max_margin) and (available_balance >= 10)
+            max_additional_amount = min(max_margin - margin_used, available_balance) if can_add_position else 0
+            
+            # 计算持仓时长
+            opened_at = None
+            holding_duration_hours = 0.0
+            if opened_at_str:
+                try:
+                    opened_at = datetime.fromisoformat(opened_at_str.replace('Z', '+00:00'))
+                    holding_duration_hours = (datetime.now(opened_at.tzinfo) - opened_at).total_seconds() / 3600
+                except Exception as e:
+                    logger.warning(f"Failed to parse opened_at: {e}")
+            
+            # 返回完整的持仓上下文
+            return PositionContext(
+                has_position=True,
+                current_position=current_position,
+                direction=direction,
+                entry_price=entry_price,
+                current_price=current_price,
+                size=size,
+                leverage=leverage,
+                margin_used=margin_used,
+                unrealized_pnl=unrealized_pnl,
+                unrealized_pnl_percent=unrealized_pnl_percent,
+                liquidation_price=liquidation_price,
+                distance_to_liquidation_percent=distance_to_liquidation_percent,
+                take_profit_price=take_profit_price,
+                stop_loss_price=stop_loss_price,
+                distance_to_tp_percent=distance_to_tp_percent,
+                distance_to_sl_percent=distance_to_sl_percent,
+                available_balance=account.get('available_balance', 0),
+                total_equity=total_equity,
+                used_margin=account.get('used_margin', 0),
+                max_position_percent=self.config.max_position_percent,
+                current_position_percent=current_position_percent,
+                can_add_position=can_add_position,
+                max_additional_amount=max_additional_amount,
+                opened_at=opened_at,
+                holding_duration_hours=holding_duration_hours
+            )
         
-        # 获取账户信息
-        account = await self.toolkit.paper_trader.get_account()
-        
-        # 如果无持仓，返回简化的context
-        if not has_position:
+        except Exception as e:
+            logger.error(f"[PositionContext] Error getting position context: {e}", exc_info=True)
+            # 返回默认的空持仓context
             return PositionContext(
                 has_position=False,
-                available_balance=account.get('available_balance', 0),
-                total_equity=account.get('total_equity', 0),
-                used_margin=account.get('used_margin', 0),
+                available_balance=self.config.default_balance,
+                total_equity=self.config.default_balance,
+                used_margin=0,
                 max_position_percent=self.config.max_position_percent,
                 can_add_position=False
             )
-        
-        # 有持仓，收集详细信息
-        current_position = position.get('position', {})
-        direction = current_position.get('direction', '')
-        entry_price = current_position.get('entry_price', 0)
-        current_price = current_position.get('current_price', 0)
-        size = current_position.get('size', 0)
-        leverage = current_position.get('leverage', 1)
-        margin_used = current_position.get('margin', 0)
-        unrealized_pnl = current_position.get('unrealized_pnl', 0)
-        unrealized_pnl_percent = current_position.get('unrealized_pnl_percent', 0)
-        liquidation_price = current_position.get('liquidation_price', 0)
-        take_profit_price = current_position.get('take_profit_price')
-        stop_loss_price = current_position.get('stop_loss_price')
-        opened_at_str = current_position.get('opened_at')
-        
-        # 计算距离止盈止损的距离
-        distance_to_tp_percent = 0.0
-        distance_to_sl_percent = 0.0
-        if take_profit_price and current_price:
-            distance_to_tp_percent = ((take_profit_price - current_price) / current_price) * 100
-        if stop_loss_price and current_price:
-            distance_to_sl_percent = ((stop_loss_price - current_price) / current_price) * 100
-        
-        # 计算距离强平的距离
-        distance_to_liquidation_percent = 0.0
-        if liquidation_price and current_price:
-            if direction == "long":
-                distance_to_liquidation_percent = ((current_price - liquidation_price) / current_price) * 100
-            else:  # short
-                distance_to_liquidation_percent = ((liquidation_price - current_price) / current_price) * 100
-        
-        # 计算当前仓位占比
-        total_equity = account.get('total_equity', 0)
-        current_position_percent = margin_used / total_equity if total_equity > 0 else 0
-        
-        # 计算是否可以追加
-        max_margin = total_equity * self.config.max_position_percent
-        available_balance = account.get('available_balance', 0)
-        can_add_position = (margin_used < max_margin) and (available_balance >= 10)
-        max_additional_amount = min(max_margin - margin_used, available_balance) if can_add_position else 0
-        
-        # 计算持仓时长
-        opened_at = None
-        holding_duration_hours = 0.0
-        if opened_at_str:
-            try:
-                opened_at = datetime.fromisoformat(opened_at_str.replace('Z', '+00:00'))
-                holding_duration_hours = (datetime.now(opened_at.tzinfo) - opened_at).total_seconds() / 3600
-            except Exception as e:
-                logger.warning(f"Failed to parse opened_at: {e}")
-        
-        return PositionContext(
-            has_position=True,
-            current_position=current_position,
-            direction=direction,
-            entry_price=entry_price,
-            current_price=current_price,
-            size=size,
-            leverage=leverage,
-            margin_used=margin_used,
-            unrealized_pnl=unrealized_pnl,
-            unrealized_pnl_percent=unrealized_pnl_percent,
-            liquidation_price=liquidation_price,
-            distance_to_liquidation_percent=distance_to_liquidation_percent,
-            take_profit_price=take_profit_price,
-            stop_loss_price=stop_loss_price,
-            distance_to_tp_percent=distance_to_tp_percent,
-            distance_to_sl_percent=distance_to_sl_percent,
-            available_balance=account.get('available_balance', 0),
-            total_equity=total_equity,
-            used_margin=account.get('used_margin', 0),
-            max_position_percent=self.config.max_position_percent,
-            current_position_percent=current_position_percent,
-            can_add_position=can_add_position,
-            max_additional_amount=max_additional_amount,
-            opened_at=opened_at,
-            holding_duration_hours=holding_duration_hours
-        )
     
     async def _get_position_info_dict(self) -> Dict[str, Any]:
         """
