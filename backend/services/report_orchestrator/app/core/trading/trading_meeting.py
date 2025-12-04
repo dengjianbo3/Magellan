@@ -1254,11 +1254,12 @@ class TradingMeeting(Meeting):
                     "can_add": False
                 }
             
-            # Get account and position
-            account = paper_trader.get_account_status()
-            position = paper_trader.get_position()
+            # Get account and position (使用正确的异步方法)
+            # 🔧 FIX: get_account和get_position都是异步方法，需要await
+            account = await paper_trader.get_account()
+            position = await paper_trader.get_position()
             
-            has_position = position is not None
+            has_position = position is not None and position.get("has_position", False)
             
             # Calculate if can add more position
             can_add = False
