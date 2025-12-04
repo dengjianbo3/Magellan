@@ -1674,8 +1674,9 @@ class TradingMeeting(Meeting):
             return f"📊 决定观望: {reason}"
         
         # 🆕 创建真正的Agent实例并注册FunctionTool
+        # 🔧 FIX: Agent使用id而不是agent_id，使用llm_gateway_url而不是llm_endpoint
         trade_executor = Agent(
-            agent_id="trade_executor",
+            id="trade_executor",
             name="TradeExecutor",
             role="交易执行决策专员",
             system_prompt="""你是交易执行专员 (TradeExecutor)，负责根据专家会议结果执行交易。
@@ -1693,7 +1694,7 @@ class TradingMeeting(Meeting):
 4. 有反向持仓需要平仓 → 调用close_position
 
 你必须根据会议结果调用一个工具！""",
-            llm_endpoint=leader.llm_endpoint if hasattr(leader, 'llm_endpoint') else "http://llm_gateway:8003",
+            llm_gateway_url=leader.llm_gateway_url if hasattr(leader, 'llm_gateway_url') else "http://llm_gateway:8003",
             temperature=0.3
         )
         
