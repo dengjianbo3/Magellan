@@ -56,8 +56,10 @@ class TradeExecutorAgent:
         # 🔧 验证必需的依赖
         if not self.toolkit:
             raise RuntimeError("TradeExecutor requires toolkit")
-        if not hasattr(self.toolkit, 'price_service'):
-            raise RuntimeError("Toolkit must have price_service")
+        # 🔧 FIX: toolkit可能有_get_market_price而不是price_service
+        # 检查toolkit是否有获取价格的能力
+        if not (hasattr(self.toolkit, 'price_service') or hasattr(self.toolkit, '_get_market_price')):
+            raise RuntimeError("Toolkit must have price_service or _get_market_price method")
         if not self.config:
             raise RuntimeError("TradeExecutor requires config")
     
@@ -65,18 +67,49 @@ class TradeExecutorAgent:
         """
         安全地获取当前价格
         
-        提供多层fallback机制
+        提供多层fallback机制，支持多种toolkit实现
         """
         try:
-            if self.toolkit and hasattr(self.toolkit, 'price_service'):
+            # 方法1: 使用price_service（如果存在）
+            if hasattr(self.toolkit, 'price_service') and self.toolkit.price_service:
                 price = await self.toolkit.price_service.get_current_price()
                 if price and price > 0:
+                    self.logger.info(f"[TradeExecutor] 通过price_service获取价格: ${price:,.2f}")
                     return price
+            
+            # 方法2: 使用_get_market_price方法（TradingToolkit）
+            if hasattr(self.toolkit, '_get_market_price'):
+                result = await self.toolkit._get_market_price()
+                # _get_market_price返回格式化的字符串，需要解析
+                if isinstance(result, str):
+                    # 从返回的字符串中提取价格
+                    import re
+                    price_match = re.search(r'当前价格.*?(\d+(?:,\d+)*(?:\.\d+)?)', result)
+                    if price_match:
+                        price_str = price_match.group(1).replace(',', '')
+                        price = float(price_str)
+                        if price > 0:
+                            self.logger.info(f"[TradeExecutor] 通过_get_market_price获取价格: ${price:,.2f}")
+                            return price
+                elif isinstance(result, (int, float)):
+                    price = float(result)
+                    if price > 0:
+                        self.logger.info(f"[TradeExecutor] 通过_get_market_price获取价格: ${price:,.2f}")
+                        return price
+            
+            # 方法3: 直接从paper_trader获取
+            if hasattr(self.toolkit, 'paper_trader') and self.toolkit.paper_trader:
+                if hasattr(self.toolkit.paper_trader, 'current_price'):
+                    price = self.toolkit.paper_trader.current_price
+                    if price and price > 0:
+                        self.logger.info(f"[TradeExecutor] 通过paper_trader获取价格: ${price:,.2f}")
+                        return price
+                        
         except Exception as e:
-            self.logger.error(f"[TradeExecutor] 获取价格失败: {e}")
+            self.logger.error(f"[TradeExecutor] 获取价格失败: {e}", exc_info=True)
         
         # Fallback: 抛出异常，让上层处理
-        raise RuntimeError("无法获取当前价格，price_service不可用")
+        raise RuntimeError("无法获取当前价格，所有价格获取方法都失败")
     
     def _get_config_value(self, key: str, default: Any) -> Any:
         """
