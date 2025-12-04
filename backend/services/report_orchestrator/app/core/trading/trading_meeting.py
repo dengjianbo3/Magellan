@@ -1258,7 +1258,7 @@ class TradingMeeting(Meeting):
                 "can_add": False
             }
 
-    async def _run_execution_phase(self, signal: TradingSignal):
+    async def _run_execution_phase(self, signal: TradingSignal, position_context: PositionContext = None):
         """Phase 5: Trade Execution - TradeExecutor executes the Leader's decision"""
         self._add_message(
             agent_id="system",
