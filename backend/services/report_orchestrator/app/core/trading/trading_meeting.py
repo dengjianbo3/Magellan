@@ -1124,30 +1124,22 @@ class TradingMeeting(Meeting):
                 )
             
             # 有持仓，收集详细信息
-            current_position = position.get('position', {})
-            if not current_position:
-                logger.warning("[PositionContext] position.position is empty, treating as no position")
-                return PositionContext(
-                    has_position=False,
-                    available_balance=account.get('available_balance', self.config.default_balance),
-                    total_equity=account.get('total_equity', self.config.default_balance),
-                    used_margin=account.get('used_margin', 0),
-                    max_position_percent=self.config.max_position_percent,
-                    can_add_position=False
-                )
+            # 🔧 FIX: get_position() 返回的是平面字典，不是嵌套在 'position' 键下
+            # 直接从 position 字典获取数据，而不是 position.get('position', {})
+            current_position = position  # position 本身就是持仓详情
             
-            direction = current_position.get('direction', '')
-            entry_price = current_position.get('entry_price', 0)
-            current_price = current_position.get('current_price', 0)
-            size = current_position.get('size', 0)
-            leverage = current_position.get('leverage', 1)
-            margin_used = current_position.get('margin', 0)
-            unrealized_pnl = current_position.get('unrealized_pnl', 0)
-            unrealized_pnl_percent = current_position.get('unrealized_pnl_percent', 0)
-            liquidation_price = current_position.get('liquidation_price', 0)
-            take_profit_price = current_position.get('take_profit_price')
-            stop_loss_price = current_position.get('stop_loss_price')
-            opened_at_str = current_position.get('opened_at')
+            direction = position.get('direction', '')
+            entry_price = position.get('entry_price', 0)
+            current_price = position.get('current_price', 0)
+            size = position.get('size', 0)
+            leverage = position.get('leverage', 1)
+            margin_used = position.get('margin', 0)
+            unrealized_pnl = position.get('unrealized_pnl', 0)
+            unrealized_pnl_percent = position.get('unrealized_pnl_percent', 0)
+            liquidation_price = position.get('liquidation_price', 0)
+            take_profit_price = position.get('take_profit_price')
+            stop_loss_price = position.get('stop_loss_price')
+            opened_at_str = position.get('opened_at')
             
             # 计算距离止盈止损的距离
             distance_to_tp_percent = 0.0
@@ -1264,7 +1256,11 @@ class TradingMeeting(Meeting):
             # Calculate if can add more position
             can_add = False
             if has_position:
-                current_value = position.get('position_value', 0)
+                # 🔧 FIX: position_value 不存在于 get_position() 返回值中
+                # 使用 margin × leverage 计算持仓价值
+                margin = position.get('margin', 0)
+                leverage = position.get('leverage', 1)
+                current_value = margin * leverage
                 max_value = account.get('balance', 0) * (self.config.max_position_percent or 1.0)
                 can_add = current_value < max_value * 0.9  # Leave 10% buffer
             
@@ -1571,12 +1567,13 @@ class TradingMeeting(Meeting):
                     account = await toolkit.paper_trader.get_account()
                     
                     has_position = position and position.get("has_position", False)
-                    pos_data = position.get("position", {}) if has_position else {}
-                    current_direction = pos_data.get("direction") if has_position else None
-                    existing_entry = pos_data.get("entry_price", 0)
-                    existing_margin = pos_data.get("margin", 0)
-                    unrealized_pnl = pos_data.get("unrealized_pnl", 0)
-                    liquidation_price = pos_data.get("liquidation_price", 0)
+                    # 🔧 FIX: get_position() 返回的是平面字典，不是嵌套结构
+                    # 直接从 position 字典获取数据
+                    current_direction = position.get("direction") if has_position else None
+                    existing_entry = position.get("entry_price", 0) if has_position else 0
+                    existing_margin = position.get("margin", 0) if has_position else 0
+                    unrealized_pnl = position.get("unrealized_pnl", 0) if has_position else 0
+                    liquidation_price = position.get("liquidation_price", 0) if has_position else 0
                     
                     # 🔧 关键修复: 使用 true_available_margin 而非 available_balance
                     # true_available_margin = total_equity - used_margin (考虑了浮盈亏)
@@ -1827,12 +1824,13 @@ class TradingMeeting(Meeting):
                     account = await toolkit.paper_trader.get_account()
                     
                     has_position = position and position.get("has_position", False)
-                    pos_data = position.get("position", {}) if has_position else {}
-                    current_direction = pos_data.get("direction") if has_position else None
-                    existing_entry = pos_data.get("entry_price", 0)
-                    existing_margin = pos_data.get("margin", 0)
-                    unrealized_pnl = pos_data.get("unrealized_pnl", 0)
-                    liquidation_price = pos_data.get("liquidation_price", 0)
+                    # 🔧 FIX: get_position() 返回的是平面字典，不是嵌套结构
+                    # 直接从 position 字典获取数据
+                    current_direction = position.get("direction") if has_position else None
+                    existing_entry = position.get("entry_price", 0) if has_position else 0
+                    existing_margin = position.get("margin", 0) if has_position else 0
+                    unrealized_pnl = position.get("unrealized_pnl", 0) if has_position else 0
+                    liquidation_price = position.get("liquidation_price", 0) if has_position else 0
                     
                     # 🔧 关键修复: 使用 true_available_margin
                     true_available_margin = account.get("true_available_margin", 0)

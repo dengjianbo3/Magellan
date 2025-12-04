@@ -130,6 +130,11 @@ class PositionContext:
         else:
             risk_level = "🔴 危险"
         
+        # 🔧 FIX: 安全处理可能为None的值
+        tp_price_str = f"${self.take_profit_price:.2f}" if self.take_profit_price else "未设置"
+        sl_price_str = f"${self.stop_loss_price:.2f}" if self.stop_loss_price else "未设置"
+        liq_price_str = f"${self.liquidation_price:.2f}" if self.liquidation_price else "未知"
+        
         return f"""
 📊 **当前持仓状况**: 有持仓 ({(self.direction or 'unknown').upper()})
 
@@ -144,11 +149,11 @@ class PositionContext:
 - {pnl_emoji} 浮动盈亏: ${self.unrealized_pnl:.2f} USDT ({self.unrealized_pnl_percent:+.2f}%)
 
 ### 止盈止损
-- 止盈价: ${self.take_profit_price:.2f} (距离: {self.distance_to_tp_percent:+.2f}%)
-- 止损价: ${self.stop_loss_price:.2f} (距离: {self.distance_to_sl_percent:+.2f}%)
+- 止盈价: {tp_price_str} (距离: {self.distance_to_tp_percent:+.2f}%)
+- 止损价: {sl_price_str} (距离: {self.distance_to_sl_percent:+.2f}%)
 
 ### 风险指标
-- 强平价: ${self.liquidation_price:.2f}
+- 强平价: {liq_price_str}
 - 距强平: {self.distance_to_liquidation_percent:.1f}% ({risk_level})
 
 ### 账户状态
