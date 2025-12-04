@@ -931,17 +931,25 @@ class TradingMeeting(Meeting):
             
             logger.info("[SignalExtraction] Extracting signal from Leader's text output")
             
-            # Look for 【最终决策】 section
+            # 🔧 CRITICAL FIX: MUST have 【最终决策】 marker
+            # Without this marker, Leader is just discussing, not making final decision
             decision_pattern = r'【最终决策】(.*?)(?=\n\n|$)'
             match = re.search(decision_pattern, response, re.DOTALL)
             
             if not match:
-                logger.warning("[SignalExtraction] No 【最终决策】 section found in response")
-                # Fallback: try to parse without the header
-                decision_text = response
-            else:
-                decision_text = match.group(1)
+                logger.warning("[SignalExtraction] ⚠️  No 【最终决策】 section found in response")
+                logger.warning("[SignalExtraction] This indicates Leader is discussing, not making final decision")
+                logger.warning("[SignalExtraction] Returning hold signal to avoid premature execution")
+                # 🔧 FIX: Do NOT fallback to parsing the entire response
+                # If there's no 【最终决策】 marker, it means Leader is just discussing
+                # Return a hold signal to prevent premature execution
+                return await self._create_hold_signal(
+                    response, 
+                    "Leader没有输出【最终决策】标记，可能还在讨论中"
+                )
             
+            decision_text = match.group(1)
+            logger.info(f"[SignalExtraction] ✅ Found 【最终决策】 section")
             logger.info(f"[SignalExtraction] Decision text: {decision_text[:200]}...")
             
             # Extract fields using regex
