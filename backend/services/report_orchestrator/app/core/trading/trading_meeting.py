@@ -669,7 +669,7 @@ class TradingMeeting(Meeting):
             stop_loss_price=0.0,
             confidence=0,
             reasoning=response[:500],
-            agents_consensus=self.agents_consensus,
+            agents_consensus=self._get_agents_consensus(),  # 🔧 FIX: 使用方法而不是属性
             timestamp=datetime.now()
         )
     
@@ -802,6 +802,18 @@ class TradingMeeting(Meeting):
         short_count = directions.count("short")
         hold_count = directions.count("hold")
         return f"{long_count}L/{short_count}S/{hold_count}H"
+    
+    def _get_agents_consensus(self) -> Dict[str, str]:
+        """
+        从_agent_votes构建agents_consensus字典
+        
+        Returns:
+            Dict[str, str]: {agent_name: direction}
+        """
+        consensus = {}
+        for vote in self._agent_votes:
+            consensus[vote.agent_name] = vote.direction
+        return consensus
 
     async def _extract_signal_from_executed_tools(self, response: str) -> Optional[TradingSignal]:
         """
@@ -1312,7 +1324,7 @@ class TradingMeeting(Meeting):
             logger.info(f"[ExecutionPhase] 📝 Leader总结长度: {len(leader_summary)} 字符")
             
             # Step 3: 收集专家投票
-            agents_votes = self.agents_consensus or {}
+            agents_votes = self._get_agents_consensus()  # 🔧 FIX: 使用方法
             logger.info(f"[ExecutionPhase] 🗳️ 专家投票: {agents_votes}")
             
             # Step 4: TradeExecutor分析并做出决策
