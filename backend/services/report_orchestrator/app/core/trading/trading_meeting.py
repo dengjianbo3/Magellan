@@ -1329,11 +1329,15 @@ class TradingMeeting(Meeting):
             
             # Step 4: TradeExecutor分析并做出决策
             logger.info("[ExecutionPhase] 🔍 TradeExecutor开始分析...")
+            
+            # 🔧 FIX: 获取message_history而不是messages
+            msg_history = getattr(self.message_bus, 'message_history', [])
+            
             final_signal = await trade_executor.analyze_and_decide(
                 meeting_summary=leader_summary,
                 agents_votes=agents_votes,
                 position_context=position_context,
-                message_history=self.message_bus.messages
+                message_history=msg_history
             )
             
             logger.info(
@@ -1729,16 +1733,34 @@ class TradingMeeting(Meeting):
     
     def _get_leader_final_summary(self) -> str:
         """获取Leader的最后一条消息作为会议总结"""
+        if not hasattr(self, 'message_bus') or not self.message_bus:
+            self.logger.warning("[TradingMeeting] message_bus不存在")
+            return "无会议记录"
+        
+        # 🔧 FIX: MessageBus使用message_history而不是messages
+        messages = getattr(self.message_bus, 'message_history', [])
+        if not messages:
+            return "无会议消息"
+        
         # 从消息历史中找Leader的最后一条消息
         leader_messages = [
-            msg for msg in self.message_bus.messages
-            if msg.get("agent_name") == "Leader" or msg.get("agent_id") == "leader"
+            msg for msg in messages
+            if (hasattr(msg, 'agent_name') and msg.agent_name == "Leader") or
+               (hasattr(msg, 'agent_id') and msg.agent_id == "leader") or
+               (isinstance(msg, dict) and (msg.get("agent_name") == "Leader" or msg.get("agent_id") == "leader"))
         ]
         
         if leader_messages:
-            return leader_messages[-1].get("content", "")
+            last_msg = leader_messages[-1]
+            # 处理Message对象或dict
+            if isinstance(last_msg, dict):
+                return last_msg.get("content", "")
+            elif hasattr(last_msg, 'content'):
+                return last_msg.content
+            else:
+                return str(last_msg)
         
-        return "无Leader总结"
+        return "Leader未发言（可能LLM失败）"
 
     async def _run_agent_turn(self, agent: Agent, prompt: str) -> str:
         """Run a single agent's turn using agent's own LLM call method with tool execution"""
