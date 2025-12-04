@@ -321,7 +321,6 @@ class TradeExecutorAgent:
             return f"""- **持仓状态**: 无持仓
 - **可用余额**: ${position_context.available_balance:,.2f}
 - **总权益**: ${position_context.total_equity:,.2f}
-- **可用保证金**: ${position_context.available_margin:,.2f}
 """
         
         # 🔧 安全地获取direction，防止None
@@ -334,7 +333,7 @@ class TradeExecutorAgent:
 - **持仓方向**: {direction}
 - **开仓价格**: ${position_context.entry_price:,.2f}
 - **当前价格**: ${position_context.current_price:,.2f}
-- **持仓数量**: {position_context.position_amount:.4f}
+- **持仓数量**: {position_context.size:.4f}
 - **杠杆倍数**: {position_context.leverage}x
 - **未实现盈亏**: {pnl_color} {pnl_sign}${position_context.unrealized_pnl:,.2f} ({pnl_sign}{position_context.unrealized_pnl_percent:.2f}%)
 - **止盈价格**: ${position_context.take_profit_price:,.2f}

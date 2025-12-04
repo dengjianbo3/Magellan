@@ -1745,9 +1745,14 @@ class TradingMeeting(Meeting):
         # 从消息历史中找Leader的最后一条消息
         leader_messages = [
             msg for msg in messages
-            if (hasattr(msg, 'agent_name') and msg.agent_name == "Leader") or
+            if (hasattr(msg, 'sender') and msg.sender == "Leader") or
+               (hasattr(msg, 'agent_name') and msg.agent_name == "Leader") or
                (hasattr(msg, 'agent_id') and msg.agent_id == "leader") or
-               (isinstance(msg, dict) and (msg.get("agent_name") == "Leader" or msg.get("agent_id") == "leader"))
+               (isinstance(msg, dict) and (
+                   msg.get("sender") == "Leader" or 
+                   msg.get("agent_name") == "Leader" or 
+                   msg.get("agent_id") == "leader"
+               ))
         ]
         
         if leader_messages:
