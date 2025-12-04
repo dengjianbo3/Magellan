@@ -98,7 +98,8 @@ class TradingMeeting(Meeting):
         config: Optional[TradingMeetingConfig] = None,
         on_message: Optional[Callable] = None,
         on_signal: Optional[Callable] = None,
-        retry_handler: Optional[RetryHandler] = None
+        retry_handler: Optional[RetryHandler] = None,
+        toolkit=None  # 🔧 NEW: Accept toolkit for TradeExecutor
     ):
         super().__init__(
             agents=agents,
@@ -110,6 +111,7 @@ class TradingMeeting(Meeting):
         self.on_message = on_message  # Store locally for easy access
         self.on_signal = on_signal
         self.retry_handler = retry_handler or get_llm_retry_handler()
+        self.toolkit = toolkit  # 🔧 NEW: Store toolkit for TradeExecutor
 
         self._agent_votes: List[AgentVote] = []
         self._final_signal: Optional[TradingSignal] = None
@@ -403,34 +405,33 @@ class TradingMeeting(Meeting):
             await self._run_agent_turn(risk_agent, prompt)
 
     async def _run_consensus_phase(self) -> Optional[TradingSignal]:
-        """Phase 4: Consensus Building & Execution - Leader makes final decision and executes trade"""
+        """Phase 4: Consensus Building - Leader makes final decision (WITHOUT execution)"""
         self._add_message(
             agent_id="system",
             agent_name="系统",
-            content="## 阶段4: 共识形成与执行\n\n请主持人综合各方意见，形成最终交易决策并执行。",
+            content="## 阶段4: 共识形成\n\n请主持人综合各方意见，形成最终交易决策。",
             message_type="phase"
         )
 
-        # Use Leader for final decision and execution
+        # Use Leader for final decision (NO execution)
         leader = self._get_agent_by_id("Leader")
         if not leader:
             logger.error("Leader not found")
             return None
 
-        # 🔧 NEW: Get current position context for Leader
+        # 🔧 Get current position context for Leader
         position_context = await self._get_position_context()
 
         # Get current account balance for position calculation
         account_info = ""
         try:
-            if hasattr(leader, 'tools') and 'get_account_balance' in leader.tools:
-                balance_result = await leader.tools['get_account_balance'].execute()
-                account_info = f"\n当前账户信息: {balance_result}"
+            # Leader没有tools了，需要从其他agent获取或使用toolkit
+            # 这里简化，直接从paper_trader获取
+            pass  # account_info later from position_context
         except Exception as e:
             logger.warning(f"Failed to get account balance: {e}")
 
-        # 🔧 NEW: Integrate position context into Leader's prompt
-        # Request Leader to make decision and DIRECTLY EXECUTE using tools
+        # 🔧 ARCHITECTURE CHANGE: Leader只决策，不执行
         prompt = f"""作为圆桌主持人，请综合以上所有讨论内容和专家意见，形成最终交易决策。
 
 {position_context}
@@ -444,17 +445,25 @@ class TradingMeeting(Meeting):
 - 风险评估师 (RiskAssessor): 风险评估和建议
 
 ## 交易参数限制
-- 最大杠杆: {self.config.max_leverage}倍 (可选: 1,2,3,...,{self.config.max_leverage})
+- 最大杠杆: {self.config.max_leverage}倍
 - 最大仓位: {int(self.config.max_position_percent * 100)}% 资金
 - 最低信心度要求: {self.config.min_confidence}%
 
-## 杠杆选择规则 (强制执行)
+## 杠杆选择规则
 **你必须严格按照信心度选择对应区间的杠杆倍数！**
 - **高信心度 (>80%)**: **必须**使用 {int(self.config.max_leverage * 0.5)}-{self.config.max_leverage}倍杠杆
 - **中信心度 (60-80%)**: **必须**使用 {int(self.config.max_leverage * 0.25)}-{int(self.config.max_leverage * 0.5)}倍杠杆
 - **低信心度 (<60%)**: 使用 1-{int(self.config.max_leverage * 0.25)}倍杠杆 或选择观望
 
-## 你的决策流程
+## 🎯 你的职责（重要）
+
+⚠️ **关键：你只负责决策，不负责执行**
+1. 你是决策者，不是执行者
+2. 你的决策会传递给"交易执行专员"（TradeExecutor）
+3. **不要调用任何工具！** 你没有工具执行权限
+4. 只需要用结构化格式输出你的决策
+
+## 决策流程
 
 1. **分析当前状态**: 根据上方"当前持仓状态"，判断是无持仓还是有持仓
 2. **综合专家意见**: 总结各专家的核心观点、一致性和分歧点
@@ -462,58 +471,76 @@ class TradingMeeting(Meeting):
 4. **选择合适策略**: 
    - 如果**无持仓**: 开新仓或观望
    - 如果**有持仓**: 考虑持有/追加/平仓/反向（参考上方"决策参考"）
-5. **确定参数并执行**: 必须调用工具执行决策
+5. **输出结构化决策**: 按照下面的格式输出
 
-## 🔧 工具调用格式 (必须严格遵守)
+## 📋 决策输出格式（必须严格遵守）
+
+请按以下格式输出你的决策：
 
 ```
-[USE_TOOL: tool_name(param1="value1", param2="value2")]
+【最终决策】
+- 决策: [做多/做空/观望/平仓/追加多仓/追加空仓]
+- 标的: {self.config.symbol}
+- 杠杆倍数: [1-{self.config.max_leverage}]
+- 仓位比例: [0-100]%
+- 止盈价格: [具体价格] USDT
+- 止损价格: [具体价格] USDT
+- 信心度: [0-100]%
+- 决策理由: [综合分析，包括对历史持仓的考虑]
 ```
 
-### 可用决策工具（三选一，必须调用）：
+**示例1 (无持仓，看多开仓)**:
+```
+【最终决策】
+- 决策: 做多
+- 标的: BTC-USDT-SWAP
+- 杠杆倍数: 5
+- 仓位比例: 30%
+- 止盈价格: 98000 USDT
+- 止损价格: 92000 USDT
+- 信心度: 75%
+- 决策理由: 技术面突破关键阻力，宏观面美联储利好，情绪面贪婪指数回升，专家一致看多
+```
 
-1. **开多仓** (leverage和amount_usdt都必须提供):
-   `[USE_TOOL: open_long(leverage="5", amount_usdt="2000", tp_percent="5.0", sl_percent="2.0")]`
+**示例2 (有多仓，继续持有)**:
+```
+【最终决策】
+- 决策: 观望
+- 标的: BTC-USDT-SWAP
+- 杠杆倍数: 0
+- 仓位比例: 0%
+- 止盈价格: 0 USDT
+- 止损价格: 0 USDT
+- 信心度: 60%
+- 决策理由: 当前多仓盈利中，专家意见仍然看多，继续持有等待止盈触发
+```
 
-2. **开空仓** (leverage和amount_usdt都必须提供):
-   `[USE_TOOL: open_short(leverage="3", amount_usdt="1500", tp_percent="4.0", sl_percent="2.5")]`
+**示例3 (有多仓，追加仓位)**:
+```
+【最终决策】
+- 决策: 追加多仓
+- 标的: BTC-USDT-SWAP
+- 杠杆倍数: 7
+- 仓位比例: 20%
+- 止盈价格: 100000 USDT
+- 止损价格: 93000 USDT
+- 信心度: 85%
+- 决策理由: 当前多仓小幅盈利，技术面强势突破，专家强烈看多，资金充足可追加
+```
 
-3. **观望/持有** (说明理由):
-   `[USE_TOOL: hold(reason="市场不明朗，暂时观望")]`
-   或
-   `[USE_TOOL: hold(reason="继续持有现有多仓，等待止盈")]`
-   或
-   `[USE_TOOL: hold(reason="建议平掉当前空仓，市场转向")]`
+⚠️ **重要提醒**:
+- ❌ **不要调用任何工具**（你没有工具权限）
+- ❌ 不要使用 [USE_TOOL: ...] 语法
+- ✅ 只需要输出【最终决策】格式的文字
+- ✅ 你的决策会由"交易执行专员"来执行
 
-⚠️ **禁止事项**:
-- ❌ 不调用任何工具就结束
-- ❌ 只在文字中说"观望"但不调用 `hold` 工具
-- ❌ 使用 python 代码格式调用工具
-- ❌ 因为"已有持仓"就自动观望（如果资金充足且信号强烈，应该追加！）
-
-**正确示例1 (无持仓，开新仓)**:
-综合分析：技术面和情绪面都看涨，信心度75%。
-[USE_TOOL: open_long(leverage="7", amount_usdt="2000", tp_percent="5.0", sl_percent="2.0")]
-
-**正确示例2 (有多仓，继续持有)**:
-当前多仓盈利中，专家意见仍然看多，继续持有。
-[USE_TOOL: hold(reason="继续持有盈利的多仓，技术面仍然向好")]
-
-**正确示例3 (有多仓，追加)**:
-当前多仓小幅盈利，专家强烈看多，资金充足，追加仓位。
-[USE_TOOL: open_long(leverage="5", amount_usdt="1500", tp_percent="6.0", sl_percent="2.0")]
-
-**正确示例4 (有多仓，但需要平仓)**:
-当前多仓浮亏，市场转空，建议平仓。
-[USE_TOOL: hold(reason="建议平掉当前多仓，市场技术面转弱，专家建议止损")]
-
-请开始你的决策分析和执行！
+请开始你的决策分析！
 """
 
         response = await self._run_agent_turn(leader, prompt)
 
-        # Extract signal ONLY from actually executed tools, not from text matching
-        signal = await self._extract_signal_from_executed_tools(response)
+        # Extract signal from Leader's structured text output
+        signal = await self._extract_signal_from_text(response)
 
         # Log meeting summary for monitoring
         vote_summary = self._get_vote_summary()
@@ -655,16 +682,245 @@ class TradingMeeting(Meeting):
             agents_consensus=consensus
         )
 
+    async def _extract_signal_from_text(self, response: str) -> Optional[TradingSignal]:
+        """
+        🔧 NEW: Extract trading signal from Leader's structured text output.
+        
+        Leader no longer calls tools, but outputs a structured decision in text format:
+        
+        【最终决策】
+        - 决策: 做多/做空/观望/平仓/追加多仓/追加空仓
+        - 标的: BTC-USDT-SWAP
+        - 杠杆倍数: 5
+        - 仓位比例: 30%
+        - 止盈价格: 98000 USDT
+        - 止损价格: 92000 USDT
+        - 信心度: 75%
+        - 决策理由: ...
+        """
+        try:
+            import re
+            
+            logger.info("[SignalExtraction] Extracting signal from Leader's text output")
+            
+            # Look for 【最终决策】 section
+            decision_pattern = r'【最终决策】(.*?)(?=\n\n|$)'
+            match = re.search(decision_pattern, response, re.DOTALL)
+            
+            if not match:
+                logger.warning("[SignalExtraction] No 【最终决策】 section found in response")
+                # Fallback: try to parse without the header
+                decision_text = response
+            else:
+                decision_text = match.group(1)
+            
+            logger.info(f"[SignalExtraction] Decision text: {decision_text[:200]}...")
+            
+            # Extract fields using regex
+            def extract_field(pattern, text, default=None):
+                match = re.search(pattern, text, re.IGNORECASE)
+                return match.group(1).strip() if match else default
+            
+            # 决策 (决策类型)
+            decision_type = extract_field(r'-\s*决策\s*[:：]\s*([^\n]+)', decision_text)
+            logger.info(f"[SignalExtraction] decision_type: {decision_type}")
+            
+            # 标的
+            symbol = extract_field(r'-\s*标的\s*[:：]\s*([^\n]+)', decision_text, self.config.symbol)
+            
+            # 杠杆倍数
+            leverage_str = extract_field(r'-\s*杠杆倍数\s*[:：]\s*(\d+)', decision_text, "1")
+            leverage = int(leverage_str)
+            
+            # 仓位比例
+            position_str = extract_field(r'-\s*仓位比例\s*[:：]\s*(\d+)', decision_text, "0")
+            amount_percent = float(position_str)
+            
+            # 止盈价格
+            tp_str = extract_field(r'-\s*止盈价格\s*[:：]\s*([\d.]+)', decision_text, "0")
+            take_profit_price = float(tp_str)
+            
+            # 止损价格
+            sl_str = extract_field(r'-\s*止损价格\s*[:：]\s*([\d.]+)', decision_text, "0")
+            stop_loss_price = float(sl_str)
+            
+            # 信心度
+            confidence_str = extract_field(r'-\s*信心度\s*[:：]\s*(\d+)', decision_text, "0")
+            confidence = int(confidence_str)
+            
+            # 决策理由
+            reasoning = extract_field(r'-\s*决策理由\s*[:：]\s*([^\n]+)', decision_text, "")
+            
+            # Map decision_type to direction
+            direction = "hold"  # default
+            if decision_type:
+                dt_lower = decision_type.lower()
+                if "做多" in dt_lower or "开多" in dt_lower:
+                    direction = "long"
+                elif "做空" in dt_lower or "开空" in dt_lower:
+                    direction = "short"
+                elif "追加多" in dt_lower:
+                    direction = "long"  # 追加也是long
+                elif "追加空" in dt_lower:
+                    direction = "short"
+                elif "平仓" in dt_lower:
+                    direction = "close"
+                elif "观望" in dt_lower or "持有" in dt_lower:
+                    direction = "hold"
+            
+            logger.info(f"[SignalExtraction] Parsed direction: {direction}, leverage: {leverage}, "
+                       f"position: {amount_percent}%, confidence: {confidence}%")
+            
+            # Get current price
+            try:
+                from app.core.trading.trading_tools import get_current_btc_price
+                current_price = await get_current_btc_price()
+                logger.info(f"[SignalExtraction] Current BTC price: ${current_price:,.2f}")
+            except Exception as e:
+                logger.warning(f"[SignalExtraction] Failed to get real-time price: {e}, using fallback")
+                current_price = self.config.fallback_price
+            
+            # Build consensus dict
+            consensus = {v.agent_name: v.direction for v in self._agent_votes}
+            
+            # Create signal
+            signal = TradingSignal(
+                direction=direction,
+                symbol=symbol,
+                leverage=leverage,
+                amount_percent=amount_percent,
+                entry_price=current_price,
+                take_profit_price=take_profit_price,
+                stop_loss_price=stop_loss_price,
+                confidence=confidence,
+                reasoning=reasoning or response[:500],
+                agents_consensus=consensus
+            )
+            
+            logger.info(f"[SignalExtraction] ✅ Signal extracted: {signal}")
+            return signal
+            
+        except Exception as e:
+            logger.error(f"[SignalExtraction] Error extracting signal from text: {e}", exc_info=True)
+            return None
+
+    async def _get_position_info_dict(self) -> Dict[str, Any]:
+        """
+        🔧 NEW: Get position info as a dict for TradeExecutor.
+        
+        Returns:
+            {
+                "has_position": bool,
+                "current_position": {...} or None,
+                "account": {...},
+                "can_add": bool,
+                ...
+            }
+        """
+        try:
+            # Get paper_trader from toolkit
+            paper_trader = None
+            if hasattr(self, 'toolkit') and hasattr(self.toolkit, 'paper_trader'):
+                paper_trader = self.toolkit.paper_trader
+            
+            if not paper_trader:
+                logger.warning("[PositionInfo] No paper_trader available")
+                return {
+                    "has_position": False,
+                    "current_position": None,
+                    "account": {},
+                    "can_add": False
+                }
+            
+            # Get account and position
+            account = paper_trader.get_account_status()
+            position = paper_trader.get_position()
+            
+            has_position = position is not None
+            
+            # Calculate if can add more position
+            can_add = False
+            if has_position:
+                current_value = position.get('position_value', 0)
+                max_value = account.get('balance', 0) * (self.config.max_position_percent or 1.0)
+                can_add = current_value < max_value * 0.9  # Leave 10% buffer
+            
+            return {
+                "has_position": has_position,
+                "current_position": position,
+                "account": account,
+                "can_add": can_add,
+                "max_leverage": self.config.max_leverage,
+                "max_position_percent": self.config.max_position_percent
+            }
+            
+        except Exception as e:
+            logger.error(f"[PositionInfo] Error getting position info: {e}")
+            return {
+                "has_position": False,
+                "current_position": None,
+                "account": {},
+                "can_add": False
+            }
+
     async def _run_execution_phase(self, signal: TradingSignal):
-        """Phase 5: Execution confirmation (trade already executed by Leader in consensus phase)"""
-        # Leader already executed the trade in consensus phase via tool calls
-        # This phase is just for confirmation/reporting
+        """Phase 5: Trade Execution - TradeExecutor executes the Leader's decision"""
         self._add_message(
             agent_id="system",
             agent_name="系统",
-            content=f"## 交易执行完成\n\n交易方向: {signal.direction}\n杠杆: {signal.leverage}倍\n入场价: ${signal.entry_price:,.2f}",
+            content=f"## 阶段5: 交易执行\n\n交易执行专员正在执行Leader的决策...",
             message_type="phase"
         )
+        
+        # Import TradeExecutor
+        from app.core.trading.trade_executor import TradeExecutor
+        
+        # Get paper_trader from toolkit if available
+        paper_trader = None
+        if hasattr(self, 'toolkit') and hasattr(self.toolkit, 'paper_trader'):
+            paper_trader = self.toolkit.paper_trader
+        
+        # Create TradeExecutor
+        executor = TradeExecutor(
+            toolkit=self.toolkit if hasattr(self, 'toolkit') else None,
+            paper_trader=paper_trader
+        )
+        
+        # Get current position info for executor
+        position_info = await self._get_position_info_dict()
+        
+        # Execute the signal
+        logger.info(f"[Execution] Passing signal to TradeExecutor: {signal.direction}")
+        execution_result = await executor.execute_signal(signal, position_info)
+        
+        # Log execution result
+        logger.info(f"[Execution] TradeExecutor result: {execution_result}")
+        
+        # Update message based on execution result
+        if execution_result.get('status') == 'success':
+            self._add_message(
+                agent_id="TradeExecutor",
+                agent_name="交易执行专员",
+                content=f"✅ 执行成功\n\n操作: {execution_result.get('action')}\n理由: {execution_result.get('reason')}",
+                message_type="execution"
+            )
+        elif execution_result.get('status') == 'rejected':
+            self._add_message(
+                agent_id="TradeExecutor",
+                agent_name="交易执行专员",
+                content=f"⚠️ 执行被拒绝\n\n原因: {execution_result.get('reason')}",
+                message_type="execution"
+            )
+        else:
+            self._add_message(
+                agent_id="TradeExecutor",
+                agent_name="交易执行专员",
+                content=f"❌ 执行失败\n\n错误: {execution_result.get('reason')}",
+                message_type="execution"
+            )
+        
+        # Store execution result
+        self._execution_result = execution_result
 
     async def _run_agent_turn(self, agent: Agent, prompt: str) -> str:
         """Run a single agent's turn using agent's own LLM call method with tool execution"""

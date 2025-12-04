@@ -75,11 +75,12 @@ def create_trading_agents(toolkit=None) -> List[Any]:
     # Register trading tools if toolkit provided
     if toolkit:
         analysis_tools = toolkit.get_analysis_tools()
-        execution_tools = toolkit.get_execution_tools()
+        # ❌ REMOVED: execution_tools - Leader no longer executes trades
+        # execution_tools = toolkit.get_execution_tools()
 
         for agent in agents:
             # Analysis agents get analysis tools to perform their analysis
-            # Leader does NOT need analysis tools - it only synthesizes expert opinions
+            # Leader does NOT need ANY tools - it only synthesizes opinions and makes decisions
             is_leader = hasattr(agent, 'id') and agent.id == "Leader"
 
             if not is_leader:
@@ -88,13 +89,12 @@ def create_trading_agents(toolkit=None) -> List[Any]:
                     agent.register_tool(tool)
                 logger.info(f"Registered {len(analysis_tools)} analysis tools to {agent.name}")
 
-            # Only Leader gets execution tools (open_long, open_short, close_position, hold)
-            # Leader synthesizes all expert opinions and executes the final decision
-            # Leader does NOT need analysis tools - experts have already done the analysis
+            # 🔧 ARCHITECTURE CHANGE: Leader no longer gets execution tools
+            # - Leader只负责决策（synthesize opinions, make decisions）
+            # - TradeExecutor负责执行（execute trades）
+            # - This follows Separation of Concerns principle
             if is_leader:
-                for tool in execution_tools:
-                    agent.register_tool(tool)
-                logger.info(f"Registered {len(execution_tools)} execution tools to Leader (no analysis tools needed)")
+                logger.info(f"Leader has NO tools - it only makes decisions, TradeExecutor handles execution")
 
     return agents
 

@@ -368,7 +368,8 @@ class TradingSystem:
             agents=agents,
             llm_service=self.llm_service,
             config=meeting_config,
-            on_message=self._on_meeting_message
+            on_message=self._on_meeting_message,
+            toolkit=self.toolkit  # 🔧 NEW: Pass toolkit for TradeExecutor
         )
 
         # Run meeting
