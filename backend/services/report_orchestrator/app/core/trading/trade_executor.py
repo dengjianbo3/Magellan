@@ -311,7 +311,13 @@ class TradeExecutor:
             
             # 解析result
             if isinstance(result, dict):
-                if result.get('status') == 'success':
+                # 🔧 FIX: 兼容PaperTrader和Toolkit的返回格式
+                is_success = (
+                    result.get('success') is True or
+                    result.get('status') == 'success'
+                )
+                
+                if is_success:
                     return {
                         "status": "success",
                         "action": "closed_position",
@@ -319,10 +325,11 @@ class TradeExecutor:
                         "details": result
                     }
                 else:
+                    error_msg = result.get('error') or result.get('message') or '平仓失败'
                     return {
                         "status": "error",
                         "action": "close_position",
-                        "reason": result.get('message', '平仓失败'),
+                        "reason": error_msg,
                         "details": result
                     }
             else:
@@ -389,7 +396,16 @@ class TradeExecutor:
             
             # 解析result
             if isinstance(result, dict):
-                if result.get('status') == 'success':
+                # 🔧 FIX: PaperTrader返回的是success字段（布尔值），不是status字段
+                # 兼容两种格式：
+                # 1. PaperTrader格式: {"success": True, ...}
+                # 2. Toolkit格式: {"status": "success", ...}
+                is_success = (
+                    result.get('success') is True or  # PaperTrader格式
+                    result.get('status') == 'success'  # Toolkit格式
+                )
+                
+                if is_success:
                     return {
                         "status": "success",
                         "action": f"opened_{direction}",
@@ -397,10 +413,12 @@ class TradeExecutor:
                         "details": result
                     }
                 else:
+                    # 提取错误信息
+                    error_msg = result.get('error') or result.get('message') or f'开{direction}仓失败'
                     return {
                         "status": "error",
                         "action": f"open_{direction}",
-                        "reason": result.get('message', f'开{direction}仓失败'),
+                        "reason": error_msg,
                         "details": result
                     }
             else:
