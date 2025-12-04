@@ -48,7 +48,7 @@ from app.core.trading.retry_handler import (
 from app.core.trading.agent_memory import get_memory_store, AgentMemoryStore
 from app.core.trading.price_service import get_current_btc_price
 from app.core.trading.position_context import PositionContext
-from app.core.trading.trade_executor_agent import TradeExecutorAgent
+# 🔧 TradeExecutorAgent已内联到TradeExecutorAgentWithTools，不再需要导入
 
 logger = logging.getLogger(__name__)
 
@@ -1306,39 +1306,30 @@ class TradingMeeting(Meeting):
         )
         
         try:
-            # Step 1: 创建TradeExecutor Agent
-            logger.info("[ExecutionPhase] 🤖 创建TradeExecutor Agent...")
-            
-            # 创建TradeExecutor的agent实例
-            trade_executor_agent_instance = await self._create_trade_executor_agent_instance()
-            
-            # 创建智能TradeExecutor
-            trade_executor = TradeExecutorAgent(
-                agent_instance=trade_executor_agent_instance,
-                toolkit=self.toolkit if hasattr(self, 'toolkit') else None,
-                config=self.config
-            )
-            
-            # Step 2: 获取Leader的会议总结
+            # Step 1: 获取Leader的会议总结
             leader_summary = self._get_leader_final_summary()
             logger.info(f"[ExecutionPhase] 📝 Leader总结长度: {len(leader_summary)} 字符")
             
-            # Step 3: 收集专家投票
-            agents_votes = self._get_agents_consensus()  # 🔧 FIX: 使用方法
+            # Step 2: 收集专家投票
+            agents_votes = self._get_agents_consensus()
             logger.info(f"[ExecutionPhase] 🗳️ 专家投票: {agents_votes}")
             
-            # Step 4: TradeExecutor分析并做出决策
-            logger.info("[ExecutionPhase] 🔍 TradeExecutor开始分析...")
+            # Step 3: 创建TradeExecutor Agent (具备直接工具调用能力)
+            logger.info("[ExecutionPhase] 🤖 创建TradeExecutor Agent...")
+            trade_executor_agent = await self._create_trade_executor_agent_instance()
             
-            # 🔧 FIX: 获取message_history而不是messages
-            msg_history = getattr(self.message_bus, 'message_history', [])
-            
-            final_signal = await trade_executor.analyze_and_decide(
-                meeting_summary=leader_summary,
+            # Step 4: 构建执行prompt
+            execution_prompt = self._build_execution_prompt(
+                leader_summary=leader_summary,
                 agents_votes=agents_votes,
-                position_context=position_context,
-                message_history=msg_history
+                position_context=position_context
             )
+            logger.info(f"[ExecutionPhase] 📝 执行Prompt构建完成，长度: {len(execution_prompt)} 字符")
+            
+            # Step 5: TradeExecutor通过Tool Calling执行交易
+            # 🔧 核心改变: run()直接返回TradingSignal，不需要二次解析！
+            logger.info("[ExecutionPhase] 🔍 TradeExecutor开始Tool Calling...")
+            final_signal = await trade_executor_agent.run(execution_prompt)
             
             logger.info(
                 f"[ExecutionPhase] ✅ TradeExecutor决策完成: {final_signal.direction.upper()} "
@@ -1366,64 +1357,40 @@ class TradingMeeting(Meeting):
                 metadata={"signal": final_signal.dict()}
             )
             
-            # Step 6: 执行交易（如果不是hold）
+            # Step 6: 记录执行结果（工具函数已经执行过交易，无需再次执行！）
+            # 🔧 核心改变: TradeExecutorAgentWithTools的工具函数已经直接执行了交易
+            # open_long/open_short/close_position 函数内部调用了 paper_trader.open_position()
+            # 所以这里只需要记录结果，不需要再调用LegacyExecutor
+            
             if final_signal.direction != "hold":
-                logger.info(f"[ExecutionPhase] 🚀 开始执行交易: {final_signal.direction}")
+                logger.info(f"[ExecutionPhase] ✅ 交易已由Tool Calling执行: {final_signal.direction.upper()}")
                 
-                # Import old TradeExecutor for actual execution
-                from app.core.trading.trade_executor import TradeExecutor as LegacyExecutor
-                
-                # Get paper_trader
-                paper_trader = None
-                if hasattr(self, 'toolkit') and hasattr(self.toolkit, 'paper_trader'):
-                    paper_trader = self.toolkit.paper_trader
-                
-                # Create executor
-                executor = LegacyExecutor(
-                    toolkit=self.toolkit if hasattr(self, 'toolkit') else None,
-                    paper_trader=paper_trader
-                )
-                
-                # Get position info
-                position_info = await self._get_position_info_dict()
-                
-                # Execute
-                execution_result = await executor.execute_signal(final_signal, position_info)
-                
-                logger.info(f"[ExecutionPhase] 执行结果: {execution_result}")
-                
-                # Add execution result message
-                if execution_result.get('status') == 'success':
-                    self._add_message(
-                        agent_id="trade_executor",
-                        agent_name="交易执行专员",
-                        content=f"✅ 交易执行成功\n\n操作: {execution_result.get('action')}\n详情: {execution_result.get('reason')}",
-                        message_type="execution"
-                    )
-                elif execution_result.get('status') == 'rejected':
-                    self._add_message(
-                        agent_id="trade_executor",
-                        agent_name="交易执行专员",
-                        content=f"⚠️ 交易被拒绝\n\n原因: {execution_result.get('reason')}",
-                        message_type="execution"
-                    )
-                else:
-                    self._add_message(
-                        agent_id="trade_executor",
-                        agent_name="交易执行专员",
-                        content=f"❌ 交易执行失败\n\n错误: {execution_result.get('reason')}",
-                        message_type="execution"
-                    )
-                
-                self._execution_result = execution_result
-            else:
-                logger.info("[ExecutionPhase] 观望决策，不执行交易")
                 self._add_message(
                     agent_id="trade_executor",
                     agent_name="交易执行专员",
-                    content="⚪ 决策为观望，不执行交易",
+                    content=f"✅ 交易已执行\n\n决策: {final_signal.direction.upper()}\n杠杆: {final_signal.leverage}x\n仓位: {final_signal.amount_percent*100:.0f}%",
                     message_type="execution"
                 )
+                
+                self._execution_result = {
+                    "status": "success",
+                    "action": final_signal.direction,
+                    "reason": final_signal.reasoning,
+                    "details": {
+                        "leverage": final_signal.leverage,
+                        "amount_percent": final_signal.amount_percent,
+                        "entry_price": final_signal.entry_price,
+                        "take_profit": final_signal.take_profit_price,
+                        "stop_loss": final_signal.stop_loss_price
+                    }
+                }
+            else:
+                logger.info("[ExecutionPhase] 📊 决策为观望，无交易执行")
+                self._execution_result = {
+                    "status": "hold",
+                    "action": "hold",
+                    "reason": final_signal.reasoning
+                }
             
             # Store final signal
             self._final_signal = final_signal
@@ -1456,191 +1423,251 @@ class TradingMeeting(Meeting):
         if not leader:
             raise RuntimeError("Leader agent not found, cannot create TradeExecutor")
         
-        # 🆕 创建一个有交易工具的Agent
+        # 🆕 创建一个有交易工具的Agent（返回TradingSignal）
         class TradeExecutorAgentWithTools:
             """
-            TradeExecutor Agent包装器
+            TradeExecutor Agent - 通过Tool Calling执行交易
             
             关键特性:
             - 能够理解Leader的总结
             - 通过Tool Calling执行交易
-            - 工具包括: open_long, open_short, close_position, hold
+            - 工具直接返回TradingSignal
+            - 不需要二次解析！
             """
-            def __init__(self, llm_service, toolkit, name, role):
+            def __init__(self, llm_service, toolkit, config, name, role):
                 self.llm_service = llm_service
                 self.toolkit = toolkit
+                self.config = config
                 self.name = name
                 self.role = role
                 self.id = "trade_executor"
                 self.tools = self._build_trading_tools()
             
+            async def _get_current_price(self) -> float:
+                """获取当前BTC价格"""
+                try:
+                    if self.toolkit and hasattr(self.toolkit, '_get_market_price'):
+                        result = await self.toolkit._get_market_price()
+                        if isinstance(result, str):
+                            import re
+                            price_match = re.search(r'\$?([\d,]+\.?\d*)', result)
+                            if price_match:
+                                return float(price_match.group(1).replace(',', ''))
+                        elif isinstance(result, (int, float)):
+                            return float(result)
+                    
+                    if self.toolkit and hasattr(self.toolkit, 'paper_trader'):
+                        if hasattr(self.toolkit.paper_trader, 'current_price'):
+                            return float(self.toolkit.paper_trader.current_price)
+                except Exception as e:
+                    logger.error(f"[TradeExecutor] 获取价格失败: {e}")
+                
+                return 0.0
+            
             def _build_trading_tools(self):
                 """
-                构建交易执行工具
-                
-                这些工具会暴露给LLM，让LLM通过tool calling来执行交易
+                构建交易执行工具 - 每个工具返回TradingSignal
                 """
                 tools = []
                 
-                # 🔧 工具1: 开多仓
-                async def open_long(leverage: int, amount_percent: float, take_profit: float = None, stop_loss: float = None):
-                    """
-                    开多仓
+                # 🔧 工具1: 开多仓 → 返回TradingSignal
+                async def open_long(leverage: int = 5, amount_percent: float = 0.4, 
+                                   take_profit: float = None, stop_loss: float = None,
+                                   confidence: int = 70, reasoning: str = "") -> TradingSignal:
+                    """开多仓并返回TradingSignal"""
+                    current_price = await self._get_current_price()
+                    if current_price <= 0:
+                        current_price = 93000.0  # fallback
                     
-                    Args:
-                        leverage: 杠杆倍数 (1-20)
-                        amount_percent: 仓位比例 (0.0-1.0, 例如0.4表示40%)
-                        take_profit: 止盈价格 (可选)
-                        stop_loss: 止损价格 (可选)
-                    """
-                    if not self.toolkit or not self.toolkit.paper_trader:
-                        return {"success": False, "message": "Paper trader不可用"}
+                    # 默认止盈止损
+                    if not take_profit:
+                        take_profit = current_price * 1.08
+                    if not stop_loss:
+                        stop_loss = current_price * 0.97
                     
-                    try:
-                        result = await self.toolkit.paper_trader.open_position(
-                            direction="long",
-                            leverage=leverage,
-                            amount_percent=amount_percent,
-                            take_profit_price=take_profit,
-                            stop_loss_price=stop_loss
-                        )
-                        return {
-                            "success": True,
-                            "message": f"成功开多仓: {leverage}x杠杆, {amount_percent*100:.0f}%仓位",
-                            "details": result
-                        }
-                    except Exception as e:
-                        return {"success": False, "message": f"开多仓失败: {str(e)}"}
+                    # 限制参数
+                    leverage = min(max(int(leverage), 1), 20)
+                    amount_percent = min(max(float(amount_percent), 0.0), 1.0)
+                    
+                    # 执行交易
+                    if self.toolkit and self.toolkit.paper_trader:
+                        try:
+                            await self.toolkit.paper_trader.open_position(
+                                direction="long",
+                                leverage=leverage,
+                                amount_percent=amount_percent,
+                                take_profit_price=take_profit,
+                                stop_loss_price=stop_loss
+                            )
+                            logger.info(f"[TradeExecutor] ✅ 开多仓成功: {leverage}x, {amount_percent*100:.0f}%")
+                        except Exception as e:
+                            logger.error(f"[TradeExecutor] 开多仓失败: {e}")
+                            reasoning = f"开仓执行失败: {e}. " + reasoning
+                    
+                    return TradingSignal(
+                        direction="long",
+                        symbol="BTC-USDT-SWAP",
+                        leverage=leverage,
+                        amount_percent=amount_percent,
+                        entry_price=current_price,
+                        take_profit_price=take_profit,
+                        stop_loss_price=stop_loss,
+                        confidence=confidence,
+                        reasoning=reasoning or "TradeExecutor决定做多",
+                        agents_consensus={},
+                        timestamp=datetime.now()
+                    )
                 
-                # 🔧 工具2: 开空仓
-                async def open_short(leverage: int, amount_percent: float, take_profit: float = None, stop_loss: float = None):
-                    """
-                    开空仓
+                # 🔧 工具2: 开空仓 → 返回TradingSignal
+                async def open_short(leverage: int = 5, amount_percent: float = 0.4,
+                                    take_profit: float = None, stop_loss: float = None,
+                                    confidence: int = 70, reasoning: str = "") -> TradingSignal:
+                    """开空仓并返回TradingSignal"""
+                    current_price = await self._get_current_price()
+                    if current_price <= 0:
+                        current_price = 93000.0
                     
-                    Args:
-                        leverage: 杠杆倍数 (1-20)
-                        amount_percent: 仓位比例 (0.0-1.0)
-                        take_profit: 止盈价格 (可选)
-                        stop_loss: 止损价格 (可选)
-                    """
-                    if not self.toolkit or not self.toolkit.paper_trader:
-                        return {"success": False, "message": "Paper trader不可用"}
+                    if not take_profit:
+                        take_profit = current_price * 0.92
+                    if not stop_loss:
+                        stop_loss = current_price * 1.03
                     
-                    try:
-                        result = await self.toolkit.paper_trader.open_position(
-                            direction="short",
-                            leverage=leverage,
-                            amount_percent=amount_percent,
-                            take_profit_price=take_profit,
-                            stop_loss_price=stop_loss
-                        )
-                        return {
-                            "success": True,
-                            "message": f"成功开空仓: {leverage}x杠杆, {amount_percent*100:.0f}%仓位",
-                            "details": result
-                        }
-                    except Exception as e:
-                        return {"success": False, "message": f"开空仓失败: {str(e)}"}
+                    leverage = min(max(int(leverage), 1), 20)
+                    amount_percent = min(max(float(amount_percent), 0.0), 1.0)
+                    
+                    if self.toolkit and self.toolkit.paper_trader:
+                        try:
+                            await self.toolkit.paper_trader.open_position(
+                                direction="short",
+                                leverage=leverage,
+                                amount_percent=amount_percent,
+                                take_profit_price=take_profit,
+                                stop_loss_price=stop_loss
+                            )
+                            logger.info(f"[TradeExecutor] ✅ 开空仓成功: {leverage}x, {amount_percent*100:.0f}%")
+                        except Exception as e:
+                            logger.error(f"[TradeExecutor] 开空仓失败: {e}")
+                            reasoning = f"开仓执行失败: {e}. " + reasoning
+                    
+                    return TradingSignal(
+                        direction="short",
+                        symbol="BTC-USDT-SWAP",
+                        leverage=leverage,
+                        amount_percent=amount_percent,
+                        entry_price=current_price,
+                        take_profit_price=take_profit,
+                        stop_loss_price=stop_loss,
+                        confidence=confidence,
+                        reasoning=reasoning or "TradeExecutor决定做空",
+                        agents_consensus={},
+                        timestamp=datetime.now()
+                    )
                 
-                # 🔧 工具3: 平仓
-                async def close_position():
-                    """平仓当前持仓"""
-                    if not self.toolkit or not self.toolkit.paper_trader:
-                        return {"success": False, "message": "Paper trader不可用"}
+                # 🔧 工具3: 平仓 → 返回TradingSignal
+                async def close_position(reasoning: str = "") -> TradingSignal:
+                    """平仓并返回TradingSignal"""
+                    current_price = await self._get_current_price()
+                    if current_price <= 0:
+                        current_price = 93000.0
                     
-                    try:
-                        result = await self.toolkit.paper_trader.close_position()
-                        return {
-                            "success": True,
-                            "message": "成功平仓",
-                            "details": result
-                        }
-                    except Exception as e:
-                        return {"success": False, "message": f"平仓失败: {str(e)}"}
-                
-                # 🔧 工具4: 观望（不操作）
-                async def hold(reason: str = "观望"):
-                    """
-                    观望，不进行任何交易
+                    if self.toolkit and self.toolkit.paper_trader:
+                        try:
+                            await self.toolkit.paper_trader.close_position()
+                            logger.info("[TradeExecutor] ✅ 平仓成功")
+                        except Exception as e:
+                            logger.error(f"[TradeExecutor] 平仓失败: {e}")
+                            reasoning = f"平仓执行失败: {e}. " + reasoning
                     
-                    Args:
-                        reason: 观望的原因
-                    """
-                    return {
-                        "success": True,
-                        "message": f"决策为观望: {reason}"
-                    }
+                    return TradingSignal(
+                        direction="close",
+                        symbol="BTC-USDT-SWAP",
+                        leverage=1,
+                        amount_percent=0.0,
+                        entry_price=current_price,
+                        take_profit_price=current_price,
+                        stop_loss_price=current_price,
+                        confidence=100,
+                        reasoning=reasoning or "TradeExecutor决定平仓",
+                        agents_consensus={},
+                        timestamp=datetime.now()
+                    )
                 
-                # 🔧 工具5: 获取当前价格（辅助工具）
-                async def get_current_price():
-                    """获取BTC当前价格"""
-                    if self.toolkit and hasattr(self.toolkit, '_get_market_price'):
-                        result = await self.toolkit._get_market_price()
-                        return result
-                    return "价格获取失败"
+                # 🔧 工具4: 观望 → 返回TradingSignal
+                async def hold(reason: str = "市场不明朗，选择观望") -> TradingSignal:
+                    """观望并返回TradingSignal"""
+                    current_price = await self._get_current_price()
+                    if current_price <= 0:
+                        current_price = 93000.0
+                    
+                    logger.info(f"[TradeExecutor] ✅ 决定观望: {reason}")
+                    
+                    return TradingSignal(
+                        direction="hold",
+                        symbol="BTC-USDT-SWAP",
+                        leverage=1,
+                        amount_percent=0.0,
+                        entry_price=current_price,
+                        take_profit_price=current_price,
+                        stop_loss_price=current_price,
+                        confidence=0,
+                        reasoning=reason,
+                        agents_consensus={},
+                        timestamp=datetime.now()
+                    )
                 
                 # 注册工具
                 tools.append({
                     'name': 'open_long',
-                    'description': '开多仓（做多BTC）',
+                    'description': '开多仓（做多BTC）- 当专家共识看涨时调用',
                     'parameters': {
-                        'leverage': 'int, 杠杆倍数1-20',
-                        'amount_percent': 'float, 仓位比例0.0-1.0',
-                        'take_profit': 'float, 止盈价格(可选)',
-                        'stop_loss': 'float, 止损价格(可选)'
+                        'leverage': 'int, 杠杆1-20 (信心高用10+, 中等用5-8, 低用1-3)',
+                        'amount_percent': 'float, 仓位0.0-1.0 (如0.5=50%)',
+                        'confidence': 'int, 信心度0-100',
+                        'reasoning': 'str, 决策理由'
                     },
                     'func': open_long
                 })
                 
                 tools.append({
                     'name': 'open_short',
-                    'description': '开空仓（做空BTC）',
+                    'description': '开空仓（做空BTC）- 当专家共识看跌时调用',
                     'parameters': {
-                        'leverage': 'int, 杠杆倍数1-20',
-                        'amount_percent': 'float, 仓位比例0.0-1.0',
-                        'take_profit': 'float, 止盈价格(可选)',
-                        'stop_loss': 'float, 止损价格(可选)'
+                        'leverage': 'int, 杠杆1-20',
+                        'amount_percent': 'float, 仓位0.0-1.0',
+                        'confidence': 'int, 信心度0-100',
+                        'reasoning': 'str, 决策理由'
                     },
                     'func': open_short
                 })
                 
                 tools.append({
                     'name': 'close_position',
-                    'description': '平仓当前持仓',
-                    'parameters': {},
+                    'description': '平仓当前持仓 - 当需要止盈止损或反向操作时调用',
+                    'parameters': {'reasoning': 'str, 平仓理由'},
                     'func': close_position
                 })
                 
                 tools.append({
                     'name': 'hold',
-                    'description': '观望，不进行交易',
-                    'parameters': {
-                        'reason': 'str, 观望原因'
-                    },
+                    'description': '观望不操作 - 当市场不明朗或专家意见分歧时调用',
+                    'parameters': {'reason': 'str, 观望原因'},
                     'func': hold
-                })
-                
-                tools.append({
-                    'name': 'get_current_price',
-                    'description': '获取BTC当前价格',
-                    'parameters': {},
-                    'func': get_current_price
                 })
                 
                 return tools
             
-            async def run(self, prompt: str) -> str:
+            async def run(self, prompt: str) -> TradingSignal:
                 """
-                调用LLM，期望LLM通过tool calling执行交易
+                🔧 核心方法: 调用LLM，通过Tool Calling执行交易，直接返回TradingSignal
                 
                 流程:
-                1. 发送prompt + 可用工具列表给LLM
-                2. LLM分析Leader的总结
-                3. LLM调用交易工具 (如: open_long(leverage=5, amount_percent=0.4))
-                4. 执行工具并返回结果
+                1. 发送prompt + 可用工具给LLM
+                2. LLM分析后输出工具调用 [USE_TOOL: open_long(leverage=5, ...)]
+                3. 代码检测并执行工具
+                4. 工具直接返回TradingSignal
                 """
                 
-                # 构建包含工具信息的system prompt
+                # 构建工具描述
                 tools_desc = "\n".join([
                     f"- {t['name']}: {t['description']}" 
                     for t in self.tools
@@ -1651,21 +1678,26 @@ class TradingMeeting(Meeting):
                         "role": "system",
                         "content": f"""你是交易执行专员 (TradeExecutor)。
 
-你的职责:
-1. 分析Leader的会议总结和专家投票
-2. 根据分析结果，调用交易工具执行交易
+你的唯一任务: 分析会议结果，然后**必须调用一个交易工具**来执行决策。
 
-可用工具:
+## 可用工具
 {tools_desc}
 
-重要规则:
-- 必须通过调用工具来执行交易，不要只输出建议
-- 如果决定做多，调用: open_long(leverage=..., amount_percent=...)
-- 如果决定做空，调用: open_short(leverage=..., amount_percent=...)
-- 如果决定观望，调用: hold(reason="...")
-- 如果需要平仓，调用: close_position()
+## 输出格式（必须遵守！）
+你必须在回复中包含一个工具调用，格式如下:
+[USE_TOOL: 工具名(参数1=值1, 参数2=值2)]
 
-请分析会议内容，然后调用相应的工具。"""
+## 示例
+- 做多: [USE_TOOL: open_long(leverage=5, amount_percent=0.4, confidence=75, reasoning="专家一致看多")]
+- 做空: [USE_TOOL: open_short(leverage=3, amount_percent=0.3, confidence=60, reasoning="趋势反转信号")]
+- 观望: [USE_TOOL: hold(reason="专家意见分歧，等待更好时机")]
+- 平仓: [USE_TOOL: close_position(reasoning="达到止盈目标")]
+
+## 决策规则
+1. 专家3-4票一致 → 可以使用较高杠杆(5-10x)和仓位(40-60%)
+2. 专家2-3票 → 谨慎操作，低杠杆(3-5x)和仓位(20-40%)
+3. 专家意见分歧 → 调用hold观望
+4. 必须在回复的最后包含 [USE_TOOL: ...] 格式的工具调用！"""
                     },
                     {
                         "role": "user",
@@ -1673,63 +1705,213 @@ class TradingMeeting(Meeting):
                     }
                 ]
                 
-                # 使用Leader的LLM服务
-                if hasattr(self.llm_service, 'chat'):
-                    try:
-                        # 🔧 TODO: 这里需要支持tool calling protocol
-                        # 目前先返回LLM的文本响应
-                        # 实际应该检测LLM是否调用了工具，然后执行工具
-                        response = await self.llm_service.chat(messages)
-                        content = response.get("content", "")
-                        
-                        # 🔧 简化版: 从响应中检测工具调用
-                        # 格式: [USE_TOOL: tool_name(param=value)]
-                        tool_call_match = re.search(r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]', content)
+                # 默认返回hold信号
+                default_hold = await self.tools[3]['func'](reason="TradeExecutor未能执行决策")
+                
+                if not hasattr(self.llm_service, 'chat'):
+                    logger.warning("[TradeExecutor] LLM service不可用，返回hold")
+                    return default_hold
+                
+                try:
+                    response = await self.llm_service.chat(messages)
+                    content = response.get("content", "")
+                    logger.info(f"[TradeExecutor] LLM响应: {content[:200]}...")
+                    
+                    # 🔧 核心: 检测工具调用并执行
+                    # 支持多种格式: [USE_TOOL: xxx], 【USE_TOOL: xxx】, USE_TOOL: xxx
+                    tool_patterns = [
+                        r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]',
+                        r'【USE_TOOL:\s*(\w+)\((.*?)\)】',
+                        r'USE_TOOL:\s*(\w+)\((.*?)\)',
+                        r'\*\*(\w+)\*\*\((.*?)\)',  # **open_long**(...)
+                    ]
+                    
+                    tool_call_match = None
+                    for pattern in tool_patterns:
+                        tool_call_match = re.search(pattern, content, re.IGNORECASE)
                         if tool_call_match:
-                            tool_name = tool_call_match.group(1)
-                            tool_params_str = tool_call_match.group(2)
-                            
-                            # 找到对应的工具
-                            tool = next((t for t in self.tools if t['name'] == tool_name), None)
-                            if tool:
-                                logger.info(f"[TradeExecutor] 检测到工具调用: {tool_name}({tool_params_str})")
-                                
-                                # 解析参数 (简化版)
-                                # 实际应该更健壮
-                                params = {}
-                                if tool_params_str:
-                                    for param in tool_params_str.split(','):
-                                        if '=' in param:
-                                            key, value = param.split('=', 1)
-                                            key = key.strip()
-                                            value = value.strip()
-                                            # 简单类型转换
-                                            if value.replace('.', '').isdigit():
-                                                value = float(value) if '.' in value else int(value)
-                                            params[key] = value
-                                
-                                # 执行工具
-                                result = await tool['func'](**params)
-                                return f"工具执行结果: {result}"
+                            break
+                    
+                    if tool_call_match:
+                        tool_name = tool_call_match.group(1).lower()
+                        tool_params_str = tool_call_match.group(2)
                         
-                        return content
-                    except Exception as e:
-                        logger.error(f"[TradeExecutor] LLM调用失败: {e}", exc_info=True)
-                        return ""
+                        logger.info(f"[TradeExecutor] 🎯 检测到工具调用: {tool_name}({tool_params_str})")
+                        
+                        # 找到对应的工具
+                        tool = next((t for t in self.tools if t['name'] == tool_name), None)
+                        if tool:
+                            # 解析参数
+                            params = self._parse_tool_params(tool_params_str, content)
+                            logger.info(f"[TradeExecutor] 📝 解析参数: {params}")
+                            
+                            # 执行工具并返回TradingSignal
+                            result = await tool['func'](**params)
+                            logger.info(f"[TradeExecutor] ✅ 工具执行完成: {result.direction}")
+                            return result
+                        else:
+                            logger.warning(f"[TradeExecutor] ⚠️ 未知工具: {tool_name}")
+                    
+                    # 🔧 备用: 从自然语言推断决策
+                    logger.info("[TradeExecutor] 🔍 未检测到工具调用，从响应推断决策...")
+                    return await self._infer_decision_from_text(content)
+                    
+                except Exception as e:
+                    logger.error(f"[TradeExecutor] ❌ 执行失败: {e}", exc_info=True)
+                    return default_hold
+            
+            def _parse_tool_params(self, params_str: str, full_response: str) -> dict:
+                """解析工具调用参数"""
+                params = {}
+                
+                if not params_str:
+                    return params
+                
+                # 尝试解析 key=value 格式
+                for part in params_str.split(','):
+                    part = part.strip()
+                    if '=' in part:
+                        key, value = part.split('=', 1)
+                        key = key.strip()
+                        value = value.strip().strip('"\'')
+                        
+                        # 类型转换
+                        if value.replace('.', '').replace('-', '').isdigit():
+                            value = float(value) if '.' in value else int(value)
+                        
+                        params[key] = value
+                
+                # 补充reasoning（如果没有提供）
+                if 'reasoning' not in params and 'reason' not in params:
+                    # 从完整响应中提取理由
+                    reason_match = re.search(r'(理由|原因|因为|reasoning)[：:]\s*(.+?)(?:\n|$)', full_response)
+                    if reason_match:
+                        params['reasoning'] = reason_match.group(2).strip()[:200]
+                
+                return params
+            
+            async def _infer_decision_from_text(self, text: str) -> TradingSignal:
+                """从自然语言响应推断决策（最后备用）"""
+                
+                # 检测方向
+                if re.search(r'(做多|开多|买入|long|看涨)', text, re.I):
+                    # 提取参数
+                    leverage = self._extract_number(text, r'(\d+)\s*[倍xX]', default=5)
+                    amount = self._extract_number(text, r'(\d+)\s*%', default=40) / 100
+                    confidence = self._extract_number(text, r'信心[度]?\s*(\d+)', default=70)
+                    
+                    return await self.tools[0]['func'](
+                        leverage=min(leverage, 20),
+                        amount_percent=min(amount, 1.0),
+                        confidence=confidence,
+                        reasoning=text[:200]
+                    )
+                
+                elif re.search(r'(做空|开空|卖出|short|看跌)', text, re.I):
+                    leverage = self._extract_number(text, r'(\d+)\s*[倍xX]', default=5)
+                    amount = self._extract_number(text, r'(\d+)\s*%', default=40) / 100
+                    confidence = self._extract_number(text, r'信心[度]?\s*(\d+)', default=70)
+                    
+                    return await self.tools[1]['func'](
+                        leverage=min(leverage, 20),
+                        amount_percent=min(amount, 1.0),
+                        confidence=confidence,
+                        reasoning=text[:200]
+                    )
+                
+                elif re.search(r'(平仓|关闭|close)', text, re.I):
+                    return await self.tools[2]['func'](reasoning=text[:200])
+                
                 else:
-                    logger.warning("[TradeExecutor] LLM service不可用")
-                    return ""
+                    # 默认观望
+                    return await self.tools[3]['func'](reason=text[:200] or "市场不明朗")
+            
+            def _extract_number(self, text: str, pattern: str, default: int) -> int:
+                """从文本中提取数字"""
+                match = re.search(pattern, text)
+                return int(match.group(1)) if match else default
         
         # 创建TradeExecutorAgentWithTools实例
         trade_executor_agent = TradeExecutorAgentWithTools(
             llm_service=self.llm_service if hasattr(self, 'llm_service') else None,
             toolkit=self.toolkit if hasattr(self, 'toolkit') else None,
+            config=self.config if hasattr(self, 'config') else None,
             name="TradeExecutor",
             role="交易执行决策专员"
         )
         
-        logger.info("[TradeExecutor] ✅ 创建TradeExecutorAgentWithTools成功，包含交易工具")
+        logger.info("[TradeExecutor] ✅ 创建TradeExecutorAgentWithTools成功（返回TradingSignal）")
         return trade_executor_agent
+    
+    def _build_execution_prompt(
+        self,
+        leader_summary: str,
+        agents_votes: Dict[str, str],
+        position_context: PositionContext
+    ) -> str:
+        """
+        构建执行阶段的prompt
+        
+        这个prompt会发送给TradeExecutor的LLM，让它调用工具执行交易
+        """
+        
+        # 格式化投票
+        long_count = sum(1 for v in agents_votes.values() if v == 'long')
+        short_count = sum(1 for v in agents_votes.values() if v == 'short')
+        hold_count = sum(1 for v in agents_votes.values() if v == 'hold')
+        
+        vote_details = []
+        for agent, vote in agents_votes.items():
+            emoji = "🟢" if vote == "long" else "🔴" if vote == "short" else "⚪"
+            vote_text = "做多" if vote == "long" else "做空" if vote == "short" else "观望"
+            vote_details.append(f"  {emoji} {agent}: {vote_text}")
+        
+        # 格式化持仓状态
+        if position_context.has_position:
+            direction = position_context.direction or "unknown"
+            position_status = f"""**有持仓** ({direction.upper()})
+- 入场价: ${position_context.entry_price:,.2f}
+- 当前价: ${position_context.current_price:,.2f}
+- 持仓量: {position_context.size:.4f} BTC
+- 杠杆: {position_context.leverage}x
+- 浮动盈亏: ${position_context.unrealized_pnl:,.2f} ({position_context.unrealized_pnl_percent:+.2f}%)
+- 可用余额: ${position_context.available_balance:,.2f}"""
+        else:
+            position_status = f"""**无持仓**
+- 可用余额: ${position_context.available_balance:,.2f}
+- 总权益: ${position_context.total_equity:,.2f}"""
+        
+        prompt = f"""## 交易执行任务
+
+### 1. 专家投票结果
+**统计**: {long_count}票做多 / {short_count}票做空 / {hold_count}票观望
+
+{chr(10).join(vote_details)}
+
+### 2. 当前持仓状态
+{position_status}
+
+### 3. Leader的会议总结
+{leader_summary}
+
+---
+
+### 你的任务
+根据以上信息，**必须调用一个工具**来执行交易决策。
+
+**决策规则**:
+- 3-4票一致看多 → 调用 open_long(leverage=5-10, amount_percent=0.4-0.6)
+- 3-4票一致看空 → 调用 open_short(leverage=5-10, amount_percent=0.4-0.6)
+- 2票左右 → 谨慎操作 (leverage=3-5, amount_percent=0.2-0.4)
+- 意见分歧或不明朗 → 调用 hold(reason="...")
+- 有反向持仓需要处理 → 先调用 close_position()
+
+**输出格式（必须遵守）**:
+[USE_TOOL: 工具名(参数=值, ...)]
+
+现在，请分析并调用工具执行你的决策。"""
+        
+        return prompt
     
     def _get_leader_final_summary(self) -> str:
         """获取Leader的最后一条消息作为会议总结"""
