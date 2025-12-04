@@ -52,6 +52,44 @@ class TradeExecutorAgent:
         self.toolkit = toolkit
         self.config = config
         self.logger = logger
+        
+        # 🔧 验证必需的依赖
+        if not self.toolkit:
+            raise RuntimeError("TradeExecutor requires toolkit")
+        if not hasattr(self.toolkit, 'price_service'):
+            raise RuntimeError("Toolkit must have price_service")
+        if not self.config:
+            raise RuntimeError("TradeExecutor requires config")
+    
+    async def _get_current_price_safe(self) -> float:
+        """
+        安全地获取当前价格
+        
+        提供多层fallback机制
+        """
+        try:
+            if self.toolkit and hasattr(self.toolkit, 'price_service'):
+                price = await self.toolkit.price_service.get_current_price()
+                if price and price > 0:
+                    return price
+        except Exception as e:
+            self.logger.error(f"[TradeExecutor] 获取价格失败: {e}")
+        
+        # Fallback: 抛出异常，让上层处理
+        raise RuntimeError("无法获取当前价格，price_service不可用")
+    
+    def _get_config_value(self, key: str, default: Any) -> Any:
+        """
+        安全地获取config值
+        
+        Args:
+            key: 配置键
+            default: 默认值
+        
+        Returns:
+            配置值或默认值
+        """
+        return getattr(self.config, key, default)
     
     async def analyze_and_decide(
         self,
@@ -143,6 +181,9 @@ class TradeExecutorAgent:
         # 计算共识度
         consensus_level = self._calculate_consensus_level(agents_votes)
         
+        # 🔧 安全地获取config值
+        max_leverage = self._get_config_value('max_leverage', 20)
+        
         prompt = f"""# 交易执行决策任务
 
 你是 **交易执行专员 (TradeExecutor)**，负责根据专家圆桌会议的讨论结果做出最终交易决策。
@@ -219,7 +260,7 @@ class TradeExecutorAgent:
 **重要提示**:
 1. reasoning必须引用具体的专家意见和数据
 2. confidence范围0-100，必须真实反映你的信心
-3. leverage范围1-{self.config.max_leverage}，必须与confidence对应
+3. leverage范围1-{max_leverage}，必须与confidence对应
 4. amount_percent范围0.0-1.0（即0%-100%）
 5. 价格必须合理（TP>当前价>SL for long; SL>当前价>TP for short）
 
@@ -238,11 +279,14 @@ class TradeExecutorAgent:
 - **可用保证金**: ${position_context.available_margin:,.2f}
 """
         
+        # 🔧 安全地获取direction，防止None
+        direction = position_context.direction or "unknown"
+        
         pnl_sign = "+" if position_context.unrealized_pnl >= 0 else ""
         pnl_color = "📈" if position_context.unrealized_pnl >= 0 else "📉"
         
-        return f"""- **持仓状态**: {position_context.direction.upper()} 仓
-- **持仓方向**: {position_context.direction}
+        return f"""- **持仓状态**: {direction.upper()} 仓
+- **持仓方向**: {direction}
 - **开仓价格**: ${position_context.entry_price:,.2f}
 - **当前价格**: ${position_context.current_price:,.2f}
 - **持仓数量**: {position_context.position_amount:.4f}
@@ -352,8 +396,8 @@ class TradeExecutorAgent:
         
         direction = direction_map.get(decision, "hold")
         
-        # 获取当前价格
-        current_price = await self.toolkit.price_service.get_current_price()
+        # 🔧 安全地获取当前价格
+        current_price = await self._get_current_price_safe()
         
         # 提取其他字段
         leverage = int(data.get("leverage", 1))
@@ -365,26 +409,31 @@ class TradeExecutorAgent:
         take_profit = float(data.get("take_profit_price", 0))
         stop_loss = float(data.get("stop_loss_price", 0))
         
+        # 🔧 安全地获取config值
+        tp_percent = self._get_config_value('default_take_profit_percent', 0.08)
+        sl_percent = self._get_config_value('default_stop_loss_percent', 0.03)
+        symbol = self._get_config_value('symbol', 'BTC-USDT-SWAP')
+        
         # 如果没有提供TP/SL，使用默认值
         if take_profit == 0:
             if direction == "long":
-                take_profit = current_price * (1 + self.config.default_take_profit_percent)
+                take_profit = current_price * (1 + tp_percent)
             elif direction == "short":
-                take_profit = current_price * (1 - self.config.default_take_profit_percent)
+                take_profit = current_price * (1 - tp_percent)
             else:
                 take_profit = current_price
         
         if stop_loss == 0:
             if direction == "long":
-                stop_loss = current_price * (1 - self.config.default_stop_loss_percent)
+                stop_loss = current_price * (1 - sl_percent)
             elif direction == "short":
-                stop_loss = current_price * (1 + self.config.default_stop_loss_percent)
+                stop_loss = current_price * (1 + sl_percent)
             else:
                 stop_loss = current_price
         
         return TradingSignal(
             direction=direction,
-            symbol=self.config.symbol,
+            symbol=symbol,
             leverage=leverage,
             amount_percent=amount_percent,
             entry_price=current_price,
@@ -423,10 +472,16 @@ class TradeExecutorAgent:
         
         self.logger.info(f"[TradeExecutor] 提取方向: {direction}")
         
+        # 🔧 安全地获取config值
+        max_leverage = self._get_config_value('max_leverage', 20)
+        tp_percent = self._get_config_value('default_take_profit_percent', 0.08)
+        sl_percent = self._get_config_value('default_stop_loss_percent', 0.03)
+        symbol = self._get_config_value('symbol', 'BTC-USDT-SWAP')
+        
         # 提取杠杆
         leverage_match = re.search(r'(\d+)\s*[倍xX×]', response)
         leverage = int(leverage_match.group(1)) if leverage_match else 1
-        leverage = min(max(leverage, 1), self.config.max_leverage)
+        leverage = min(max(leverage, 1), max_leverage)
         
         # 提取仓位
         position_match = re.search(r'仓位[：:]\s*(\d+)%', response)
@@ -444,17 +499,17 @@ class TradeExecutorAgent:
         confidence = int(confidence_match.group(1)) if confidence_match else 50
         confidence = min(max(confidence, 0), 100)
         
-        # 获取当前价格
-        current_price = await self.toolkit.price_service.get_current_price()
+        # 🔧 安全地获取当前价格
+        current_price = await self._get_current_price_safe()
         
         # 计算止盈止损
         if tp_match:
             take_profit = float(tp_match.group(1))
         else:
             if direction == "long":
-                take_profit = current_price * (1 + self.config.default_take_profit_percent)
+                take_profit = current_price * (1 + tp_percent)
             elif direction == "short":
-                take_profit = current_price * (1 - self.config.default_take_profit_percent)
+                take_profit = current_price * (1 - tp_percent)
             else:
                 take_profit = current_price
         
@@ -462,9 +517,9 @@ class TradeExecutorAgent:
             stop_loss = float(sl_match.group(1))
         else:
             if direction == "long":
-                stop_loss = current_price * (1 - self.config.default_stop_loss_percent)
+                stop_loss = current_price * (1 - sl_percent)
             elif direction == "short":
-                stop_loss = current_price * (1 + self.config.default_stop_loss_percent)
+                stop_loss = current_price * (1 + sl_percent)
             else:
                 stop_loss = current_price
         
@@ -476,7 +531,7 @@ class TradeExecutorAgent:
         
         return TradingSignal(
             direction=direction,
-            symbol=self.config.symbol,
+            symbol=symbol,
             leverage=leverage,
             amount_percent=amount_percent,
             entry_price=current_price,
@@ -505,12 +560,17 @@ class TradeExecutorAgent:
         
         self.logger.info("[TradeExecutor] 🔍 验证决策合理性...")
         
+        # 🔧 安全地获取config值
+        max_leverage = self._get_config_value('max_leverage', 20)
+        tp_percent = self._get_config_value('default_take_profit_percent', 0.08)
+        sl_percent = self._get_config_value('default_stop_loss_percent', 0.03)
+        
         # 1. 限制杠杆
-        if signal.leverage > self.config.max_leverage:
+        if signal.leverage > max_leverage:
             self.logger.warning(
-                f"[TradeExecutor] ⚠️ 杠杆 {signal.leverage}x 超过上限 {self.config.max_leverage}x，已调整"
+                f"[TradeExecutor] ⚠️ 杠杆 {signal.leverage}x 超过上限 {max_leverage}x，已调整"
             )
-            signal.leverage = self.config.max_leverage
+            signal.leverage = max_leverage
         
         if signal.leverage < 1:
             signal.leverage = 1
@@ -531,20 +591,20 @@ class TradeExecutorAgent:
         if signal.direction == "long":
             if signal.take_profit_price <= current_price:
                 self.logger.warning("[TradeExecutor] ⚠️ 多仓止盈价格不合理，使用默认值")
-                signal.take_profit_price = current_price * (1 + self.config.default_take_profit_percent)
+                signal.take_profit_price = current_price * (1 + tp_percent)
             
             if signal.stop_loss_price >= current_price:
                 self.logger.warning("[TradeExecutor] ⚠️ 多仓止损价格不合理，使用默认值")
-                signal.stop_loss_price = current_price * (1 - self.config.default_stop_loss_percent)
+                signal.stop_loss_price = current_price * (1 - sl_percent)
         
         elif signal.direction == "short":
             if signal.take_profit_price >= current_price:
                 self.logger.warning("[TradeExecutor] ⚠️ 空仓止盈价格不合理，使用默认值")
-                signal.take_profit_price = current_price * (1 - self.config.default_take_profit_percent)
+                signal.take_profit_price = current_price * (1 - tp_percent)
             
             if signal.stop_loss_price <= current_price:
                 self.logger.warning("[TradeExecutor] ⚠️ 空仓止损价格不合理，使用默认值")
-                signal.stop_loss_price = current_price * (1 + self.config.default_stop_loss_percent)
+                signal.stop_loss_price = current_price * (1 + sl_percent)
         
         # 4. 限制信心度
         if signal.confidence > 100:
@@ -595,11 +655,13 @@ class TradeExecutorAgent:
         else:
             leverage = 3
         
-        current_price = await self.toolkit.price_service.get_current_price()
+        # 🔧 安全地获取当前价格和config值
+        current_price = await self._get_current_price_safe()
+        symbol = self._get_config_value('symbol', 'BTC-USDT-SWAP')
         
         return TradingSignal(
             direction=direction,
-            symbol=self.config.symbol,
+            symbol=symbol,
             leverage=leverage,
             amount_percent=0.4,  # 保守仓位
             entry_price=current_price,
@@ -618,11 +680,13 @@ class TradeExecutorAgent:
     ) -> TradingSignal:
         """创建一个安全的hold信号"""
         
-        current_price = await self.toolkit.price_service.get_current_price()
+        # 🔧 安全地获取当前价格和config值
+        current_price = await self._get_current_price_safe()
+        symbol = self._get_config_value('symbol', 'BTC-USDT-SWAP')
         
         return TradingSignal(
             direction="hold",
-            symbol=self.config.symbol,
+            symbol=symbol,
             leverage=1,
             amount_percent=0.0,
             entry_price=current_price,
