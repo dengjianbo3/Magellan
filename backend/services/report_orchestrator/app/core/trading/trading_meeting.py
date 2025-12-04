@@ -660,7 +660,7 @@ class TradingMeeting(Meeting):
         # Phase 5的TradeExecutor会根据这个总结做决策
         # 这里返回一个临时signal只是为了保持接口兼容
         return TradingSignal(
-            direction="pending",  # 待定，等TradeExecutor决策
+            direction="hold",  # 🔧 FIX: 使用有效值而不是"pending"
             symbol=self.config.symbol,
             leverage=1,
             amount_percent=0.0,
