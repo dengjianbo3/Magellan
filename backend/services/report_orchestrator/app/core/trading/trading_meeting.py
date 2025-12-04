@@ -141,8 +141,17 @@ class TradingMeeting(Meeting):
         """
         logger.info(f"Starting trading meeting for {self.config.symbol}")
 
-        # Build the meeting agenda
-        agenda = self._build_agenda(context)
+        # 🆕 Step 0: 收集持仓上下文
+        logger.info("[PositionContext] Collecting position context...")
+        position_context = await self._get_position_context()
+        logger.info(f"[PositionContext] Has position: {position_context.has_position}")
+        if position_context.has_position:
+            logger.info(f"[PositionContext] Direction: {position_context.direction}, "
+                       f"PnL: ${position_context.unrealized_pnl:.2f} ({position_context.unrealized_pnl_percent:+.2f}%), "
+                       f"Can add: {position_context.can_add_position}")
+
+        # Build the meeting agenda (with position context)
+        agenda = self._build_agenda(context, position_context)
 
         # Add agenda as initial message
         self._add_message(
@@ -153,17 +162,17 @@ class TradingMeeting(Meeting):
         )
 
         try:
-            # Phase 1: Market Analysis
-            await self._run_market_analysis_phase()
+            # Phase 1: Market Analysis (with position context)
+            await self._run_market_analysis_phase(position_context)
 
-            # Phase 2: Signal Generation (collect votes)
-            await self._run_signal_generation_phase()
+            # Phase 2: Signal Generation (collect votes, with position context)
+            await self._run_signal_generation_phase(position_context)
 
-            # Phase 3: Risk Assessment
-            await self._run_risk_assessment_phase()
+            # Phase 3: Risk Assessment (with position context)
+            await self._run_risk_assessment_phase(position_context)
 
-            # Phase 4: Consensus Building
-            signal = await self._run_consensus_phase()
+            # Phase 4: Consensus Building (Leader with position awareness)
+            signal = await self._run_consensus_phase(position_context)
 
             if signal:
                 self._final_signal = signal
@@ -174,7 +183,7 @@ class TradingMeeting(Meeting):
 
                 # Phase 5: Execution (if not hold)
                 if signal.direction != "hold":
-                    await self._run_execution_phase(signal)
+                    await self._run_execution_phase(signal, position_context)
 
             return self._final_signal
 
@@ -188,17 +197,45 @@ class TradingMeeting(Meeting):
             )
             return None
 
-    def _build_agenda(self, context: Optional[str] = None) -> str:
-        """Build the meeting agenda"""
+    def _build_agenda(self, context: Optional[str] = None, position_context: Optional[PositionContext] = None) -> str:
+        """Build the meeting agenda with position context"""
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         reason = context or "定时分析"
+
+        # 🆕 添加持仓状况到议程中
+        position_summary = ""
+        if position_context:
+            if position_context.has_position:
+                pnl_emoji = "📈" if position_context.unrealized_pnl >= 0 else "📉"
+                position_summary = f"""
+## 💼 当前持仓状况 ⚠️ 重要！
+
+- **持仓**: {position_context.direction.upper()} ({position_context.leverage}x 杠杆)
+- **入场价**: ${position_context.entry_price:.2f}
+- **当前价**: ${position_context.current_price:.2f}
+- {pnl_emoji} **浮动盈亏**: ${position_context.unrealized_pnl:.2f} ({position_context.unrealized_pnl_percent:+.2f}%)
+- **仓位占比**: {position_context.current_position_percent*100:.1f}% / {position_context.max_position_percent*100:.1f}%
+- **状态**: {'✅ 可追加' if position_context.can_add_position else '❌ 已满仓'}
+- **持仓时长**: {position_context.holding_duration_hours:.1f} 小时
+
+⚠️ **请所有专家在分析时考虑当前持仓情况！**
+"""
+            else:
+                position_summary = f"""
+## 💼 当前持仓状况
+
+- **持仓**: 无持仓
+- **可用余额**: ${position_context.available_balance:.2f} USDT
+- **总权益**: ${position_context.total_equity:.2f} USDT
+- **状态**: ✅ 可自由开仓
+"""
 
         return f"""# 交易分析会议
 
 **时间**: {now}
 **标的**: {self.config.symbol}
 **触发原因**: {reason}
-
+{position_summary}
 ## 会议议程
 
 1. **市场分析阶段**: 各位专家获取并分析市场数据
