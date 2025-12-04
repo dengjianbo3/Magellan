@@ -344,6 +344,12 @@ class TradingMeeting(Meeting):
 
 **注意**: 如果你在上一阶段没有使用工具获取数据，请现在使用相关工具获取最新信息再做判断！
 
+⚠️ **重要提示 - 请勿调用决策工具**:
+- 你现在处于"信号生成阶段"，只需要给出**文字建议**
+- **不要**调用任何决策工具（open_long/open_short/hold/close_position）
+- 只有Leader在"Phase 4: 共识形成阶段"才能执行交易
+- 如果你调用了决策工具，系统会阻止并忽略
+
 **重要：杠杆倍数必须与信心度严格对应！**
 - 高信心度(>80%): 必须使用 {int(self.config.max_leverage * 0.5)}-{self.config.max_leverage}倍杠杆
 - 中信心度(60-80%): 必须使用 {int(self.config.max_leverage * 0.25)}-{int(self.config.max_leverage * 0.5)}倍杠杆
@@ -388,6 +394,11 @@ class TradingMeeting(Meeting):
 请评估这笔交易的风险，并决定是否批准。
 如果批准，请给出最终的仓位建议和止盈止损设置。
 如果不批准，请说明原因。
+
+⚠️ **重要**: 
+- 你只需要给出风险评估的**文字建议**
+- **不要**调用任何决策工具（open_long/open_short/hold/close_position）
+- 只有Leader在下一阶段才能执行交易
 """
             await self._run_agent_turn(risk_agent, prompt)
 
@@ -756,6 +767,21 @@ class TradingMeeting(Meeting):
                 tool_results = []
 
                 for tool_name, params_str in tool_matches:
+                    # 🔒 CRITICAL: Only Leader can execute decision/execution tools
+                    decision_tools = {'open_long', 'open_short', 'hold', 'close_position'}
+                    is_leader = (hasattr(agent, 'id') and agent.id == "Leader") or agent.name == "Leader"
+                    
+                    if tool_name in decision_tools and not is_leader:
+                        logger.warning(
+                            f"[SECURITY_BLOCK] {agent.name} attempted to call decision tool '{tool_name}' "
+                            f"but only Leader can execute trades in Phase 4. BLOCKING this call."
+                        )
+                        tool_results.append(
+                            f"\n[{tool_name}被阻止]: 权限不足 - 只有Leader在Phase 4（共识形成阶段）才能执行交易决策。"
+                            f"你现在应该只提供分析建议，不要调用决策工具。"
+                        )
+                        continue  # Skip this tool call
+                    
                     if tool_name in agent.tools:
                         logger.info(f"[{agent.name}] Executing tool: {tool_name}")
                         try:
