@@ -36,9 +36,41 @@ cd ~/Magellan/trading-standalone
 - [ ] "Scheduler 启动次数" = **1** ✅
 - [ ] "重复启动警告" = **0** ✅
 - [ ] 看到 `Analysis Cycle #1 START (reason: startup)` ✅
-- [ ] 看到 `Next analysis scheduled at: ... (in 3600s)` ✅
+- [ ] 看到 `Next analysis scheduled at: ... (in Ns)` ✅
+  - 其中 `N = SCHEDULER_INTERVAL_HOURS * 3600`
+  - 例如：`SCHEDULER_INTERVAL_HOURS=1` → `N=3600`秒
 
 如果以上都是 ✅，说明修复成功！
+
+---
+
+## ⚙️ 配置说明
+
+### 环境变量：调度间隔
+
+系统从环境变量 `SCHEDULER_INTERVAL_HOURS` 读取分析间隔时间：
+
+```bash
+# .env 文件或环境变量
+SCHEDULER_INTERVAL_HOURS=1  # 1小时（3600秒）
+SCHEDULER_INTERVAL_HOURS=2  # 2小时（7200秒）
+SCHEDULER_INTERVAL_HOURS=4  # 4小时（14400秒，默认值）
+```
+
+**配置流程**:
+```
+环境变量 SCHEDULER_INTERVAL_HOURS
+    ↓
+TradingConfig.analysis_interval_hours
+    ↓
+TradingScheduler.interval_hours
+    ↓
+scheduler.interval_seconds = interval_hours * 3600
+    ↓
+wait_until = now + timedelta(seconds=interval_seconds)
+```
+
+**修复完全支持动态配置** ✅ - 间隔时间由环境变量控制，不是硬编码！
 
 ---
 
@@ -88,26 +120,30 @@ docker ps -a | grep trading
 [00:00] 📊 Analysis Cycle #1 START (reason: startup)
 [00:02] ✅ Analysis cycle #1 completed successfully
 [00:02] 📊 Analysis Cycle #1 END (duration: 120.5s)
-[00:02] 📅 Next analysis scheduled at: [+3600s]
+[00:02] 📅 Next analysis scheduled at: [+Ns] (N = SCHEDULER_INTERVAL_HOURS * 3600)
 
-[等待1小时...]
+[等待N秒...]
 
-[01:00] 📊 Analysis Cycle #2 START (reason: scheduled)
-[01:02] ✅ Analysis cycle #2 completed successfully
-[01:02] 📊 Analysis Cycle #2 END (duration: 118.3s)
-[01:02] 📅 Next analysis scheduled at: [+3600s]
+[XX:XX] 📊 Analysis Cycle #2 START (reason: scheduled)
+[XX:XX] ✅ Analysis cycle #2 completed successfully
+[XX:XX] 📊 Analysis Cycle #2 END (duration: 118.3s)
+[XX:XX] 📅 Next analysis scheduled at: [+Ns]
 
-[等待1小时...]
+[等待N秒...]
 
-[02:00] 📊 Analysis Cycle #3 START (reason: scheduled)
+[YY:YY] 📊 Analysis Cycle #3 START (reason: scheduled)
 ...
 ```
 
 **关键点**:
 - ✅ Cycle序号连续递增（#1, #2, #3...）
-- ✅ 间隔严格为3600秒（1小时）
+- ✅ 间隔严格按照 `SCHEDULER_INTERVAL_HOURS` 环境变量（例如1小时=3600秒）
 - ✅ 没有提前触发
 - ✅ 没有重复启动警告
+
+**📝 注意**: 间隔时间由环境变量 `SCHEDULER_INTERVAL_HOURS` 控制，默认4小时。
+- 如果设置 `SCHEDULER_INTERVAL_HOURS=1`，则间隔为1小时（3600秒）
+- 如果设置 `SCHEDULER_INTERVAL_HOURS=2`，则间隔为2小时（7200秒）
 
 ---
 

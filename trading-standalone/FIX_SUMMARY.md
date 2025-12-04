@@ -242,19 +242,22 @@ docker logs trading_service | grep "already started"
 XX:XX:XX → 📊 Analysis Cycle #1 START (reason: startup)
 XX:XX:XX → ✅ Analysis cycle #1 completed successfully
 XX:XX:XX → 📊 Analysis Cycle #1 END (duration: 120.5s)
-XX:XX:XX → Next analysis scheduled at: [+3600s] (in 3600s)
+XX:XX:XX → Next analysis scheduled at: [+Ns] (N = SCHEDULER_INTERVAL_HOURS * 3600)
 
-[等待1小时]
+[等待N秒（由环境变量SCHEDULER_INTERVAL_HOURS控制）]
 
 YY:YY:YY → 📊 Analysis Cycle #2 START (reason: scheduled)
 YY:YY:YY → ✅ Analysis cycle #2 completed successfully
 YY:YY:YY → 📊 Analysis Cycle #2 END (duration: 118.3s)
-YY:YY:YY → Next analysis scheduled at: [+3600s] (in 3600s)
+YY:YY:YY → Next analysis scheduled at: [+Ns]
 ```
 
 **效果**:
 - ✅ Cycle序号正确递增（#1, #2, #3...）
-- ✅ 严格按照3600秒间隔执行
+- ✅ 严格按照环境变量 `SCHEDULER_INTERVAL_HOURS` 设置的间隔执行
+  - 例如：`SCHEDULER_INTERVAL_HOURS=1` → 间隔3600秒（1小时）
+  - 例如：`SCHEDULER_INTERVAL_HOURS=2` → 间隔7200秒（2小时）
+  - 默认值：4小时（14400秒）
 - ✅ 清晰的日志和时间标记
 - ✅ 没有重复启动警告
 - ✅ 系统行为可预测

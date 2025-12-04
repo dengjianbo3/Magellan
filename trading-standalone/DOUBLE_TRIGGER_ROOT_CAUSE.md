@@ -269,7 +269,7 @@ Time XXs:  第一次分析完成（amount_percent错误，但被try/except捕获
            _execute_cycle 完成，没有抛出异常
 
 Time XXs:  _run_loop 进入while循环
-           计算 _next_run = now + 3600s
+           计算 _next_run = now + interval_seconds (从SCHEDULER_INTERVAL_HOURS读取)
            进入 wait 循环
 
 Time XXs:  ⚠️ 某个地方有代码路径导致wait循环提前退出！
@@ -277,6 +277,10 @@ Time XXs:  ⚠️ 某个地方有代码路径导致wait循环提前退出！
 
 Time XXs+29s: 第二次分析被触发（cycle #2）
 ```
+
+**📝 重要**: `interval_seconds` 是从环境变量 `SCHEDULER_INTERVAL_HOURS` 读取的（默认4小时）。
+- 例如：`SCHEDULER_INTERVAL_HOURS=1` → `interval_seconds=3600`（1小时）
+- 例如：`SCHEDULER_INTERVAL_HOURS=2` → `interval_seconds=7200`（2小时）
 
 ---
 
