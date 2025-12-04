@@ -253,9 +253,37 @@ class TradingSystem:
                     })
                     logger.info(f"[SIGNAL_DEBUG] History now has {len(self._trade_history)} entries")
                 else:
-                    # Execute trade
+                    # 🆕 交易已在TradingMeeting.TradeExecutorWrapper中执行
+                    # 这里只记录结果，不再重复执行
+                    # paper_trader有防重复锁，即使调用也会被阻止
                     logger.info(f"[SIGNAL_DEBUG] Recording {signal.direction} signal to history")
-                    trade_result = await self._execute_signal(signal)
+                    
+                    # 检查是否需要执行（如果TradeExecutor没有执行成功）
+                    # 检查当前持仓状态
+                    current_position = await self.paper_trader.get_position() if self.paper_trader else None
+                    has_matching_position = (
+                        current_position and 
+                        current_position.get("has_position") and
+                        current_position.get("direction") == signal.direction
+                    )
+                    
+                    if has_matching_position:
+                        # 持仓已存在且方向匹配，说明TradeExecutor已经执行了
+                        logger.info(f"[SIGNAL_DEBUG] Trade already executed by TradeExecutor, skipping _execute_signal")
+                        trade_result = {
+                            "success": True,
+                            "action": signal.direction,
+                            "message": "交易已由TradeExecutor执行",
+                            "entry_price": current_position.get("entry_price"),
+                            "leverage": current_position.get("leverage"),
+                            "size": current_position.get("size")
+                        }
+                    else:
+                        # 没有持仓或方向不匹配，尝试执行
+                        # 这种情况可能是TradeExecutor执行失败，作为备用方案
+                        logger.info(f"[SIGNAL_DEBUG] No matching position found, attempting _execute_signal")
+                        trade_result = await self._execute_signal(signal)
+                    
                     self._trade_history.append({
                         "timestamp": datetime.now().isoformat(),
                         "signal": signal.model_dump(),

@@ -510,7 +510,7 @@ class TradeExecutorAgent:
         elif re.search(r'(做空|开空|卖出|short|开仓.*空)', response, re.I):
             direction = "short"
         elif re.search(r'(平仓|关闭|close)', response, re.I):
-            direction = "close"
+            direction = "hold"  # 🔧 FIX: TradingSignal不支持"close"，平仓后使用hold
         elif re.search(r'(观望|等待|hold|不操作)', response, re.I):
             direction = "hold"
         
