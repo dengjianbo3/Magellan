@@ -1454,8 +1454,9 @@ class TradingMeeting(Meeting):
                         return float(result)
                 
                 if toolkit and hasattr(toolkit, 'paper_trader'):
-                    if hasattr(toolkit.paper_trader, 'current_price'):
-                        return float(toolkit.paper_trader.current_price)
+                    # 🔧 FIX: PaperTrader使用_current_price属性（私有）
+                    if hasattr(toolkit.paper_trader, '_current_price') and toolkit.paper_trader._current_price:
+                        return float(toolkit.paper_trader._current_price)
             except Exception as e:
                 logger.error(f"[TradeExecutor] 获取价格失败: {e}")
             return 93000.0  # fallback
