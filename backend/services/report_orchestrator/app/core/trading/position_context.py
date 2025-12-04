@@ -131,10 +131,10 @@ class PositionContext:
             risk_level = "🔴 危险"
         
         return f"""
-📊 **当前持仓状况**: 有持仓 ({self.direction.upper()})
+📊 **当前持仓状况**: 有持仓 ({(self.direction or 'unknown').upper()})
 
 ### 持仓信息
-- 方向: **{self.direction.upper()}** ({self.leverage}x 杠杆)
+- 方向: **{(self.direction or 'unknown').upper()}** ({self.leverage}x 杠杆)
 - 入场价: ${self.entry_price:.2f}
 - 当前价: ${self.current_price:.2f}
 - 持仓量: {self.size:.6f} BTC

@@ -145,7 +145,7 @@ class TradingMeeting(Meeting):
         logger.info("[PositionContext] Collecting position context...")
         position_context = await self._get_position_context()
         logger.info(f"[PositionContext] Has position: {position_context.has_position}")
-        if position_context.has_position:
+        if position_context.has_position and position_context.direction:
             logger.info(f"[PositionContext] Direction: {position_context.direction}, "
                        f"PnL: ${position_context.unrealized_pnl:.2f} ({position_context.unrealized_pnl_percent:+.2f}%), "
                        f"Can add: {position_context.can_add_position}")
@@ -205,7 +205,7 @@ class TradingMeeting(Meeting):
         # 🆕 添加持仓状况到议程中
         position_summary = ""
         if position_context:
-            if position_context.has_position:
+            if position_context.has_position and position_context.direction:
                 pnl_emoji = "📈" if position_context.unrealized_pnl >= 0 else "📉"
                 position_summary = f"""
 ## 💼 当前持仓状况 ⚠️ 重要！
@@ -297,7 +297,7 @@ class TradingMeeting(Meeting):
 - 当前价格和24h涨跌幅
 - RSI、MACD、布林带等技术指标
 - 趋势判断和关键支撑阻力位
-- {'如果有持仓: 技术面是否支持当前' + position_context.direction + '仓？' if position_context.has_position else ''}
+- {'如果有持仓: 技术面是否支持当前' + (position_context.direction or 'unknown') + '仓？' if position_context.has_position and position_context.direction else ''}
 - 你的技术面评分和交易建议""",
 
             "MacroEconomist": f"""请分析当前影响 {self.config.symbol} 的宏观经济环境。
@@ -321,7 +321,7 @@ class TradingMeeting(Meeting):
 - 当前市场流动性状况
 - 机构投资者动向
 - 美元指数与加密货币的相关性
-- {'如果有持仓: 宏观面是否支持当前' + position_context.direction + '仓？' if position_context.has_position else ''}
+- {'如果有持仓: 宏观面是否支持当前' + (position_context.direction or 'unknown') + '仓？' if position_context.has_position and position_context.direction else ''}
 - 你的宏观面评分和方向判断
 
 **注意**: 聚焦于市场数据和投资分析，避免讨论敏感话题。""",
@@ -330,7 +330,7 @@ class TradingMeeting(Meeting):
 
 {position_hint}
 
-⚠️ **请在分析时考虑当前持仓**: {'情绪面是否支持当前' + position_context.direction + '仓？' if position_context.has_position else ''}
+⚠️ **请在分析时考虑当前持仓**: {'情绪面是否支持当前' + (position_context.direction or 'unknown') + '仓？' if position_context.has_position and position_context.direction else ''}
 
 **重要**: 你必须获取实时数据和搜索最新信息！
 
@@ -355,7 +355,7 @@ class TradingMeeting(Meeting):
 
 {position_hint}
 
-⚠️ **请在分析时考虑当前持仓**: {'量化信号是否支持当前' + position_context.direction + '仓？' if position_context.has_position else ''}
+⚠️ **请在分析时考虑当前持仓**: {'量化信号是否支持当前' + (position_context.direction or 'unknown') + '仓？' if position_context.has_position and position_context.direction else ''}
 
 **重要**: 你必须使用工具获取实时数据进行量化分析！
 
@@ -501,7 +501,7 @@ class TradingMeeting(Meeting):
 """
         
         # 有持仓
-        direction = position_context.direction
+        direction = position_context.direction or "unknown"
         pnl = position_context.unrealized_pnl
         pnl_percent = position_context.unrealized_pnl_percent
         
@@ -682,7 +682,7 @@ class TradingMeeting(Meeting):
 """
         
         # 有持仓
-        direction = position_context.direction
+        direction = position_context.direction or "unknown"
         pnl = position_context.unrealized_pnl
         pnl_percent = position_context.unrealized_pnl_percent
         can_add = position_context.can_add_position
@@ -756,7 +756,7 @@ class TradingMeeting(Meeting):
 """
         
         # 有持仓
-        direction = position_context.direction
+        direction = position_context.direction or "unknown"
         opposite = "空" if direction == "long" else "多"
         can_add = "✅ 可以" if position_context.can_add_position else "❌ 已满仓，不可以"
         
@@ -1050,6 +1050,15 @@ class TradingMeeting(Meeting):
             PositionContext: 完整的持仓上下文对象
         """
         try:
+            # 检查toolkit和paper_trader是否存在
+            if not hasattr(self, 'toolkit') or not self.toolkit:
+                logger.error("[PositionContext] No toolkit available")
+                raise AttributeError("toolkit not available")
+            
+            if not hasattr(self.toolkit, 'paper_trader') or not self.toolkit.paper_trader:
+                logger.error("[PositionContext] No paper_trader in toolkit")
+                raise AttributeError("paper_trader not available")
+            
             # 获取当前持仓
             position = await self.toolkit.paper_trader.get_position()
             if position is None:
