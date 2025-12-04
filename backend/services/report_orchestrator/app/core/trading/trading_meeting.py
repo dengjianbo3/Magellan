@@ -400,7 +400,8 @@ class TradingMeeting(Meeting):
 ⚠️ **重要**: 
 - 你只需要给出风险评估的**文字建议**
 - **不要**调用任何决策工具（open_long/open_short/hold/close_position）
-- 只有Leader在下一阶段才能执行交易
+- 只有TradeExecutor（交易执行专员）在Phase 5才能执行交易
+- 你的职责是评估风险，而非执行交易
 """
             await self._run_agent_turn(risk_agent, prompt)
 
@@ -771,6 +772,11 @@ class TradingMeeting(Meeting):
             logger.info(f"[SignalExtraction] Parsed direction: {direction}, leverage: {leverage}, "
                        f"position: {amount_percent}%, confidence: {confidence}%")
             
+            # 🔧 FIX: Convert amount_percent from percentage to decimal (e.g., 90% → 0.9)
+            # TradingSignal expects amount_percent in range [0, 1], not [0, 100]
+            amount_percent_decimal = amount_percent / 100.0
+            logger.info(f"[SignalExtraction] Converted amount_percent: {amount_percent}% → {amount_percent_decimal}")
+            
             # Get current price
             try:
                 from app.core.trading.trading_tools import get_current_btc_price
@@ -788,7 +794,7 @@ class TradingMeeting(Meeting):
                 direction=direction,
                 symbol=symbol,
                 leverage=leverage,
-                amount_percent=amount_percent,
+                amount_percent=amount_percent_decimal,  # Use decimal value
                 entry_price=current_price,
                 take_profit_price=take_profit_price,
                 stop_loss_price=stop_loss_price,
