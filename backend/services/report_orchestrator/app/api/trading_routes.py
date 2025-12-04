@@ -73,6 +73,7 @@ class TradingSystem:
         self._discussion_messages: List[Dict] = []  # Store discussion messages for persistence
         self._monitor_task: Optional[asyncio.Task] = None
         self._initialized = False
+        self._started = False  # 🔧 FIX: Prevent duplicate start() calls
 
     async def initialize(self):
         """Initialize the trading system"""
@@ -118,6 +119,20 @@ class TradingSystem:
 
     async def start(self):
         """Start the trading system"""
+        # 🔧 FIX: Prevent duplicate start() calls
+        if self._started:
+            logger.warning("⚠️  Trading system already started, ignoring duplicate start call")
+            return
+        
+        # 🔧 FIX: Check if monitor_task already exists
+        if self._monitor_task and not self._monitor_task.done():
+            logger.warning("⚠️  Monitor task already running, cancelling old task")
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+        
         if not self._initialized:
             await self.initialize()
 
@@ -125,11 +140,14 @@ class TradingSystem:
             logger.warning("Trading system is disabled")
             return
 
-        logger.info("Starting trading system...")
+        logger.info("🚀 Starting trading system...")
+        self._started = True  # 🔧 FIX: Mark as started
+        
         await self.scheduler.start()
 
         # Start position monitoring task
         self._monitor_task = asyncio.create_task(self._monitor_loop())
+        logger.info("📊 Monitor task created")
 
         await self._broadcast({
             "type": "system_started",
@@ -138,7 +156,9 @@ class TradingSystem:
 
     async def stop(self):
         """Stop the trading system"""
-        logger.info("Stopping trading system...")
+        logger.info("🛑 Stopping trading system...")
+        
+        self._started = False  # 🔧 FIX: Reset started flag
 
         if self.scheduler:
             await self.scheduler.stop()

@@ -167,32 +167,39 @@ class TradingScheduler:
         except asyncio.TimeoutError:
             logger.error("First analysis cycle timed out after 25 minutes")
         except Exception as e:
-            logger.error(f"Error in first analysis cycle: {e}")
+            logger.error(f"Error in first analysis cycle: {e}", exc_info=True)
 
         logger.info(f"Scheduler entering main loop with {self.interval_hours}h ({self.interval_seconds}s) interval")
 
         while not self._stop_event.is_set():
             try:
-                # Calculate next run time
-                self._next_run = datetime.now() + timedelta(seconds=self.interval_seconds)
+                # Calculate next run time using actual datetime
+                wait_until = datetime.now() + timedelta(seconds=self.interval_seconds)
+                self._next_run = wait_until
                 logger.info(f"Next analysis scheduled at: {self._next_run} (in {self.interval_seconds}s)")
 
-                # Wait for next interval or stop event
-                # Use asyncio.sleep with periodic checks instead of wait_for
-                elapsed = 0
-                check_interval = 30  # Check every 30 seconds
-                while elapsed < self.interval_seconds:
+                # 🔧 FIX: Wait using actual time instead of counter accumulation
+                # This prevents edge cases where counter accumulation causes early exit
+                while datetime.now() < wait_until:
                     if self._stop_event.is_set():
                         logger.info("Stop event received, exiting scheduler loop")
                         return
 
-                    await asyncio.sleep(min(check_interval, self.interval_seconds - elapsed))
-                    elapsed += check_interval
+                    # Calculate remaining time
+                    remaining = (wait_until - datetime.now()).total_seconds()
+                    if remaining <= 0:
+                        break
 
-                    # Log progress every 5 minutes
-                    if elapsed % 300 == 0:
-                        remaining = self.interval_seconds - elapsed
-                        logger.debug(f"Scheduler waiting... {remaining}s until next analysis")
+                    # Sleep for at most 30 seconds, or remaining time (whichever is smaller)
+                    sleep_duration = min(30, remaining)
+                    await asyncio.sleep(sleep_duration)
+
+                    # Log progress every 5 minutes (approximately)
+                    remaining_after_sleep = (wait_until - datetime.now()).total_seconds()
+                    if remaining > 300 and remaining_after_sleep <= 300:
+                        logger.debug(f"Scheduler waiting... {remaining_after_sleep:.0f}s until next analysis")
+                    elif remaining % 300 < 30:  # Near 5-minute marks
+                        logger.debug(f"Scheduler waiting... {remaining_after_sleep:.0f}s until next analysis")
 
                 # Check if paused
                 if self._state == SchedulerState.PAUSED:
@@ -224,7 +231,12 @@ class TradingScheduler:
         self._last_run = datetime.now()
         self._run_count += 1
 
-        logger.info(f"Starting analysis cycle #{self._run_count} (reason: {reason})")
+        # 🔧 FIX: Enhanced logging for diagnostics
+        logger.info(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        logger.info(f"📊 Analysis Cycle #{self._run_count} START")
+        logger.info(f"   Reason: {reason}")
+        logger.info(f"   Timestamp: {self._last_run.isoformat()}")
+        logger.info(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
         try:
             if self.on_analysis_cycle:
@@ -233,16 +245,20 @@ class TradingScheduler:
                     reason=reason,
                     timestamp=self._last_run
                 )
-                logger.info(f"Analysis cycle #{self._run_count} completed")
+                logger.info(f"✅ Analysis cycle #{self._run_count} completed successfully")
             else:
                 logger.warning("No analysis callback registered")
 
         except Exception as e:
-            logger.error(f"Error in analysis cycle: {e}")
+            logger.error(f"❌ Error in analysis cycle #{self._run_count}: {e}", exc_info=True)
 
         finally:
             if not self._stop_event.is_set():
                 self._set_state(SchedulerState.RUNNING)
+            
+            # 🔧 FIX: Log completion time and duration
+            duration = (datetime.now() - self._last_run).total_seconds()
+            logger.info(f"📊 Analysis Cycle #{self._run_count} END (duration: {duration:.1f}s)")
 
     def get_status(self) -> Dict[str, Any]:
         """Get scheduler status"""
