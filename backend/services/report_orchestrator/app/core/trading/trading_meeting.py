@@ -443,7 +443,7 @@ class TradingMeeting(Meeting):
 """
             await self._run_agent_turn(risk_agent, prompt)
 
-    async def _run_consensus_phase(self) -> Optional[TradingSignal]:
+    async def _run_consensus_phase(self, position_context: PositionContext) -> Optional[TradingSignal]:
         """Phase 4: Consensus Building - Leader makes final decision (WITHOUT execution)"""
         self._add_message(
             agent_id="system",
@@ -458,22 +458,15 @@ class TradingMeeting(Meeting):
             logger.error("Leader not found")
             return None
 
-        # 🔧 Get current position context for Leader
-        position_context = await self._get_position_context()
-
-        # Get current account balance for position calculation
-        account_info = ""
-        try:
-            # Leader没有tools了，需要从其他agent获取或使用toolkit
-            # 这里简化，直接从paper_trader获取
-            pass  # account_info later from position_context
-        except Exception as e:
-            logger.warning(f"Failed to get account balance: {e}")
+        # 🆕 生成持仓感知的决策指导
+        decision_guidance = self._generate_decision_guidance(position_context)
 
         # 🔧 ARCHITECTURE CHANGE: Leader只决策，不执行
         prompt = f"""作为圆桌主持人，请综合以上所有讨论内容和专家意见，形成最终交易决策。
 
-{position_context}
+{position_context.to_summary()}
+
+{decision_guidance}
 
 ## 专家意见总结
 你已经听取了以下专家的分析：
@@ -504,12 +497,10 @@ class TradingMeeting(Meeting):
 
 ## 决策流程
 
-1. **分析当前状态**: 根据上方"当前持仓状态"，判断是无持仓还是有持仓
+1. **分析当前状态**: 根据上方"当前持仓状况"，判断是无持仓还是有持仓
 2. **综合专家意见**: 总结各专家的核心观点、一致性和分歧点
 3. **评估信心度**: 根据专家意见一致性和市场信号强度，评估综合信心度 (0-100%)
-4. **选择合适策略**: 
-   - 如果**无持仓**: 开新仓或观望
-   - 如果**有持仓**: 考虑持有/追加/平仓/反向（参考上方"决策参考"）
+4. **选择合适策略**: 根据持仓状态和专家意见，选择最合适的操作
 5. **输出结构化决策**: 按照下面的格式输出
 
 ## 📋 决策输出格式（必须严格遵守）
@@ -525,46 +516,7 @@ class TradingMeeting(Meeting):
 - 止盈价格: [具体价格] USDT
 - 止损价格: [具体价格] USDT
 - 信心度: [0-100]%
-- 决策理由: [综合分析，包括对历史持仓的考虑]
-```
-
-**示例1 (无持仓，看多开仓)**:
-```
-【最终决策】
-- 决策: 做多
-- 标的: BTC-USDT-SWAP
-- 杠杆倍数: 5
-- 仓位比例: 30%
-- 止盈价格: 98000 USDT
-- 止损价格: 92000 USDT
-- 信心度: 75%
-- 决策理由: 技术面突破关键阻力，宏观面美联储利好，情绪面贪婪指数回升，专家一致看多
-```
-
-**示例2 (有多仓，继续持有)**:
-```
-【最终决策】
-- 决策: 观望
-- 标的: BTC-USDT-SWAP
-- 杠杆倍数: 0
-- 仓位比例: 0%
-- 止盈价格: 0 USDT
-- 止损价格: 0 USDT
-- 信心度: 60%
-- 决策理由: 当前多仓盈利中，专家意见仍然看多，继续持有等待止盈触发
-```
-
-**示例3 (有多仓，追加仓位)**:
-```
-【最终决策】
-- 决策: 追加多仓
-- 标的: BTC-USDT-SWAP
-- 杠杆倍数: 7
-- 仓位比例: 20%
-- 止盈价格: 100000 USDT
-- 止损价格: 93000 USDT
-- 信心度: 85%
-- 决策理由: 当前多仓小幅盈利，技术面强势突破，专家强烈看多，资金充足可追加
+- 决策理由: [综合分析，包括对当前持仓的考虑]
 ```
 
 ⚠️ **重要提醒**:
@@ -588,6 +540,85 @@ class TradingMeeting(Meeting):
                    f"Vote breakdown: {vote_summary}")
 
         return signal
+    
+    def _generate_decision_guidance(self, position_context: PositionContext) -> str:
+        """
+        🆕 根据持仓状态生成决策指导
+        
+        帮助Leader理解在不同持仓状态下应该考虑哪些决策选项
+        """
+        if not position_context.has_position:
+            # 无持仓
+            return """
+## 💡 决策指导（无持仓状态）
+
+**可选操作**:
+1. **做多** - 开多仓（如果专家看多）
+2. **做空** - 开空仓（如果专家看空）
+3. **观望** - 等待更好的时机
+
+**决策要点**:
+- 综合专家意见，判断方向
+- 根据信心度选择杠杆（高信心=高杠杆）
+- 根据信心度选择仓位（建议30-50%）
+- 设置合理的止盈止损
+"""
+        
+        # 有持仓
+        direction = position_context.direction
+        pnl = position_context.unrealized_pnl
+        pnl_percent = position_context.unrealized_pnl_percent
+        can_add = position_context.can_add_position
+        
+        # 判断盈亏状态
+        pnl_status = "盈利" if pnl >= 0 else "亏损"
+        pnl_emoji = "📈" if pnl >= 0 else "📉"
+        
+        # 判断是否接近止盈止损
+        near_tp = abs(position_context.distance_to_tp_percent) < 5
+        near_sl = abs(position_context.distance_to_sl_percent) < 5
+        
+        guidance = f"""
+## 💡 决策指导（有{direction.upper()}持仓）
+
+**当前持仓状态**: {pnl_emoji} {pnl_status} ${abs(pnl):.2f} ({pnl_percent:+.2f}%)
+"""
+        
+        if near_tp:
+            guidance += f"""
+⚠️ **接近止盈**: 距离止盈价仅 {abs(position_context.distance_to_tp_percent):.1f}%
+"""
+        
+        if near_sl:
+            guidance += f"""
+🚨 **接近止损**: 距离止损价仅 {abs(position_context.distance_to_sl_percent):.1f}%
+"""
+        
+        guidance += f"""
+**可选操作**:
+1. **观望** - 继续持有当前{direction}仓（如果专家仍然看{direction}）
+2. **追加{direction}仓** - 追加同方向仓位（如果专家强烈看{direction}，且{'可追加' if can_add else '❌已满仓，不可追加'}）
+3. **平仓** - 平掉当前{direction}仓（如果专家转为中性，或止盈/止损）
+4. **反向操作** - 平掉{direction}仓，开{'空' if direction == 'long' else '多'}仓（如果专家强烈反向）
+
+**决策矩阵**（重要参考）:
+
+| 专家意见 | 持仓状态 | 建议操作 | 理由 |
+|---------|---------|---------|------|
+| 继续看{direction} | {'可追加' if can_add else '已满仓'} | {'追加' + direction + '仓' if can_add else '观望（已满仓）'} | 趋势延续，{'资金充足可追加' if can_add else '仓位已满，维持即可'} |
+| 中性/观望 | {pnl_status}中 | {'观望' if pnl >= 0 else '考虑平仓'} | {'盈利中，继续持有' if pnl >= 0 else '亏损中，止损考虑'} |
+| 转为看{'空' if direction == 'long' else '多'} | {pnl_status}中 | 反向操作 | 趋势反转，平仓+反向 |
+| 强烈看{'空' if direction == 'long' else '多'} | 任何状态 | 反向操作 | 强反转信号，立即反向 |
+
+**决策要点**:
+- **优先考虑**当前持仓的盈亏状态
+- **评估**专家意见是否与持仓方向一致
+- **判断**是否接近止盈止损触发点
+- **考虑**持仓时长（已持有 {position_context.holding_duration_hours:.1f} 小时）
+- **计算**追加或反向操作的风险收益比
+"""
+        
+        return guidance
 
     def _get_vote_summary(self) -> str:
         """Get vote summary for logging"""
