@@ -257,7 +257,7 @@ class TradingMeeting(Meeting):
 请各位专家开始分析。
 """
 
-    async def _run_market_analysis_phase(self):
+    async def _run_market_analysis_phase(self, position_context: PositionContext):
         """Phase 1: Market Analysis"""
         self._add_message(
             agent_id="system",
@@ -270,9 +270,16 @@ class TradingMeeting(Meeting):
         # Agent.id defaults to agent.name in ReWOOAgent
         analysis_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst"]
 
+        # 🆕 持仓状况提示（用于所有分析师）
+        position_hint = position_context.to_summary()
+
         # 针对不同类型的agent提供不同的分析指令
         agent_prompts = {
             "TechnicalAnalyst": f"""请分析 {self.config.symbol} 的当前技术面状况。
+
+{position_hint}
+
+⚠️ **请在分析时考虑当前持仓**: 如果有持仓，技术指标是支持持有、追加还是反向？
 
 **重要**: 你必须使用工具获取实时数据，不能凭空编造！
 
@@ -290,9 +297,14 @@ class TradingMeeting(Meeting):
 - 当前价格和24h涨跌幅
 - RSI、MACD、布林带等技术指标
 - 趋势判断和关键支撑阻力位
+- {'如果有持仓: 技术面是否支持当前' + position_context.direction + '仓？' if position_context.has_position else ''}
 - 你的技术面评分和交易建议""",
 
             "MacroEconomist": f"""请分析当前影响 {self.config.symbol} 的宏观经济环境。
+
+{position_hint}
+
+⚠️ **请在分析时考虑当前持仓**: 如果有持仓，宏观面是否支持持有？
 
 **重要**: 你必须搜索最新信息，不能仅凭既有知识！
 
@@ -309,11 +321,16 @@ class TradingMeeting(Meeting):
 - 当前市场流动性状况
 - 机构投资者动向
 - 美元指数与加密货币的相关性
+- {'如果有持仓: 宏观面是否支持当前' + position_context.direction + '仓？' if position_context.has_position else ''}
 - 你的宏观面评分和方向判断
 
 **注意**: 聚焦于市场数据和投资分析，避免讨论敏感话题。""",
 
             "SentimentAnalyst": f"""请分析 {self.config.symbol} 的当前市场情绪。
+
+{position_hint}
+
+⚠️ **请在分析时考虑当前持仓**: {'情绪面是否支持当前' + position_context.direction + '仓？' if position_context.has_position else ''}
 
 **重要**: 你必须获取实时数据和搜索最新信息！
 
@@ -331,9 +348,14 @@ class TradingMeeting(Meeting):
 - 恐慌贪婪指数数值和含义
 - 资金费率及多空力量对比
 - 社交媒体/新闻中的市场情绪
+- {'如果有持仓: 情绪面是否支持继续持有？' if position_context.has_position else ''}
 - 你的情绪面评分和方向判断""",
 
             "QuantStrategist": f"""请分析 {self.config.symbol} 的量化数据和统计信号。
+
+{position_hint}
+
+⚠️ **请在分析时考虑当前持仓**: {'量化信号是否支持当前' + position_context.direction + '仓？' if position_context.has_position else ''}
 
 **重要**: 你必须使用工具获取实时数据进行量化分析！
 
@@ -351,11 +373,14 @@ class TradingMeeting(Meeting):
 - 价格波动率和成交量分析
 - 多时间周期趋势一致性
 - 动量和趋势指标的量化信号
+- {'如果有持仓: 统计上是否应该继续持有？' if position_context.has_position else ''}
 - 你的量化评分和方向判断"""
         }
 
         # 默认 prompt 也要求使用工具
         default_prompt = f"""请分析 {self.config.symbol} 的当前市场状况。
+
+{position_hint}
 
 **重要**: 你必须使用工具获取实时数据，不能凭空编造！
 
@@ -371,7 +396,7 @@ class TradingMeeting(Meeting):
                 prompt = agent_prompts.get(agent_id, default_prompt)
                 await self._run_agent_turn(agent, prompt)
 
-    async def _run_signal_generation_phase(self):
+    async def _run_signal_generation_phase(self, position_context: PositionContext):
         """Phase 2: Signal Generation"""
         self._add_message(
             agent_id="system",
@@ -380,14 +405,21 @@ class TradingMeeting(Meeting):
             message_type="phase"
         )
 
+        # 🆕 根据持仓状态生成不同的决策选项提示
+        decision_options = self._get_decision_options_for_analysts(position_context)
+
         vote_prompt = f"""基于以上分析和你收集到的实时数据，请给出你的交易建议。
+
+{position_context.to_summary()}
+
+{decision_options}
 
 **注意**: 如果你在上一阶段没有使用工具获取数据，请现在使用相关工具获取最新信息再做判断！
 
 ⚠️ **重要提示 - 请勿调用决策工具**:
 - 你现在处于"信号生成阶段"，只需要给出**文字建议**
 - **不要**调用任何决策工具（open_long/open_short/hold/close_position）
-- 只有Leader在"Phase 4: 共识形成阶段"才能执行交易
+- 只有TradeExecutor（交易执行专员）在Phase 5才能执行交易
 - 如果你调用了决策工具，系统会阻止并忽略
 
 **重要：杠杆倍数必须与信心度严格对应！**
@@ -396,12 +428,12 @@ class TradingMeeting(Meeting):
 - 低信心度(<60%): 使用 1-{int(self.config.max_leverage * 0.25)}倍杠杆或观望
 
 请按以下格式回复：
-- 方向: [做多/做空/观望]
+- 方向: [做多/做空/观望/追加多仓/追加空仓/平仓/反向]
 - 信心度: [0-100]%
 - 建议杠杆: [根据信心度选择对应区间的杠杆，最高{self.config.max_leverage}倍]
 - 建议止盈: [X]%
 - 建议止损: [X]%
-- 理由: [简述，必须引用具体数据支撑你的判断]
+- 理由: [简述，必须引用具体数据支撑你的判断，并说明是否考虑了当前持仓]
 """
 
         vote_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "QuantStrategist"]
@@ -413,7 +445,7 @@ class TradingMeeting(Meeting):
                 if vote:
                     self._agent_votes.append(vote)
 
-    async def _run_risk_assessment_phase(self):
+    async def _run_risk_assessment_phase(self, position_context: PositionContext):
         """Phase 3: Risk Assessment"""
         self._add_message(
             agent_id="system",
@@ -425,11 +457,18 @@ class TradingMeeting(Meeting):
         # Summarize votes for risk manager
         votes_summary = self._summarize_votes()
 
+        # 🆕 生成持仓风险评估提示
+        risk_context = self._generate_risk_context(position_context)
+
         risk_agent = self._get_agent_by_id("RiskAssessor")
         if risk_agent:
             prompt = f"""以下是各专家的投票结果：
 
 {votes_summary}
+
+{position_context.to_summary()}
+
+{risk_context}
 
 请评估这笔交易的风险，并决定是否批准。
 如果批准，请给出最终的仓位建议和止盈止损设置。
@@ -442,6 +481,84 @@ class TradingMeeting(Meeting):
 - 你的职责是评估风险，而非执行交易
 """
             await self._run_agent_turn(risk_agent, prompt)
+    
+    def _generate_risk_context(self, position_context: PositionContext) -> str:
+        """
+        🆕 生成风险评估上下文
+        
+        帮助RiskAssessor评估当前持仓的风险
+        """
+        if not position_context.has_position:
+            return """
+## 🛡️ 风险评估重点（无持仓）
+
+**评估要点**:
+1. 开仓方向是否有充分依据？
+2. 杠杆倍数是否与信心度匹配？
+3. 止盈止损设置是否合理？
+4. 仓位大小是否符合风险管理原则？
+5. 当前市场波动率是否适合开仓？
+"""
+        
+        # 有持仓
+        direction = position_context.direction
+        pnl = position_context.unrealized_pnl
+        pnl_percent = position_context.unrealized_pnl_percent
+        
+        # 风险等级
+        if position_context.distance_to_liquidation_percent > 50:
+            risk_level = "🟢 安全"
+        elif position_context.distance_to_liquidation_percent > 20:
+            risk_level = "🟡 警戒"
+        else:
+            risk_level = "🔴 危险"
+        
+        # 接近TP/SL警告
+        warnings = []
+        if abs(position_context.distance_to_tp_percent) < 5:
+            warnings.append(f"⚠️ 接近止盈（仅{abs(position_context.distance_to_tp_percent):.1f}%）")
+        if abs(position_context.distance_to_sl_percent) < 5:
+            warnings.append(f"🚨 接近止损（仅{abs(position_context.distance_to_sl_percent):.1f}%）")
+        
+        warnings_text = "\n".join(warnings) if warnings else "无特殊警告"
+        
+        return f"""
+## 🛡️ 风险评估重点（有{direction.upper()}持仓）
+
+**当前持仓风险**:
+- 风险等级: {risk_level}
+- 距离强平: {position_context.distance_to_liquidation_percent:.1f}%
+- 浮动盈亏: ${pnl:.2f} ({pnl_percent:+.2f}%)
+- 仓位占比: {position_context.current_position_percent*100:.1f}%
+
+**风险警告**:
+{warnings_text}
+
+**评估要点**（根据专家建议类型）:
+
+### 如果专家建议"继续看{direction}/追加"
+1. 当前{direction}仓的盈亏状态如何？是否健康？
+2. 追加后的总仓位是否超过风险上限？
+3. 是否过于集中在单一方向？
+4. 持仓时长是否已较长（当前{position_context.holding_duration_hours:.1f}小时）？
+
+### 如果专家建议"平仓"
+1. 平仓理由是否充分？
+2. 当前盈亏状态是否适合平仓？
+3. 是否止盈/止损的合适时机？
+
+### 如果专家建议"反向操作"
+1. 反向信号是否足够强？
+2. 当前持仓是否盈利？平仓成本如何？
+3. 反向后的新仓位风险如何？
+4. 是否值得承担双重交易成本？
+
+### 如果专家建议"观望"
+1. 继续持有当前仓位的风险如何？
+2. 是否应该主动平仓而非被动等待？
+
+请综合评估，给出风险建议！
+"""
 
     async def _run_consensus_phase(self, position_context: PositionContext) -> Optional[TradingSignal]:
         """Phase 4: Consensus Building - Leader makes final decision (WITHOUT execution)"""
@@ -619,6 +736,47 @@ class TradingMeeting(Meeting):
 """
         
         return guidance
+    
+    def _get_decision_options_for_analysts(self, position_context: PositionContext) -> str:
+        """
+        🆕 为分析师生成决策选项提示
+        
+        根据持仓状态，告诉分析师他们可以建议哪些操作
+        """
+        if not position_context.has_position:
+            return """
+## 💡 决策选项（当前无持仓）
+
+你可以建议以下操作:
+1. **做多** - 如果你认为价格会上涨
+2. **做空** - 如果你认为价格会下跌
+3. **观望** - 如果你认为时机不成熟或方向不明
+
+请基于你的专业领域给出建议。
+"""
+        
+        # 有持仓
+        direction = position_context.direction
+        opposite = "空" if direction == "long" else "多"
+        can_add = "✅ 可以" if position_context.can_add_position else "❌ 已满仓，不可以"
+        
+        return f"""
+## 💡 决策选项（当前有{direction.upper()}持仓）
+
+你可以建议以下操作:
+1. **观望/维持** - 如果你认为应该继续持有当前{direction}仓
+2. **追加{direction}仓** - 如果你强烈看{direction}（当前{can_add}追加）
+3. **平仓** - 如果你认为应该止盈或止损
+4. **反向操作** - 如果你认为市场反转，应该平{direction}开{opposite}
+
+**当前持仓参考**:
+- 方向: {direction.upper()}
+- 盈亏: ${position_context.unrealized_pnl:.2f} ({position_context.unrealized_pnl_percent:+.2f}%)
+- 仓位: {position_context.current_position_percent*100:.1f}%
+- 持仓时长: {position_context.holding_duration_hours:.1f}小时
+
+请基于你的专业领域和当前持仓状态给出建议。
+"""
 
     def _get_vote_summary(self) -> str:
         """Get vote summary for logging"""
