@@ -201,6 +201,9 @@ class PaperTrader:
 
         self._initialized = False
         self._key_prefix = "paper_trader:"
+        
+        # 🔒 CRITICAL: Add trade lock to prevent duplicate trades
+        self._trade_lock = asyncio.Lock()
 
     async def initialize(self):
         """初始化，加载历史数据"""
@@ -420,11 +423,16 @@ class PaperTrader:
         sl_price: Optional[float] = None
     ) -> Dict:
         """开仓 - 增强版余额检查"""
-        if self._position:
-            return {
-                "success": False,
-                "error": "已有持仓，请先平仓"
-            }
+        # 🔒 CRITICAL: Use lock to prevent duplicate trades
+        async with self._trade_lock:
+            logger.info(f"[TRADE_LOCK] Acquired lock for {direction} position")
+            
+            if self._position:
+                logger.warning(f"[TRADE_LOCK] Cannot open {direction}: already have a {self._position.direction} position")
+                return {
+                    "success": False,
+                    "error": f"已有持仓（{self._position.direction}），请先平仓"
+                }
 
         # 确保类型正确（防止从LLM解析时传入字符串）
         try:
@@ -516,27 +524,28 @@ class PaperTrader:
         self._account.balance -= amount_usdt
         self._account.used_margin += amount_usdt
 
-        await self._save_state()
+            await self._save_state()
 
-        logger.info(
-            f"开仓成功: {direction.upper()} {size:.6f} BTC @ ${current_price:.2f}, "
-            f"杠杆: {leverage}x, 保证金: ${amount_usdt:.2f}, "
-            f"剩余可用: ${self._account.balance:.2f}"
-        )
+            logger.info(
+                f"✅ [TRADE_LOCK] 开仓成功: {direction.upper()} {size:.6f} BTC @ ${current_price:.2f}, "
+                f"杠杆: {leverage}x, 保证金: ${amount_usdt:.2f}, "
+                f"剩余可用: ${self._account.balance:.2f}"
+            )
+            logger.info(f"[TRADE_LOCK] Releasing lock after successful {direction} position")
 
-        return {
-            "success": True,
-            "order_id": self._position.id,
-            "direction": direction,
-            "executed_price": current_price,
-            "executed_amount": size,
-            "leverage": leverage,
-            "margin": amount_usdt,
-            "take_profit": tp_price,
-            "stop_loss": sl_price,
-            "remaining_balance": self._account.balance,  # 新增: 返回剩余余额
-            "remaining_available_margin": self._account.total_equity - self._account.used_margin  # 新增: 返回真实可用保证金
-        }
+            return {
+                "success": True,
+                "order_id": self._position.id,
+                "direction": direction,
+                "executed_price": current_price,
+                "executed_amount": size,
+                "leverage": leverage,
+                "margin": amount_usdt,
+                "take_profit": tp_price,
+                "stop_loss": sl_price,
+                "remaining_balance": self._account.balance,  # 新增: 返回剩余余额
+                "remaining_available_margin": self._account.total_equity - self._account.used_margin  # 新增: 返回真实可用保证金
+            }
 
     async def close_position(self, symbol: str = "BTC-USDT-SWAP", reason: str = "manual") -> Dict:
         """平仓"""

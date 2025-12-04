@@ -406,6 +406,9 @@ class TradingMeeting(Meeting):
             logger.error("Leader not found")
             return None
 
+        # 🔧 NEW: Get current position context for Leader
+        position_context = await self._get_position_context()
+
         # Get current account balance for position calculation
         account_info = ""
         try:
@@ -415,17 +418,19 @@ class TradingMeeting(Meeting):
         except Exception as e:
             logger.warning(f"Failed to get account balance: {e}")
 
+        # 🔧 NEW: Integrate position context into Leader's prompt
         # Request Leader to make decision and DIRECTLY EXECUTE using tools
         prompt = f"""作为圆桌主持人，请综合以上所有讨论内容和专家意见，形成最终交易决策。
 
-## 会议讨论总结
+{position_context}
+
+## 专家意见总结
 你已经听取了以下专家的分析：
 - 技术分析师 (TechnicalAnalyst): K线形态、技术指标分析
 - 宏观经济分析师 (MacroEconomist): 宏观经济、货币政策分析
 - 情绪分析师 (SentimentAnalyst): 市场情绪、资金流向分析
 - 量化策略师 (QuantStrategist): 量化指标、统计分析
 - 风险评估师 (RiskAssessor): 风险评估和建议
-{account_info}
 
 ## 交易参数限制
 - 最大杠杆: {self.config.max_leverage}倍 (可选: 1,2,3,...,{self.config.max_leverage})
@@ -433,53 +438,65 @@ class TradingMeeting(Meeting):
 - 最低信心度要求: {self.config.min_confidence}%
 
 ## 杠杆选择规则 (强制执行)
-**你必须严格按照信心度选择对应区间的杠杆倍数！这是强制要求！**
-- **高信心度 (>80%)**: **必须**使用 {int(self.config.max_leverage * 0.5)}-{self.config.max_leverage}倍杠杆 (例如85%信心 → 至少{int(self.config.max_leverage * 0.5)}倍)
+**你必须严格按照信心度选择对应区间的杠杆倍数！**
+- **高信心度 (>80%)**: **必须**使用 {int(self.config.max_leverage * 0.5)}-{self.config.max_leverage}倍杠杆
 - **中信心度 (60-80%)**: **必须**使用 {int(self.config.max_leverage * 0.25)}-{int(self.config.max_leverage * 0.5)}倍杠杆
 - **低信心度 (<60%)**: 使用 1-{int(self.config.max_leverage * 0.25)}倍杠杆 或选择观望
 
-**示例**: 如果你综合评估信心度为85%，那么杠杆必须在{int(self.config.max_leverage * 0.5)}-{self.config.max_leverage}倍之间，不能选择低于{int(self.config.max_leverage * 0.5)}倍的杠杆！
+## 你的决策流程
 
-## 你的任务
+1. **分析当前状态**: 根据上方"当前持仓状态"，判断是无持仓还是有持仓
+2. **综合专家意见**: 总结各专家的核心观点、一致性和分歧点
+3. **评估信心度**: 根据专家意见一致性和市场信号强度，评估综合信心度 (0-100%)
+4. **选择合适策略**: 
+   - 如果**无持仓**: 开新仓或观望
+   - 如果**有持仓**: 考虑持有/追加/平仓/反向（参考上方"决策参考"）
+5. **确定参数并执行**: 必须调用工具执行决策
 
-1. **综合分析**: 总结各专家的核心观点和分歧
-2. **评估信心度**: 根据专家意见一致性和市场信号强度，评估你的综合信心度 (0-100%)
-3. **形成决策**: 基于专家意见，决定是做多(long)、做空(short)还是观望(hold)
-4. **确定参数** (如果交易):
-   - 杠杆倍数 (根据信心度从上方指南中选择，范围1-{self.config.max_leverage})
-   - 仓位百分比 (范围{int(self.config.min_position_percent * 100)}-{int(self.config.max_position_percent * 100)}%，建议{int(self.config.default_position_percent * 100)}%)
-   - 止盈止损百分比 (默认止盈{self.config.default_tp_percent}%，止损{self.config.default_sl_percent}%)
-5. **必须调用工具执行**: 无论什么决策，你都必须调用以下三个工具之一
+## 🔧 工具调用格式 (必须严格遵守)
 
-## 强制执行要求 (非常重要!)
-
-**你必须使用以下格式调用决策工具，这是强制要求！**
-
-**工具调用格式** (必须严格遵守):
 ```
 [USE_TOOL: tool_name(param1="value1", param2="value2")]
 ```
 
-**三选一，必须调用其中之一：**
+### 可用决策工具（三选一，必须调用）：
 
-1. **做多** → `[USE_TOOL: open_long(leverage="3", amount_usdt="1000", reason="综合分析看多")]`
-2. **做空** → `[USE_TOOL: open_short(leverage="3", amount_usdt="1000", reason="综合分析看空")]`
-3. **观望** → `[USE_TOOL: hold(reason="市场不明朗，暂时观望")]`
+1. **开多仓** (leverage和amount_usdt都必须提供):
+   `[USE_TOOL: open_long(leverage="5", amount_usdt="2000", tp_percent="5.0", sl_percent="2.0")]`
 
-⚠️ **禁止**: 不调用任何工具就结束回复
-⚠️ **禁止**: 只在文字中说"观望"但不调用 `hold` 工具
-⚠️ **禁止**: 使用 python 代码格式调用工具
+2. **开空仓** (leverage和amount_usdt都必须提供):
+   `[USE_TOOL: open_short(leverage="3", amount_usdt="1500", tp_percent="4.0", sl_percent="2.5")]`
 
-**正确示例**:
-分析完成后，我决定做多。
-[USE_TOOL: open_long(leverage="5", amount_usdt="2000", reason="技术面看涨，多头趋势明确")]
+3. **观望/持有** (说明理由):
+   `[USE_TOOL: hold(reason="市场不明朗，暂时观望")]`
+   或
+   `[USE_TOOL: hold(reason="继续持有现有多仓，等待止盈")]`
+   或
+   `[USE_TOOL: hold(reason="建议平掉当前空仓，市场转向")]`
 
-**错误示例** (不要这样做):
-```python
-open_long(leverage=5, amount_usdt=2000)  # 错误！
-```
+⚠️ **禁止事项**:
+- ❌ 不调用任何工具就结束
+- ❌ 只在文字中说"观望"但不调用 `hold` 工具
+- ❌ 使用 python 代码格式调用工具
+- ❌ 因为"已有持仓"就自动观望（如果资金充足且信号强烈，应该追加！）
 
-请先给出你的分析总结，然后**必须使用 [USE_TOOL: ...] 格式调用对应的工具**来执行决策。
+**正确示例1 (无持仓，开新仓)**:
+综合分析：技术面和情绪面都看涨，信心度75%。
+[USE_TOOL: open_long(leverage="7", amount_usdt="2000", tp_percent="5.0", sl_percent="2.0")]
+
+**正确示例2 (有多仓，继续持有)**:
+当前多仓盈利中，专家意见仍然看多，继续持有。
+[USE_TOOL: hold(reason="继续持有盈利的多仓，技术面仍然向好")]
+
+**正确示例3 (有多仓，追加)**:
+当前多仓小幅盈利，专家强烈看多，资金充足，追加仓位。
+[USE_TOOL: open_long(leverage="5", amount_usdt="1500", tp_percent="6.0", sl_percent="2.0")]
+
+**正确示例4 (有多仓，但需要平仓)**:
+当前多仓浮亏，市场转空，建议平仓。
+[USE_TOOL: hold(reason="建议平掉当前多仓，市场技术面转弱，专家建议止损")]
+
+请开始你的决策分析和执行！
 """
 
         response = await self._run_agent_turn(leader, prompt)
@@ -754,6 +771,27 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
 
                             for key, value in param_matches:
                                 params[key] = value
+                            
+                            # 🔧 FIX: Auto-convert parameter types based on tool schema
+                            tool = agent.tools[tool_name]
+                            if hasattr(tool, 'parameters_schema'):
+                                schema = tool.parameters_schema
+                                properties = schema.get('properties', {})
+                                for key in list(params.keys()):
+                                    if key in properties:
+                                        expected_type = properties[key].get('type')
+                                        try:
+                                            if expected_type == 'integer':
+                                                params[key] = int(params[key])
+                                            elif expected_type == 'number':
+                                                params[key] = float(params[key])
+                                            elif expected_type == 'boolean':
+                                                params[key] = str(params[key]).lower() in ['true', '1', 'yes']
+                                            # string type remains as-is
+                                        except (ValueError, TypeError) as e:
+                                            logger.warning(f"[{agent.name}] Failed to convert param {key}={params[key]} to {expected_type}: {e}")
+                            
+                            logger.info(f"[{agent.name}] Tool {tool_name} params after type conversion: {params}")
 
                             # Execute the tool
                             tool_result = await agent.tools[tool_name].execute(**params)
@@ -786,7 +824,7 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
 
                     follow_up_messages = messages + [
                         {"role": "assistant", "content": content},
-                        {"role": "user", "content": f"工具返回结果:\n{tool_results_text}\n\n请基于这些真实数据给出最终分析结论。注意：请使用工具返回的真实数据，不要编造数据。"}
+                        {"role": "user", "content": f"工具返回结果:\n{tool_results_text}\n\n请基于这些真实数据给出最终分析结论。注意：请使用工具返回的真实数据，不要编造数据。**重要：不要再次调用工具，只需要总结分析。**"}
                     ]
 
                     follow_up_response = await agent._call_llm(follow_up_messages)
@@ -799,6 +837,18 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
                             pass
                     elif isinstance(follow_up_response, str):
                         content = follow_up_response
+                    
+                    # 🔒 CRITICAL FIX: Block tool calls in follow-up response
+                    # Follow-up is ONLY for summary, should NOT execute tools again
+                    follow_up_tool_pattern = r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]'
+                    follow_up_tool_matches = re.findall(follow_up_tool_pattern, content)
+                    if follow_up_tool_matches:
+                        logger.warning(f"[{agent.name}] ⚠️ Follow-up response contains {len(follow_up_tool_matches)} tool calls, BLOCKING them to prevent duplicate execution")
+                        for tool_name, _ in follow_up_tool_matches:
+                            logger.warning(f"[{agent.name}] Blocked tool call in follow-up: {tool_name}")
+                        # Remove all tool call markers from follow-up content
+                        content = re.sub(follow_up_tool_pattern, '[工具调用已阻止]', content)
+                        logger.info(f"[{agent.name}] Follow-up content cleaned, tool calls removed")
             # ===== End Tool Execution =====
 
             logger.info(f"Agent {agent.name} response: {content[:100]}...")
@@ -1207,3 +1257,206 @@ open_long(leverage=5, amount_usdt=2000)  # 错误！
 ### 信心度: 50%
 
 建议参考其他专家意见做出决策。""")
+    
+    async def _get_position_context(self) -> str:
+        """
+        🔧 NEW: Get formatted position context for Leader's decision making.
+        
+        Returns detailed information about:
+        - Current position status
+        - Available balance and margin
+        - Unrealized PnL
+        - Position limits
+        - Recommended actions based on position state
+        """
+        try:
+            # Get position and account info from toolkit
+            position_info = "### 当前持仓状态\n\n"
+            
+            # Try to get position through Leader's tools
+            leader = self._get_agent_by_id("Leader")
+            if not leader or not hasattr(leader, 'tools'):
+                return position_info + "⚠️ 无法获取持仓信息（Leader工具不可用）\n"
+            
+            # Get current position
+            has_position = False
+            current_direction = None
+            unrealized_pnl = 0
+            pnl_percent = 0
+            used_margin = 0
+            position_leverage = 0
+            
+            if 'get_current_position' in leader.tools:
+                try:
+                    pos_result = await leader.tools['get_current_position'].execute()
+                    if isinstance(pos_result, str):
+                        pos_data = json.loads(pos_result)
+                    else:
+                        pos_data = pos_result
+                    
+                    has_position = pos_data.get('has_position', False)
+                    if has_position:
+                        current_direction = pos_data.get('direction', 'unknown')
+                        unrealized_pnl = pos_data.get('unrealized_pnl', 0)
+                        pnl_percent = pos_data.get('unrealized_pnl_percent', 0)
+                        used_margin = pos_data.get('margin', 0)
+                        position_leverage = pos_data.get('leverage', 0)
+                        entry_price = pos_data.get('entry_price', 0)
+                        current_price = pos_data.get('current_price', 0)
+                        tp_price = pos_data.get('take_profit_price', 0)
+                        sl_price = pos_data.get('stop_loss_price', 0)
+                except Exception as e:
+                    logger.warning(f"Failed to get position info: {e}")
+            
+            # Get account balance
+            available_balance = self.config.default_balance
+            total_equity = self.config.default_balance
+            
+            if 'get_account_balance' in leader.tools:
+                try:
+                    balance_result = await leader.tools['get_account_balance'].execute()
+                    if isinstance(balance_result, str):
+                        balance_data = json.loads(balance_result)
+                    else:
+                        balance_data = balance_result
+                    
+                    available_balance = balance_data.get('available_balance', self.config.default_balance)
+                    total_equity = balance_data.get('total_equity', self.config.default_balance)
+                    true_available_margin = balance_data.get('true_available_margin', available_balance)
+                except Exception as e:
+                    logger.warning(f"Failed to get account balance: {e}")
+                    true_available_margin = available_balance
+            else:
+                true_available_margin = available_balance
+            
+            # Format position status
+            if has_position:
+                position_info += f"""**持仓状态**: ✅ 有持仓
+**持仓方向**: {"🟢 做多 (LONG)" if current_direction == "long" else "🔴 做空 (SHORT)"}
+**杠杆倍数**: {position_leverage}x
+**入场价格**: ${entry_price:,.2f}
+**当前价格**: ${current_price:,.2f}
+**止盈价格**: ${tp_price:,.2f}
+**止损价格**: ${sl_price:,.2f}
+**未实现盈亏**: {"📈 +" if unrealized_pnl >= 0 else "📉 "} ${abs(unrealized_pnl):.2f} ({pnl_percent:+.2f}%)
+**已用保证金**: ${used_margin:.2f}
+
+"""
+            else:
+                position_info += """**持仓状态**: ❌ 无持仓
+**当前状态**: 可以开新仓
+
+"""
+            
+            # Account info
+            position_info += f"""### 账户资金状况
+
+**总权益**: ${total_equity:.2f}
+**可用余额**: ${available_balance:.2f}
+**真实可用保证金**: ${true_available_margin:.2f}
+**已用保证金**: ${used_margin:.2f}
+
+"""
+            
+            # Position limits and recommendations
+            max_position_usdt = total_equity * self.config.max_position_percent
+            min_position_usdt = total_equity * self.config.min_position_percent
+            
+            position_info += f"""### 仓位限制
+
+**最大单次仓位**: {self.config.max_position_percent*100:.0f}% = ${max_position_usdt:.2f}
+**最小单次仓位**: {self.config.min_position_percent*100:.0f}% = ${min_position_usdt:.2f}
+**最大杠杆**: {self.config.max_leverage}x
+**最低信心度**: {self.config.min_confidence}%
+
+"""
+            
+            # Decision framework based on current state
+            position_info += """### 决策参考
+
+"""
+            
+            if not has_position:
+                position_info += """**情况A: 无持仓状态**
+- ✅ 可以根据专家意见开新仓（做多/做空）
+- ✅ 或选择观望等待更好机会
+- 📊 建议仓位范围: ${:.0f} - ${:.0f}
+
+**可用决策**:
+1. `[USE_TOOL: open_long(leverage="X", amount_usdt="XXXX", tp_percent="X.X", sl_percent="X.X")]`
+2. `[USE_TOOL: open_short(leverage="X", amount_usdt="XXXX", tp_percent="X.X", sl_percent="X.X")]`
+3. `[USE_TOOL: hold(reason="观望理由")]`
+
+""".format(min_position_usdt, max_position_usdt)
+            
+            else:
+                # Has position - provide detailed action recommendations
+                remaining_capacity = max_position_usdt - used_margin
+                can_add_position = remaining_capacity > min_position_usdt and true_available_margin > min_position_usdt
+                
+                position_info += f"""**情况B: 有持仓状态（{current_direction.upper()}）**
+
+当前你需要考虑以下几种决策：
+
+"""
+                
+                # Recommendation 1: Hold if direction aligns and profitable
+                if unrealized_pnl > 0:
+                    position_info += f"""**策略1️⃣: 继续持有现有{current_direction}仓**
+- 当前盈利: +${unrealized_pnl:.2f} ({pnl_percent:+.2f}%)
+- 适用场景: 专家意见与现有方向一致，且盈利情况良好
+- 决策: `[USE_TOOL: hold(reason="继续持有盈利的{current_direction}仓位，理由...")]`
+
+"""
+                
+                # Recommendation 2: Add position if capacity allows
+                if can_add_position:
+                    position_info += f"""**策略2️⃣: 追加{current_direction}仓位**
+- 剩余容量: ${remaining_capacity:.2f}
+- 真实可用保证金: ${true_available_margin:.2f}
+- **适用场景**: 专家高度一致看{current_direction}，信心度提升
+- ⚠️ 注意: 不要因为"已有持仓"就自动观望，如果信号强烈且资金充足，应该追加！
+- 决策示例: `[USE_TOOL: open_{current_direction}(leverage="X", amount_usdt="{min(remaining_capacity, true_available_margin):.0f}", tp_percent="X.X", sl_percent="X.X")]`
+
+"""
+                else:
+                    position_info += f"""**策略2️⃣: 无法追加仓位**
+- 原因: {"已达仓位上限" if remaining_capacity <= min_position_usdt else "可用保证金不足"}
+- 剩余容量: ${remaining_capacity:.2f}
+- 真实可用保证金: ${true_available_margin:.2f}
+
+"""
+                
+                # Recommendation 3: Close position if direction changed or risk high
+                position_info += f"""**策略3️⃣: 平仓当前{current_direction}持仓**
+- 适用场景1: 市场方向改变，专家意见转向相反方向
+- 适用场景2: 浮亏过大（当前{pnl_percent:+.2f}%），风险控制需要止损
+- 适用场景3: 技术指标转差，需要保护利润
+- **如何操作**: 说明需要平仓，调用 `[USE_TOOL: hold(reason="建议平仓当前{current_direction}仓，原因...")]`
+  （实际平仓会在后续处理）
+
+"""
+                
+                # Recommendation 4: Reverse position
+                opposite_direction = "short" if current_direction == "long" else "long"
+                position_info += f"""**策略4️⃣: 反向操作（平{current_direction} + 开{opposite_direction}）**
+- 适用场景: 市场趋势明确逆转，专家强烈建议{opposite_direction}
+- 当前浮动: {pnl_percent:+.2f}%
+- **操作**: 先通过hold说明需要平仓并反向
+- 决策示例: `[USE_TOOL: hold(reason="市场反转，建议平掉{current_direction}仓后开{opposite_direction}仓")]`
+
+"""
+                
+                position_info += """**⚠️ 决策关键点**:
+1. **不要自动观望**: 即使有持仓，如果信号强烈且资金充足，应该追加
+2. **评估方向一致性**: 现有持仓方向 vs 专家建议方向
+3. **评估资金容量**: 是否还有追加空间
+4. **评估风险收益**: 当前盈亏状况 vs 市场前景
+
+"""
+            
+            return position_info
+            
+        except Exception as e:
+            logger.error(f"Error getting position context: {e}")
+            return f"### 持仓信息获取失败\n\n错误: {str(e)}\n\n请基于专家意见谨慎决策。\n"
