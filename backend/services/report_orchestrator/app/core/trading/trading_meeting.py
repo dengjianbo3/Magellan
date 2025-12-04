@@ -1465,7 +1465,7 @@ class TradingMeeting(Meeting):
         async def open_long_tool(leverage: int = 5, amount_percent: float = 0.4, 
                                 confidence: int = 70, reasoning: str = "") -> str:
             """
-            开多仓（做多BTC）
+            开多仓（做多BTC）- 智能处理已有仓位的情况
             
             Args:
                 leverage: 杠杆倍数 1-20
@@ -1480,40 +1480,93 @@ class TradingMeeting(Meeting):
             leverage = min(max(int(leverage), 1), 20)
             amount_percent = min(max(float(amount_percent), 0.0), 1.0)
             
-            # 执行交易
             trade_success = False
             entry_price = current_price
+            action_taken = "open_long"
+            
             if toolkit and toolkit.paper_trader:
                 try:
-                    # 🔧 FIX: paper_trader.open_long需要amount_usdt，而不是amount_percent
-                    # 先获取账户余额，计算实际金额
+                    # 🆕 智能仓位处理：先检查当前持仓
+                    position = await toolkit.paper_trader.get_position()
+                    has_position = position and position.get("has_position", False)
+                    current_direction = position.get("position", {}).get("direction") if has_position else None
+                    
                     account = await toolkit.paper_trader.get_account()
                     available_balance = account.get("available_balance", 0) or account.get("balance", 10000)
-                    amount_usdt = available_balance * amount_percent
                     
-                    logger.info(f"[TradeExecutor] 开多仓参数: 余额=${available_balance:.2f}, "
-                               f"仓位比例={amount_percent*100:.0f}%, 金额=${amount_usdt:.2f}")
+                    logger.info(f"[TradeExecutor] 开多仓检查: 当前持仓={current_direction}, 可用余额=${available_balance:.2f}")
                     
-                    result = await toolkit.paper_trader.open_long(
-                        symbol="BTC-USDT-SWAP",
-                        leverage=leverage,
-                        amount_usdt=amount_usdt,
-                        tp_price=take_profit,
-                        sl_price=stop_loss
-                    )
-                    
-                    if result.get("success"):
+                    # 场景1: 已有多仓 → 维持仓位（同方向，不重复开）
+                    if current_direction == "long":
                         trade_success = True
-                        entry_price = result.get("executed_price", current_price)
-                        logger.info(f"[TradeExecutor] ✅ 开多仓成功: {leverage}x, ${amount_usdt:.2f}, 入场价${entry_price:.2f}")
+                        action_taken = "maintain_long"
+                        existing_entry = position.get("position", {}).get("entry_price", current_price)
+                        entry_price = existing_entry
+                        reasoning = f"已有多仓（入场价${existing_entry:.2f}），维持持仓。" + (reasoning or "")
+                        logger.info(f"[TradeExecutor] ✅ 已有多仓，维持持仓不变")
+                    
+                    # 场景2: 已有空仓 → 先平仓再开多（反向操作）
+                    elif current_direction == "short":
+                        logger.info(f"[TradeExecutor] 检测到反向仓位(空仓)，执行反向操作：平空→开多")
+                        # 先平空仓
+                        close_result = await toolkit.paper_trader.close_position(
+                            symbol="BTC-USDT-SWAP",
+                            reason="反向操作：空转多"
+                        )
+                        if close_result.get("success"):
+                            pnl = close_result.get("pnl", 0)
+                            logger.info(f"[TradeExecutor] ✅ 平空仓成功, PnL=${pnl:.2f}")
+                            
+                            # 重新获取账户余额
+                            account = await toolkit.paper_trader.get_account()
+                            available_balance = account.get("available_balance", 0)
+                            amount_usdt = available_balance * amount_percent
+                            
+                            # 开多仓
+                            result = await toolkit.paper_trader.open_long(
+                                symbol="BTC-USDT-SWAP",
+                                leverage=leverage,
+                                amount_usdt=amount_usdt,
+                                tp_price=take_profit,
+                                sl_price=stop_loss
+                            )
+                            if result.get("success"):
+                                trade_success = True
+                                action_taken = "reverse_to_long"
+                                entry_price = result.get("executed_price", current_price)
+                                reasoning = f"反向操作成功：平空(PnL=${pnl:.2f})→开多。" + (reasoning or "")
+                                logger.info(f"[TradeExecutor] ✅ 反向开多成功: ${amount_usdt:.2f}")
+                            else:
+                                reasoning = f"反向开多失败: {result.get('error')}. " + (reasoning or "")
+                        else:
+                            reasoning = f"平空仓失败: {close_result.get('error')}. " + (reasoning or "")
+                    
+                    # 场景3: 无仓位 → 正常开多
                     else:
-                        error_msg = result.get("error", "未知错误")
-                        logger.error(f"[TradeExecutor] 开多仓失败: {error_msg}")
-                        reasoning = f"开仓执行失败: {error_msg}. " + reasoning
+                        amount_usdt = available_balance * amount_percent
+                        logger.info(f"[TradeExecutor] 开多仓参数: 余额=${available_balance:.2f}, "
+                                   f"仓位比例={amount_percent*100:.0f}%, 金额=${amount_usdt:.2f}")
+                        
+                        result = await toolkit.paper_trader.open_long(
+                            symbol="BTC-USDT-SWAP",
+                            leverage=leverage,
+                            amount_usdt=amount_usdt,
+                            tp_price=take_profit,
+                            sl_price=stop_loss
+                        )
+                        
+                        if result.get("success"):
+                            trade_success = True
+                            entry_price = result.get("executed_price", current_price)
+                            logger.info(f"[TradeExecutor] ✅ 开多仓成功: {leverage}x, ${amount_usdt:.2f}, 入场价${entry_price:.2f}")
+                        else:
+                            error_msg = result.get("error", "未知错误")
+                            logger.error(f"[TradeExecutor] 开多仓失败: {error_msg}")
+                            reasoning = f"开仓执行失败: {error_msg}. " + (reasoning or "")
                         
                 except Exception as e:
                     logger.error(f"[TradeExecutor] 开多仓异常: {e}")
-                    reasoning = f"开仓执行异常: {e}. " + reasoning
+                    reasoning = f"开仓执行异常: {e}. " + (reasoning or "")
             
             # 保存TradingSignal
             execution_result["signal"] = TradingSignal(
@@ -1525,17 +1578,18 @@ class TradingMeeting(Meeting):
                 take_profit_price=take_profit,
                 stop_loss_price=stop_loss,
                 confidence=confidence,
-                reasoning=reasoning or "TradeExecutor决定做多",
+                reasoning=reasoning or f"TradeExecutor决定做多({action_taken})",
                 agents_consensus={},
                 timestamp=datetime.now()
             )
             
-            return f"✅ 开多仓{'成功' if trade_success else '失败'}: {leverage}x杠杆, {amount_percent*100:.0f}%仓位, 入场价${entry_price:,.2f}"
+            status = "成功" if trade_success else "失败"
+            return f"✅ 做多{status}({action_taken}): {leverage}x杠杆, {amount_percent*100:.0f}%仓位, 入场价${entry_price:,.2f}"
         
         async def open_short_tool(leverage: int = 5, amount_percent: float = 0.4,
                                  confidence: int = 70, reasoning: str = "") -> str:
             """
-            开空仓（做空BTC）
+            开空仓（做空BTC）- 智能处理已有仓位的情况
             
             Args:
                 leverage: 杠杆倍数 1-20
@@ -1550,39 +1604,93 @@ class TradingMeeting(Meeting):
             leverage = min(max(int(leverage), 1), 20)
             amount_percent = min(max(float(amount_percent), 0.0), 1.0)
             
-            # 执行交易
             trade_success = False
             entry_price = current_price
+            action_taken = "open_short"
+            
             if toolkit and toolkit.paper_trader:
                 try:
-                    # 🔧 FIX: paper_trader.open_short需要amount_usdt，而不是amount_percent
+                    # 🆕 智能仓位处理：先检查当前持仓
+                    position = await toolkit.paper_trader.get_position()
+                    has_position = position and position.get("has_position", False)
+                    current_direction = position.get("position", {}).get("direction") if has_position else None
+                    
                     account = await toolkit.paper_trader.get_account()
                     available_balance = account.get("available_balance", 0) or account.get("balance", 10000)
-                    amount_usdt = available_balance * amount_percent
                     
-                    logger.info(f"[TradeExecutor] 开空仓参数: 余额=${available_balance:.2f}, "
-                               f"仓位比例={amount_percent*100:.0f}%, 金额=${amount_usdt:.2f}")
+                    logger.info(f"[TradeExecutor] 开空仓检查: 当前持仓={current_direction}, 可用余额=${available_balance:.2f}")
                     
-                    result = await toolkit.paper_trader.open_short(
-                        symbol="BTC-USDT-SWAP",
-                        leverage=leverage,
-                        amount_usdt=amount_usdt,
-                        tp_price=take_profit,
-                        sl_price=stop_loss
-                    )
-                    
-                    if result.get("success"):
+                    # 场景1: 已有空仓 → 维持仓位（同方向，不重复开）
+                    if current_direction == "short":
                         trade_success = True
-                        entry_price = result.get("executed_price", current_price)
-                        logger.info(f"[TradeExecutor] ✅ 开空仓成功: {leverage}x, ${amount_usdt:.2f}, 入场价${entry_price:.2f}")
+                        action_taken = "maintain_short"
+                        existing_entry = position.get("position", {}).get("entry_price", current_price)
+                        entry_price = existing_entry
+                        reasoning = f"已有空仓（入场价${existing_entry:.2f}），维持持仓。" + (reasoning or "")
+                        logger.info(f"[TradeExecutor] ✅ 已有空仓，维持持仓不变")
+                    
+                    # 场景2: 已有多仓 → 先平仓再开空（反向操作）
+                    elif current_direction == "long":
+                        logger.info(f"[TradeExecutor] 检测到反向仓位(多仓)，执行反向操作：平多→开空")
+                        # 先平多仓
+                        close_result = await toolkit.paper_trader.close_position(
+                            symbol="BTC-USDT-SWAP",
+                            reason="反向操作：多转空"
+                        )
+                        if close_result.get("success"):
+                            pnl = close_result.get("pnl", 0)
+                            logger.info(f"[TradeExecutor] ✅ 平多仓成功, PnL=${pnl:.2f}")
+                            
+                            # 重新获取账户余额
+                            account = await toolkit.paper_trader.get_account()
+                            available_balance = account.get("available_balance", 0)
+                            amount_usdt = available_balance * amount_percent
+                            
+                            # 开空仓
+                            result = await toolkit.paper_trader.open_short(
+                                symbol="BTC-USDT-SWAP",
+                                leverage=leverage,
+                                amount_usdt=amount_usdt,
+                                tp_price=take_profit,
+                                sl_price=stop_loss
+                            )
+                            if result.get("success"):
+                                trade_success = True
+                                action_taken = "reverse_to_short"
+                                entry_price = result.get("executed_price", current_price)
+                                reasoning = f"反向操作成功：平多(PnL=${pnl:.2f})→开空。" + (reasoning or "")
+                                logger.info(f"[TradeExecutor] ✅ 反向开空成功: ${amount_usdt:.2f}")
+                            else:
+                                reasoning = f"反向开空失败: {result.get('error')}. " + (reasoning or "")
+                        else:
+                            reasoning = f"平多仓失败: {close_result.get('error')}. " + (reasoning or "")
+                    
+                    # 场景3: 无仓位 → 正常开空
                     else:
-                        error_msg = result.get("error", "未知错误")
-                        logger.error(f"[TradeExecutor] 开空仓失败: {error_msg}")
-                        reasoning = f"开仓执行失败: {error_msg}. " + reasoning
+                        amount_usdt = available_balance * amount_percent
+                        logger.info(f"[TradeExecutor] 开空仓参数: 余额=${available_balance:.2f}, "
+                                   f"仓位比例={amount_percent*100:.0f}%, 金额=${amount_usdt:.2f}")
+                        
+                        result = await toolkit.paper_trader.open_short(
+                            symbol="BTC-USDT-SWAP",
+                            leverage=leverage,
+                            amount_usdt=amount_usdt,
+                            tp_price=take_profit,
+                            sl_price=stop_loss
+                        )
+                        
+                        if result.get("success"):
+                            trade_success = True
+                            entry_price = result.get("executed_price", current_price)
+                            logger.info(f"[TradeExecutor] ✅ 开空仓成功: {leverage}x, ${amount_usdt:.2f}, 入场价${entry_price:.2f}")
+                        else:
+                            error_msg = result.get("error", "未知错误")
+                            logger.error(f"[TradeExecutor] 开空仓失败: {error_msg}")
+                            reasoning = f"开仓执行失败: {error_msg}. " + (reasoning or "")
                         
                 except Exception as e:
                     logger.error(f"[TradeExecutor] 开空仓异常: {e}")
-                    reasoning = f"开仓执行异常: {e}. " + reasoning
+                    reasoning = f"开仓执行异常: {e}. " + (reasoning or "")
             
             execution_result["signal"] = TradingSignal(
                 direction="short",
@@ -1593,12 +1701,13 @@ class TradingMeeting(Meeting):
                 take_profit_price=take_profit,
                 stop_loss_price=stop_loss,
                 confidence=confidence,
-                reasoning=reasoning or "TradeExecutor决定做空",
+                reasoning=reasoning or f"TradeExecutor决定做空({action_taken})",
                 agents_consensus={},
                 timestamp=datetime.now()
             )
             
-            return f"✅ 开空仓{'成功' if trade_success else '失败'}: {leverage}x杠杆, {amount_percent*100:.0f}%仓位, 入场价${current_price:,.2f}"
+            status = "成功" if trade_success else "失败"
+            return f"✅ 做空{status}({action_taken}): {leverage}x杠杆, {amount_percent*100:.0f}%仓位, 入场价${entry_price:,.2f}"
         
         async def close_position_tool(reasoning: str = "") -> str:
             """
