@@ -1339,6 +1339,7 @@ class TradingMeeting(Meeting):
             )
             
             # Step 5: 添加决策消息
+            # 🔧 FIX: _add_message不支持metadata参数，移除
             self._add_message(
                 agent_id="trade_executor",
                 agent_name="交易执行专员",
@@ -1355,7 +1356,7 @@ class TradingMeeting(Meeting):
 **决策理由**:
 {final_signal.reasoning}
 """,
-                metadata={"signal": final_signal.dict()}
+                message_type="decision"
             )
             
             # Step 6: 记录执行结果（工具函数已经执行过交易，无需再次执行！）
