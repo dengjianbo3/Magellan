@@ -21,8 +21,8 @@ import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from ...models.trading_signal import TradingSignal
-from .position_context import PositionContext
+from app.models.trading_models import TradingSignal
+from app.core.trading.position_context import PositionContext
 
 logger = logging.getLogger(__name__)
 
