@@ -1444,9 +1444,26 @@ class TradingMeeting(Meeting):
                 if toolkit and hasattr(toolkit, '_get_market_price'):
                     result = await toolkit._get_market_price()
                     if isinstance(result, str):
-                        price_match = re.search(r'\$?([\d,]+\.?\d*)', result)
+                        # 🔧 FIX: 优先尝试解析JSON获取price字段
+                        try:
+                            import json as json_module
+                            data = json_module.loads(result)
+                            if isinstance(data, dict) and 'price' in data:
+                                return float(data['price'])
+                        except (json_module.JSONDecodeError, ValueError, KeyError):
+                            pass
+                        
+                        # 🔧 FIX: 改进正则表达式 - 匹配数字开头的价格格式
+                        # 先尝试匹配 $XX,XXX.XX 格式
+                        price_match = re.search(r'\$(\d[\d,]*\.?\d*)', result)
                         if price_match:
                             return float(price_match.group(1).replace(',', ''))
+                        # 再尝试匹配纯数字（如 93000.0）
+                        price_match = re.search(r'(\d[\d,]*\.?\d*)', result)
+                        if price_match:
+                            price_str = price_match.group(1).replace(',', '')
+                            if price_str and price_str != '.':
+                                return float(price_str)
                     elif isinstance(result, (int, float)):
                         return float(result)
                 
@@ -1470,12 +1487,20 @@ class TradingMeeting(Meeting):
             强平条件: 亏损达到保证金的80%
             安全止损: 在强平价格的基础上增加5%安全缓冲
             """
+            # 🔧 FIX: 防止除零错误
+            if entry_price <= 0 or margin <= 0 or leverage <= 0:
+                # 返回默认止损（3%）
+                if direction == "long":
+                    return entry_price * 0.97 if entry_price > 0 else 0
+                else:
+                    return entry_price * 1.03 if entry_price > 0 else float('inf')
+            
             size = (margin * leverage) / entry_price
             liquidation_loss = margin * 0.8  # 80%保证金亏损触发强平
             
             if direction == "long":
                 # 做多: 强平价 = 入场价 - (强平亏损 / 持仓量)
-                liquidation_price = entry_price - (liquidation_loss / size)
+                liquidation_price = entry_price - (liquidation_loss / size) if size > 0 else 0
                 # 安全止损 = 强平价 × 1.05 (比强平价高5%)
                 safe_sl = liquidation_price * 1.05
                 # 但不能超过默认止损（3%）
@@ -1483,7 +1508,7 @@ class TradingMeeting(Meeting):
                 return max(safe_sl, default_sl)
             else:
                 # 做空: 强平价 = 入场价 + (强平亏损 / 持仓量)
-                liquidation_price = entry_price + (liquidation_loss / size)
+                liquidation_price = entry_price + (liquidation_loss / size) if size > 0 else float('inf')
                 # 安全止损 = 强平价 × 0.95 (比强平价低5%)
                 safe_sl = liquidation_price * 0.95
                 # 但不能低于默认止损（3%）
@@ -1498,7 +1523,15 @@ class TradingMeeting(Meeting):
             Returns:
                 (is_safe, message, safe_sl_price)
             """
+            # 🔧 FIX: 防止除零错误
+            if entry_price <= 0 or margin <= 0 or leverage <= 0:
+                # 无法验证，直接返回原止损价格
+                return True, "", sl_price
+            
             size = (margin * leverage) / entry_price
+            if size <= 0:
+                return True, "", sl_price
+            
             liquidation_loss = margin * 0.8
             
             if direction == "long":

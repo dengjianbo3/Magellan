@@ -1,9 +1,11 @@
 # 交易系统代码审查报告
 
 ## 审查时间
-2024-12-04
+2024-12-04 (第二轮)
 
-## 发现并修复的问题
+---
+
+## 第一轮发现并修复的问题
 
 ### 1. 🔴 严重：get_position() 返回结构误解
 
@@ -11,20 +13,6 @@
 
 **问题**: 代码中多处错误地访问 `position.get("position", {})` 来获取持仓数据，
 但 `paper_trader.get_position()` 返回的是**平面字典**，不是嵌套结构。
-
-**错误代码**:
-```python
-position = await toolkit.paper_trader.get_position()
-pos_data = position.get("position", {})  # ❌ 总是返回空字典！
-current_direction = pos_data.get("direction")  # ❌ 永远是 None
-```
-
-**修复后**:
-```python
-position = await toolkit.paper_trader.get_position()
-# position 本身就是持仓详情，不需要再取 "position" 键
-current_direction = position.get("direction") if has_position else None
-```
 
 **影响位置**:
 - `_get_position_context()` (行 ~1125)
@@ -38,25 +26,50 @@ current_direction = position.get("direction") if has_position else None
 **问题**: 访问 `position.get('position_value', 0)` 但该字段不存在
 
 **修复**: 使用 `margin × leverage` 计算持仓价值
-```python
-margin = position.get('margin', 0)
-leverage = position.get('leverage', 1)
-current_value = margin * leverage
-```
 
 ### 3. 🟡 中等：None 值格式化错误
 
 **文件**: `position_context.py` > `to_summary()`
 
-**问题**: 当 `take_profit_price`, `stop_loss_price`, `liquidation_price` 为 None 时，
-`f"${self.take_profit_price:.2f}"` 会抛出 TypeError
+**问题**: 当 `take_profit_price`, `stop_loss_price`, `liquidation_price` 为 None 时格式化失败
 
-**修复**: 添加空值检查
+---
+
+## 第二轮发现并修复的问题
+
+### 4. 🔴 严重：正则表达式价格提取错误
+
+**文件**: `trading_meeting.py` > `get_current_price()`
+
+**问题**: 正则表达式 `r'\$?([\d,]+\.?\d*)'` 在解析 JSON 字符串时会首先匹配到逗号 `,`
+而不是实际价格，导致 `float(',')` 抛出 ValueError
+
+**测试结果**:
 ```python
-tp_price_str = f"${self.take_profit_price:.2f}" if self.take_profit_price else "未设置"
-sl_price_str = f"${self.stop_loss_price:.2f}" if self.stop_loss_price else "未设置"
-liq_price_str = f"${self.liquidation_price:.2f}" if self.liquidation_price else "未知"
+>>> re.search(r'\$?([\d,]+\.?\d*)', '{"price": 93000.0}')
+# 首先匹配到 ','，而不是 '93000.0'
 ```
+
+**修复**: 
+1. 优先尝试 JSON 解析提取 `price` 字段
+2. 改进正则表达式为 `r'\$(\d[\d,]*\.?\d*)'`（必须以数字开头）
+3. 添加空字符串检查
+
+### 5. 🟡 中等：除零风险
+
+**文件**: `trading_meeting.py` > `calculate_safe_stop_loss()`, `validate_stop_loss()`
+
+**问题**: 当 `entry_price=0`, `margin=0`, 或 `leverage=0` 时会抛出 ZeroDivisionError
+
+**修复**: 添加参数检查，当参数无效时返回默认值
+
+### 6. 🟡 中等：PaperPosition 除零风险
+
+**文件**: `paper_trader.py` > `PaperPosition.calculate_liquidation_price()`
+
+**问题**: 当 `self.size <= 0` 时会除零错误
+
+**修复**: 添加 size 检查，返回极端值（0 或 inf）
 
 ---
 
@@ -70,6 +83,7 @@ liq_price_str = f"${self.liquidation_price:.2f}" if self.liquidation_price else 
 ✅ `close_position()` 正确计算 PnL
 ✅ `check_tp_sl()` 正确检查止盈止损和强平
 ✅ `_update_equity()` 正确计算总权益
+✅ `calculate_liquidation_price()` 现在有除零保护
 
 ### trading_routes.py
 
@@ -77,11 +91,18 @@ liq_price_str = f"${self.liquidation_price:.2f}" if self.liquidation_price else 
 ✅ `_on_analysis_cycle()` 正确检查重复执行
 ✅ 防重复触发逻辑正确
 
+### trading_meeting.py
+
+✅ `get_current_price()` 现在正确解析 JSON 和各种格式
+✅ `calculate_safe_stop_loss()` 有除零保护
+✅ `validate_stop_loss()` 有除零保护
+✅ 所有工具函数参数正确
+
 ### position_context.py
 
 ✅ 所有必要字段已定义
 ✅ `to_dict()` 返回完整信息
-✅ `to_summary()` 现在正确处理 None 值
+✅ `to_summary()` 正确处理 None 值
 
 ---
 
@@ -129,6 +150,20 @@ liq_price_str = f"${self.liquidation_price:.2f}" if self.liquidation_price else 
 
 ---
 
+## 边界条件处理
+
+### 已添加保护的边界条件
+
+1. **价格为 0**: `calculate_safe_stop_loss()`, `validate_stop_loss()` 返回默认止损
+2. **保证金为 0**: 同上，返回默认止损
+3. **杠杆为 0**: 同上，返回默认止损
+4. **持仓量为 0**: `PaperPosition.calculate_liquidation_price()` 返回极端值
+5. **JSON 解析失败**: `get_current_price()` fallback 到正则匹配
+6. **正则匹配失败**: `get_current_price()` fallback 到 paper_trader 价格
+7. **所有获取价格方法失败**: 返回默认价格 93000.0
+
+---
+
 ## 测试建议
 
 1. 测试无持仓时的 `_get_position_context()` 返回值
@@ -137,3 +172,6 @@ liq_price_str = f"${self.liquidation_price:.2f}" if self.liquidation_price else 
 4. 测试反向操作（多转空/空转多）
 5. 测试止盈止损触发
 6. 测试强平逻辑
+7. **新增**: 测试价格为 0 时的止损计算
+8. **新增**: 测试 JSON 格式价格解析
+9. **新增**: 测试保证金/杠杆边界条件

@@ -78,6 +78,11 @@ class PaperPosition:
 
     def calculate_liquidation_price(self) -> float:
         """计算强平价格 (简化版)"""
+        # 🔧 FIX: 防止除零错误
+        if self.size <= 0:
+            # 无法计算强平价，返回极端值
+            return 0 if self.direction == "long" else float('inf')
+        
         # 当亏损达到保证金的80%时强平
         liquidation_loss = self.margin * 0.8
         if self.direction == "long":
