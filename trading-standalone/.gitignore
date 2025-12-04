@@ -2,12 +2,40 @@
 .env
 
 # Logs
+logs/
 logs/*.log
 logs/**/*.log
 
-# Python cache
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
 # macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# Temporary test files
+test_trading_*.py
+temp_*.py
+
+# Docker
+.dockerignore
+
+# Scripts (local utilities)
+scripts/
