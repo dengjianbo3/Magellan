@@ -1471,28 +1471,46 @@ class TradingMeeting(Meeting):
                 reasoning: 决策理由
             """
             current_price = await get_current_price()
-            take_profit = current_price * 1.08
-            stop_loss = current_price * 0.97
+            take_profit = current_price * 1.08  # 默认8%止盈
+            stop_loss = current_price * 0.97    # 默认3%止损
             
             leverage = min(max(int(leverage), 1), 20)
             amount_percent = min(max(float(amount_percent), 0.0), 1.0)
             
             # 执行交易
             trade_success = False
+            entry_price = current_price
             if toolkit and toolkit.paper_trader:
                 try:
-                    await toolkit.paper_trader.open_position(
-                        direction="long",
+                    # 🔧 FIX: paper_trader.open_long需要amount_usdt，而不是amount_percent
+                    # 先获取账户余额，计算实际金额
+                    account = await toolkit.paper_trader.get_account()
+                    available_balance = account.get("available_balance", 0) or account.get("balance", 10000)
+                    amount_usdt = available_balance * amount_percent
+                    
+                    logger.info(f"[TradeExecutor] 开多仓参数: 余额=${available_balance:.2f}, "
+                               f"仓位比例={amount_percent*100:.0f}%, 金额=${amount_usdt:.2f}")
+                    
+                    result = await toolkit.paper_trader.open_long(
+                        symbol="BTC-USDT-SWAP",
                         leverage=leverage,
-                        amount_percent=amount_percent,
-                        take_profit_price=take_profit,
-                        stop_loss_price=stop_loss
+                        amount_usdt=amount_usdt,
+                        tp_price=take_profit,
+                        sl_price=stop_loss
                     )
-                    trade_success = True
-                    logger.info(f"[TradeExecutor] ✅ 开多仓成功: {leverage}x, {amount_percent*100:.0f}%")
+                    
+                    if result.get("success"):
+                        trade_success = True
+                        entry_price = result.get("executed_price", current_price)
+                        logger.info(f"[TradeExecutor] ✅ 开多仓成功: {leverage}x, ${amount_usdt:.2f}, 入场价${entry_price:.2f}")
+                    else:
+                        error_msg = result.get("error", "未知错误")
+                        logger.error(f"[TradeExecutor] 开多仓失败: {error_msg}")
+                        reasoning = f"开仓执行失败: {error_msg}. " + reasoning
+                        
                 except Exception as e:
-                    logger.error(f"[TradeExecutor] 开多仓失败: {e}")
-                    reasoning = f"开仓执行失败: {e}. " + reasoning
+                    logger.error(f"[TradeExecutor] 开多仓异常: {e}")
+                    reasoning = f"开仓执行异常: {e}. " + reasoning
             
             # 保存TradingSignal
             execution_result["signal"] = TradingSignal(
@@ -1500,7 +1518,7 @@ class TradingMeeting(Meeting):
                 symbol="BTC-USDT-SWAP",
                 leverage=leverage,
                 amount_percent=amount_percent,
-                entry_price=current_price,
+                entry_price=entry_price,
                 take_profit_price=take_profit,
                 stop_loss_price=stop_loss,
                 confidence=confidence,
@@ -1509,7 +1527,7 @@ class TradingMeeting(Meeting):
                 timestamp=datetime.now()
             )
             
-            return f"✅ 开多仓{'成功' if trade_success else '失败'}: {leverage}x杠杆, {amount_percent*100:.0f}%仓位, 入场价${current_price:,.2f}"
+            return f"✅ 开多仓{'成功' if trade_success else '失败'}: {leverage}x杠杆, {amount_percent*100:.0f}%仓位, 入场价${entry_price:,.2f}"
         
         async def open_short_tool(leverage: int = 5, amount_percent: float = 0.4,
                                  confidence: int = 70, reasoning: str = "") -> str:
@@ -1523,34 +1541,52 @@ class TradingMeeting(Meeting):
                 reasoning: 决策理由
             """
             current_price = await get_current_price()
-            take_profit = current_price * 0.92
-            stop_loss = current_price * 1.03
+            take_profit = current_price * 0.92  # 默认8%止盈（做空）
+            stop_loss = current_price * 1.03    # 默认3%止损（做空）
             
             leverage = min(max(int(leverage), 1), 20)
             amount_percent = min(max(float(amount_percent), 0.0), 1.0)
             
+            # 执行交易
             trade_success = False
+            entry_price = current_price
             if toolkit and toolkit.paper_trader:
                 try:
-                    await toolkit.paper_trader.open_position(
-                        direction="short",
+                    # 🔧 FIX: paper_trader.open_short需要amount_usdt，而不是amount_percent
+                    account = await toolkit.paper_trader.get_account()
+                    available_balance = account.get("available_balance", 0) or account.get("balance", 10000)
+                    amount_usdt = available_balance * amount_percent
+                    
+                    logger.info(f"[TradeExecutor] 开空仓参数: 余额=${available_balance:.2f}, "
+                               f"仓位比例={amount_percent*100:.0f}%, 金额=${amount_usdt:.2f}")
+                    
+                    result = await toolkit.paper_trader.open_short(
+                        symbol="BTC-USDT-SWAP",
                         leverage=leverage,
-                        amount_percent=amount_percent,
-                        take_profit_price=take_profit,
-                        stop_loss_price=stop_loss
+                        amount_usdt=amount_usdt,
+                        tp_price=take_profit,
+                        sl_price=stop_loss
                     )
-                    trade_success = True
-                    logger.info(f"[TradeExecutor] ✅ 开空仓成功: {leverage}x, {amount_percent*100:.0f}%")
+                    
+                    if result.get("success"):
+                        trade_success = True
+                        entry_price = result.get("executed_price", current_price)
+                        logger.info(f"[TradeExecutor] ✅ 开空仓成功: {leverage}x, ${amount_usdt:.2f}, 入场价${entry_price:.2f}")
+                    else:
+                        error_msg = result.get("error", "未知错误")
+                        logger.error(f"[TradeExecutor] 开空仓失败: {error_msg}")
+                        reasoning = f"开仓执行失败: {error_msg}. " + reasoning
+                        
                 except Exception as e:
-                    logger.error(f"[TradeExecutor] 开空仓失败: {e}")
-                    reasoning = f"开仓执行失败: {e}. " + reasoning
+                    logger.error(f"[TradeExecutor] 开空仓异常: {e}")
+                    reasoning = f"开仓执行异常: {e}. " + reasoning
             
             execution_result["signal"] = TradingSignal(
                 direction="short",
                 symbol="BTC-USDT-SWAP",
                 leverage=leverage,
                 amount_percent=amount_percent,
-                entry_price=current_price,
+                entry_price=entry_price,
                 take_profit_price=take_profit,
                 stop_loss_price=stop_loss,
                 confidence=confidence,
@@ -1570,15 +1606,28 @@ class TradingMeeting(Meeting):
             """
             current_price = await get_current_price()
             close_success = False
+            pnl = 0.0
             
             if toolkit and toolkit.paper_trader:
                 try:
-                    await toolkit.paper_trader.close_position()
-                    close_success = True
-                    logger.info("[TradeExecutor] ✅ 平仓成功")
+                    # 传入reason参数以便记录
+                    result = await toolkit.paper_trader.close_position(
+                        symbol="BTC-USDT-SWAP",
+                        reason=reasoning or "TradeExecutor决定平仓"
+                    )
+                    
+                    if result.get("success"):
+                        close_success = True
+                        pnl = result.get("pnl", 0)
+                        logger.info(f"[TradeExecutor] ✅ 平仓成功, PnL: ${pnl:.2f}")
+                    else:
+                        error_msg = result.get("error", "未知错误")
+                        logger.error(f"[TradeExecutor] 平仓失败: {error_msg}")
+                        reasoning = f"平仓执行失败: {error_msg}. " + reasoning
+                        
                 except Exception as e:
-                    logger.error(f"[TradeExecutor] 平仓失败: {e}")
-                    reasoning = f"平仓执行失败: {e}. " + reasoning
+                    logger.error(f"[TradeExecutor] 平仓异常: {e}")
+                    reasoning = f"平仓执行异常: {e}. " + reasoning
             
             execution_result["signal"] = TradingSignal(
                 direction="hold",
@@ -1589,12 +1638,12 @@ class TradingMeeting(Meeting):
                 take_profit_price=current_price,
                 stop_loss_price=current_price,
                 confidence=100 if close_success else 50,
-                reasoning=f"[平仓操作] {reasoning or 'TradeExecutor决定平仓'}",
+                reasoning=f"[平仓操作] {reasoning or 'TradeExecutor决定平仓'}" + (f" (PnL: ${pnl:.2f})" if close_success else ""),
                 agents_consensus={},
                 timestamp=datetime.now()
             )
             
-            return f"✅ 平仓{'成功' if close_success else '失败'}"
+            return f"✅ 平仓{'成功' if close_success else '失败'}" + (f" (PnL: ${pnl:.2f})" if close_success else "")
         
         async def hold_tool(reason: str = "市场不明朗，选择观望") -> str:
             """
