@@ -11,6 +11,7 @@ import hashlib
 import base64
 import logging
 import json
+import asyncio
 import aiohttp
 from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any
@@ -110,23 +111,45 @@ class OKXClient:
             await self._session.close()
             self._session = None
 
+    def _get_proxy(self) -> Optional[str]:
+        """Get proxy from environment variables"""
+        # 优先使用 HTTPS 代理
+        proxy = os.getenv('https_proxy') or os.getenv('HTTPS_PROXY')
+        if proxy:
+            return proxy
+        proxy = os.getenv('http_proxy') or os.getenv('HTTP_PROXY')
+        return proxy
+    
     async def _request(self, method: str, path: str, body: Optional[Dict] = None) -> Dict:
         """Make authenticated API request"""
         if not self._session:
-            self._session = aiohttp.ClientSession()
+            # 🔧 增加超时时间到 30 秒
+            timeout = aiohttp.ClientTimeout(total=30)
+            self._session = aiohttp.ClientSession(timeout=timeout)
 
         body_str = json.dumps(body) if body else ''
         headers = self._get_headers(method.upper(), path, body_str)
 
         url = self.BASE_URL + path
+        proxy = self._get_proxy()
 
         try:
             if method.upper() == 'GET':
-                async with self._session.get(url, headers=headers) as resp:
-                    return await resp.json()
+                async with self._session.get(url, headers=headers, proxy=proxy) as resp:
+                    result = await resp.json()
+                    logger.debug(f"OKX API GET {path}: code={result.get('code')}")
+                    return result
             else:
-                async with self._session.post(url, headers=headers, data=body_str) as resp:
-                    return await resp.json()
+                async with self._session.post(url, headers=headers, data=body_str, proxy=proxy) as resp:
+                    result = await resp.json()
+                    logger.debug(f"OKX API POST {path}: code={result.get('code')}")
+                    return result
+        except asyncio.TimeoutError:
+            logger.error(f"API request timeout: {path}")
+            return {"code": "-1", "msg": f"Request timeout: {path}", "data": []}
+        except aiohttp.ClientError as e:
+            logger.error(f"API client error: {e}")
+            return {"code": "-1", "msg": str(e), "data": []}
         except Exception as e:
             logger.error(f"API request failed: {e}")
             return {"code": "-1", "msg": str(e), "data": []}
@@ -170,16 +193,19 @@ class OKXClient:
     async def get_market_price(self, symbol: str = "BTC-USDT-SWAP") -> MarketData:
         """Get current market data (public API - no auth needed)"""
         try:
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=30)
+            proxy = self._get_proxy()
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 # Use public API for ticker
                 inst_id = symbol  # e.g., "BTC-USDT-SWAP"
                 url = f"{self.BASE_URL}/api/v5/market/ticker?instId={inst_id}"
 
-                async with session.get(url) as resp:
+                async with session.get(url, proxy=proxy) as resp:
                     data = await resp.json()
 
                     if data.get('code') == '0' and data.get('data'):
                         ticker = data['data'][0]
+                        logger.info(f"OKX ticker: {symbol} price=${ticker.get('last')}")
                         return MarketData(
                             symbol=symbol,
                             price=float(ticker.get('last', 0)),
@@ -191,7 +217,13 @@ class OKXClient:
                             funding_rate=None,
                             open_interest=None
                         )
+                    else:
+                        logger.error(f"OKX API error: {data.get('msg')}")
+                        raise RuntimeError(f"OKX API error: {data.get('msg')}")
 
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout fetching market price for {symbol}")
+            raise RuntimeError(f"Timeout fetching market price for {symbol}")
         except Exception as e:
             logger.error(f"Error fetching market price: {e}")
             raise RuntimeError(f"Failed to fetch market price from OKX: {e}")
@@ -463,7 +495,9 @@ class OKXClient:
     ) -> List[Dict]:
         """Get candlestick data for technical analysis"""
         try:
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=30)
+            proxy = self._get_proxy()
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 # Map timeframe to OKX format
                 bar_map = {
                     '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m',
@@ -473,7 +507,7 @@ class OKXClient:
 
                 url = f"{self.BASE_URL}/api/v5/market/candles?instId={symbol}&bar={bar}&limit={limit}"
 
-                async with session.get(url) as resp:
+                async with session.get(url, proxy=proxy) as resp:
                     data = await resp.json()
 
                     if data.get('code') == '0':
@@ -488,7 +522,13 @@ class OKXClient:
                             }
                             for candle in data.get('data', [])
                         ]
+                    else:
+                        logger.error(f"OKX klines API error: {data.get('msg')}")
+                        return []
 
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout fetching klines for {symbol}")
+            raise RuntimeError(f"Timeout fetching klines for {symbol}")
         except Exception as e:
             logger.error(f"Error fetching klines: {e}")
             raise RuntimeError(f"Failed to fetch klines from OKX: {e}")

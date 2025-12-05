@@ -520,6 +520,41 @@ class OKXTrader:
             return "0.0%"
         wins = sum(1 for t in self._trade_history if t.get('pnl', 0) > 0)
         return f"{(wins / len(self._trade_history) * 100):.1f}%"
+    
+    async def get_trade_history(self, limit: int = 50) -> List[Dict]:
+        """
+        Get trade history (PaperTrader compatible)
+        
+        Returns list of closed trades with PnL
+        """
+        return self._trade_history[-limit:]
+    
+    async def reset(self):
+        """
+        Reset trader state (PaperTrader compatible)
+        
+        Note: For OKX demo, this only resets local state.
+        OKX demo account balance persists on their server.
+        """
+        logger.info("Resetting OKX trader local state...")
+        
+        # Close any open position first
+        if self._position:
+            try:
+                await self.close_position(reason="reset")
+            except Exception as e:
+                logger.error(f"Error closing position during reset: {e}")
+        
+        # Reset local state
+        self._position = None
+        self._trade_history = []
+        self._equity_history = []
+        self._last_price = None
+        
+        # Re-sync with OKX
+        await self._sync_position()
+        
+        logger.info("OKX trader reset complete")
 
 
 # Singleton

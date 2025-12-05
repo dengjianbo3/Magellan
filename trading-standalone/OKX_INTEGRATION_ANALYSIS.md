@@ -1,5 +1,24 @@
 # OKX 模拟盘集成分析
 
+## 🔧 启用 OKX 模拟盘
+
+在 `.env` 中设置以下环境变量：
+
+```bash
+# OKX API 凭证 (从 https://www.okx.com/account/my-api 获取)
+OKX_API_KEY=your_api_key
+OKX_SECRET_KEY=your_secret_key
+OKX_PASSPHRASE=your_passphrase
+OKX_DEMO_MODE=true
+
+# ⚠️ 关键配置！启用 OKX 交易
+USE_OKX_TRADING=true
+```
+
+**注意**: `USE_OKX_TRADING=true` 是启用 OKX 模拟盘的关键配置！
+
+---
+
 ## 核心优势
 
 使用 OKX 模拟盘后，以下逻辑**不需要本地实现**：
