@@ -73,6 +73,22 @@
             margin-bottom: 8px;
             font-size: 0.8em;
         }
+        .scrollable-list {
+            max-height: 300px;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+        .scrollable-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        .scrollable-list::-webkit-scrollbar-track {
+            background: #1a1a2e;
+            border-radius: 3px;
+        }
+        .scrollable-list::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 3px;
+        }
         .trade-header {
             display: flex;
             justify-content: space-between;
@@ -312,9 +328,10 @@
                 if (history && history.signals && history.signals.length > 0) {
                     html += `
                         <div class="card">
-                            <div class="card-title">Recent Signals</div>
+                            <div class="card-title">Recent Signals (${history.signals.length})</div>
+                            <div class="scrollable-list">
                     `;
-                    for (const item of history.signals.slice(-5).reverse()) {
+                    for (const item of history.signals.slice(-10).reverse()) {
                         const signal = item.signal;
                         const status = item.status || 'N/A';
                         const timestamp = item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN', {
@@ -374,7 +391,7 @@
                             </div>
                         `;
                     }
-                    html += `</div>`;
+                    html += `</div></div>`;
                 } else {
                     html += `
                         <div class="card">
@@ -390,9 +407,10 @@
                 if (history && history.trades && history.trades.length > 0) {
                     html += `
                         <div class="card">
-                            <div class="card-title">Closed Trades</div>
+                            <div class="card-title">Closed Trades (${history.trades.length})</div>
+                            <div class="scrollable-list">
                     `;
-                    for (const trade of history.trades.slice(-5).reverse()) {
+                    for (const trade of history.trades.slice(-10).reverse()) {
                         const dir = trade.direction || trade.side || 'N/A';
                         const pnl = trade.pnl || trade.realized_pnl || 0;
                         html += `
@@ -408,7 +426,7 @@
                             </div>
                         `;
                     }
-                    html += `</div>`;
+                    html += `</div></div>`;
                 }
 
                 content.innerHTML = html;
