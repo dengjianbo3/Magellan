@@ -132,7 +132,7 @@ class OKXClient:
             return {"code": "-1", "msg": str(e), "data": []}
 
     async def get_account_balance(self) -> AccountBalance:
-        """Get account balance"""
+        """Get account balance - 获取完整的账户信息"""
         try:
             if self.api_key and self.secret_key:
                 data = await self._request('GET', '/api/v5/account/balance')
@@ -142,11 +142,14 @@ class OKXClient:
                     details = account.get('details', [])
 
                     usdt_balance = 0.0
+                    frozen_balance = 0.0  # 🆕 冻结余额 = 已用保证金
                     unrealized_pnl = 0.0
 
                     for d in details:
                         if d.get('ccy') == 'USDT':
                             usdt_balance = float(d.get('availBal', 0) or 0)
+                            frozen_balance = float(d.get('frozenBal', 0) or 0)  # 🆕 获取冻结余额
+                            unrealized_pnl = float(d.get('upl', 0) or 0)  # 🆕 获取未实现盈亏
                             break
 
                     total_equity = float(account.get('totalEq', 0) or 0)
@@ -154,7 +157,7 @@ class OKXClient:
                     return AccountBalance(
                         total_equity=total_equity,
                         available_balance=usdt_balance,
-                        used_margin=0.0,
+                        used_margin=frozen_balance,  # 🆕 使用冻结余额作为已用保证金
                         unrealized_pnl=unrealized_pnl,
                         realized_pnl_today=0.0,
                         currency="USDT"

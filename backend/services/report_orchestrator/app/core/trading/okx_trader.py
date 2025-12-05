@@ -146,66 +146,167 @@ class OKXTrader:
             return self._last_price
 
     async def get_account(self) -> Dict:
-        """Get account info (PaperTrader compatible)"""
+        """
+        Get account info (PaperTrader compatible)
+        
+        🆕 OKX 直接返回所有计算好的值，无需本地计算！
+        """
         try:
             balance = await self._okx_client.get_account_balance()
-            unrealized_pnl = 0.0
-
-            if self._position:
-                price = await self.get_current_price()
-                if self._position.direction == "long":
-                    unrealized_pnl = (price - self._position.entry_price) * self._position.size
-                else:
-                    unrealized_pnl = (self._position.entry_price - price) * self._position.size
+            
+            # 🆕 OKX 直接返回 unrealized_pnl，无需本地计算
+            unrealized_pnl = balance.unrealized_pnl or 0.0
+            
+            # 🆕 true_available_margin = 交易所返回的 availBal
+            # 这已经考虑了所有因素（浮盈亏、冻结等）
+            true_available_margin = balance.available_balance
 
             return {
                 'total_equity': balance.total_equity,
                 'available_balance': balance.available_balance,
+                'true_available_margin': true_available_margin,  # 🆕 与 PaperTrader 一致
+                'used_margin': balance.used_margin or 0,
                 'unrealized_pnl': unrealized_pnl,
+                'realized_pnl': 0.0,  # 可从 API 获取
                 'initial_balance': self.initial_balance,
-                'margin_used': balance.used_margin or 0
+                'currency': 'USDT'
             }
         except Exception as e:
             logger.error(f"Error getting account: {e}")
             return {
                 'total_equity': self.initial_balance,
                 'available_balance': self.initial_balance,
+                'true_available_margin': self.initial_balance,  # 🆕
+                'used_margin': 0,
                 'unrealized_pnl': 0,
+                'realized_pnl': 0.0,
                 'initial_balance': self.initial_balance,
-                'margin_used': 0
+                'currency': 'USDT'
             }
 
     async def get_position(self, symbol: str = "BTC-USDT-SWAP") -> Optional[Dict]:
-        """Get current position (PaperTrader compatible)"""
-        await self._sync_position()
+        """
+        Get current position (PaperTrader compatible)
+        
+        🆕 直接从 OKX 获取所有数据，包括强平价格等
+        """
+        # 🆕 直接从 OKX API 获取最新持仓数据
+        try:
+            pos = await self._okx_client.get_current_position(symbol)
+            
+            if not pos:
+                self._position = None
+                return {'has_position': False}
+            
+            # 更新本地缓存
+            self._position = OKXPosition(
+                id=f"okx-{datetime.now().timestamp()}",
+                symbol=pos.symbol,
+                direction=pos.direction,
+                size=pos.size,
+                entry_price=pos.entry_price,
+                leverage=pos.leverage,
+                margin=pos.margin or 0,
+                current_price=pos.current_price,
+                unrealized_pnl=pos.unrealized_pnl
+            )
+            
+            # 🆕 计算仓位百分比
+            position_percent = (pos.margin / self.initial_balance * 100) if self.initial_balance > 0 else 0
+            
+            return {
+                'has_position': True,
+                'symbol': pos.symbol,
+                'direction': pos.direction,
+                'size': pos.size,
+                'entry_price': pos.entry_price,
+                'current_price': pos.current_price,
+                'leverage': pos.leverage,
+                'margin': pos.margin or 0,
+                'position_percent': position_percent,  # 🆕 与 PaperTrader 一致
+                'unrealized_pnl': pos.unrealized_pnl,
+                'unrealized_pnl_percent': pos.unrealized_pnl_percent,
+                'take_profit_price': pos.take_profit_price,
+                'stop_loss_price': pos.stop_loss_price,
+                'liquidation_price': pos.liquidation_price,  # 🆕 交易所直接返回强平价
+                'opened_at': pos.opened_at.isoformat() if pos.opened_at else None
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting position from OKX: {e}")
+            
+            # Fallback 到本地缓存
+            if not self._position:
+                return {'has_position': False}
 
-        if not self._position:
-            return {'has_position': False}
+            price = await self.get_current_price(symbol)
 
-        price = await self.get_current_price(symbol)
+            # 本地计算 PnL (备用)
+            if self._position.direction == "long":
+                pnl = (price - self._position.entry_price) * self._position.size
+            else:
+                pnl = (self._position.entry_price - price) * self._position.size
 
-        # Calculate PnL
-        if self._position.direction == "long":
-            pnl = (price - self._position.entry_price) * self._position.size
-        else:
-            pnl = (self._position.entry_price - price) * self._position.size
+            pnl_percent = (pnl / self._position.margin * 100) if self._position.margin > 0 else 0
+            position_percent = (self._position.margin / self.initial_balance * 100) if self.initial_balance > 0 else 0
 
-        pnl_percent = (pnl / self._position.margin * 100) if self._position.margin > 0 else 0
+            return {
+                'has_position': True,
+                'symbol': self._position.symbol,
+                'direction': self._position.direction,
+                'size': self._position.size,
+                'entry_price': self._position.entry_price,
+                'current_price': price,
+                'leverage': self._position.leverage,
+                'margin': self._position.margin,
+                'position_percent': position_percent,
+                'unrealized_pnl': pnl,
+                'unrealized_pnl_percent': pnl_percent,
+                'take_profit_price': self._position.take_profit_price,
+                'stop_loss_price': self._position.stop_loss_price,
+                'liquidation_price': None,  # 本地缓存无强平价
+                'opened_at': self._position.opened_at.isoformat()
+            }
 
-        return {
-            'has_position': True,
-            'symbol': self._position.symbol,
-            'direction': self._position.direction,
-            'size': self._position.size,
-            'entry_price': self._position.entry_price,
-            'current_price': price,
-            'leverage': self._position.leverage,
-            'take_profit_price': self._position.take_profit_price,
-            'stop_loss_price': self._position.stop_loss_price,
-            'unrealized_pnl': pnl,
-            'unrealized_pnl_percent': pnl_percent,
-            'margin': self._position.margin
-        }
+    async def open_long(
+        self,
+        symbol: str,
+        leverage: int,
+        amount_usdt: float,
+        tp_price: Optional[float] = None,
+        sl_price: Optional[float] = None
+    ) -> Dict:
+        """
+        开多仓 - 与 PaperTrader.open_long() 签名一致
+        """
+        return await self.open_position(
+            direction="long",
+            leverage=leverage,
+            amount_usdt=amount_usdt,
+            tp_price=tp_price,
+            sl_price=sl_price,
+            symbol=symbol
+        )
+    
+    async def open_short(
+        self,
+        symbol: str,
+        leverage: int,
+        amount_usdt: float,
+        tp_price: Optional[float] = None,
+        sl_price: Optional[float] = None
+    ) -> Dict:
+        """
+        开空仓 - 与 PaperTrader.open_short() 签名一致
+        """
+        return await self.open_position(
+            direction="short",
+            leverage=leverage,
+            amount_usdt=amount_usdt,
+            tp_price=tp_price,
+            sl_price=sl_price,
+            symbol=symbol
+        )
 
     async def open_position(
         self,
@@ -216,7 +317,7 @@ class OKXTrader:
         sl_price: Optional[float] = None,
         symbol: str = "BTC-USDT-SWAP"
     ) -> Dict:
-        """Open a new position on OKX demo"""
+        """Open a new position on OKX demo (内部方法)"""
         # 确保类型正确（防止从LLM解析时传入字符串）
         try:
             leverage = int(leverage) if leverage else 1
@@ -248,26 +349,39 @@ class OKXTrader:
                 )
 
             if result.get('success'):
+                executed_price = result.get('executed_price', 0)
+                executed_amount = result.get('executed_amount', 0)
+                order_id = result.get('order_id', f"okx-{datetime.now().timestamp()}")
+                
                 # Create local position record
                 self._position = OKXPosition(
-                    id=result.get('order_id', f"okx-{datetime.now().timestamp()}"),
+                    id=order_id,
                     symbol=symbol,
                     direction=direction,
-                    size=result.get('executed_amount', 0),
-                    entry_price=result.get('executed_price', 0),
+                    size=executed_amount,
+                    entry_price=executed_price,
                     leverage=leverage,
                     margin=amount_usdt,
                     take_profit_price=tp_price,
                     stop_loss_price=sl_price,
-                    current_price=result.get('executed_price', 0)
+                    current_price=executed_price
                 )
 
                 logger.info(f"OKX position opened: {direction} {self._position.size} BTC @ ${self._position.entry_price}")
 
+                # 🆕 返回格式与 PaperTrader 一致
                 return {
                     'success': True,
-                    'position': self._position.to_dict(),
-                    'order_id': result.get('order_id')
+                    'order_id': order_id,
+                    'direction': direction,
+                    'executed_price': executed_price,
+                    'executed_amount': executed_amount,
+                    'leverage': leverage,
+                    'margin': amount_usdt,
+                    'take_profit': tp_price,
+                    'stop_loss': sl_price,
+                    'remaining_balance': 0.0,  # 需要从 API 获取
+                    'remaining_available_margin': 0.0  # 需要从 API 获取
                 }
             else:
                 return {'success': False, 'error': result.get('error', 'Failed to open position')}
