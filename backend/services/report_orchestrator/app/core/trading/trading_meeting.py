@@ -53,6 +53,137 @@ from app.core.trading.position_context import PositionContext
 logger = logging.getLogger(__name__)
 
 
+def calculate_confidence_from_votes(votes: Dict[str, str], direction: str = None) -> int:
+    """
+    基于专家投票动态计算置信度
+
+    计算规则:
+    - 5票一致: 90%
+    - 4票一致: 80%
+    - 3票一致: 65%
+    - 2票一致: 50%
+    - 1票或更少: 30%
+
+    Args:
+        votes: 专家投票字典 {"agent_name": "long/short/hold"}
+        direction: 目标方向，如果为None则使用多数方向
+
+    Returns:
+        int: 置信度 0-100
+    """
+    if not votes:
+        logger.warning("[Confidence] 没有投票数据，使用最低置信度 30%")
+        return 30
+
+    # 统计各方向票数
+    long_count = sum(1 for v in votes.values() if v == 'long')
+    short_count = sum(1 for v in votes.values() if v == 'short')
+    hold_count = sum(1 for v in votes.values() if v == 'hold')
+    total = len(votes)
+
+    # 确定目标方向和票数
+    if direction:
+        if direction == 'long':
+            target_count = long_count
+        elif direction == 'short':
+            target_count = short_count
+        else:
+            target_count = hold_count
+    else:
+        # 使用多数方向
+        target_count = max(long_count, short_count, hold_count)
+
+    # 基于票数计算置信度
+    if target_count >= 5:
+        confidence = 90
+    elif target_count == 4:
+        confidence = 80
+    elif target_count == 3:
+        confidence = 65
+    elif target_count == 2:
+        confidence = 50
+    else:
+        confidence = 30
+
+    logger.info(f"[Confidence] 投票统计: {long_count}多/{short_count}空/{hold_count}观望, "
+                f"目标方向={direction or '多数'}, 票数={target_count}, 置信度={confidence}%")
+
+    return confidence
+
+
+def calculate_leverage_from_confidence(confidence: int, max_leverage: int = 20) -> int:
+    """
+    基于置信度计算合理杠杆
+
+    规则:
+    - confidence >= 85: 10x (高信心)
+    - confidence >= 75: 8x
+    - confidence >= 65: 6x
+    - confidence >= 55: 5x
+    - confidence >= 45: 3x
+    - confidence < 45: 2x (低信心)
+
+    Args:
+        confidence: 置信度 0-100
+        max_leverage: 最大允许杠杆
+
+    Returns:
+        int: 推荐杠杆倍数
+    """
+    if confidence >= 85:
+        leverage = 10
+    elif confidence >= 75:
+        leverage = 8
+    elif confidence >= 65:
+        leverage = 6
+    elif confidence >= 55:
+        leverage = 5
+    elif confidence >= 45:
+        leverage = 3
+    else:
+        leverage = 2
+
+    # 限制在最大杠杆范围内
+    leverage = min(leverage, max_leverage)
+
+    logger.info(f"[Leverage] 置信度={confidence}% -> 推荐杠杆={leverage}x (上限={max_leverage}x)")
+
+    return leverage
+
+
+def calculate_amount_from_confidence(confidence: int) -> float:
+    """
+    基于置信度计算合理仓位比例
+
+    规则:
+    - confidence >= 85: 60% (高信心)
+    - confidence >= 75: 50%
+    - confidence >= 65: 40%
+    - confidence >= 55: 30%
+    - confidence < 55: 20% (低信心)
+
+    Args:
+        confidence: 置信度 0-100
+
+    Returns:
+        float: 仓位比例 0.0-1.0
+    """
+    if confidence >= 85:
+        amount = 0.6
+    elif confidence >= 75:
+        amount = 0.5
+    elif confidence >= 65:
+        amount = 0.4
+    elif confidence >= 55:
+        amount = 0.3
+    else:
+        amount = 0.2
+
+    logger.info(f"[Amount] 置信度={confidence}% -> 推荐仓位={amount*100:.0f}%")
+
+    return amount
+
+
 @dataclass
 class TradingMeetingConfig:
     """Configuration for trading meeting - reads from environment variables"""
@@ -1547,30 +1678,49 @@ class TradingMeeting(Meeting):
             
             return True, "", sl_price
         
-        async def open_long_tool(leverage: int = 5, amount_percent: float = 0.4, 
-                                confidence: int = 70, reasoning: str = "") -> str:
+        async def open_long_tool(leverage: int = None, amount_percent: float = None,
+                                confidence: int = None, reasoning: str = "") -> str:
             """
             开多仓（做多BTC）- 完整智能仓位处理 + 保证金风险管理
-            
+
             决策矩阵:
             - 无仓位 → 正常开多
             - 已有多仓+可追加 → 追加多仓
             - 已有多仓+满仓 → 维持多仓
             - 已有空仓 → 平空→开多（反向操作）
-            
+
             风险检查:
             - 使用真实可用保证金(考虑浮盈亏)
             - 验证止损价格不低于强平价
             - 保留安全缓冲
-            
+
             Args:
-                leverage: 杠杆倍数 1-20
-                amount_percent: 仓位比例 0.0-1.0
-                confidence: 信心度 0-100
+                leverage: 杠杆倍数 1-20 (None=基于置信度自动计算)
+                amount_percent: 仓位比例 0.0-1.0 (None=基于置信度自动计算)
+                confidence: 信心度 0-100 (None=基于投票自动计算)
                 reasoning: 决策理由
             """
             current_price = await get_current_price()
-            
+
+            # 🔧 FIX: 动态计算参数，不再使用硬编码默认值
+            # 如果 confidence 未提供，基于投票动态计算
+            if confidence is None:
+                confidence = calculate_confidence_from_votes(
+                    self.agents_votes if hasattr(self, 'agents_votes') else {},
+                    direction='long'
+                )
+                logger.info(f"[open_long] confidence未提供，基于投票计算: {confidence}%")
+
+            # 如果 leverage 未提供，基于 confidence 计算
+            if leverage is None:
+                leverage = calculate_leverage_from_confidence(confidence)
+                logger.info(f"[open_long] leverage未提供，基于confidence计算: {leverage}x")
+
+            # 如果 amount_percent 未提供，基于 confidence 计算
+            if amount_percent is None:
+                amount_percent = calculate_amount_from_confidence(confidence)
+                logger.info(f"[open_long] amount_percent未提供，基于confidence计算: {amount_percent*100:.0f}%")
+
             leverage = min(max(int(leverage), 1), 20)
             amount_percent = min(max(float(amount_percent), 0.0), 1.0)
             
@@ -1805,30 +1955,49 @@ class TradingMeeting(Meeting):
             status = "成功" if trade_success else "失败"
             return f"✅ 做多{status}({action_taken}): {leverage}x杠杆, {amount_percent*100:.0f}%仓位, 入场价${entry_price:,.2f}"
         
-        async def open_short_tool(leverage: int = 5, amount_percent: float = 0.4,
-                                 confidence: int = 70, reasoning: str = "") -> str:
+        async def open_short_tool(leverage: int = None, amount_percent: float = None,
+                                 confidence: int = None, reasoning: str = "") -> str:
             """
             开空仓（做空BTC）- 完整智能仓位处理 + 保证金风险管理
-            
+
             决策矩阵:
             - 无仓位 → 正常开空
             - 已有空仓+可追加 → 追加空仓
             - 已有空仓+满仓 → 维持空仓
             - 已有多仓 → 平多→开空（反向操作）
-            
+
             风险检查:
             - 使用真实可用保证金(考虑浮盈亏)
             - 验证止损价格不高于强平价
             - 保留安全缓冲
-            
+
             Args:
-                leverage: 杠杆倍数 1-20
-                amount_percent: 仓位比例 0.0-1.0
-                confidence: 信心度 0-100
+                leverage: 杠杆倍数 1-20 (None=基于置信度自动计算)
+                amount_percent: 仓位比例 0.0-1.0 (None=基于置信度自动计算)
+                confidence: 信心度 0-100 (None=基于投票自动计算)
                 reasoning: 决策理由
             """
             current_price = await get_current_price()
-            
+
+            # 🔧 FIX: 动态计算参数，不再使用硬编码默认值
+            # 如果 confidence 未提供，基于投票动态计算
+            if confidence is None:
+                confidence = calculate_confidence_from_votes(
+                    self.agents_votes if hasattr(self, 'agents_votes') else {},
+                    direction='short'
+                )
+                logger.info(f"[open_short] confidence未提供，基于投票计算: {confidence}%")
+
+            # 如果 leverage 未提供，基于 confidence 计算
+            if leverage is None:
+                leverage = calculate_leverage_from_confidence(confidence)
+                logger.info(f"[open_short] leverage未提供，基于confidence计算: {leverage}x")
+
+            # 如果 amount_percent 未提供，基于 confidence 计算
+            if amount_percent is None:
+                amount_percent = calculate_amount_from_confidence(confidence)
+                logger.info(f"[open_short] amount_percent未提供，基于confidence计算: {amount_percent*100:.0f}%")
+
             leverage = min(max(int(leverage), 1), 20)
             amount_percent = min(max(float(amount_percent), 0.0), 1.0)
             
@@ -2325,41 +2494,43 @@ class TradingMeeting(Meeting):
             async def _infer_from_text(self, text: str) -> TradingSignal:
                 """从自然语言响应推断决策（备用方案）"""
                 text_lower = text.lower()
-                
+
                 # 检测方向关键词
                 if any(kw in text_lower for kw in ['做多', '开多', 'long', '看涨', '买入']):
-                    # 提取参数
+                    # 提取参数 - 如果文本中没有，则设为None让工具函数动态计算
                     leverage_match = re.search(r'(\d+)\s*[倍xX]', text)
-                    leverage = int(leverage_match.group(1)) if leverage_match else 5
-                    
+                    leverage = int(leverage_match.group(1)) if leverage_match else None
+
                     amount_match = re.search(r'(\d+)\s*%', text)
-                    amount = (int(amount_match.group(1)) / 100) if amount_match else 0.4
-                    
+                    amount = (int(amount_match.group(1)) / 100) if amount_match else None
+
                     confidence_match = re.search(r'信心[度]?\s*[:：]?\s*(\d+)', text)
-                    confidence = int(confidence_match.group(1)) if confidence_match else 70
-                    
-                    logger.info(f"[TradeExecutor] 📊 从文本推断做多: {leverage}x, {amount*100:.0f}%")
+                    confidence = int(confidence_match.group(1)) if confidence_match else None
+
+                    logger.info(f"[TradeExecutor] 📊 从文本推断做多: leverage={leverage}, amount={amount}, confidence={confidence}")
+                    logger.info(f"[TradeExecutor] 📊 未提供的参数将基于投票动态计算")
                     await self.tools['open_long'](
-                        leverage=min(leverage, 20),
-                        amount_percent=min(amount, 1.0),
+                        leverage=min(leverage, 20) if leverage else None,
+                        amount_percent=min(amount, 1.0) if amount else None,
                         confidence=confidence,
                         reasoning=text[:200]
                     )
-                    
+
                 elif any(kw in text_lower for kw in ['做空', '开空', 'short', '看跌', '卖出']):
                     leverage_match = re.search(r'(\d+)\s*[倍xX]', text)
-                    leverage = int(leverage_match.group(1)) if leverage_match else 5
-                    
+                    leverage = int(leverage_match.group(1)) if leverage_match else None
+
                     amount_match = re.search(r'(\d+)\s*%', text)
-                    amount = (int(amount_match.group(1)) / 100) if amount_match else 0.4
-                    
+                    amount = (int(amount_match.group(1)) / 100) if amount_match else None
+
                     confidence_match = re.search(r'信心[度]?\s*[:：]?\s*(\d+)', text)
-                    confidence = int(confidence_match.group(1)) if confidence_match else 70
-                    
-                    logger.info(f"[TradeExecutor] 📊 从文本推断做空: {leverage}x, {amount*100:.0f}%")
+                    confidence = int(confidence_match.group(1)) if confidence_match else None
+
+                    logger.info(f"[TradeExecutor] 📊 从文本推断做空: leverage={leverage}, amount={amount}, confidence={confidence}")
+                    logger.info(f"[TradeExecutor] 📊 未提供的参数将基于投票动态计算")
                     await self.tools['open_short'](
-                        leverage=min(leverage, 20),
-                        amount_percent=min(amount, 1.0),
+                        leverage=min(leverage, 20) if leverage else None,
+                        amount_percent=min(amount, 1.0) if amount else None,
                         confidence=confidence,
                         reasoning=text[:200]
                     )
