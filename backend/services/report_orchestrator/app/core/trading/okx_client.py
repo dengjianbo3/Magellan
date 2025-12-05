@@ -96,14 +96,57 @@ class OKXClient:
 
         self._session = aiohttp.ClientSession()
 
-        # Test connection
+        # Test connection and setup
         try:
+            # 1. Check and set position mode to long_short_mode (双向持仓)
+            await self._ensure_long_short_mode()
+
+            # 2. Test connection by getting balance
             balance = await self.get_account_balance()
             logger.info(f"OKX client initialized (demo={self.demo_mode}), USDT balance: ${balance.available_balance:.2f}")
             self._initialized = True
         except Exception as e:
             logger.error(f"Failed to initialize OKX client: {e}")
             self._initialized = True
+
+    async def _ensure_long_short_mode(self):
+        """
+        确保账户使用双向持仓模式 (long_short_mode)
+
+        OKX 有两种持仓模式：
+        - net_mode: 单向持仓，不区分多空
+        - long_short_mode: 双向持仓，区分多空（代码使用 posSide='long'/'short' 需要此模式）
+        """
+        try:
+            # 获取当前账户配置
+            config_data = await self._request('GET', '/api/v5/account/config')
+
+            if config_data.get('code') == '0' and config_data.get('data'):
+                pos_mode = config_data['data'][0].get('posMode')
+                logger.info(f"OKX account position mode: {pos_mode}")
+
+                if pos_mode == 'net_mode':
+                    # 切换到双向持仓模式
+                    logger.warning("OKX account is in net_mode, switching to long_short_mode...")
+
+                    result = await self._request('POST', '/api/v5/account/set-position-mode', {
+                        'posMode': 'long_short_mode'
+                    })
+
+                    if result.get('code') == '0':
+                        logger.info("✅ Successfully switched to long_short_mode (双向持仓)")
+                    else:
+                        # 51020 = 已经是该模式
+                        error_msg = result.get('msg', '')
+                        if '51020' in str(result):
+                            logger.info("Already in long_short_mode")
+                        else:
+                            logger.error(f"Failed to switch position mode: {error_msg}")
+                else:
+                    logger.info("✅ OKX account already in long_short_mode (双向持仓)")
+
+        except Exception as e:
+            logger.error(f"Error checking/setting position mode: {e}")
 
     async def close(self):
         """Close the API session"""
