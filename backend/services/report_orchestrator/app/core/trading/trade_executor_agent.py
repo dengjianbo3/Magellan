@@ -347,9 +347,11 @@ class TradeExecutorAgent:
 ### 决策考虑因素
 
 1. **专家共识**:
-   - 高度共识 (3-4票一致): 可以更果断，使用中高杠杆 (5-10x)
-   - 温和共识 (2-3票): 谨慎操作，低杠杆 (3-5x)
-   - 意见分歧 (投票分散): 观望或极低仓位试探 (1-2x)
+   - 高度共识 (4-5票一致): confidence较高，杠杆和仓位会相应增加
+   - 温和共识 (3票): confidence中等，杠杆和仓位适中
+   - 意见分歧 (投票分散): confidence较低，建议观望或使用最小仓位
+
+   ⚠️ 注意: confidence/leverage/amount_percent 都有严格的计算规则（见下方），不要随意猜测
 
 2. **当前持仓状态**:
    - **无持仓**: 评估是否开新仓
@@ -360,8 +362,8 @@ class TradeExecutorAgent:
 
 3. **风险管理**:
    - 在不确定时优先选择观望
-   - 杠杆应与信心度严格对应
-   - 止损止盈要合理（一般TP=8%, SL=3%）
+   - 杠杆应与信心度严格对应（见下方计算规则）
+   - 止损止盈根据杠杆自动调整：高杠杆=紧止损，低杠杆=宽止损
    - 仓位不能超过可用资金
 
 4. **Leader的建议**:
@@ -848,14 +850,34 @@ class TradeExecutorAgent:
 
         self.logger.info(f"[TradeExecutor] 备用决策: {direction} | confidence={confidence}% | leverage={leverage}x | amount={amount_percent*100:.0f}%")
 
+        # 🔧 根据杠杆动态计算TP/SL（与其他地方保持一致）
+        if leverage >= 15:
+            tp_pct, sl_pct = 0.05, 0.02  # 高杠杆：5%止盈, 2%止损
+        elif leverage >= 10:
+            tp_pct, sl_pct = 0.06, 0.025
+        elif leverage >= 5:
+            tp_pct, sl_pct = 0.08, 0.03
+        else:
+            tp_pct, sl_pct = 0.10, 0.05  # 低杠杆：10%止盈, 5%止损
+
+        if direction == "long":
+            take_profit = current_price * (1 + tp_pct)
+            stop_loss = current_price * (1 - sl_pct)
+        elif direction == "short":
+            take_profit = current_price * (1 - tp_pct)
+            stop_loss = current_price * (1 + sl_pct)
+        else:
+            take_profit = current_price
+            stop_loss = current_price
+
         return TradingSignal(
             direction=direction,
             symbol=symbol,
             leverage=leverage,
             amount_percent=amount_percent,
             entry_price=current_price,
-            take_profit_price=current_price * (1.05 if direction == "long" else 0.95),
-            stop_loss_price=current_price * (0.97 if direction == "long" else 1.03),
+            take_profit_price=take_profit,
+            stop_loss_price=stop_loss,
             confidence=confidence,
             reasoning=f"LLM调用失败，基于投票备用决策: {long_count}票多/{short_count}票空/{hold_count}票观望",
             agents_consensus=agents_votes,
