@@ -111,22 +111,46 @@ class OKXClient:
 
     async def _ensure_long_short_mode(self):
         """
-        确保账户使用双向持仓模式 (long_short_mode)
-
-        OKX 有两种持仓模式：
-        - net_mode: 单向持仓，不区分多空
-        - long_short_mode: 双向持仓，区分多空（代码使用 posSide='long'/'short' 需要此模式）
+        确保账户配置正确：
+        1. 账户模式 = 单币种保证金模式 (1)
+        2. 持仓模式 = 双向持仓模式 (long_short_mode)
         """
         try:
             # 获取当前账户配置
             config_data = await self._request('GET', '/api/v5/account/config')
 
             if config_data.get('code') == '0' and config_data.get('data'):
-                pos_mode = config_data['data'][0].get('posMode')
-                logger.info(f"OKX account position mode: {pos_mode}")
+                config = config_data['data'][0]
+                acct_lv = config.get('acctLv')  # 账户模式: 1=简单, 2=单币种, 3=多币种, 4=组合
+                pos_mode = config.get('posMode')  # 持仓模式: net_mode, long_short_mode
 
+                logger.info(f"OKX account config: acctLv={acct_lv}, posMode={pos_mode}")
+
+                # 检查账户模式
+                # 51010 错误表示账户模式不支持当前操作
+                # 需要切换到单币种保证金模式(2)或更高级模式
+                if acct_lv == '1':
+                    logger.warning("⚠️ OKX account is in Simple mode (acctLv=1)")
+                    logger.warning("   Simple mode does not support contract trading!")
+                    logger.warning("   Please switch to Single-currency margin mode in OKX web/app:")
+                    logger.warning("   Settings -> Account mode -> Single-currency margin mode")
+
+                    # 尝试自动切换账户模式
+                    logger.info("Attempting to switch to Single-currency margin mode...")
+                    result = await self._request('POST', '/api/v5/account/set-account-level', {
+                        'acctLv': '2'  # 2 = 单币种保证金模式
+                    })
+
+                    if result.get('code') == '0':
+                        logger.info("✅ Successfully switched to Single-currency margin mode")
+                    else:
+                        logger.error(f"❌ Failed to switch account mode: {result.get('msg')}")
+                        logger.error("   Please manually switch in OKX web/app settings")
+                else:
+                    logger.info(f"✅ OKX account mode OK (acctLv={acct_lv})")
+
+                # 检查持仓模式
                 if pos_mode == 'net_mode':
-                    # 切换到双向持仓模式
                     logger.warning("OKX account is in net_mode, switching to long_short_mode...")
 
                     result = await self._request('POST', '/api/v5/account/set-position-mode', {
@@ -136,7 +160,6 @@ class OKXClient:
                     if result.get('code') == '0':
                         logger.info("✅ Successfully switched to long_short_mode (双向持仓)")
                     else:
-                        # 51020 = 已经是该模式
                         error_msg = result.get('msg', '')
                         if '51020' in str(result):
                             logger.info("Already in long_short_mode")
@@ -146,7 +169,7 @@ class OKXClient:
                     logger.info("✅ OKX account already in long_short_mode (双向持仓)")
 
         except Exception as e:
-            logger.error(f"Error checking/setting position mode: {e}")
+            logger.error(f"Error checking/setting account config: {e}")
 
     async def close(self):
         """Close the API session"""
