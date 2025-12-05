@@ -313,6 +313,9 @@ class OKXClient:
                             margin = float(pos.get('margin', 0) or 0)
                             liq_price = float(pos.get('liqPx', 0) or 0)
 
+                            # 🆕 获取 TP/SL 价格
+                            tp_price, sl_price = await self._get_tp_sl_prices(symbol, side)
+
                             return Position(
                                 symbol=symbol,
                                 direction=side,
@@ -324,6 +327,8 @@ class OKXClient:
                                 unrealized_pnl_percent=(upl / margin * 100) if margin > 0 else 0,
                                 margin=margin,
                                 liquidation_price=liq_price,
+                                take_profit_price=tp_price,
+                                stop_loss_price=sl_price,
                                 opened_at=datetime.now()
                             )
 
@@ -331,6 +336,36 @@ class OKXClient:
             logger.error(f"Error fetching position: {e}")
 
         return None
+
+    async def _get_tp_sl_prices(self, symbol: str, pos_side: str) -> tuple[Optional[float], Optional[float]]:
+        """获取当前持仓的止盈止损价格"""
+        tp_price = None
+        sl_price = None
+
+        try:
+            # 查询算法单（包括条件单）
+            data = await self._request('GET', f'/api/v5/trade/orders-algo-pending?instId={symbol}&ordType=conditional')
+
+            if data.get('code') == '0':
+                for order in data.get('data', []):
+                    order_pos_side = order.get('posSide', '')
+                    if order_pos_side != pos_side:
+                        continue
+
+                    # 止盈单
+                    tp_trigger = order.get('tpTriggerPx')
+                    if tp_trigger:
+                        tp_price = float(tp_trigger)
+
+                    # 止损单
+                    sl_trigger = order.get('slTriggerPx')
+                    if sl_trigger:
+                        sl_price = float(sl_trigger)
+
+        except Exception as e:
+            logger.warning(f"Error fetching TP/SL prices: {e}")
+
+        return tp_price, sl_price
 
     async def open_long(
         self,
