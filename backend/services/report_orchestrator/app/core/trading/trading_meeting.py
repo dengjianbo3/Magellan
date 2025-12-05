@@ -1705,10 +1705,9 @@ class TradingMeeting(Meeting):
             # 🔧 FIX: 动态计算参数，不再使用硬编码默认值
             # 如果 confidence 未提供，基于投票动态计算
             if confidence is None:
-                confidence = calculate_confidence_from_votes(
-                    self.agents_votes if hasattr(self, 'agents_votes') else {},
-                    direction='long'
-                )
+                # 使用 _get_agents_consensus() 获取投票字典
+                votes_dict = self._get_agents_consensus() if hasattr(self, '_get_agents_consensus') else {}
+                confidence = calculate_confidence_from_votes(votes_dict, direction='long')
                 logger.info(f"[open_long] confidence未提供，基于投票计算: {confidence}%")
 
             # 如果 leverage 未提供，基于 confidence 计算
@@ -1982,10 +1981,9 @@ class TradingMeeting(Meeting):
             # 🔧 FIX: 动态计算参数，不再使用硬编码默认值
             # 如果 confidence 未提供，基于投票动态计算
             if confidence is None:
-                confidence = calculate_confidence_from_votes(
-                    self.agents_votes if hasattr(self, 'agents_votes') else {},
-                    direction='short'
-                )
+                # 使用 _get_agents_consensus() 获取投票字典
+                votes_dict = self._get_agents_consensus() if hasattr(self, '_get_agents_consensus') else {}
+                confidence = calculate_confidence_from_votes(votes_dict, direction='short')
                 logger.info(f"[open_short] confidence未提供，基于投票计算: {confidence}%")
 
             # 如果 leverage 未提供，基于 confidence 计算
