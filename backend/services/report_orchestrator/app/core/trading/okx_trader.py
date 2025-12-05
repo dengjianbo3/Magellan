@@ -134,6 +134,18 @@ class OKXTrader:
         except Exception as e:
             logger.error(f"Error syncing position: {e}")
 
+    def set_price(self, price: float):
+        """
+        Set price (PaperTrader compatible).
+
+        Note: For OKX, this is a no-op since we always get real-time prices from API.
+        This method exists only for interface compatibility with PaperTrader.
+        """
+        # OKX uses real-time prices from API, but we cache it for compatibility
+        if price and price > 0:
+            self._last_price = price
+            self._last_price_update = datetime.now()
+
     async def get_current_price(self, symbol: str = "BTC-USDT-SWAP") -> float:
         """Get current market price from OKX"""
         try:
