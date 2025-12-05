@@ -329,7 +329,7 @@ class OKXTrader:
         sl_price: Optional[float] = None,
         symbol: str = "BTC-USDT-SWAP"
     ) -> Dict:
-        """Open a new position on OKX demo (内部方法)"""
+        """Open a new position on OKX demo (内部方法)，支持追加仓位"""
         # 确保类型正确（防止从LLM解析时传入字符串）
         try:
             leverage = int(leverage) if leverage else 1
@@ -339,12 +339,21 @@ class OKXTrader:
         except (TypeError, ValueError) as e:
             return {'success': False, 'error': f'参数类型错误: {e}'}
 
+        # 🆕 检查是否有现有仓位
+        is_adding = False
         if self._position:
-            logger.warning(f"[OKXTrader] Position already exists: {self._position.direction}")
-            return {'success': False, 'error': 'Position already exists'}
+            if self._position.direction != direction:
+                # 方向不同，不能追加（需要先平仓）
+                logger.warning(f"[OKXTrader] Cannot add to position: existing={self._position.direction}, requested={direction}")
+                return {'success': False, 'error': f'Cannot add {direction} to existing {self._position.direction} position'}
+            else:
+                # 同方向，可以追加
+                is_adding = True
+                logger.info(f"[OKXTrader] 🔄 Adding to existing {direction} position: +${amount_usdt:.2f}")
 
         try:
-            logger.info(f"[OKXTrader] Opening {direction} position: ${amount_usdt:.2f}, {leverage}x, symbol={symbol}")
+            action = "Adding to" if is_adding else "Opening"
+            logger.info(f"[OKXTrader] {action} {direction} position: ${amount_usdt:.2f}, {leverage}x, symbol={symbol}")
 
             if direction == "long":
                 result = await self._okx_client.open_long(
@@ -369,22 +378,39 @@ class OKXTrader:
                 executed_price = result.get('executed_price', 0)
                 executed_amount = result.get('executed_amount', 0)
                 order_id = result.get('order_id', f"okx-{datetime.now().timestamp()}")
-                
-                # Create local position record
-                self._position = OKXPosition(
-                    id=order_id,
-                    symbol=symbol,
-                    direction=direction,
-                    size=executed_amount,
-                    entry_price=executed_price,
-                    leverage=leverage,
-                    margin=amount_usdt,
-                    take_profit_price=tp_price,
-                    stop_loss_price=sl_price,
-                    current_price=executed_price
-                )
 
-                logger.info(f"OKX position opened: {direction} {self._position.size} BTC @ ${self._position.entry_price}")
+                if is_adding and self._position:
+                    # 🆕 追加仓位：更新本地缓存
+                    old_size = self._position.size
+                    old_margin = self._position.margin
+                    old_entry = self._position.entry_price
+
+                    # 计算新的平均入场价
+                    new_size = old_size + executed_amount
+                    new_margin = old_margin + amount_usdt
+                    new_entry = (old_entry * old_size + executed_price * executed_amount) / new_size if new_size > 0 else executed_price
+
+                    self._position.size = new_size
+                    self._position.margin = new_margin
+                    self._position.entry_price = new_entry
+                    self._position.current_price = executed_price
+
+                    logger.info(f"OKX position added: {direction} +{executed_amount} BTC @ ${executed_price:.2f}, total={new_size} BTC, avg_entry=${new_entry:.2f}")
+                else:
+                    # 新开仓位
+                    self._position = OKXPosition(
+                        id=order_id,
+                        symbol=symbol,
+                        direction=direction,
+                        size=executed_amount,
+                        entry_price=executed_price,
+                        leverage=leverage,
+                        margin=amount_usdt,
+                        take_profit_price=tp_price,
+                        stop_loss_price=sl_price,
+                        current_price=executed_price
+                    )
+                    logger.info(f"OKX position opened: {direction} {self._position.size} BTC @ ${self._position.entry_price}")
 
                 # 🆕 返回格式与 PaperTrader 一致
                 return {
