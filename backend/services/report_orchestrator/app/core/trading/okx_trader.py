@@ -340,9 +340,12 @@ class OKXTrader:
             return {'success': False, 'error': f'参数类型错误: {e}'}
 
         if self._position:
+            logger.warning(f"[OKXTrader] Position already exists: {self._position.direction}")
             return {'success': False, 'error': 'Position already exists'}
 
         try:
+            logger.info(f"[OKXTrader] Opening {direction} position: ${amount_usdt:.2f}, {leverage}x, symbol={symbol}")
+
             if direction == "long":
                 result = await self._okx_client.open_long(
                     symbol=symbol,
@@ -359,6 +362,8 @@ class OKXTrader:
                     tp_price=tp_price,
                     sl_price=sl_price
                 )
+
+            logger.info(f"[OKXTrader] OKX API result: {result}")
 
             if result.get('success'):
                 executed_price = result.get('executed_price', 0)

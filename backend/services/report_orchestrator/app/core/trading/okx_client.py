@@ -395,7 +395,9 @@ class OKXClient:
                     'sz': str(sz)
                 }
 
+                logger.info(f"[OKXClient] Placing order: {order_data}")
                 result = await self._request('POST', '/api/v5/trade/order', order_data)
+                logger.info(f"[OKXClient] Order response: code={result.get('code')}, msg={result.get('msg')}, data={result.get('data')}")
 
                 if result.get('code') == '0':
                     order_id = result.get('data', [{}])[0].get('ordId', '')
