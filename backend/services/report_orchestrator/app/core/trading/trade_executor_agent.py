@@ -377,12 +377,12 @@ class TradeExecutorAgent:
 ```json
 {{
   "decision": "open_long",
-  "reasoning": "3位专家看多，技术面趋势强劲，RSI虽超买但有上升空间。考虑到无持仓状态，建议开多仓试探，使用中等杠杆以平衡收益和风险。",
-  "confidence": 75,
-  "leverage": 5,
-  "amount_percent": 0.5,
-  "take_profit_price": 98000,
-  "stop_loss_price": 92000
+  "reasoning": "根据具体投票情况和专家分析给出理由...",
+  "confidence": <根据投票共识程度: 5票一致=90, 4票=80, 3票=65, 2票=50, 1票=30>,
+  "leverage": <根据confidence: >=85用10x, >=75用8x, >=65用6x, >=55用5x, 其他用3x>,
+  "amount_percent": <根据confidence: >=85用0.6, >=75用0.5, >=65用0.4, >=55用0.3, 其他用0.2>,
+  "take_profit_price": <当前价格基础上合理设置>,
+  "stop_loss_price": <当前价格基础上合理设置>
 }}
 ```
 
@@ -393,11 +393,27 @@ class TradeExecutorAgent:
 - `add_to_position`: 加仓（当前持仓方向）
 - `hold`: 观望
 
-**重要提示**:
-1. reasoning必须引用具体的专家意见和数据
-2. confidence范围0-100，必须真实反映你的信心
-3. leverage范围1-{max_leverage}，必须与confidence对应
-4. amount_percent范围0.0-1.0（即0%-100%）
+**重要 - confidence/leverage/amount必须基于投票计算**:
+1. **confidence**: 基于投票共识程度计算，不要使用固定值
+   - 5票一致 → 90%
+   - 4票一致 → 80%
+   - 3票一致 → 65%
+   - 2票一致 → 50%
+   - 其他 → 30%
+2. **leverage**: 必须与confidence对应，不要随意设置
+   - confidence >= 85 → 10x
+   - confidence >= 75 → 8x
+   - confidence >= 65 → 6x
+   - confidence >= 55 → 5x
+   - confidence >= 45 → 3x
+   - 其他 → 2x
+3. **amount_percent**: 必须与confidence对应
+   - confidence >= 85 → 0.6
+   - confidence >= 75 → 0.5
+   - confidence >= 65 → 0.4
+   - confidence >= 55 → 0.3
+   - 其他 → 0.2
+4. reasoning必须引用具体的专家意见和数据
 5. 价格必须合理（TP>当前价>SL for long; SL>当前价>TP for short）
 
 现在，请做出你的最终决策。输出JSON即可，不需要其他解释。

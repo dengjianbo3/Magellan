@@ -822,8 +822,8 @@ class TradingMeeting(Meeting):
 
 **决策要点**:
 - 综合专家意见，判断方向
-- 根据信心度选择杠杆（高信心=高杠杆）
-- 根据信心度选择仓位（建议30-50%）
+- 根据信心度选择杠杆（高信心=高杠杆，系统会自动计算）
+- 根据信心度选择仓位（系统会根据投票共识自动计算）
 - 设置合理的止盈止损
 """
         
@@ -2631,12 +2631,14 @@ class TradingMeeting(Meeting):
 ### 你的任务
 根据以上信息，**必须调用一个工具**来执行交易决策。
 
-**决策规则**:
-- 3-4票一致看多 → 调用 open_long(leverage=5-10, amount_percent=0.4-0.6)
-- 3-4票一致看空 → 调用 open_short(leverage=5-10, amount_percent=0.4-0.6)
-- 2票左右 → 谨慎操作 (leverage=3-5, amount_percent=0.2-0.4)
+**决策规则（基于投票共识程度）**:
+- 高度共识(4-5票一致) → 调用 open_long/open_short，参数会基于投票自动计算
+- 温和共识(3票) → 调用 open_long/open_short，参数会基于投票自动计算
+- 弱共识(2票) → 调用 open_long/open_short，参数会基于投票自动计算
 - 意见分歧或不明朗 → 调用 hold(reason="...")
 - 有反向持仓需要处理 → 先调用 close_position()
+
+**重要**: confidence/leverage/amount_percent 会根据投票共识程度自动计算，无需手动指定固定值！
 
 **输出格式（必须遵守）**:
 [USE_TOOL: 工具名(参数=值, ...)]
