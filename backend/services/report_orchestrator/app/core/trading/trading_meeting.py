@@ -2448,13 +2448,24 @@ class TradingMeeting(Meeting):
                                     # 解析参数
                                     params = {}
                                     # 尝试各种参数格式
-                                    for pattern in [r'(\w+)="([^"]*)"', r"(\w+)='([^']*)'", r'(\w+)=(\d+\.?\d*)']: 
+                                    for pattern in [r'(\w+)="([^"]*)"', r"(\w+)='([^']*)'", r'(\w+)=(\d+\.?\d*)']:
                                         for key, value in re.findall(pattern, params_str):
                                             # 类型转换
                                             if value.replace('.', '').replace('-', '').isdigit():
                                                 value = float(value) if '.' in value else int(value)
                                             params[key] = value
-                                    
+
+                                    # 参数名映射 (LLM可能用不同的名称)
+                                    param_aliases = {
+                                        'reason': 'reasoning',  # LLM常用reason而不是reasoning
+                                        'amount': 'amount_percent',
+                                        'lev': 'leverage',
+                                        'conf': 'confidence',
+                                    }
+                                    for old_name, new_name in param_aliases.items():
+                                        if old_name in params and new_name not in params:
+                                            params[new_name] = params.pop(old_name)
+
                                     logger.info(f"[TradeExecutor] 🔧 执行Legacy工具: {tool_name}({params})")
                                     await self.tools[tool_name](**params)
                                 except Exception as e:
