@@ -128,6 +128,8 @@ services:
       - OKX_SECRET_KEY=${OKX_SECRET_KEY}
       - OKX_PASSPHRASE=${OKX_PASSPHRASE}
       - OKX_DEMO_MODE=${OKX_DEMO_MODE:-true}
+      # 启用 OKX 交易 (true=OKX模拟盘, false=本地PaperTrader)
+      - USE_OKX_TRADING=${USE_OKX_TRADING:-false}
       # 交易对
       - TRADING_SYMBOL=${TRADING_SYMBOL:-BTC-USDT-SWAP}
       # 调度间隔
