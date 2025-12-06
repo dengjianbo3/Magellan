@@ -480,7 +480,7 @@ class OKXTrader:
 
                 # Trigger callback
                 if self.on_position_closed:
-                    await self.on_position_closed(closed_position, pnl)
+                    await self.on_position_closed(closed_position, pnl, reason)
 
                 return {
                     'success': True,

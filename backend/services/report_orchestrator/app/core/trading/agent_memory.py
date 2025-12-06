@@ -3,6 +3,11 @@ Agent Memory System
 
 Stores and retrieves agent trading experiences for learning and improvement.
 Each agent maintains its own memory of past trades, predictions, and lessons learned.
+
+增强功能 (2024-12):
+- AgentPrediction: 记录每个 Agent 在开仓时的预测
+- TradeReflection: 平仓后生成的反思总结
+- 增强的记忆注入到下次会议的 Prompt 中
 """
 
 import json
@@ -13,6 +18,100 @@ from dataclasses import dataclass, asdict, field
 import redis.asyncio as redis
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================
+# 新增: Agent 预测记录
+# ============================================
+
+@dataclass
+class AgentPrediction:
+    """单个 Agent 在一次交易中的预测记录"""
+    agent_id: str           # Agent ID
+    agent_name: str         # Agent 名称
+    trade_id: str           # 交易 ID（关联到具体交易）
+    timestamp: datetime     # 预测时间
+
+    # 预测内容
+    direction: str          # 预测方向: "long" / "short" / "hold"
+    confidence: int         # 置信度: 0-100
+    reasoning: str          # 预测理由
+    key_factors: List[str] = field(default_factory=list)  # 关键因素
+
+    # 市场状态快照
+    market_price: float = 0.0
+    market_snapshot: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict:
+        data = asdict(self)
+        data['timestamp'] = self.timestamp.isoformat()
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> 'AgentPrediction':
+        if 'timestamp' in data and isinstance(data['timestamp'], str):
+            data['timestamp'] = datetime.fromisoformat(data['timestamp'])
+        return cls(**data)
+
+
+# ============================================
+# 新增: 交易反思记录
+# ============================================
+
+@dataclass
+class TradeReflection:
+    """平仓后的交易反思"""
+    trade_id: str
+    agent_id: str
+    agent_name: str
+    timestamp: datetime
+
+    # 交易结果
+    entry_price: float
+    exit_price: float
+    direction: str
+    pnl: float
+    pnl_percent: float
+    holding_duration_hours: float = 0.0
+    close_reason: str = ""       # "tp" / "sl" / "manual" / "reverse"
+
+    # 预测 vs 结果
+    original_prediction: str = ""  # 原始预测方向
+    prediction_was_correct: bool = False
+
+    # LLM 生成的反思内容
+    reflection_summary: str = ""           # 整体反思总结
+    what_went_well: List[str] = field(default_factory=list)
+    what_went_wrong: List[str] = field(default_factory=list)
+    lessons_learned: List[str] = field(default_factory=list)
+    next_time_action: str = ""  # 下次遇到类似情况的行动建议
+
+    def to_dict(self) -> Dict:
+        data = asdict(self)
+        data['timestamp'] = self.timestamp.isoformat()
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> 'TradeReflection':
+        if 'timestamp' in data and isinstance(data['timestamp'], str):
+            data['timestamp'] = datetime.fromisoformat(data['timestamp'])
+        return cls(**data)
+
+    def get_summary_for_prompt(self) -> str:
+        """生成简短的总结，用于注入 Prompt"""
+        emoji = "✅" if self.pnl > 0 else "❌"
+        direction_cn = "做多" if self.direction == "long" else "做空" if self.direction == "short" else "观望"
+
+        summary = f"{emoji} 上次交易：{direction_cn} BTC，"
+        if self.pnl > 0:
+            summary += f"盈利 ${self.pnl:.2f} (+{self.pnl_percent:.1f}%)"
+        else:
+            summary += f"亏损 ${abs(self.pnl):.2f} ({self.pnl_percent:.1f}%)"
+
+        if self.lessons_learned:
+            summary += f"\n教训：{self.lessons_learned[0]}"
+
+        return summary
 
 
 @dataclass
@@ -52,6 +151,12 @@ class AgentMemory:
     weaknesses: List[str] = field(default_factory=list)
     last_updated: datetime = field(default_factory=datetime.now)
 
+    # 🆕 新增: 反思相关字段
+    recent_reflections: List[Dict] = field(default_factory=list)  # 最近的反思记录
+    last_trade_summary: str = ""  # 上次交易的简短总结
+    current_focus: str = ""       # 当前需要注意的重点
+    common_mistakes: List[str] = field(default_factory=list)  # 常犯的错误
+
     def add_trade_result(self, experience: TradeExperience):
         """Add a new trade result and update statistics"""
         self.total_trades += 1
@@ -89,29 +194,109 @@ class AgentMemory:
 
         self.last_updated = datetime.now()
 
-    def get_context_for_prompt(self) -> str:
-        """Generate context string for agent's system prompt"""
-        context_parts = [
-            f"## 你的交易历史统计",
-            f"- 总交易次数: {self.total_trades}",
-            f"- 胜率: {self.win_rate*100:.1f}%",
-            f"- 总盈亏: ${self.total_pnl:,.2f}",
-            f"- 平均盈亏: ${self.average_pnl:,.2f}",
-            f"- 当前连胜: {self.consecutive_wins}次" if self.consecutive_wins > 0 else f"- 当前连败: {self.consecutive_losses}次",
-        ]
+    def add_reflection(self, reflection: 'TradeReflection'):
+        """添加一次交易反思，同时更新交易统计"""
+        # 保存反思记录
+        self.recent_reflections.append(reflection.to_dict())
+        # 只保留最近 10 次
+        if len(self.recent_reflections) > 10:
+            self.recent_reflections = self.recent_reflections[-10:]
 
+        # 更新上次交易总结
+        self.last_trade_summary = reflection.get_summary_for_prompt()
+
+        # 🆕 更新交易统计
+        self.total_trades += 1
+        self.total_pnl += reflection.pnl
+
+        if reflection.pnl > 0:
+            self.winning_trades += 1
+            self.consecutive_wins += 1
+            self.consecutive_losses = 0
+            self.max_consecutive_wins = max(self.max_consecutive_wins, self.consecutive_wins)
+        else:
+            self.losing_trades += 1
+            self.consecutive_losses += 1
+            self.consecutive_wins = 0
+            self.max_consecutive_losses = max(self.max_consecutive_losses, self.consecutive_losses)
+
+        # 更新胜率和平均盈亏
+        self.win_rate = self.winning_trades / self.total_trades if self.total_trades > 0 else 0
+        self.average_pnl = self.total_pnl / self.total_trades if self.total_trades > 0 else 0
+
+        # 更新最佳/最差交易
+        self.best_trade_pnl = max(self.best_trade_pnl, reflection.pnl)
+        self.worst_trade_pnl = min(self.worst_trade_pnl, reflection.pnl)
+
+        # 累积教训
+        for lesson in reflection.lessons_learned:
+            if lesson and lesson not in self.lessons_learned:
+                self.lessons_learned.append(lesson)
+        # 只保留最近 20 条
+        if len(self.lessons_learned) > 20:
+            self.lessons_learned = self.lessons_learned[-20:]
+
+        # 更新当前关注点
+        if reflection.next_time_action:
+            self.current_focus = reflection.next_time_action
+
+        # 如果亏损，记录错误
+        if reflection.pnl < 0 and reflection.what_went_wrong:
+            for mistake in reflection.what_went_wrong:
+                if mistake and mistake not in self.common_mistakes:
+                    self.common_mistakes.append(mistake)
+            # 只保留最近 10 个错误
+            if len(self.common_mistakes) > 10:
+                self.common_mistakes = self.common_mistakes[-10:]
+
+        self.last_updated = datetime.now()
+
+    def get_context_for_prompt(self) -> str:
+        """Generate enhanced context string for agent's system prompt"""
+        context_parts = []
+
+        # 🆕 1. 上次交易回顾（最重要，放在最前面）
+        if self.last_trade_summary:
+            context_parts.append(f"## 📊 上次交易回顾\n{self.last_trade_summary}")
+
+        # 🆕 2. 当前需要注意的重点
+        if self.current_focus:
+            context_parts.append(f"\n## ⚠️ 当前需要注意\n{self.current_focus}")
+
+        # 3. 累积的经验教训
         if self.lessons_learned:
-            context_parts.append("\n## 你学到的经验教训")
+            context_parts.append("\n## 📝 你学到的经验教训")
             for lesson in self.lessons_learned[-5:]:  # Last 5 lessons
                 context_parts.append(f"- {lesson}")
 
+        # 4. 交易统计（如果有交易记录）
+        if self.total_trades > 0:
+            context_parts.append(f"""
+## 📈 你的交易表现
+- 总交易: {self.total_trades} 次
+- 胜率: {self.win_rate*100:.1f}%
+- 总盈亏: ${self.total_pnl:,.2f}
+- 平均盈亏: ${self.average_pnl:,.2f}""")
+
+            if self.consecutive_wins > 0:
+                context_parts.append(f"- 当前连胜: {self.consecutive_wins}次")
+            elif self.consecutive_losses > 0:
+                context_parts.append(f"- 当前连败: {self.consecutive_losses}次")
+
+        # 🆕 5. 常犯错误提醒
+        if self.common_mistakes:
+            context_parts.append("\n## 🚫 需要避免的错误")
+            for mistake in self.common_mistakes[-3:]:
+                context_parts.append(f"- {mistake}")
+
+        # 6. 优势和弱点
         if self.strengths:
-            context_parts.append("\n## 你的优势")
+            context_parts.append("\n## ✅ 你的优势")
             for s in self.strengths[:3]:
                 context_parts.append(f"- {s}")
 
         if self.weaknesses:
-            context_parts.append("\n## 你需要改进的地方")
+            context_parts.append("\n## 🔧 需要改进")
             for w in self.weaknesses[:3]:
                 context_parts.append(f"- {w}")
 
@@ -324,8 +509,311 @@ class AgentMemoryStore:
                 logger.error(f"Error clearing memories: {e}")
 
 
-# Singleton instance
+# ============================================
+# 预测记录存储和反思生成
+# ============================================
+
+class PredictionStore:
+    """
+    存储和管理 Agent 预测记录
+    用于在平仓时生成反思
+    """
+
+    def __init__(self, redis_url: str = "redis://redis:6379"):
+        self.redis_url = redis_url
+        self._redis: Optional[redis.Redis] = None
+        self._local_cache: Dict[str, List[AgentPrediction]] = {}  # trade_id -> predictions
+        self.key_prefix = "trading:predictions:"
+
+    async def connect(self):
+        """Connect to Redis"""
+        try:
+            self._redis = redis.from_url(self.redis_url, decode_responses=True)
+            await self._redis.ping()
+            logger.info("PredictionStore connected to Redis")
+        except Exception as e:
+            logger.warning(f"PredictionStore failed to connect to Redis: {e}. Using local cache.")
+            self._redis = None
+
+    async def save_prediction(self, prediction: AgentPrediction):
+        """保存一个 Agent 的预测"""
+        trade_id = prediction.trade_id
+
+        # 添加到本地缓存
+        if trade_id not in self._local_cache:
+            self._local_cache[trade_id] = []
+        self._local_cache[trade_id].append(prediction)
+
+        # 保存到 Redis
+        if self._redis:
+            try:
+                key = f"{self.key_prefix}{trade_id}"
+                predictions_data = [p.to_dict() for p in self._local_cache[trade_id]]
+                await self._redis.set(key, json.dumps(predictions_data))
+                # 设置过期时间: 7天
+                await self._redis.expire(key, 7 * 24 * 3600)
+            except Exception as e:
+                logger.error(f"Error saving prediction to Redis: {e}")
+
+    async def get_predictions(self, trade_id: str) -> List[AgentPrediction]:
+        """获取一笔交易的所有 Agent 预测"""
+        # 先查本地缓存
+        if trade_id in self._local_cache:
+            return self._local_cache[trade_id]
+
+        # 从 Redis 加载
+        if self._redis:
+            try:
+                key = f"{self.key_prefix}{trade_id}"
+                data = await self._redis.get(key)
+                if data:
+                    predictions_data = json.loads(data)
+                    predictions = [AgentPrediction.from_dict(p) for p in predictions_data]
+                    self._local_cache[trade_id] = predictions
+                    return predictions
+            except Exception as e:
+                logger.error(f"Error loading predictions from Redis: {e}")
+
+        return []
+
+    async def clear_predictions(self, trade_id: str):
+        """清除一笔交易的预测记录（平仓后可选调用）"""
+        if trade_id in self._local_cache:
+            del self._local_cache[trade_id]
+
+        if self._redis:
+            try:
+                key = f"{self.key_prefix}{trade_id}"
+                await self._redis.delete(key)
+            except Exception as e:
+                logger.error(f"Error clearing predictions: {e}")
+
+
+class ReflectionGenerator:
+    """
+    反思生成器
+    使用 LLM 为每个 Agent 生成交易反思
+    """
+
+    def __init__(self, llm_client=None):
+        self._llm_client = llm_client
+
+    def set_llm_client(self, llm_client):
+        """设置 LLM 客户端"""
+        self._llm_client = llm_client
+
+    async def generate_reflection(
+        self,
+        prediction: AgentPrediction,
+        trade_result: Dict[str, Any]
+    ) -> TradeReflection:
+        """
+        为单个 Agent 生成交易反思
+
+        Args:
+            prediction: Agent 的原始预测
+            trade_result: 交易结果 {entry_price, exit_price, pnl, direction, reason, holding_hours}
+        """
+        entry_price = trade_result.get('entry_price', 0)
+        exit_price = trade_result.get('exit_price', 0)
+        pnl = trade_result.get('pnl', 0)
+        direction = trade_result.get('direction', 'long')
+        close_reason = trade_result.get('reason', 'manual')
+        holding_hours = trade_result.get('holding_hours', 0)
+
+        # 计算盈亏百分比
+        pnl_percent = 0
+        if entry_price > 0:
+            if direction == 'long':
+                pnl_percent = ((exit_price - entry_price) / entry_price) * 100
+            else:
+                pnl_percent = ((entry_price - exit_price) / entry_price) * 100
+
+        # 判断预测是否正确
+        prediction_correct = False
+        if prediction.direction == direction:
+            # Agent 预测方向与实际开仓方向一致
+            prediction_correct = pnl > 0  # 盈利则预测正确
+        elif prediction.direction == "hold":
+            # Agent 建议观望，但还是开仓了
+            prediction_correct = pnl < 0  # 亏损说明应该听 Agent 的
+        else:
+            # Agent 预测方向与实际开仓方向相反
+            prediction_correct = pnl < 0  # 亏损说明应该听 Agent 的
+
+        # 尝试使用 LLM 生成详细反思
+        reflection_data = await self._generate_llm_reflection(
+            prediction, trade_result, prediction_correct
+        )
+
+        # 创建反思记录
+        return TradeReflection(
+            trade_id=prediction.trade_id,
+            agent_id=prediction.agent_id,
+            agent_name=prediction.agent_name,
+            timestamp=datetime.now(),
+            entry_price=entry_price,
+            exit_price=exit_price,
+            direction=direction,
+            pnl=pnl,
+            pnl_percent=pnl_percent,
+            holding_duration_hours=holding_hours,
+            close_reason=close_reason,
+            original_prediction=prediction.direction,
+            prediction_was_correct=prediction_correct,
+            reflection_summary=reflection_data.get('summary', ''),
+            what_went_well=reflection_data.get('what_went_well', []),
+            what_went_wrong=reflection_data.get('what_went_wrong', []),
+            lessons_learned=reflection_data.get('lessons_learned', []),
+            next_time_action=reflection_data.get('next_time_action', '')
+        )
+
+    async def _generate_llm_reflection(
+        self,
+        prediction: AgentPrediction,
+        trade_result: Dict[str, Any],
+        prediction_correct: bool
+    ) -> Dict[str, Any]:
+        """使用 LLM 生成详细反思（如果失败则使用规则生成）"""
+
+        # 如果没有 LLM 客户端，使用规则生成
+        if not self._llm_client:
+            return self._generate_rule_based_reflection(
+                prediction, trade_result, prediction_correct
+            )
+
+        try:
+            direction_cn = {"long": "做多", "short": "做空", "hold": "观望"}.get(
+                prediction.direction, prediction.direction
+            )
+            pnl = trade_result.get('pnl', 0)
+            entry_price = trade_result.get('entry_price', 0)
+            exit_price = trade_result.get('exit_price', 0)
+
+            prompt = f"""你是 {prediction.agent_name}，请反思这笔交易：
+
+## 你当时的预测
+- 方向: {direction_cn}
+- 置信度: {prediction.confidence}%
+- 理由: {prediction.reasoning}
+- 关键因素: {', '.join(prediction.key_factors) if prediction.key_factors else '无'}
+- 当时价格: ${prediction.market_price:,.2f}
+
+## 实际结果
+- 入场价: ${entry_price:,.2f}
+- 出场价: ${exit_price:,.2f}
+- 盈亏: ${pnl:+,.2f}
+- 平仓原因: {trade_result.get('reason', 'manual')}
+- 持仓时长: {trade_result.get('holding_hours', 0):.1f} 小时
+
+## 请回答以下问题
+
+1. **你的预测{'正确' if prediction_correct else '错误'}** - 为什么？
+
+2. **哪些判断是正确的？** 列出 1-2 点
+
+3. **哪些判断是错误的？** 列出 1-2 点
+
+4. **你学到了什么教训？** 列出 1-2 条具体可执行的教训
+
+5. **下次遇到类似情况，你会怎么做？** 一句话总结
+
+请用JSON格式回复，不要包含markdown代码块标记：
+{{
+    "summary": "一两句话总结这次交易的反思",
+    "what_went_well": ["做对的事情1", "做对的事情2"],
+    "what_went_wrong": ["做错的事情1", "做错的事情2"],
+    "lessons_learned": ["教训1", "教训2"],
+    "next_time_action": "下次遇到类似情况的一句话行动建议"
+}}"""
+
+            # 调用 LLM
+            messages = [
+                {"role": "system", "content": "你是一个交易反思助手，帮助分析交易得失。请简洁回复，每条教训不超过30字。"},
+                {"role": "user", "content": prompt}
+            ]
+
+            response = await self._llm_client._call_llm(messages)
+
+            # 解析响应
+            content = ""
+            if isinstance(response, dict):
+                if "choices" in response:
+                    try:
+                        content = response["choices"][0]["message"]["content"]
+                    except (KeyError, IndexError):
+                        pass
+                if not content:
+                    content = response.get("content", response.get("response", ""))
+            else:
+                content = str(response)
+
+            # 尝试解析 JSON
+            if content:
+                # 移除可能的 markdown 代码块标记
+                content = content.strip()
+                if content.startswith("```"):
+                    content = content.split("\n", 1)[1] if "\n" in content else content
+                if content.endswith("```"):
+                    content = content.rsplit("```", 1)[0]
+                content = content.strip()
+
+                try:
+                    return json.loads(content)
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse LLM reflection response as JSON")
+
+        except Exception as e:
+            logger.error(f"Error generating LLM reflection: {e}")
+
+        # 降级到规则生成
+        return self._generate_rule_based_reflection(
+            prediction, trade_result, prediction_correct
+        )
+
+    def _generate_rule_based_reflection(
+        self,
+        prediction: AgentPrediction,
+        trade_result: Dict[str, Any],
+        prediction_correct: bool
+    ) -> Dict[str, Any]:
+        """使用规则生成简单反思（LLM 失败时的降级方案）"""
+        pnl = trade_result.get('pnl', 0)
+        direction_cn = {"long": "做多", "short": "做空", "hold": "观望"}.get(
+            prediction.direction, prediction.direction
+        )
+
+        if pnl > 0:
+            # 盈利
+            summary = f"交易盈利${pnl:.2f}，{'预测正确' if prediction_correct else '预测方向相反但仍盈利'}"
+            what_went_well = [f"方向判断{'正确' if prediction_correct else '市场给予机会'}"]
+            what_went_wrong = []
+            lessons = ["保持当前分析方法"]
+            next_action = "继续使用当前策略"
+        else:
+            # 亏损
+            summary = f"交易亏损${abs(pnl):.2f}，需要反思"
+            what_went_well = []
+            what_went_wrong = [f"{'方向判断错误' if not prediction_correct else '虽然方向正确但入场时机不佳'}"]
+            if prediction.confidence > 70:
+                lessons = ["高置信度预测也可能错误，需要更多确认"]
+            else:
+                lessons = ["低置信度时应该降低仓位或观望"]
+            next_action = "下次更谨慎，等待更明确信号"
+
+        return {
+            "summary": summary,
+            "what_went_well": what_went_well,
+            "what_went_wrong": what_went_wrong,
+            "lessons_learned": lessons,
+            "next_time_action": next_action
+        }
+
+
+# Singleton instances
 _memory_store: Optional[AgentMemoryStore] = None
+_prediction_store: Optional[PredictionStore] = None
+_reflection_generator: Optional[ReflectionGenerator] = None
 
 
 async def get_memory_store() -> AgentMemoryStore:
@@ -335,3 +823,109 @@ async def get_memory_store() -> AgentMemoryStore:
         _memory_store = AgentMemoryStore()
         await _memory_store.connect()
     return _memory_store
+
+
+async def get_prediction_store() -> PredictionStore:
+    """Get or create prediction store singleton"""
+    global _prediction_store
+    if _prediction_store is None:
+        _prediction_store = PredictionStore()
+        await _prediction_store.connect()
+    return _prediction_store
+
+
+def get_reflection_generator() -> ReflectionGenerator:
+    """Get or create reflection generator singleton"""
+    global _reflection_generator
+    if _reflection_generator is None:
+        _reflection_generator = ReflectionGenerator()
+    return _reflection_generator
+
+
+async def record_agent_predictions(
+    trade_id: str,
+    votes: Dict[str, Dict[str, Any]],
+    market_price: float = 0.0
+):
+    """
+    记录所有 Agent 的预测
+
+    Args:
+        trade_id: 交易ID（通常是仓位ID）
+        votes: Agent投票结果 {agent_name: {direction, confidence, reasoning}}
+        market_price: 当时的市场价格
+    """
+    store = await get_prediction_store()
+
+    for agent_name, vote in votes.items():
+        prediction = AgentPrediction(
+            agent_id=agent_name,
+            agent_name=agent_name,
+            trade_id=trade_id,
+            timestamp=datetime.now(),
+            direction=vote.get('direction', 'hold'),
+            confidence=vote.get('confidence', 0),
+            reasoning=vote.get('reasoning', ''),
+            key_factors=vote.get('key_factors', []),
+            market_price=market_price,
+            market_snapshot=vote.get('market_snapshot', {})
+        )
+        await store.save_prediction(prediction)
+
+    logger.info(f"Recorded {len(votes)} agent predictions for trade {trade_id}")
+
+
+async def generate_trade_reflections(
+    trade_id: str,
+    trade_result: Dict[str, Any],
+    llm_client=None
+) -> List[TradeReflection]:
+    """
+    平仓后生成所有 Agent 的反思
+
+    Args:
+        trade_id: 交易ID
+        trade_result: 交易结果 {entry_price, exit_price, pnl, direction, reason, holding_hours}
+        llm_client: 用于生成反思的 LLM 客户端（可选）
+
+    Returns:
+        List of TradeReflection for each agent
+    """
+    prediction_store = await get_prediction_store()
+    memory_store = await get_memory_store()
+    generator = get_reflection_generator()
+
+    if llm_client:
+        generator.set_llm_client(llm_client)
+
+    # 获取这笔交易的所有预测
+    predictions = await prediction_store.get_predictions(trade_id)
+
+    if not predictions:
+        logger.warning(f"No predictions found for trade {trade_id}")
+        return []
+
+    reflections = []
+
+    for prediction in predictions:
+        try:
+            # 生成反思
+            reflection = await generator.generate_reflection(prediction, trade_result)
+            reflections.append(reflection)
+
+            # 更新 Agent 记忆
+            memory = await memory_store.get_memory(prediction.agent_id, prediction.agent_name)
+            memory.add_reflection(reflection)
+            await memory_store.save_memory(memory)
+
+            logger.info(f"Generated reflection for {prediction.agent_name}: "
+                       f"{'correct' if reflection.prediction_was_correct else 'incorrect'}, "
+                       f"PnL=${reflection.pnl:.2f}")
+
+        except Exception as e:
+            logger.error(f"Error generating reflection for {prediction.agent_name}: {e}")
+
+    # 清理预测记录（可选，也可以保留用于历史分析）
+    # await prediction_store.clear_predictions(trade_id)
+
+    return reflections

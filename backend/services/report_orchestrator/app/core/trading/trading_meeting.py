@@ -45,7 +45,10 @@ from app.core.trading.retry_handler import (
     RetryHandler, RetryConfig, CircuitBreaker,
     CircuitBreakerOpenError, get_llm_retry_handler
 )
-from app.core.trading.agent_memory import get_memory_store, AgentMemoryStore
+from app.core.trading.agent_memory import (
+    get_memory_store, AgentMemoryStore,
+    record_agent_predictions, generate_trade_reflections
+)
 from app.core.trading.price_service import get_current_btc_price
 from app.core.trading.position_context import PositionContext
 # 🔧 TradeExecutorAgent已内联到TradeExecutorAgentWithTools，不再需要导入
@@ -262,6 +265,138 @@ class TradingMeeting(Meeting):
         self._memory_store: Optional[AgentMemoryStore] = None
         # Track executed tool calls (tool_name, params, result)
         self._last_executed_tools: List[Dict[str, Any]] = []
+
+        # 🆕 记录 Agent 预测（用于平仓后反思）
+        self._current_predictions: Dict[str, Dict[str, Any]] = {}
+        self._current_trade_id: Optional[str] = None
+
+        # 🆕 注册平仓回调（用于触发 Agent 反思）
+        self._register_position_closed_callback()
+
+    def _register_position_closed_callback(self):
+        """注册平仓回调，用于触发 Agent 反思生成"""
+        if not self.toolkit:
+            logger.debug("No toolkit available, skipping position closed callback registration")
+            return
+
+        paper_trader = getattr(self.toolkit, 'paper_trader', None)
+        if not paper_trader:
+            logger.debug("No paper_trader in toolkit, skipping callback registration")
+            return
+
+        # 保存原有回调（如果有的话）
+        original_callback = getattr(paper_trader, 'on_position_closed', None)
+
+        async def on_position_closed_with_reflection(position, pnl, reason="manual"):
+            """平仓回调：触发 Agent 反思生成"""
+            logger.info(f"🔄 Position closed callback triggered: PnL=${pnl:.2f}, reason={reason}")
+
+            try:
+                # 获取交易 ID
+                trade_id = getattr(position, 'id', None) or self._current_trade_id
+                if not trade_id:
+                    logger.warning("No trade_id available for reflection generation")
+                    return
+
+                # 计算持仓时长
+                holding_hours = 0
+                opened_at = getattr(position, 'opened_at', None)
+                if opened_at:
+                    if isinstance(opened_at, str):
+                        opened_at = datetime.fromisoformat(opened_at)
+                    holding_hours = (datetime.now() - opened_at).total_seconds() / 3600
+
+                # 构建交易结果
+                trade_result = {
+                    'entry_price': getattr(position, 'entry_price', 0),
+                    'exit_price': getattr(position, 'current_price', 0),
+                    'pnl': pnl,
+                    'direction': getattr(position, 'direction', 'long'),
+                    'reason': reason,
+                    'holding_hours': holding_hours
+                }
+
+                # 生成 Agent 反思
+                logger.info(f"📝 Generating agent reflections for trade {trade_id}...")
+
+                # 获取一个可用的 agent 作为 LLM 客户端（用于生成反思）
+                llm_client = None
+                if self.agents:
+                    llm_client = self.agents[0]
+
+                reflections = await generate_trade_reflections(
+                    trade_id=trade_id,
+                    trade_result=trade_result,
+                    llm_client=llm_client
+                )
+
+                if reflections:
+                    logger.info(f"✅ Generated {len(reflections)} agent reflections")
+                    for r in reflections:
+                        status = "正确" if r.prediction_was_correct else "错误"
+                        logger.info(f"  - {r.agent_name}: 预测{status}, 教训: {r.lessons_learned[0] if r.lessons_learned else '无'}")
+                else:
+                    logger.warning(f"No reflections generated for trade {trade_id}")
+
+            except Exception as e:
+                logger.error(f"Error in position closed callback: {e}", exc_info=True)
+
+            # 调用原有回调（如果有的话）
+            if original_callback:
+                try:
+                    await original_callback(position, pnl, reason)
+                except Exception as e:
+                    logger.error(f"Error in original position closed callback: {e}")
+
+        # 注册回调
+        paper_trader.on_position_closed = on_position_closed_with_reflection
+        logger.info("✅ Registered position closed callback for agent reflection")
+
+    async def _record_agent_predictions_for_trade(self, market_price: float = 0.0):
+        """
+        记录所有 Agent 的预测（用于平仓后反思）
+
+        在开仓成功后调用，将当前会议中所有 Agent 的投票记录到预测存储中。
+        """
+        try:
+            # 获取当前持仓 ID 作为 trade_id
+            trade_id = None
+            if self.toolkit and hasattr(self.toolkit, 'paper_trader'):
+                position = await self.toolkit.paper_trader.get_position()
+                if position:
+                    trade_id = getattr(position, 'id', None)
+
+            if not trade_id:
+                # 如果没有仓位 ID，使用时间戳生成一个
+                trade_id = f"trade_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                logger.warning(f"No position ID found, using generated trade_id: {trade_id}")
+
+            # 保存 trade_id 用于平仓时查找
+            self._current_trade_id = trade_id
+
+            # 从 _agent_votes 收集预测
+            votes_dict = {}
+            for vote in self._agent_votes:
+                votes_dict[vote.agent_name] = {
+                    'direction': vote.direction,
+                    'confidence': vote.confidence,
+                    'reasoning': vote.reasoning,
+                    'key_factors': [],  # 可以从 reasoning 中提取
+                    'market_snapshot': {}
+                }
+
+            if votes_dict:
+                await record_agent_predictions(
+                    trade_id=trade_id,
+                    votes=votes_dict,
+                    market_price=market_price
+                )
+                logger.info(f"📝 Recorded {len(votes_dict)} agent predictions for trade {trade_id}")
+            else:
+                logger.warning("No agent votes to record as predictions")
+
+        except Exception as e:
+            logger.error(f"Error recording agent predictions: {e}", exc_info=True)
 
     @property
     def final_signal(self) -> Optional[TradingSignal]:
@@ -1503,14 +1638,14 @@ class TradingMeeting(Meeting):
             
             if final_signal.direction != "hold":
                 logger.info(f"[ExecutionPhase] ✅ 交易已由Tool Calling执行: {final_signal.direction.upper()}")
-                
+
                 self._add_message(
                     agent_id="trade_executor",
                     agent_name="交易执行专员",
                     content=f"✅ 交易已执行\n\n决策: {final_signal.direction.upper()}\n杠杆: {final_signal.leverage}x\n仓位: {final_signal.amount_percent*100:.0f}%",
                     message_type="execution"
                 )
-                
+
                 self._execution_result = {
                     "status": "success",
                     "action": final_signal.direction,
@@ -1523,6 +1658,10 @@ class TradingMeeting(Meeting):
                         "stop_loss": final_signal.stop_loss_price
                     }
                 }
+
+                # 🆕 记录 Agent 预测（用于平仓后反思）
+                await self._record_agent_predictions_for_trade(final_signal.entry_price)
+
             else:
                 logger.info("[ExecutionPhase] 📊 决策为观望，无交易执行")
                 self._execution_result = {
@@ -2761,8 +2900,17 @@ class TradingMeeting(Meeting):
             else:
                 base_system_prompt = agent.system_prompt or agent.role_prompt
 
-            if memory.total_trades > 0:
-                # Only inject memory if agent has trading history
+            # 🔧 FIX: 检查是否有任何有意义的记忆内容需要注入
+            # 不仅检查 total_trades，还要检查反思记录和教训
+            has_memory_content = (
+                memory.total_trades > 0 or
+                len(memory.recent_reflections) > 0 or
+                memory.last_trade_summary or
+                len(memory.lessons_learned) > 0
+            )
+
+            if has_memory_content and memory_context.strip():
+                # Only inject memory if agent has meaningful history
                 enhanced_system_prompt = f"""{base_system_prompt}
 
 ---

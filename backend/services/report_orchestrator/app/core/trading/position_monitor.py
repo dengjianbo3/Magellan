@@ -318,7 +318,8 @@ class PositionMonitor:
             try:
                 await self.on_position_closed(
                     position=self._last_position,
-                    pnl=final_pnl
+                    pnl=final_pnl,
+                    reason="position_monitor_detected"
                 )
             except Exception as e:
                 logger.error(f"Error in position closed callback: {e}")
