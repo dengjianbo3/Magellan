@@ -281,13 +281,13 @@ class OKXClient:
                     # 🆕 获取 OKX 计算的真实可开仓金额
                     max_avail_size = await self.get_max_avail_size()
 
-                    # 🔧 日志：对比两种计算方式
-                    calculated_avail = total_equity - frozen_balance
-                    if abs(max_avail_size - calculated_avail) > 10:  # 差异超过 $10
-                        logger.warning(
-                            f"[OKXClient] ⚠️ 可用金额差异: OKX计算=${max_avail_size:.2f}, "
-                            f"本地计算=${calculated_avail:.2f} (差异=${abs(max_avail_size - calculated_avail):.2f})"
-                        )
+                    # 🔧 日志：记录账户状态
+                    # 注意：totalEq 在合约账户可能包含持仓名义价值，不等于可用 USDT
+                    # max_avail_size 才是真实可开仓金额
+                    logger.info(
+                        f"[OKXClient] 账户状态: 可开仓=${max_avail_size:.2f}, "
+                        f"USDT余额=${usdt_balance:.2f}, totalEq=${total_equity:.2f}"
+                    )
 
                     return AccountBalance(
                         total_equity=total_equity,
