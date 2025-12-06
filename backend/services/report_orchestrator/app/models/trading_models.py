@@ -93,6 +93,9 @@ class AccountBalance(BaseModel):
     used_margin: float
     unrealized_pnl: float
     realized_pnl_today: float
+    # 🆕 OKX max-avail-size API 返回的真实可开仓金额
+    # 这是 OKX 内部计算的，考虑了维持保证金、初始保证金率等因素
+    max_avail_size: Optional[float] = None
     currency: str = "USDT"
     updated_at: datetime = Field(default_factory=datetime.now)
 

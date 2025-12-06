@@ -220,8 +220,43 @@ class OKXClient:
             logger.error(f"API request failed: {e}")
             return {"code": "-1", "msg": str(e), "data": []}
 
+    async def get_max_avail_size(self, symbol: str = "BTC-USDT-SWAP") -> float:
+        """
+        获取 OKX 计算的真实最大可开仓金额
+
+        使用 /api/v5/account/max-avail-size API
+        这个 API 返回的是 OKX 内部计算的可开仓金额，考虑了：
+        - 现有仓位的维持保证金
+        - 新仓位的初始保证金率
+        - 账户风险控制要求
+
+        Returns:
+            float: 可用于开仓的最大 USDT 金额
+        """
+        try:
+            if self.api_key and self.secret_key:
+                data = await self._request(
+                    'GET',
+                    f'/api/v5/account/max-avail-size?instId={symbol}&tdMode=cross'
+                )
+
+                if data.get('code') == '0' and data.get('data'):
+                    result = data['data'][0]
+                    # availBuy 是以计价货币(USDT)计算的最大可买入金额
+                    avail_buy = float(result.get('availBuy', 0) or 0)
+                    logger.info(f"[OKXClient] Max avail size for {symbol}: ${avail_buy:.2f} USDT")
+                    return avail_buy
+                else:
+                    logger.warning(f"[OKXClient] Failed to get max-avail-size: {data.get('msg')}")
+                    return 0.0
+        except Exception as e:
+            logger.error(f"Error fetching max avail size: {e}")
+            return 0.0
+
+        return 0.0
+
     async def get_account_balance(self) -> AccountBalance:
-        """Get account balance - 获取完整的账户信息"""
+        """Get account balance - 获取完整的账户信息，包括 OKX 计算的真实可开仓金额"""
         try:
             if self.api_key and self.secret_key:
                 data = await self._request('GET', '/api/v5/account/balance')
@@ -243,12 +278,24 @@ class OKXClient:
 
                     total_equity = float(account.get('totalEq', 0) or 0)
 
+                    # 🆕 获取 OKX 计算的真实可开仓金额
+                    max_avail_size = await self.get_max_avail_size()
+
+                    # 🔧 日志：对比两种计算方式
+                    calculated_avail = total_equity - frozen_balance
+                    if abs(max_avail_size - calculated_avail) > 10:  # 差异超过 $10
+                        logger.warning(
+                            f"[OKXClient] ⚠️ 可用金额差异: OKX计算=${max_avail_size:.2f}, "
+                            f"本地计算=${calculated_avail:.2f} (差异=${abs(max_avail_size - calculated_avail):.2f})"
+                        )
+
                     return AccountBalance(
                         total_equity=total_equity,
                         available_balance=usdt_balance,
                         used_margin=frozen_balance,  # 🆕 使用冻结余额作为已用保证金
                         unrealized_pnl=unrealized_pnl,
                         realized_pnl_today=0.0,
+                        max_avail_size=max_avail_size,  # 🆕 OKX 计算的真实可开仓金额
                         currency="USDT"
                     )
 

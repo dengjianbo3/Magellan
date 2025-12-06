@@ -1757,25 +1757,39 @@ class TradingMeeting(Meeting):
                     unrealized_pnl = position.get("unrealized_pnl", 0) if has_position else 0
                     liquidation_price = position.get("liquidation_price", 0) if has_position else 0
                     
-                    # 🔧 关键修复: 使用 true_available_margin 而非 available_balance
-                    # true_available_margin = total_equity - used_margin (考虑了浮盈亏)
-                    true_available_margin = account.get("true_available_margin", 0)
+                    # 🔧 关键修复: 优先使用 OKX 的 max_avail_size（真实可开仓金额）
+                    # max_avail_size 是 OKX 通过 /api/v5/account/max-avail-size 返回的
+                    # 考虑了维持保证金、初始保证金率等因素，比本地计算更准确
+                    max_avail_size = account.get("max_avail_size", 0)
+
+                    # Fallback: 本地计算 true_available_margin = total_equity - used_margin
+                    total_equity = account.get("total_equity", 10000)
+                    used_margin = account.get("used_margin", 0)
+                    local_available = total_equity - used_margin
+
+                    # 使用 OKX 提供的值（如果有效），否则使用本地计算
+                    if max_avail_size > 0:
+                        true_available_margin = max_avail_size
+                        margin_source = "OKX API"
+                    else:
+                        true_available_margin = local_available
+                        margin_source = "本地计算"
+
+                    # 兼容旧接口
                     if true_available_margin <= 0:
-                        # fallback: 手动计算
-                        total_equity = account.get("total_equity", 10000)
-                        used_margin = account.get("used_margin", 0)
-                        true_available_margin = total_equity - used_margin
-                    
+                        true_available_margin = account.get("true_available_margin", local_available)
+
                     available_balance = account.get("available_balance", 0)
                     total_equity = account.get("total_equity", available_balance)
                     used_margin = account.get("used_margin", 0)
-                    
+
                     # 🔧 可追加条件: 真实可用保证金 >= 最小金额 + 安全缓冲
                     can_add = true_available_margin >= (MIN_ADD_AMOUNT + SAFETY_BUFFER)
-                    
+
                     logger.info(f"[TradeExecutor] 📊 状态: 仓位={current_direction or '无'}, "
-                               f"真实可用保证金=${true_available_margin:.2f}, 账户余额=${available_balance:.2f}, "
-                               f"已用保证金=${used_margin:.2f}, 浮盈亏=${unrealized_pnl:.2f}, 可追加={can_add}")
+                               f"可用保证金=${true_available_margin:.2f}({margin_source}), "
+                               f"账户余额=${available_balance:.2f}, 已用=${used_margin:.2f}, "
+                               f"浮盈亏=${unrealized_pnl:.2f}, 可追加={can_add}")
                     
                     # 📌 场景1: 已有多仓（同方向）
                     if current_direction == "long":
@@ -2032,24 +2046,37 @@ class TradingMeeting(Meeting):
                     unrealized_pnl = position.get("unrealized_pnl", 0) if has_position else 0
                     liquidation_price = position.get("liquidation_price", 0) if has_position else 0
                     
-                    # 🔧 关键修复: 使用 true_available_margin
-                    true_available_margin = account.get("true_available_margin", 0)
+                    # 🔧 关键修复: 优先使用 OKX 的 max_avail_size（真实可开仓金额）
+                    max_avail_size = account.get("max_avail_size", 0)
+
+                    # Fallback: 本地计算
+                    total_equity = account.get("total_equity", 10000)
+                    used_margin = account.get("used_margin", 0)
+                    local_available = total_equity - used_margin
+
+                    # 使用 OKX 提供的值（如果有效）
+                    if max_avail_size > 0:
+                        true_available_margin = max_avail_size
+                        margin_source = "OKX API"
+                    else:
+                        true_available_margin = local_available
+                        margin_source = "本地计算"
+
                     if true_available_margin <= 0:
-                        total_equity = account.get("total_equity", 10000)
-                        used_margin = account.get("used_margin", 0)
-                        true_available_margin = total_equity - used_margin
-                    
+                        true_available_margin = account.get("true_available_margin", local_available)
+
                     available_balance = account.get("available_balance", 0)
                     total_equity = account.get("total_equity", available_balance)
                     used_margin = account.get("used_margin", 0)
-                    
+
                     # 🔧 可追加条件
                     can_add = true_available_margin >= (MIN_ADD_AMOUNT + SAFETY_BUFFER)
-                    
+
                     logger.info(f"[TradeExecutor] 📊 状态: 仓位={current_direction or '无'}, "
-                               f"真实可用保证金=${true_available_margin:.2f}, 账户余额=${available_balance:.2f}, "
-                               f"已用保证金=${used_margin:.2f}, 浮盈亏=${unrealized_pnl:.2f}, 可追加={can_add}")
-                    
+                               f"可用保证金=${true_available_margin:.2f}({margin_source}), "
+                               f"账户余额=${available_balance:.2f}, 已用=${used_margin:.2f}, "
+                               f"浮盈亏=${unrealized_pnl:.2f}, 可追加={can_add}")
+
                     # 📌 场景1: 已有空仓（同方向）
                     if current_direction == "short":
                         if can_add:
