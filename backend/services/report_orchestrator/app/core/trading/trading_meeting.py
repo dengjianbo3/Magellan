@@ -75,6 +75,16 @@ def calculate_confidence_from_votes(votes: Dict[str, str], direction: str = None
         logger.warning("[Confidence] 没有投票数据，使用最低置信度 30%")
         return 30
 
+    # 🔧 FIX: 确保 votes 是字典类型
+    if isinstance(votes, list):
+        logger.warning(f"[Confidence] votes 是列表类型，转换为字典")
+        # 尝试转换列表为字典（假设是 AgentVote 对象列表）
+        try:
+            votes = {v.agent_name: v.direction for v in votes if hasattr(v, 'agent_name') and hasattr(v, 'direction')}
+        except Exception as e:
+            logger.error(f"[Confidence] 无法转换 votes: {e}")
+            return 30
+
     # 统计各方向票数
     long_count = sum(1 for v in votes.values() if v == 'long')
     short_count = sum(1 for v in votes.values() if v == 'short')
@@ -2619,10 +2629,19 @@ class TradingMeeting(Meeting):
     ) -> str:
         """
         构建执行阶段的prompt
-        
+
         这个prompt会发送给TradeExecutor的LLM，让它调用工具执行交易
         """
-        
+
+        # 🔧 FIX: 确保 agents_votes 是字典类型
+        if isinstance(agents_votes, list):
+            logger.warning(f"[_build_execution_prompt] agents_votes 是列表类型，转换为字典")
+            try:
+                agents_votes = {v.agent_name: v.direction for v in agents_votes if hasattr(v, 'agent_name') and hasattr(v, 'direction')}
+            except Exception as e:
+                logger.error(f"[_build_execution_prompt] 无法转换 agents_votes: {e}")
+                agents_votes = {}
+
         # 格式化投票
         long_count = sum(1 for v in agents_votes.values() if v == 'long')
         short_count = sum(1 for v in agents_votes.values() if v == 'short')
