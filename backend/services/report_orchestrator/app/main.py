@@ -70,38 +70,44 @@ EXTERNAL_DATA_URL = "http://external_data_service:8006"
 LLM_GATEWAY_URL = "http://llm_gateway:8003"
 FILE_SERVICE_URL = "http://file_service:8001"
 
+# --- Check Standalone Mode ---
+STANDALONE_MODE = os.getenv("STANDALONE_MODE", "false").lower() == "true"
+
 # --- Lifespan Handler for Kafka ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler for startup/shutdown events."""
-    # Startup: Initialize Kafka messaging
-    try:
-        from .messaging import init_kafka, get_session_publisher, get_agent_service, get_llm_service
-        await init_kafka()
-        # Initialize session event publisher for WebSocket integration
-        await get_session_publisher()
-        # Phase 7: Initialize Agent and LLM message services
-        agent_service = await get_agent_service()
-        llm_service = await get_llm_service()
-        logger.info("Kafka messaging initialized successfully (Agent + LLM services ready)")
-    except Exception as e:
-        logger.warning(f"Kafka initialization failed (will use HTTP fallback): {e}")
+    # Startup: Initialize Kafka messaging (skip in standalone mode)
+    if not STANDALONE_MODE:
+        try:
+            from .messaging import init_kafka, get_session_publisher, get_agent_service, get_llm_service
+            await init_kafka()
+            # Initialize session event publisher for WebSocket integration
+            await get_session_publisher()
+            # Phase 7: Initialize Agent and LLM message services
+            agent_service = await get_agent_service()
+            llm_service = await get_llm_service()
+            logger.info("Kafka messaging initialized successfully (Agent + LLM services ready)")
+        except Exception as e:
+            logger.warning(f"Kafka initialization failed (will use HTTP fallback): {e}")
+    else:
+        logger.info("[STANDALONE] Skipping Kafka initialization")
 
     # Auto-start trading in standalone mode
-    standalone_mode = os.getenv("STANDALONE_MODE", "false").lower() == "true"
-    if standalone_mode:
+    if STANDALONE_MODE:
         logger.info("STANDALONE_MODE detected, auto-starting trading system...")
         asyncio.create_task(_auto_start_trading())
 
     yield
 
-    # Shutdown: Close Kafka connections
-    try:
-        from .messaging import close_kafka
-        await close_kafka()
-        logger.info("Kafka messaging closed")
-    except Exception as e:
-        logger.warning(f"Error closing Kafka: {e}")
+    # Shutdown: Close Kafka connections (skip in standalone mode)
+    if not STANDALONE_MODE:
+        try:
+            from .messaging import close_kafka
+            await close_kafka()
+            logger.info("Kafka messaging closed")
+        except Exception as e:
+            logger.warning(f"Error closing Kafka: {e}")
 
 
 async def _auto_start_trading():
@@ -487,38 +493,44 @@ dashboard_analytics = {
     "agent_usage": {}   # Agent usage statistics
 }
 
-# Phase 2: Initialize Vector Store for Knowledge Base
-try:
-    QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
-    vector_store = VectorStoreService(qdrant_url=QDRANT_URL)
-    print("[main.py] ✅ VectorStore initialized successfully")
-except Exception as e:
-    print(f"[main.py] ❌ Failed to initialize VectorStore: {e}")
-    print("[main.py] ⚠️  Knowledge base features will be disabled")
-    vector_store = None
+# Phase 2: Initialize Vector Store for Knowledge Base (skip in standalone mode)
+vector_store = None
+rag_service = None
 
-# Phase 2: Initialize RAG Service for Advanced Search
-try:
-    if vector_store:
-        rag_service = RAGService(vector_store_service=vector_store)
-        # Build BM25 index on startup
-        rag_service.refresh_bm25_index()
-        print("[main.py] ✅ RAG Service initialized successfully")
-    else:
+if not STANDALONE_MODE:
+    try:
+        QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
+        vector_store = VectorStoreService(qdrant_url=QDRANT_URL)
+        print("[main.py] ✅ VectorStore initialized successfully")
+    except Exception as e:
+        print(f"[main.py] ❌ Failed to initialize VectorStore: {e}")
+        print("[main.py] ⚠️  Knowledge base features will be disabled")
+        vector_store = None
+
+    # Phase 2: Initialize RAG Service for Advanced Search
+    try:
+        if vector_store:
+            rag_service = RAGService(vector_store_service=vector_store)
+            # Build BM25 index on startup
+            rag_service.refresh_bm25_index()
+            print("[main.py] ✅ RAG Service initialized successfully")
+        else:
+            rag_service = None
+            print("[main.py] ⚠️  RAG Service disabled (VectorStore not available)")
+    except Exception as e:
+        print(f"[main.py] ❌ Failed to initialize RAG Service: {e}")
+        print("[main.py] ⚠️  Advanced search features will be disabled")
         rag_service = None
-        print("[main.py] ⚠️  RAG Service disabled (VectorStore not available)")
-except Exception as e:
-    print(f"[main.py] ❌ Failed to initialize RAG Service: {e}")
-    print("[main.py] ⚠️  Advanced search features will be disabled")
-    rag_service = None
 
-# Phase 4: Initialize Knowledge Router dependencies
-if vector_store:
-    set_vector_store(vector_store)
-    print("[main.py] ✅ Knowledge Router vector_store set")
-if rag_service:
-    set_rag_service(rag_service)
-    print("[main.py] ✅ Knowledge Router rag_service set")
+    # Phase 4: Initialize Knowledge Router dependencies
+    if vector_store:
+        set_vector_store(vector_store)
+        print("[main.py] ✅ Knowledge Router vector_store set")
+    if rag_service:
+        set_rag_service(rag_service)
+        print("[main.py] ✅ Knowledge Router rag_service set")
+else:
+    print("[main.py] [STANDALONE] Skipping VectorStore/RAG initialization")
 
 # ============================================================================
 # V5: Storage Helper Functions (Redis with Fallback)
