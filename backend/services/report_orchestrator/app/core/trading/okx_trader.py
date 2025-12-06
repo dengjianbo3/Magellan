@@ -160,23 +160,27 @@ class OKXTrader:
     async def get_account(self) -> Dict:
         """
         Get account info (PaperTrader compatible)
-        
+
         🆕 OKX 直接返回所有计算好的值，无需本地计算！
         """
         try:
             balance = await self._okx_client.get_account_balance()
-            
+
             # 🆕 OKX 直接返回 unrealized_pnl，无需本地计算
             unrealized_pnl = balance.unrealized_pnl or 0.0
-            
-            # 🆕 true_available_margin = 交易所返回的 availBal
-            # 这已经考虑了所有因素（浮盈亏、冻结等）
-            true_available_margin = balance.available_balance
+
+            # 🆕 max_avail_size = OKX 计算的真实可开仓金额
+            # 这是通过 /api/v5/account/max-avail-size API 获取的
+            max_avail_size = balance.max_avail_size or 0.0
+
+            # 🔧 优先使用 max_avail_size，否则回退到 available_balance
+            true_available_margin = max_avail_size if max_avail_size > 0 else balance.available_balance
 
             return {
                 'total_equity': balance.total_equity,
                 'available_balance': balance.available_balance,
-                'true_available_margin': true_available_margin,  # 🆕 与 PaperTrader 一致
+                'true_available_margin': true_available_margin,  # 🔧 现在使用 max_avail_size
+                'max_avail_size': max_avail_size,  # 🆕 传递给 trading_meeting.py
                 'used_margin': balance.used_margin or 0,
                 'unrealized_pnl': unrealized_pnl,
                 'realized_pnl': 0.0,  # 可从 API 获取
@@ -188,7 +192,8 @@ class OKXTrader:
             return {
                 'total_equity': self.initial_balance,
                 'available_balance': self.initial_balance,
-                'true_available_margin': self.initial_balance,  # 🆕
+                'true_available_margin': self.initial_balance,
+                'max_avail_size': 0,  # 🆕
                 'used_margin': 0,
                 'unrealized_pnl': 0,
                 'realized_pnl': 0.0,
