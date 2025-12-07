@@ -17,29 +17,29 @@ logger = logging.getLogger(__name__)
 
 class PersonBackgroundTool(Tool):
     """
-    人员背景调查工具 (LinkedIn免费替代方案)
+    Person Background Check Tool (LinkedIn-free alternative)
 
-    通过公开信息搜索、GitHub分析、新闻检索获取人员背景
+    Get person background through public info search, GitHub analysis, news search
     """
 
     def __init__(self, web_search_url: str = "http://web_search_service:8010"):
         super().__init__(
             name="person_background",
-            description="""人员背景调查工具。
+            description="""Person background check tool.
 
-功能:
-- 公开履历搜索 (教育、工作经历)
-- GitHub技术贡献分析
-- 媒体报道和公开演讲
-- 创业/投资历史
-- 社交影响力评估
+Features:
+- Public resume search (education, work experience)
+- GitHub technical contribution analysis
+- Media coverage and public speeches
+- Startup/investment history
+- Social influence assessment
 
-使用场景:
-- 创始人背景调查
-- 核心团队评估
-- 关键人风险分析
+Use cases:
+- Founder background check
+- Core team evaluation
+- Key person risk analysis
 
-注: 使用公开信息源，不包含LinkedIn私密数据"""
+Note: Uses public information sources, does not include LinkedIn private data"""
         )
         self.web_search_url = web_search_url
         self.github_api = "https://api.github.com"
@@ -263,42 +263,42 @@ class PersonBackgroundTool(Tool):
 
 class RegulationSearchTool(Tool):
     """
-    法规检索工具 (使用政府公开数据)
+    Regulation Search Tool (using government public data)
 
-    通过搜索政府法规网站获取法律法规信息
+    Get legal and regulatory information by searching government regulation websites
     """
 
     def __init__(self, web_search_url: str = "http://web_search_service:8010"):
         super().__init__(
             name="regulation_search",
-            description="""法规检索工具。
+            description="""Regulation search tool.
 
-功能:
-- 法律法规搜索
-- 部门规章查询
-- 司法解释检索
-- 监管政策追踪
+Features:
+- Laws and regulations search
+- Departmental rules query
+- Judicial interpretation search
+- Regulatory policy tracking
 
-支持领域:
-- 公司法/证券法
-- 金融监管
-- 数据安全/隐私
-- 行业特定法规
+Supported areas:
+- Company law/Securities law
+- Financial regulation
+- Data security/Privacy
+- Industry-specific regulations
 
-数据源: 政府公开法规数据库 + 官方网站"""
+Data sources: Government public regulation databases + Official websites"""
         )
         self.web_search_url = web_search_url
 
-        # 政府法规网站域名
+        # Government regulation website domains
         self.gov_domains = [
             "gov.cn",
-            "moj.gov.cn",      # 司法部
-            "pbc.gov.cn",      # 央行
-            "csrc.gov.cn",     # 证监会
-            "cbirc.gov.cn",    # 银保监会
-            "samr.gov.cn",     # 市场监管总局
-            "miit.gov.cn",     # 工信部
-            "cac.gov.cn"       # 网信办
+            "moj.gov.cn",      # Ministry of Justice
+            "pbc.gov.cn",      # Central Bank
+            "csrc.gov.cn",     # Securities Commission
+            "cbirc.gov.cn",    # Banking/Insurance Commission
+            "samr.gov.cn",     # Market Regulation
+            "miit.gov.cn",     # Ministry of Industry
+            "cac.gov.cn"       # Cyberspace Administration
         ]
 
     async def _search_web(self, query: str, max_results: int = 5) -> List[Dict]:
@@ -483,29 +483,29 @@ class RegulationSearchTool(Tool):
 
 class MultiExchangeTool(Tool):
     """
-    多交易所数据工具
+    Multi-Exchange Data Tool
 
-    获取多个加密货币交易所的行情和数据
+    Get market data from multiple cryptocurrency exchanges
     """
 
     def __init__(self):
         super().__init__(
             name="multi_exchange_data",
-            description="""多交易所加密货币数据工具。
+            description="""Multi-exchange cryptocurrency data tool.
 
-功能:
-- 多交易所价格对比
-- 价差套利机会发现
-- 成交量分布分析
-- 资金费率对比
+Features:
+- Multi-exchange price comparison
+- Price spread and arbitrage opportunity detection
+- Volume distribution analysis
+- Funding rate comparison
 
-支持交易所:
+Supported exchanges:
 - Binance
 - OKX
 - Coinbase
 - Bybit
 
-支持交易对: BTC, ETH 等主流币种"""
+Supported pairs: BTC, ETH and other major cryptocurrencies"""
         )
 
         self.exchanges = {
@@ -727,26 +727,26 @@ class MultiExchangeTool(Tool):
 
 class OrderbookAnalyzerTool(Tool):
     """
-    订单簿深度分析工具
+    Orderbook Depth Analysis Tool
 
-    分析交易所订单簿数据，识别支撑/阻力位
+    Analyze exchange orderbook data to identify support/resistance levels
     """
 
     def __init__(self):
         super().__init__(
             name="orderbook_analyzer",
-            description="""订单簿深度分析工具。
+            description="""Orderbook depth analysis tool.
 
-功能:
-- 买卖盘深度分析
-- 支撑位/阻力位识别
-- 大单监控
-- 买卖压力比较
+Features:
+- Bid/ask depth analysis
+- Support/resistance level identification
+- Large order monitoring
+- Buy/sell pressure comparison
 
-使用场景:
-- 短期交易决策
-- 市场情绪分析
-- 流动性评估"""
+Use cases:
+- Short-term trading decisions
+- Market sentiment analysis
+- Liquidity assessment"""
         )
 
     async def _get_binance_orderbook(self, symbol: str, limit: int = 100) -> Dict[str, Any]:
@@ -975,28 +975,28 @@ class OrderbookAnalyzerTool(Tool):
 
 class BlackSwanScannerTool(Tool):
     """
-    黑天鹅事件扫描工具
+    Black Swan Event Scanner Tool
 
-    监控可能影响投资的重大异常事件
+    Monitor major abnormal events that may affect investments
     """
 
     def __init__(self, web_search_url: str = "http://web_search_service:8010"):
         super().__init__(
             name="black_swan_scanner",
-            description="""黑天鹅事件扫描工具。
+            description="""Black swan event scanning tool.
 
-功能:
-- 重大风险事件监控
-- 监管政策突变追踪
-- 行业危机预警
-- 宏观经济异常检测
+Features:
+- Major risk event monitoring
+- Regulatory policy change tracking
+- Industry crisis early warning
+- Macroeconomic anomaly detection
 
-扫描类型:
-- regulatory: 监管政策
-- market: 市场异常
-- company: 企业危机
-- macro: 宏观经济
-- all: 全面扫描"""
+Scan types:
+- regulatory: Regulatory policies
+- market: Market anomalies
+- company: Corporate crises
+- macro: Macroeconomic events
+- all: Comprehensive scan"""
         )
         self.web_search_url = web_search_url
 

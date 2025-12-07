@@ -16,30 +16,30 @@ from .mcp_services.company_intelligence_service import (
 
 class MCPFinancialDataTool(Tool):
     """
-    MCP金融数据工具
+    MCP Financial Data Tool
 
-    通过 MCP 服务获取股票行情、K线、财报等数据
+    Get stock quotes, K-line, financial reports via MCP service
     """
 
     def __init__(self, service: FinancialDataService = None):
         super().__init__(
             name="mcp_financial_data",
-            description="""通过MCP服务获取金融市场数据。
+            description="""Get financial market data via MCP service.
 
-功能:
-- 股票实时行情 (action=quote)
-- K线历史数据 (action=kline)
-- 财务报表 (action=financial)
-- 市场概览 (action=overview)
+Features:
+- Real-time stock quotes (action=quote)
+- Historical K-line data (action=kline)
+- Financial statements (action=financial)
+- Market overview (action=overview)
 
-支持市场:
-- A股 (cn_a): 上海、深圳、北交所
-- 港股 (cn_hk)
-- 美股 (us)
+Supported markets:
+- A-shares (cn_a): Shanghai, Shenzhen, Beijing Stock Exchange
+- HK stocks (cn_hk)
+- US stocks (us)
 
-示例:
-- 获取茅台行情: symbol=600519, action=quote
-- 获取腾讯K线: symbol=00700, market=cn_hk, action=kline"""
+Examples:
+- Get Moutai quote: symbol=600519, action=quote
+- Get Tencent K-line: symbol=00700, market=cn_hk, action=kline"""
         )
         self.service = service or get_financial_data_service()
 
@@ -147,28 +147,28 @@ class MCPFinancialDataTool(Tool):
 
 class MCPCompanyIntelligenceTool(Tool):
     """
-    MCP企业信息工具
+    MCP Company Intelligence Tool
 
-    通过 MCP 服务获取企业工商、股东、高管、风险等信息
+    Get company registration, shareholders, executives, risk info via MCP service
     """
 
     def __init__(self, service: CompanyIntelligenceService = None):
         super().__init__(
             name="mcp_company_intelligence",
-            description="""通过MCP服务获取企业信息。
+            description="""Get company information via MCP service.
 
-功能:
-- 企业基本信息 (action=basic): 工商注册、法人、注册资本
-- 股东信息 (action=shareholders): 股权结构、持股比例
-- 高管信息 (action=executives): 管理层、创始人
-- 法律诉讼 (action=legal): 诉讼、执行、失信
-- 投资信息 (action=investments): 对外投资、子公司
-- 风险信息 (action=risk): 综合风险评估
-- 完整画像 (action=profile): 全面企业分析
+Features:
+- Company basic info (action=basic): Business registration, legal representative, registered capital
+- Shareholder info (action=shareholders): Equity structure, shareholding ratio
+- Executive info (action=executives): Management team, founders
+- Legal litigation (action=legal): Lawsuits, enforcement, dishonesty
+- Investment info (action=investments): External investments, subsidiaries
+- Risk info (action=risk): Comprehensive risk assessment
+- Full profile (action=profile): Complete company analysis
 
-示例:
-- 查询字节跳动基本信息: company=字节跳动, action=basic
-- 查询阿里巴巴风险: company=阿里巴巴, action=risk"""
+Examples:
+- Query ByteDance basic info: company=ByteDance, action=basic
+- Query Alibaba risk: company=Alibaba, action=risk"""
         )
         self.service = service or get_company_intelligence_service()
 

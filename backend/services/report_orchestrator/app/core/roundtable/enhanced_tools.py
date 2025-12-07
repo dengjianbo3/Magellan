@@ -487,25 +487,25 @@ PB(市净率): {pb_ratio:.2f}
 
 class CompanyRegistryTool(Tool):
     """
-    企业工商信息查询工具
+    Company Registry Information Tool
 
-    通过公开API获取企业注册信息、股权结构、经营状况等
-    注: 由于企查查/天眼查API需要付费，这里使用免费公开数据源
+    Get company registration info, equity structure, and business status via public APIs
+    Note: Uses free public data sources as Qichacha/Tianyancha APIs require payment
     """
 
     def __init__(self):
         super().__init__(
             name="company_registry",
-            description="""查询企业工商注册信息和背景。
+            description="""Query company business registration information and background.
 
-功能:
-- 企业基本信息（注册资本、成立日期、经营范围等）
-- 股东信息和股权结构
-- 高管信息
-- 经营异常和法律诉讼
-- 关联企业
+Features:
+- Company basic info (registered capital, founding date, business scope, etc.)
+- Shareholder information and equity structure
+- Executive information
+- Business abnormalities and legal litigation
+- Related companies
 
-注意: 目前使用公开数据源，如需更详细信息建议配合 tavily_search 使用。
+Note: Currently uses public data sources. For more detailed info, recommend using with tavily_search.
 """
         )
         # 使用国家企业信用信息公示系统的公开接口
@@ -601,27 +601,27 @@ class CompanyRegistryTool(Tool):
 
 class GitHubAnalyzerTool(Tool):
     """
-    GitHub项目分析工具
+    GitHub Project Analysis Tool
 
-    分析GitHub仓库的活跃度、代码质量、贡献者等信息
+    Analyze GitHub repository activity, code quality, contributors, etc.
     """
 
     def __init__(self):
         super().__init__(
             name="github_analyzer",
-            description="""分析GitHub项目和组织。
+            description="""Analyze GitHub projects and organizations.
 
-功能:
-- 仓库基本信息 (stars, forks, issues)
-- 提交活跃度分析
-- 主要贡献者
-- 代码语言分布
-- 最近更新情况
+Features:
+- Repository basic info (stars, forks, issues)
+- Commit activity analysis
+- Major contributors
+- Code language distribution
+- Recent update status
 
-使用场景:
-- 评估开源项目活跃度
-- 分析技术团队实力
-- 验证技术声称
+Use cases:
+- Evaluate open source project activity
+- Analyze technical team capabilities
+- Verify technology claims
 """
         )
         self.api_base = "https://api.github.com"
@@ -979,28 +979,28 @@ class GitHubAnalyzerTool(Tool):
 
 class PatentSearchTool(Tool):
     """
-    专利检索工具
+    Patent Search Tool
 
-    通过公开API搜索专利信息
-    支持: Google Patents, USPTO, CNIPA(中国)
+    Search patent information via public APIs
+    Supports: Google Patents, USPTO, CNIPA (China)
     """
 
     def __init__(self):
         super().__init__(
             name="patent_search",
-            description="""搜索和分析专利信息。
+            description="""Search and analyze patent information.
 
-功能:
-- 按公司/发明人搜索专利
-- 按关键词搜索技术专利
-- 专利详情查看
-- 专利引用分析
+Features:
+- Search patents by company/inventor
+- Search technical patents by keywords
+- View patent details
+- Patent citation analysis
 
-支持的专利局:
-- USPTO (美国)
-- EPO (欧洲)
-- CNIPA (中国)
-- WIPO (世界知识产权组织)
+Supported patent offices:
+- USPTO (United States)
+- EPO (Europe)
+- CNIPA (China)
+- WIPO (World Intellectual Property Organization)
 """
         )
 
@@ -1135,26 +1135,26 @@ class PatentSearchTool(Tool):
 
 class SentimentMonitorTool(Tool):
     """
-    舆情监控工具
+    Sentiment Monitoring Tool
 
-    监控公司/项目的网络舆情，识别负面新闻和风险信号
+    Monitor online sentiment for companies/projects, identify negative news and risk signals
     """
 
     def __init__(self):
         super().__init__(
             name="sentiment_monitor",
-            description="""监控目标公司或项目的网络舆情。
+            description="""Monitor target company or project's online sentiment.
 
-功能:
-- 负面新闻追踪
-- 社交媒体情绪分析
-- 风险信号识别
-- 热度趋势分析
+Features:
+- Negative news tracking
+- Social media sentiment analysis
+- Risk signal identification
+- Popularity trend analysis
 
-适用场景:
-- 投资尽调时的舆情检查
-- 持仓公司的风险监控
-- 行业负面事件追踪
+Use cases:
+- Sentiment check during investment due diligence
+- Risk monitoring for portfolio companies
+- Industry negative event tracking
 """
         )
 

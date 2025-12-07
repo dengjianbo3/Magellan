@@ -42,36 +42,36 @@ class TavilySearchTool(Tool):
     ):
         """
         Args:
-            max_results: 最大搜索结果数
-            mcp_client: MCP Client 实例 (可选，默认使用全局实例)
+            max_results: Maximum search results
+            mcp_client: MCP Client instance (optional, defaults to global instance)
         """
         super().__init__(
             name="tavily_search",
-            description="""搜索互联网获取最新信息、新闻、市场数据等。
-支持时间过滤:
-- topic: 设为"news"可搜索新闻，配合days参数限制天数
-- time_range: "day"(24小时), "week"(7天), "month"(30天), "year"(1年)
-- days: 配合topic="news"使用，指定天数如3表示最近3天
+            description="""Search the internet for latest information, news, market data, etc.
+Supports time filtering:
+- topic: Set to "news" to search news, use with days parameter
+- time_range: "day"(24h), "week"(7d), "month"(30d), "year"(1y)
+- days: Use with topic="news", e.g., 3 means last 3 days
 
-示例: 搜索最近一周的新闻，设置time_range="week"或topic="news"且days=7"""
+Example: Search news from last week, set time_range="week" or topic="news" with days=7"""
         )
         self.max_results = max_results
         self.mcp_client = mcp_client or get_mcp_client()
 
     async def execute(self, query: str, **kwargs) -> Dict[str, Any]:
         """
-        执行网络搜索
+        Execute web search
 
         Args:
-            query: 搜索查询
-            **kwargs: 其他参数
-                - max_results: 最大返回结果数量
-                - topic: "general" 或 "news"
+            query: Search query
+            **kwargs: Other parameters
+                - max_results: Maximum number of results
+                - topic: "general" or "news"
                 - time_range: "day", "week", "month", "year"
-                - days: 天数 (仅topic="news"时有效)
+                - days: Number of days (only valid when topic="news")
 
         Returns:
-            搜索结果
+            Search results
         """
         max_results = kwargs.get("max_results", self.max_results)
         topic = kwargs.get("topic", "general")
@@ -79,7 +79,7 @@ class TavilySearchTool(Tool):
         days = kwargs.get("days", None)
 
         try:
-            # 准备 MCP 调用参数
+            # Prepare MCP call parameters
             params = {
                 "query": query,
                 "max_results": max_results,
@@ -93,14 +93,14 @@ class TavilySearchTool(Tool):
             if days and topic == "news":
                 params["days"] = days
 
-            # 通过 MCP Client 调用 web-search 服务的 search 工具
+            # Call web-search service search tool via MCP Client
             result = await self.mcp_client.call_tool(
                 server_name="web-search",
                 tool_name="search",
                 **params
             )
 
-            # MCP 响应已经包含 success, summary, results
+            # MCP response already contains success, summary, results
             return result
 
         except Exception as e:
@@ -108,11 +108,11 @@ class TavilySearchTool(Tool):
             return {
                 "success": False,
                 "error": str(e),
-                "summary": f"搜索'{query}'时出现错误: {str(e)}"
+                "summary": f"Error searching '{query}': {str(e)}"
             }
 
     def to_schema(self) -> Dict[str, Any]:
-        """返回工具的 Schema"""
+        """Return tool schema"""
         return {
             "name": self.name,
             "description": self.description,
@@ -121,27 +121,27 @@ class TavilySearchTool(Tool):
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "搜索查询内容，应该是具体明确的问题或关键词"
+                        "description": "Search query, should be specific and clear questions or keywords"
                     },
                     "max_results": {
                         "type": "integer",
-                        "description": "最大返回结果数量",
+                        "description": "Maximum number of results to return",
                         "default": self.max_results
                     },
                     "topic": {
                         "type": "string",
-                        "description": "搜索主题: 'general'(通用搜索) 或 'news'(新闻搜索，可配合days参数)",
+                        "description": "Search topic: 'general'(general search) or 'news'(news search, can use with days)",
                         "enum": ["general", "news"],
                         "default": "general"
                     },
                     "time_range": {
                         "type": "string",
-                        "description": "时间范围过滤: 'day'(24小时), 'week'(7天), 'month'(30天), 'year'(1年)",
+                        "description": "Time range filter: 'day'(24h), 'week'(7d), 'month'(30d), 'year'(1y)",
                         "enum": ["day", "week", "month", "year"]
                     },
                     "days": {
                         "type": "integer",
-                        "description": "搜索最近N天的内容 (仅当topic='news'时有效)"
+                        "description": "Search content from last N days (only valid when topic='news')"
                     }
                 },
                 "required": ["query"]
@@ -151,9 +151,9 @@ class TavilySearchTool(Tool):
 
 class PublicDataTool(Tool):
     """
-    公开数据查询工具 (MCP方式)
+    Public Data Query Tool (MCP)
 
-    通过 External Data Service 获取上市公司公开数据
+    Get public company data via External Data Service
     """
 
     def __init__(
@@ -162,24 +162,24 @@ class PublicDataTool(Tool):
     ):
         """
         Args:
-            external_data_url: External Data Service 的 URL
+            external_data_url: External Data Service URL
         """
         super().__init__(
             name="get_public_company_data",
-            description="获取上市公司的公开数据，包括基本信息、财务数据、股价信息等。仅适用于已上市的公司。"
+            description="Get public data of listed companies, including basic info, financial data, stock price info, etc. Only applicable to publicly listed companies."
         )
         self.external_data_url = external_data_url
 
     async def execute(self, company_name: str, **kwargs) -> Dict[str, Any]:
         """
-        获取公司公开数据
+        Get public company data
 
         Args:
-            company_name: 公司名称或股票代码
-            **kwargs: 其他参数
+            company_name: Company name or stock symbol
+            **kwargs: Other parameters
 
         Returns:
-            公司数据
+            Company data
         """
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -190,32 +190,32 @@ class PublicDataTool(Tool):
                 if response.status_code == 404:
                     return {
                         "success": False,
-                        "summary": f"未找到公司'{company_name}'的公开数据，可能是未上市公司或公司名称不正确。"
+                        "summary": f"Public data for company '{company_name}' not found. May be a private company or incorrect name."
                     }
 
                 response.raise_for_status()
                 data = response.json()
 
-                # 格式化摘要
-                summary_parts = [f"公司'{company_name}'的公开数据:\n"]
+                # Format summary
+                summary_parts = [f"Public data for company '{company_name}':\n"]
 
                 if "basic_info" in data:
                     info = data["basic_info"]
                     summary_parts.append(
-                        f"\n基本信息:\n"
-                        f"  - 公司全称: {info.get('full_name', 'N/A')}\n"
-                        f"  - 行业: {info.get('industry', 'N/A')}\n"
-                        f"  - 成立时间: {info.get('founded', 'N/A')}\n"
-                        f"  - 总部: {info.get('headquarters', 'N/A')}\n"
+                        f"\nBasic Info:\n"
+                        f"  - Full Name: {info.get('full_name', 'N/A')}\n"
+                        f"  - Industry: {info.get('industry', 'N/A')}\n"
+                        f"  - Founded: {info.get('founded', 'N/A')}\n"
+                        f"  - Headquarters: {info.get('headquarters', 'N/A')}\n"
                     )
 
                 if "financial_data" in data:
                     fin = data["financial_data"]
                     summary_parts.append(
-                        f"\n财务数据:\n"
-                        f"  - 营收: {fin.get('revenue', 'N/A')}\n"
-                        f"  - 净利润: {fin.get('net_income', 'N/A')}\n"
-                        f"  - 市值: {fin.get('market_cap', 'N/A')}\n"
+                        f"\nFinancial Data:\n"
+                        f"  - Revenue: {fin.get('revenue', 'N/A')}\n"
+                        f"  - Net Income: {fin.get('net_income', 'N/A')}\n"
+                        f"  - Market Cap: {fin.get('market_cap', 'N/A')}\n"
                     )
 
                 return {
@@ -229,11 +229,11 @@ class PublicDataTool(Tool):
             return {
                 "success": False,
                 "error": str(e),
-                "summary": f"查询'{company_name}'数据时出现错误: {str(e)}"
+                "summary": f"Error querying data for '{company_name}': {str(e)}"
             }
 
     def to_schema(self) -> Dict[str, Any]:
-        """返回工具的 Schema"""
+        """Return tool schema"""
         return {
             "name": self.name,
             "description": self.description,
@@ -242,7 +242,7 @@ class PublicDataTool(Tool):
                 "properties": {
                     "company_name": {
                         "type": "string",
-                        "description": "公司名称或股票代码"
+                        "description": "Company name or stock symbol"
                     }
                 },
                 "required": ["company_name"]
@@ -252,9 +252,9 @@ class PublicDataTool(Tool):
 
 class KnowledgeBaseTool(Tool):
     """
-    内部知识库查询工具 (MCP方式)
+    Internal Knowledge Base Query Tool (MCP)
 
-    通过 Internal Knowledge Service 查询已上传的文档和知识
+    Query uploaded documents and knowledge via Internal Knowledge Service
     """
 
     def __init__(
@@ -263,11 +263,11 @@ class KnowledgeBaseTool(Tool):
     ):
         """
         Args:
-            knowledge_service_url: Internal Knowledge Service 的 URL
+            knowledge_service_url: Internal Knowledge Service URL
         """
         super().__init__(
             name="search_knowledge_base",
-            description="在内部知识库中搜索相关文档和信息。适用于查询已上传的BP、研究报告、内部文档等。"
+            description="Search internal knowledge base for relevant documents and information. Suitable for querying uploaded BPs, research reports, internal documents, etc."
         )
         self.knowledge_service_url = knowledge_service_url
 

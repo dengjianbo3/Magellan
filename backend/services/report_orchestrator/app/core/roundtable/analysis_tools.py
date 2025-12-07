@@ -13,26 +13,26 @@ from .tool import Tool
 
 class DCFCalculatorTool(Tool):
     """
-    DCF现金流折现估值工具
+    DCF Discounted Cash Flow Valuation Tool
 
-    用于计算企业的内在价值，支持多种估值场景
+    Calculate intrinsic value of enterprises, supports multiple valuation scenarios
     """
 
     def __init__(self):
         super().__init__(
             name="dcf_calculator",
-            description="""DCF（现金流折现）估值计算器。
+            description="""DCF (Discounted Cash Flow) valuation calculator.
 
-功能:
-- 基于自由现金流计算企业价值
-- 敏感性分析（WACC和永续增长率）
-- 股权价值和每股估值计算
-- 支持多种情景分析
+Features:
+- Calculate enterprise value based on free cash flow
+- Sensitivity analysis (WACC and terminal growth rate)
+- Equity value and per-share valuation calculation
+- Support for multiple scenario analysis
 
-使用场景:
-- 评估目标公司内在价值
-- 投资决策支持
-- 估值区间分析"""
+Use cases:
+- Evaluate target company's intrinsic value
+- Investment decision support
+- Valuation range analysis"""
         )
 
     async def execute(
@@ -315,26 +315,26 @@ class DCFCalculatorTool(Tool):
 
 class ComparableAnalysisTool(Tool):
     """
-    可比公司分析工具
+    Comparable Company Analysis Tool
 
-    通过对比同行业公司的估值倍数，推算目标公司的合理估值
+    Calculate target company's fair valuation by comparing industry peer multiples
     """
 
     def __init__(self, web_search_url: str = "http://web_search_service:8010"):
         super().__init__(
             name="comparable_analysis",
-            description="""可比公司法估值分析。
+            description="""Comparable company valuation analysis.
 
-功能:
-- 获取可比公司估值倍数（P/E, P/S, EV/EBITDA, P/B）
-- 计算行业中位数和平均数
-- 推算目标公司隐含估值区间
-- 支持多种估值指标
+Features:
+- Get comparable company multiples (P/E, P/S, EV/EBITDA, P/B)
+- Calculate industry median and average
+- Estimate target company's implied valuation range
+- Support multiple valuation metrics
 
-使用场景:
-- 与DCF估值交叉验证
-- 快速估算合理估值区间
-- IPO定价参考"""
+Use cases:
+- Cross-validate with DCF valuation
+- Quick estimate of fair valuation range
+- IPO pricing reference"""
         )
         self.web_search_url = web_search_url
 
@@ -632,26 +632,26 @@ class ComparableAnalysisTool(Tool):
 
 class RiskScoringTool(Tool):
     """
-    风险量化评分模型
+    Risk Quantification Scoring Model
 
-    将定性风险评估转化为量化评分，支持多维度风险分析
+    Convert qualitative risk assessment to quantitative scores, supports multi-dimensional risk analysis
     """
 
     def __init__(self):
         super().__init__(
             name="risk_scoring_model",
-            description="""风险量化评分模型。
+            description="""Risk quantification scoring model.
 
-功能:
-- 多维度风险评分（市场、技术、团队、财务、法律、运营）
-- 加权综合风险得分
-- 风险等级分类
-- 风险矩阵可视化数据
+Features:
+- Multi-dimensional risk scoring (market, technology, team, financial, legal, operational)
+- Weighted composite risk score
+- Risk level classification
+- Risk matrix visualization data
 
-使用场景:
-- 投资决策的风险评估
-- 不同项目的风险比较
-- 风险监控和预警"""
+Use cases:
+- Risk assessment for investment decisions
+- Risk comparison across different projects
+- Risk monitoring and early warning"""
         )
 
         # 默认权重
@@ -954,29 +954,29 @@ class RiskScoringTool(Tool):
 
 class ComplianceCheckerTool(Tool):
     """
-    合规性检查工具
+    Compliance Checker Tool
 
-    根据行业和地区提供合规性检查清单和建议
+    Provide compliance checklists and recommendations based on industry and region
     """
 
     def __init__(self):
         super().__init__(
             name="compliance_checker",
-            description="""合规性检查清单生成工具。
+            description="""Compliance checklist generation tool.
 
-功能:
-- 根据行业生成必需资质清单
-- 列出关键合规要求
-- 识别常见法律风险
-- 提供行动建议
+Features:
+- Generate required licenses/qualifications by industry
+- List key compliance requirements
+- Identify common legal risks
+- Provide action recommendations
 
-支持行业:
-- fintech (金融科技)
-- healthcare (医疗健康)
-- ecommerce (电子商务)
-- edtech (教育科技)
-- crypto (加密货币)
-- ai (人工智能)"""
+Supported industries:
+- fintech (Financial Technology)
+- healthcare (Healthcare)
+- ecommerce (E-commerce)
+- edtech (Education Technology)
+- crypto (Cryptocurrency)
+- ai (Artificial Intelligence)"""
         )
 
         # 行业合规数据库
@@ -1334,26 +1334,26 @@ class ComplianceCheckerTool(Tool):
 
 class SummaryChartTool(Tool):
     """
-    汇总图表生成工具
+    Summary Chart Generation Tool
 
-    为Leader生成投资分析汇总图表和报告
+    Generate investment analysis summary charts and reports for the Leader
     """
 
     def __init__(self):
         super().__init__(
             name="generate_summary_chart",
-            description="""生成投资分析汇总图表。
+            description="""Generate investment analysis summary charts.
 
-功能:
-- 生成多维度评分雷达图数据
-- 生成对比分析表格
-- 生成时间线图表数据
-- 支持多种可视化格式
+Features:
+- Generate multi-dimensional scoring radar chart data
+- Generate comparison analysis tables
+- Generate timeline chart data
+- Support multiple visualization formats
 
-使用场景:
-- 圆桌讨论结果汇总
-- 投资建议可视化
-- 多项目对比分析"""
+Use cases:
+- Roundtable discussion results summary
+- Investment recommendation visualization
+- Multi-project comparison analysis"""
         )
 
     async def execute(

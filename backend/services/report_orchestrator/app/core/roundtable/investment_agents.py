@@ -2962,23 +2962,23 @@ Short-term price movements are inherently unpredictable.
 
     # 创建MCP工具包装
     class TechnicalAnalysisMCPTool(Tool):
-        """技术分析MCP工具"""
+        """Technical Analysis MCP Tool"""
 
         def __init__(self, tools_instance):
             super().__init__(
                 name="technical_analysis",
-                description="""强大的技术分析工具，可以：
-1. 获取实时K线数据 (action: "get_ohlcv")
-2. 计算技术指标 (action: "indicators") - RSI, MACD, BB, EMA, KDJ, ADX等
-3. 识别K线形态 (action: "patterns") - 锤子线, 吞没, 十字星等
-4. 计算支撑阻力位 (action: "levels") - 基于斐波那契或枢轴点
-5. 完整技术分析 (action: "full_analysis") - 包含以上所有内容
+                description="""Powerful technical analysis tool that can:
+1. Get real-time K-line data (action: "get_ohlcv")
+2. Calculate technical indicators (action: "indicators") - RSI, MACD, BB, EMA, KDJ, ADX, etc.
+3. Identify candlestick patterns (action: "patterns") - Hammer, Engulfing, Doji, etc.
+4. Calculate support/resistance levels (action: "levels") - Based on Fibonacci or pivot points
+5. Full technical analysis (action: "full_analysis") - Includes all of the above
 
-参数:
-- action: 操作类型 (get_ohlcv, indicators, patterns, levels, full_analysis)
-- symbol: 交易对，如 "BTC/USDT", "ETH/USDT"
-- timeframe: 时间周期，如 "1h", "4h", "1d", "1w"
-- market_type: 市场类型 "crypto" 或 "stock"
+Parameters:
+- action: Operation type (get_ohlcv, indicators, patterns, levels, full_analysis)
+- symbol: Trading pair, e.g., "BTC/USDT", "ETH/USDT"
+- timeframe: Time period, e.g., "1h", "4h", "1d", "1w"
+- market_type: Market type "crypto" or "stock"
 """
             )
             self.tools = tools_instance
