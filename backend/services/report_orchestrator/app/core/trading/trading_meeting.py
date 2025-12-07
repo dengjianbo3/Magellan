@@ -469,8 +469,8 @@ class TradingMeeting(Meeting):
             logger.error(f"Error in trading meeting: {e}")
             self._add_message(
                 agent_id="system",
-                agent_name="系统",
-                content=f"会议出现错误: {str(e)}",
+                agent_name="System",
+                content=f"Meeting error occurred: {str(e)}",
                 message_type="error"
             )
             return None
@@ -539,141 +539,139 @@ class TradingMeeting(Meeting):
         """Phase 1: Market Analysis"""
         self._add_message(
             agent_id="system",
-            agent_name="系统",
-            content="## 阶段1: 市场分析\n\n请技术分析师、宏观经济分析师、情绪分析师开始分析市场。",
+            agent_name="System",
+            content="## Phase 1: Market Analysis\n\nTechnical Analyst, Macro Economist, and Sentiment Analyst, please begin your market analysis.",
             message_type="phase"
         )
 
         # Run analysis agents (using agent names from ReWOO agents)
-        # Agent.id defaults to agent.name in ReWOOAgent
         analysis_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst"]
 
-        # 🆕 持仓状况提示（用于所有分析师）
+        # Position context for all analysts
         position_hint = position_context.to_summary()
 
-        # 🔧 FIX: 使用中性提示词，避免确认偏差和引导性问题
-        # 针对不同类型的agent提供不同的分析指令
+        # Neutral analysis prompt to avoid confirmation bias
         position_analysis_prompt = self._get_neutral_position_analysis_prompt(position_context)
 
         agent_prompts = {
-            "TechnicalAnalyst": f"""请分析 {self.config.symbol} 的当前技术面状况。
+            "TechnicalAnalyst": f"""Analyze the current technical situation for {self.config.symbol}.
 
 {position_hint}
 
 {position_analysis_prompt}
 
-**重要**: 你必须使用工具获取实时数据，不能凭空编造！
+**IMPORTANT**: You MUST use tools to get real-time data. Do NOT make up data!
 
-**工具调用格式** (必须严格遵守):
+**Tool Call Format** (must follow strictly):
 ```
 [USE_TOOL: tool_name(param1="value1", param2="value2")]
 ```
 
-请执行以下步骤:
+Execute the following steps:
 1. [USE_TOOL: get_market_price(symbol="{self.config.symbol}")]
 2. [USE_TOOL: get_klines(symbol="{self.config.symbol}", timeframe="4h", limit="100")]
 3. [USE_TOOL: calculate_technical_indicators(symbol="{self.config.symbol}", timeframe="4h")]
 
-基于真实数据**客观分析**:
-- 当前价格和24h涨跌幅
-- RSI、MACD、布林带等技术指标
-- 趋势判断和关键支撑阻力位
-- 技术面对**做多**的支持程度 (强/中/弱/反对)
-- 技术面对**做空**的支持程度 (强/中/弱/反对)
-- 你的技术面评分和**独立**交易建议（不受当前持仓影响）""",
+Based on real data, provide **objective analysis**:
+- Current price and 24h change
+- Technical indicators: RSI, MACD, Bollinger Bands
+- Trend analysis and key support/resistance levels
+- Technical support for **LONG** position (strong/medium/weak/against)
+- Technical support for **SHORT** position (strong/medium/weak/against)
+- Your technical score and **independent** trading recommendation (unbiased by current position)""",
 
-            "MacroEconomist": f"""请分析当前影响 {self.config.symbol} 的宏观经济环境。
+            "MacroEconomist": f"""Analyze the current macro-economic environment affecting {self.config.symbol}.
 
 {position_hint}
 
 {position_analysis_prompt}
 
-**重要**: 你必须搜索最新信息，不能仅凭既有知识！
+**IMPORTANT**: You MUST search for latest information. Do NOT rely solely on existing knowledge!
 
-**工具调用格式** (必须严格遵守):
+**Tool Call Format** (must follow strictly):
 ```
 [USE_TOOL: tool_name(param1="value1", param2="value2")]
 ```
 
-请执行以下步骤 (直接复制这些工具调用):
+Execute the following steps:
 1. [USE_TOOL: tavily_search(query="Bitcoin BTC market news today price analysis")]
 2. [USE_TOOL: tavily_search(query="cryptocurrency institutional investment outlook")]
 
-基于搜索结果**客观分析**:
-- 当前市场流动性状况
-- 机构投资者动向
-- 美元指数与加密货币的相关性
-- 宏观面对**做多**的支持程度 (强/中/弱/反对)
-- 宏观面对**做空**的支持程度 (强/中/弱/反对)
-- 你的宏观面评分和**独立**方向判断（不受当前持仓影响）
+Based on search results, provide **objective analysis**:
+- Current market liquidity conditions
+- Institutional investor movements
+- USD index correlation with cryptocurrency
+- Macro support for **LONG** position (strong/medium/weak/against)
+- Macro support for **SHORT** position (strong/medium/weak/against)
+- Your macro score and **independent** directional judgment (unbiased by current position)
 
-**注意**: 聚焦于市场数据和投资分析，避免讨论敏感话题。""",
+**Note**: Focus on market data and investment analysis. Avoid sensitive topics.""",
 
-            "SentimentAnalyst": f"""请分析 {self.config.symbol} 的当前市场情绪。
+            "SentimentAnalyst": f"""Analyze the current market sentiment for {self.config.symbol}.
 
 {position_hint}
 
 {position_analysis_prompt}
 
-**重要**: 你必须获取实时数据和搜索最新信息！
+**IMPORTANT**: You MUST fetch real-time data and search for latest information!
 
-**工具调用格式** (必须严格遵守):
+**Tool Call Format** (must follow strictly):
 ```
 [USE_TOOL: tool_name(param1="value1", param2="value2")]
 ```
 
-请执行以下步骤 (直接复制这些工具调用):
+Execute the following steps:
 1. [USE_TOOL: get_fear_greed_index()]
 2. [USE_TOOL: get_funding_rate(symbol="{self.config.symbol}")]
 3. [USE_TOOL: tavily_search(query="Bitcoin BTC market sentiment social media")]
 
-基于真实数据**客观分析**:
-- 恐慌贪婪指数数值和含义
-- 资金费率及多空力量对比
-- 社交媒体/新闻中的市场情绪
-- 情绪面对**做多**的支持程度 (强/中/弱/反对)
-- 情绪面对**做空**的支持程度 (强/中/弱/反对)
-- 你的情绪面评分和**独立**方向判断（不受当前持仓影响）""",
+Based on real data, provide **objective analysis**:
+- Fear & Greed Index value and interpretation
+- Funding rate and long/short ratio
+- Social media and news sentiment
+- Sentiment support for **LONG** position (strong/medium/weak/against)
+- Sentiment support for **SHORT** position (strong/medium/weak/against)
+- Your sentiment score and **independent** directional judgment (unbiased by current position)""",
 
-            "QuantStrategist": f"""请分析 {self.config.symbol} 的量化数据和统计信号。
+            "QuantStrategist": f"""Analyze quantitative data and statistical signals for {self.config.symbol}.
 
 {position_hint}
 
 {position_analysis_prompt}
 
-**重要**: 你必须使用工具获取实时数据进行量化分析！
+**IMPORTANT**: You MUST use tools to get real-time data for quantitative analysis!
 
-**工具调用格式** (必须严格遵守):
+**Tool Call Format** (must follow strictly):
 ```
 [USE_TOOL: tool_name(param1="value1", param2="value2")]
 ```
 
-请执行以下步骤 (直接复制这些工具调用):
+Execute the following steps:
 1. [USE_TOOL: get_market_price(symbol="{self.config.symbol}")]
 2. [USE_TOOL: get_klines(symbol="{self.config.symbol}", timeframe="1h", limit="200")]
 3. [USE_TOOL: calculate_technical_indicators(symbol="{self.config.symbol}", timeframe="1h")]
 
-基于真实数据进行**客观**量化分析:
-- 价格波动率和成交量分析
-- 多时间周期趋势一致性
-- 动量和趋势指标的量化信号
-- 量化信号对**做多**的支持程度 (强/中/弱/反对)
-- 量化信号对**做空**的支持程度 (强/中/弱/反对)
-- 你的量化评分和**独立**方向判断（不受当前持仓影响）"""
+Based on real data, provide **objective** quantitative analysis:
+- Price volatility and volume analysis
+- Multi-timeframe trend consistency
+- Momentum and trend indicator signals
+- Quantitative support for **LONG** position (strong/medium/weak/against)
+- Quantitative support for **SHORT** position (strong/medium/weak/against)
+- Your quantitative score and **independent** directional judgment (unbiased by current position)"""
         }
 
-        # 默认 prompt 也要求使用工具
-        default_prompt = f"""请分析 {self.config.symbol} 的当前市场状况。
+        # Default prompt also requires tool usage
+        default_prompt = f"""Analyze the current market situation for {self.config.symbol}.
 
 {position_hint}
 
-**重要**: 你必须使用工具获取实时数据，不能凭空编造！
+**IMPORTANT**: You MUST use tools to get real-time data. Do NOT make up data!
 
-请使用以下工具之一获取数据:
-- `get_market_price` 获取当前价格
-- `tavily_search` 搜索相关新闻
+Use one of the following tools:
+- `get_market_price` to get current price
+- `tavily_search` to search for relevant news
 
-基于真实数据给出你的分析和观点。"""
+Provide your analysis and views based on real data."""
 
         for agent_id in analysis_agents:
             agent = self._get_agent_by_id(agent_id)
@@ -689,35 +687,35 @@ class TradingMeeting(Meeting):
         """
         self._add_message(
             agent_id="system",
-            agent_name="系统",
-            content="## 阶段2: 信号生成\n\n请各位专家提出交易建议（做多/做空/观望）。",
+            agent_name="System",
+            content="## Phase 2: Signal Generation\n\nExperts, please provide your trading recommendations (long/short/hold).",
             message_type="phase"
         )
 
-        # 🆕 根据持仓状态生成不同的决策选项提示
+        # Generate decision options based on position status
         decision_options = self._get_decision_options_for_analysts(position_context)
 
-        # 🔧 重构: JSON 结构化输出 prompt
-        vote_prompt = f"""基于以上分析和你收集到的实时数据，请给出你的交易建议。
+        # JSON structured output prompt
+        vote_prompt = f"""Based on the above analysis and real-time data you've collected, please provide your trading recommendation.
 
 {position_context.to_summary()}
 
 {decision_options}
 
-**注意**: 如果你在上一阶段没有使用工具获取数据，请现在使用相关工具获取最新信息再做判断！
+**Note**: If you did not use tools to fetch data in the previous phase, please use relevant tools NOW to get the latest information before making your judgment!
 
-⚠️ **重要提示 - 请勿调用决策工具**:
-- 你现在处于"信号生成阶段"，只需要给出**文字建议**
-- **不要**调用任何决策工具（open_long/open_short/hold/close_position）
-- 只有TradeExecutor（交易执行专员）在Phase 5才能执行交易
+⚠️ **IMPORTANT - Do NOT call decision tools**:
+- You are in the "Signal Generation Phase" - only provide **text recommendations**
+- **Do NOT** call any decision tools (open_long/open_short/hold/close_position)
+- Only the TradeExecutor can execute trades in Phase 5
 
 ---
 
-## 📋 输出要求
+## 📋 Output Requirements
 
-请先给出你的分析思路，然后在回复的**最后**输出一个 JSON 格式的交易信号。
+First explain your analysis reasoning, then output a JSON trading signal at the **END** of your response.
 
-**JSON 必须是有效格式，放在 ```json 代码块中：**
+**JSON must be valid format, placed in a ```json code block:**
 
 ```json
 {{
@@ -726,25 +724,25 @@ class TradingMeeting(Meeting):
   "leverage": 6,
   "take_profit_percent": 5.0,
   "stop_loss_percent": 2.0,
-  "reasoning": "简述理由，引用具体数据"
+  "reasoning": "Brief reasoning with specific data references"
 }}
 ```
 
-**direction 字段可选值**:
-- `"long"`: 做多/开多/买入
-- `"short"`: 做空/开空/卖出
-- `"hold"`: 观望/等待/不操作
-- `"add_long"`: 追加多仓（已有多仓时）
-- `"add_short"`: 追加空仓（已有空仓时）
-- `"close"`: 平仓
-- `"reverse"`: 反向（平仓后反向开仓）
+**direction field options**:
+- `"long"`: Go long / Buy
+- `"short"`: Go short / Sell
+- `"hold"`: Wait / No action
+- `"add_long"`: Add to long position (when already long)
+- `"add_short"`: Add to short position (when already short)
+- `"close"`: Close position
+- `"reverse"`: Reverse (close and open opposite)
 
-**confidence 与 leverage 对应规则**:
-- confidence >= 80: leverage 应在 {int(self.config.max_leverage * 0.5)}-{self.config.max_leverage} 范围
-- confidence 60-79: leverage 应在 {int(self.config.max_leverage * 0.25)}-{int(self.config.max_leverage * 0.5)} 范围
-- confidence < 60: leverage 应在 1-{int(self.config.max_leverage * 0.25)} 范围，或选择 hold
+**confidence and leverage correlation rules**:
+- confidence >= 80: leverage should be in range {int(self.config.max_leverage * 0.5)}-{self.config.max_leverage}
+- confidence 60-79: leverage should be in range {int(self.config.max_leverage * 0.25)}-{int(self.config.max_leverage * 0.5)}
+- confidence < 60: leverage should be in range 1-{int(self.config.max_leverage * 0.25)}, or choose hold
 
-**重要**: JSON 必须放在回复的最后，确保格式正确！
+**Important**: JSON must be at the END of your response and properly formatted!
 """
 
         vote_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "QuantStrategist"]
@@ -756,8 +754,8 @@ class TradingMeeting(Meeting):
                 if vote:
                     self._agent_votes.append(vote)
                 else:
-                    # 🔧 JSON 解析失败时的降级处理
-                    logger.warning(f"[{agent.name}] JSON 解析失败，尝试文本解析降级")
+                    # Fallback when JSON parsing fails
+                    logger.warning(f"[{agent.name}] JSON parsing failed, attempting text parsing fallback")
                     vote = self._parse_vote_fallback(agent_id, agent.name, response)
                     if vote:
                         self._agent_votes.append(vote)
@@ -766,20 +764,20 @@ class TradingMeeting(Meeting):
         """Phase 3: Risk Assessment"""
         self._add_message(
             agent_id="system",
-            agent_name="系统",
-            content="## 阶段3: 风险评估\n\n请风险管理师评估交易风险。",
+            agent_name="System",
+            content="## Phase 3: Risk Assessment\n\nRisk Manager, please evaluate the trading risks.",
             message_type="phase"
         )
 
         # Summarize votes for risk manager
         votes_summary = self._summarize_votes()
 
-        # 🆕 生成持仓风险评估提示
+        # Generate position risk assessment prompt
         risk_context = self._generate_risk_context(position_context)
 
         risk_agent = self._get_agent_by_id("RiskAssessor")
         if risk_agent:
-            prompt = f"""以下是各专家的投票结果：
+            prompt = f"""Here are the expert voting results:
 
 {votes_summary}
 
@@ -787,109 +785,109 @@ class TradingMeeting(Meeting):
 
 {risk_context}
 
-请评估这笔交易的风险，并决定是否批准。
-如果批准，请给出最终的仓位建议和止盈止损设置。
-如果不批准，请说明原因。
+Please evaluate the risk of this trade and decide whether to approve.
+If approved, provide final position recommendations and TP/SL settings.
+If not approved, explain your reasons.
 
-⚠️ **重要**: 
-- 你只需要给出风险评估的**文字建议**
-- **不要**调用任何决策工具（open_long/open_short/hold/close_position）
-- 只有TradeExecutor（交易执行专员）在Phase 5才能执行交易
-- 你的职责是评估风险，而非执行交易
+⚠️ **IMPORTANT**:
+- You only need to provide **text recommendations** for risk assessment
+- **Do NOT** call any decision tools (open_long/open_short/hold/close_position)
+- Only the TradeExecutor can execute trades in Phase 5
+- Your responsibility is to assess risk, NOT to execute trades
 """
             await self._run_agent_turn(risk_agent, prompt)
     
     def _generate_risk_context(self, position_context: PositionContext) -> str:
         """
-        🆕 生成风险评估上下文
-        
-        帮助RiskAssessor评估当前持仓的风险
+        Generate risk assessment context
+
+        Help RiskAssessor evaluate current position risks
         """
         if not position_context.has_position:
             return """
-## 🛡️ 风险评估重点（无持仓）
+## 🛡️ Risk Assessment Focus (No Position)
 
-**评估要点**:
-1. 开仓方向是否有充分依据？
-2. 杠杆倍数是否与信心度匹配？
-3. 止盈止损设置是否合理？
-4. 仓位大小是否符合风险管理原则？
-5. 当前市场波动率是否适合开仓？
+**Key Evaluation Points**:
+1. Is the entry direction well-justified?
+2. Does the leverage match the confidence level?
+3. Are TP/SL settings reasonable?
+4. Does the position size comply with risk management principles?
+5. Is current market volatility suitable for opening a position?
 """
-        
-        # 有持仓
+
+        # Has position
         direction = position_context.direction or "unknown"
         pnl = position_context.unrealized_pnl
         pnl_percent = position_context.unrealized_pnl_percent
-        
-        # 风险等级
+
+        # Risk level
         if position_context.distance_to_liquidation_percent > 50:
-            risk_level = "🟢 安全"
+            risk_level = "🟢 Safe"
         elif position_context.distance_to_liquidation_percent > 20:
-            risk_level = "🟡 警戒"
+            risk_level = "🟡 Warning"
         else:
-            risk_level = "🔴 危险"
-        
-        # 接近TP/SL警告
+            risk_level = "🔴 Danger"
+
+        # TP/SL proximity warnings
         warnings = []
         if abs(position_context.distance_to_tp_percent) < 5:
-            warnings.append(f"⚠️ 接近止盈（仅{abs(position_context.distance_to_tp_percent):.1f}%）")
+            warnings.append(f"⚠️ Near Take Profit (only {abs(position_context.distance_to_tp_percent):.1f}%)")
         if abs(position_context.distance_to_sl_percent) < 5:
-            warnings.append(f"🚨 接近止损（仅{abs(position_context.distance_to_sl_percent):.1f}%）")
-        
-        warnings_text = "\n".join(warnings) if warnings else "无特殊警告"
-        
+            warnings.append(f"🚨 Near Stop Loss (only {abs(position_context.distance_to_sl_percent):.1f}%)")
+
+        warnings_text = "\n".join(warnings) if warnings else "No special warnings"
+
         return f"""
-## 🛡️ 风险评估重点（有{direction.upper()}持仓）
+## 🛡️ Risk Assessment Focus (Has {direction.upper()} Position)
 
-**当前持仓风险**:
-- 风险等级: {risk_level}
-- 距离强平: {position_context.distance_to_liquidation_percent:.1f}%
-- 浮动盈亏: ${pnl:.2f} ({pnl_percent:+.2f}%)
-- 仓位占比: {position_context.current_position_percent*100:.1f}%
+**Current Position Risk**:
+- Risk Level: {risk_level}
+- Distance to Liquidation: {position_context.distance_to_liquidation_percent:.1f}%
+- Unrealized P&L: ${pnl:.2f} ({pnl_percent:+.2f}%)
+- Position Ratio: {position_context.current_position_percent*100:.1f}%
 
-**风险警告**:
+**Risk Warnings**:
 {warnings_text}
 
-**评估要点**（根据专家建议类型）:
+**Evaluation Points** (based on expert recommendation type):
 
-### 如果专家建议"继续看{direction}/追加"
-1. 当前{direction}仓的盈亏状态如何？是否健康？
-2. 追加后的总仓位是否超过风险上限？
-3. 是否过于集中在单一方向？
-4. 持仓时长是否已较长（当前{position_context.holding_duration_hours:.1f}小时）？
+### If experts recommend "Continue {direction}/Add"
+1. What is the P&L status of the current {direction} position? Is it healthy?
+2. Will the total position exceed risk limits after adding?
+3. Is there over-concentration in a single direction?
+4. Has the holding duration been too long (currently {position_context.holding_duration_hours:.1f} hours)?
 
-### 如果专家建议"平仓"
-1. 平仓理由是否充分？
-2. 当前盈亏状态是否适合平仓？
-3. 是否止盈/止损的合适时机？
+### If experts recommend "Close Position"
+1. Is the closing rationale sufficient?
+2. Is current P&L status suitable for closing?
+3. Is this the right time to take profit/stop loss?
 
-### 如果专家建议"反向操作"
-1. 反向信号是否足够强？
-2. 当前持仓是否盈利？平仓成本如何？
-3. 反向后的新仓位风险如何？
-4. 是否值得承担双重交易成本？
+### If experts recommend "Reverse"
+1. Is the reversal signal strong enough?
+2. Is the current position profitable? What are the closing costs?
+3. What is the risk of the new reversed position?
+4. Is it worth bearing double transaction costs?
 
-### 如果专家建议"观望"
-1. 继续持有当前仓位的风险如何？
-2. 是否应该主动平仓而非被动等待？
+### If experts recommend "Hold"
+1. What is the risk of continuing to hold the current position?
+2. Should we actively close rather than passively wait?
 
-请综合评估，给出风险建议！
+Please provide comprehensive risk assessment and recommendations!
 """
 
     async def _run_consensus_phase(self, position_context: PositionContext) -> Optional[TradingSignal]:
         """
-        Phase 4: Consensus Building - Leader总结会议
-        
+        Phase 4: Consensus Building - Leader Meeting Summary
+
         NEW ARCHITECTURE:
-        - Leader只负责总结会议讨论和专家意见
-        - 不再输出结构化的交易决策
-        - 决策由TradeExecutor在Phase 5做出
+        - Leader only summarizes meeting discussions and expert opinions
+        - No longer outputs structured trading decisions
+        - Decisions made by TradeExecutor in Phase 5
         """
         self._add_message(
             agent_id="system",
-            agent_name="系统",
-            content="## 阶段4: 共识形成\n\n请主持人总结各位专家的意见，给出会议结论。",
+            agent_name="System",
+            content="## Phase 4: Consensus Building\n\nModerator, please summarize expert opinions and provide meeting conclusions.",
             message_type="phase"
         )
 
@@ -899,68 +897,68 @@ class TradingMeeting(Meeting):
             logger.error("Leader not found")
             return None
 
-        # 🆕 生成持仓感知的决策指导
+        # Generate position-aware decision guidance
         decision_guidance = self._generate_decision_guidance(position_context)
 
-        # 🔧 NEW PROMPT: Leader作为主持人总结会议
-        prompt = f"""作为圆桌主持人，请综合总结本次会议的讨论内容和专家意见。
+        # Leader as meeting moderator summary prompt
+        prompt = f"""As the roundtable moderator, please comprehensively summarize the meeting discussions and expert opinions.
 
 {position_context.to_summary()}
 
 {decision_guidance}
 
-## 专家意见总结
-你已经听取了以下专家的分析：
-- 技术分析师 (TechnicalAnalyst): K线形态、技术指标分析
-- 宏观经济分析师 (MacroEconomist): 宏观经济、货币政策分析
-- 情绪分析师 (SentimentAnalyst): 市场情绪、资金流向分析
-- 量化策略师 (QuantStrategist): 量化指标、统计分析
-- 风险评估师 (RiskAssessor): 风险评估和建议
+## Expert Opinion Summary
+You have heard analysis from the following experts:
+- Technical Analyst (TechnicalAnalyst): Candlestick patterns, technical indicators analysis
+- Macro Economist (MacroEconomist): Macro economy, monetary policy analysis
+- Sentiment Analyst (SentimentAnalyst): Market sentiment, capital flow analysis
+- Quant Strategist (QuantStrategist): Quantitative indicators, statistical analysis
+- Risk Assessor (RiskAssessor): Risk assessment and recommendations
 
-## 你的任务
+## Your Task
 
-作为主持人，请：
+As moderator, please:
 
-1. **总结专家共识**:
-   - 有多少专家看多？多少看空？多少观望？
-   - 各专家意见的核心理由是什么？
-   - 专家之间有哪些一致性和分歧？
+1. **Summarize Expert Consensus**:
+   - How many experts are bullish? Bearish? Neutral?
+   - What are the core reasons for each expert's opinion?
+   - What are the agreements and disagreements among experts?
 
-2. **综合市场判断**:
-   - 基于所有讨论，你对当前市场的总体看法
-   - 技术面、基本面、情绪面各方面的综合评估
-   - 当前持仓状态下应该考虑的因素
+2. **Comprehensive Market Judgment**:
+   - Based on all discussions, your overall view of the current market
+   - Comprehensive evaluation of technical, fundamental, and sentiment aspects
+   - Factors to consider given the current position status
 
-3. **风险和机会评估**:
-   - 当前的主要风险是什么？
-   - 潜在的交易机会在哪里？
-   - 对于当前持仓（如果有）的建议
+3. **Risk and Opportunity Assessment**:
+   - What are the main risks currently?
+   - Where are the potential trading opportunities?
+   - Recommendations for current position (if any)
 
-4. **给出会议结论**:
-   - 基于所有分析，你认为应该采取什么策略？
-   - 建议的风险水平和仓位规模
-   - 你的信心度如何？
+4. **Provide Meeting Conclusions**:
+   - Based on all analysis, what strategy should be adopted?
+   - Recommended risk level and position size
+   - How confident are you?
 
-## 📋 输出格式
+## 📋 Output Format
 
-请自由表达你的总结和建议，**不需要严格遵守特定格式**。
+Please express your summary and recommendations freely, **no strict format required**.
 
-你可以自然地表达，例如：
+You can express naturally, for example:
 
-"综合各位专家的意见，我认为...
-- TechnicalAnalyst 和 SentimentAnalyst 都看多，理由是...
-- 但 MacroEconomist 建议谨慎，因为...
-- 考虑到当前{('无持仓' if not position_context.has_position else f'{position_context.direction}仓')}的状态...
-我建议采取...策略，理由是...
-建议的杠杆是...，仓位规模是...，我的信心度大约是...%"
+"Based on all expert opinions, I believe...
+- TechnicalAnalyst and SentimentAnalyst are bullish because...
+- However, MacroEconomist advises caution due to...
+- Considering the current {('no position' if not position_context.has_position else f'{position_context.direction} position')} status...
+I recommend... strategy because...
+Suggested leverage is..., position size is..., my confidence is approximately...%"
 
-⚠️ **重要提醒**:
-- ✅ 用自然语言表达你的总结和建议
-- ✅ 包含专家意见、你的判断、建议策略
-- ✅ 不需要【最终决策】这样的标记
-- ✅ 你的总结会传递给交易执行专员，他会根据你的建议做出最终决策
+⚠️ **Important Reminders**:
+- ✅ Express your summary and recommendations in natural language
+- ✅ Include expert opinions, your judgment, recommended strategy
+- ✅ No need for markers like "【Final Decision】"
+- ✅ Your summary will be passed to the Trade Executor, who will make the final decision based on your recommendations
 
-请开始你的总结！
+Please begin your summary!
 """
 
         response = await self._run_agent_turn(leader, prompt)
@@ -990,175 +988,175 @@ class TradingMeeting(Meeting):
     
     def _generate_decision_guidance(self, position_context: PositionContext) -> str:
         """
-        🆕 根据持仓状态生成决策指导
+        Generate decision guidance based on position status
 
-        🔧 FIX: 使用中性的决策指导，避免偏向持有
-        - 不把"观望"放在第一位
-        - 决策矩阵平等对待所有选项
-        - 强调基于专家意见而非持仓偏好
+        FIX: Use neutral decision guidance to avoid holding bias
+        - Don't put "hold" as first option
+        - Decision matrix treats all options equally
+        - Emphasize decisions based on expert opinions, not position bias
         """
         if not position_context.has_position:
-            # 无持仓
+            # No position
             return """
-## 💡 决策指导（无持仓状态）
+## 💡 Decision Guidance (No Position)
 
-**决策原则**: 完全基于专家投票共识，不预设任何方向偏好。
+**Decision Principle**: Based entirely on expert voting consensus, no preset directional bias.
 
-**决策逻辑**:
+**Decision Logic**:
 
-| 专家共识 | 建议操作 | 理由 |
-|---------|----------|------|
-| 多数看多 (≥3票) | 做多 | 市场趋势向上，专家形成共识 |
-| 多数看空 (≥3票) | 做空 | 市场趋势向下，专家形成共识 |
-| 意见分歧 | 观望 | 方向不明确，等待更清晰信号 |
-| 一致观望 | 观望 | 时机不成熟 |
+| Expert Consensus | Recommended Action | Reason |
+|-----------------|-------------------|--------|
+| Majority bullish (≥3 votes) | Go Long | Upward market trend, expert consensus formed |
+| Majority bearish (≥3 votes) | Go Short | Downward market trend, expert consensus formed |
+| Split opinions | Hold | Direction unclear, wait for clearer signals |
+| Unanimous hold | Hold | Timing not right |
 
-**参数自动计算**:
-- 杠杆/仓位由投票共识度决定（共识越强，杠杆越高）
-- 止盈止损根据杠杆自动调整
+**Auto-calculated Parameters**:
+- Leverage/position determined by voting consensus strength (stronger consensus = higher leverage)
+- TP/SL automatically adjusted based on leverage
 """
 
-        # 有持仓
+        # Has position
         direction = position_context.direction or "unknown"
-        opposite = "空" if direction == "long" else "多"
+        opposite = "short" if direction == "long" else "long"
         pnl = position_context.unrealized_pnl
         pnl_percent = position_context.unrealized_pnl_percent
         can_add = position_context.can_add_position
 
-        # 判断盈亏状态
-        pnl_status = "盈利" if pnl >= 0 else "亏损"
+        # P&L status
+        pnl_status = "profit" if pnl >= 0 else "loss"
         pnl_emoji = "📈" if pnl >= 0 else "📉"
 
-        # 判断是否接近止盈止损
+        # Check if near TP/SL
         near_tp = abs(position_context.distance_to_tp_percent) < 5
         near_sl = abs(position_context.distance_to_sl_percent) < 5
 
         guidance = f"""
-## 💡 决策指导（有{direction.upper()}持仓）
+## 💡 Decision Guidance (Has {direction.upper()} Position)
 
-**当前持仓状态**: {pnl_emoji} {pnl_status} ${abs(pnl):.2f} ({pnl_percent:+.2f}%)
+**Current Position Status**: {pnl_emoji} {pnl_status} ${abs(pnl):.2f} ({pnl_percent:+.2f}%)
 """
 
         if near_tp:
             guidance += f"""
-⚠️ **接近止盈**: 距离止盈价仅 {abs(position_context.distance_to_tp_percent):.1f}%
+⚠️ **Near Take Profit**: Only {abs(position_context.distance_to_tp_percent):.1f}% from TP price
 """
 
         if near_sl:
             guidance += f"""
-🚨 **接近止损**: 距离止损价仅 {abs(position_context.distance_to_sl_percent):.1f}%
+🚨 **Near Stop Loss**: Only {abs(position_context.distance_to_sl_percent):.1f}% from SL price
 """
 
         guidance += f"""
-**决策原则**: 基于专家投票共识决策，**不因已有持仓而偏向任何选项**。
+**Decision Principle**: Decide based on expert voting consensus, **do NOT favor any option due to existing position**.
 
-**决策逻辑**（按专家共识判断，与持仓盈亏无关）:
+**Decision Logic** (based on expert consensus, regardless of position P&L):
 
-| 专家共识 | 与当前{direction}仓关系 | 建议操作 | 理由 |
-|---------|------------------------|----------|------|
-| 多数看{opposite} | 🔴 相反 | **平仓或反向** | 专家看反向，应该尊重市场信号 |
-| 多数看{direction} | 🟢 一致 | 维持{'或追加' if can_add else '(已满仓)'} | 专家看同向，趋势可能延续 |
-| 意见分歧 | ⚪ 不明 | 考虑平仓或观望 | 方向不明，降低风险敞口 |
-| 一致观望 | ⚪ 中性 | 观望，但设置更紧的止损 | 市场可能变盘 |
+| Expert Consensus | Relation to Current {direction} | Recommended Action | Reason |
+|-----------------|-------------------------------|-------------------|--------|
+| Majority {opposite} | 🔴 Opposite | **Close or Reverse** | Experts see reversal, respect market signals |
+| Majority {direction} | 🟢 Same | Maintain{' or Add' if can_add else ' (Max position)'} | Experts see same direction, trend may continue |
+| Split opinions | ⚪ Unclear | Consider closing or hold | Direction unclear, reduce risk exposure |
+| Unanimous hold | ⚪ Neutral | Hold but set tighter stop loss | Market may reverse |
 
-⚠️ **特别提醒**:
-- 如果专家共识与当前{direction}仓方向相反，**必须考虑平仓或反向**
-- 不要因为当前{pnl_status}就回避做出改变
-- 持仓时长 {position_context.holding_duration_hours:.1f} 小时不应该成为"沉没成本"而影响决策
+⚠️ **Special Reminders**:
+- If expert consensus is opposite to current {direction} position, **MUST consider closing or reversing**
+- Do not avoid making changes just because currently in {pnl_status}
+- Holding duration of {position_context.holding_duration_hours:.1f} hours should NOT become "sunk cost" affecting decisions
 
-**禁止行为**:
-- ❌ 不要因为已有{direction}仓就强行寻找继续持有的理由
-- ❌ 不要忽视多数专家的反向建议
+**Prohibited Behaviors**:
+- ❌ Do not force-find reasons to hold just because already in {direction} position
+- ❌ Do not ignore majority expert's reversal recommendations
 """
 
         return guidance
 
     def _get_neutral_position_analysis_prompt(self, position_context: PositionContext) -> str:
         """
-        🆕 生成中性的持仓分析提示
+        Generate neutral position analysis prompt
 
-        避免确认偏差：不问"是否支持当前仓位"，而是要求客观分析市场
+        Avoid confirmation bias: Don't ask "whether to support current position", but require objective market analysis
         """
         if not position_context.has_position:
             return """
-⚠️ **分析要求**: 请基于市场数据给出客观分析，不要预设立场。
-- 同时评估做多和做空的理由
-- 如果市场方向不明确，请诚实表达不确定性
-- 你的分析应该独立于任何预设偏好
+⚠️ **Analysis Requirements**: Please provide objective analysis based on market data, without preset positions.
+- Evaluate both long and short reasons simultaneously
+- If market direction is unclear, honestly express uncertainty
+- Your analysis should be independent of any preset preferences
 """
 
         direction = position_context.direction or "unknown"
-        opposite = "空" if direction == "long" else "多"
-        pnl_status = "盈利" if position_context.unrealized_pnl >= 0 else "亏损"
+        opposite = "short" if direction == "long" else "long"
+        pnl_status = "profit" if position_context.unrealized_pnl >= 0 else "loss"
 
         return f"""
-⚠️ **客观分析要求**（避免确认偏差）:
+⚠️ **Objective Analysis Requirements** (Avoid Confirmation Bias):
 
-当前有 {direction.upper()} 持仓（{pnl_status}中），但请**不要**因此偏向任何方向。
+Currently has {direction.upper()} position (in {pnl_status}), but please **do NOT** favor any direction because of this.
 
-**你的分析必须回答以下问题**:
-1. 市场趋势客观上是**上涨**、**下跌**还是**震荡**？
-2. 如果现在**没有任何持仓**，你会建议做多还是做空还是观望？
-3. 当前市场状况与现有{direction}仓是否矛盾？如果矛盾，要诚实指出。
-4. 有哪些信号支持**反向操作**（平{direction}开{opposite}）？
+**Your analysis MUST answer these questions**:
+1. Objectively, is the market trend **bullish**, **bearish**, or **ranging**?
+2. If you had **NO position** right now, would you recommend long, short, or hold?
+3. Does the current market condition contradict the existing {direction} position? If so, honestly point it out.
+4. What signals support **reversing** (close {direction} and open {opposite})?
 
-**禁止事项**:
-- ❌ 不要因为已有{direction}仓就倾向于看{direction}
-- ❌ 不要回避提出平仓或反向的建议
-- ❌ 不要用"可以继续持有"来回避给出明确判断
+**Prohibited**:
+- ❌ Do not lean towards {direction} just because already in {direction} position
+- ❌ Do not avoid recommending close or reverse
+- ❌ Do not use "can continue holding" to avoid giving clear judgment
 
-**鼓励事项**:
-- ✅ 如果看到反转信号，请直接说出来
-- ✅ 如果市场方向与持仓相反，请明确建议平仓/反向
-- ✅ 给出清晰的方向判断，不要模棱两可
+**Encouraged**:
+- ✅ If you see reversal signals, say it directly
+- ✅ If market direction contradicts position, clearly recommend close/reverse
+- ✅ Give clear directional judgment, don't be ambiguous
 """
 
     def _get_decision_options_for_analysts(self, position_context: PositionContext) -> str:
         """
-        🆕 为分析师生成决策选项提示
+        Generate decision options prompt for analysts
 
-        🔧 FIX: 使用中性的选项列表，避免锚定效应
-        - 不把"观望"放在第一位
-        - 所有选项平等呈现
-        - 强调基于市场分析而非持仓状态决策
+        FIX: Use neutral option list to avoid anchoring effect
+        - Don't put "hold" as first option
+        - Present all options equally
+        - Emphasize decisions based on market analysis, not position status
         """
         if not position_context.has_position:
             return """
-## 💡 决策选项（当前无持仓）
+## 💡 Decision Options (No Position)
 
-请基于**你的专业分析**选择建议方向（不要预设偏好）:
+Based on **your professional analysis**, choose recommended direction (no preset preferences):
 
-| 选项 | 适用情况 |
-|------|----------|
-| **做多** | 市场上涨趋势明确，有充分的多头信号 |
-| **做空** | 市场下跌趋势明确，有充分的空头信号 |
-| **观望** | 市场方向不明确，或者风险收益比不佳 |
+| Option | Applicable Situation |
+|--------|---------------------|
+| **Long** | Clear upward market trend with sufficient bullish signals |
+| **Short** | Clear downward market trend with sufficient bearish signals |
+| **Hold** | Market direction unclear, or risk/reward ratio unfavorable |
 
-⚠️ **请独立判断**，不要因为其他专家的意见而改变你的分析结论。
+⚠️ **Make independent judgment**, do not change your analysis conclusion due to other experts' opinions.
 """
 
-        # 有持仓
+        # Has position
         direction = position_context.direction or "unknown"
-        opposite = "空" if direction == "long" else "多"
-        can_add_text = "可追加" if position_context.can_add_position else "已满仓"
+        opposite = "short" if direction == "long" else "long"
+        can_add_text = "Can add" if position_context.can_add_position else "Max position"
 
         return f"""
-## 💡 决策选项（当前有{direction.upper()}持仓）
+## 💡 Decision Options (Has {direction.upper()} Position)
 
-请基于**你的专业分析**选择建议操作（**不要因为已有持仓而偏向任何选项**）:
+Based on **your professional analysis**, choose recommended action (**do NOT favor any option due to existing position**):
 
-| 选项 | 适用情况 | 当前状态 |
-|------|----------|----------|
-| **平仓** | 市场出现反转信号，或达到止盈/止损点 | 立即执行 |
-| **反向** | 市场明确反转，应该平{direction}开{opposite} | 立即执行 |
-| **维持** | 市场趋势延续，继续持有当前仓位 | 不操作 |
-| **追加** | 市场趋势强化，可加大仓位 | {can_add_text} |
+| Option | Applicable Situation | Current Status |
+|--------|---------------------|----------------|
+| **Close** | Market shows reversal signals, or reached TP/SL | Execute immediately |
+| **Reverse** | Clear market reversal, should close {direction} and open {opposite} | Execute immediately |
+| **Maintain** | Market trend continues, keep current position | No action |
+| **Add** | Market trend strengthens, can increase position | {can_add_text} |
 
-**当前持仓状态** (仅供参考，不应影响你的独立判断):
-- 方向: {direction.upper()} | 盈亏: ${position_context.unrealized_pnl:.2f} ({position_context.unrealized_pnl_percent:+.2f}%)
-- 仓位: {position_context.current_position_percent*100:.1f}% | 持仓: {position_context.holding_duration_hours:.1f}小时
+**Current Position Status** (for reference only, should NOT affect your independent judgment):
+- Direction: {direction.upper()} | P&L: ${position_context.unrealized_pnl:.2f} ({position_context.unrealized_pnl_percent:+.2f}%)
+- Position: {position_context.current_position_percent*100:.1f}% | Duration: {position_context.holding_duration_hours:.1f} hours
 
-⚠️ **重要**: 如果市场分析与当前持仓方向矛盾，请**优先建议平仓或反向**，不要因为已有持仓而回避给出反向建议！
+⚠️ **Important**: If market analysis contradicts current position direction, **prioritize recommending close or reverse**, do not avoid giving reversal recommendations due to existing position!
 """
 
     def _get_vote_summary(self) -> str:
@@ -1665,8 +1663,8 @@ class TradingMeeting(Meeting):
         """
         self._add_message(
             agent_id="system",
-            agent_name="系统",
-            content=f"## 阶段5: 交易执行\n\n交易执行专员正在分析会议结果并做出决策...",
+            agent_name="System",
+            content=f"## Phase 5: Trade Execution\n\nTrade Executor is analyzing meeting results and making decisions...",
             message_type="phase"
         )
         
@@ -1703,21 +1701,21 @@ class TradingMeeting(Meeting):
             )
             
             # Step 5: 添加决策消息
-            # 🔧 FIX: _add_message不支持metadata参数，移除
+            # FIX: _add_message doesn't support metadata parameter, removed
             self._add_message(
                 agent_id="trade_executor",
-                agent_name="交易执行专员",
-                content=f"""## TradeExecutor的最终决策
+                agent_name="Trade Executor",
+                content=f"""## TradeExecutor Final Decision
 
-**决策**: {final_signal.direction.upper()}
-**杠杆**: {final_signal.leverage}x
-**仓位**: {final_signal.amount_percent*100:.0f}%
-**信心度**: {final_signal.confidence}%
+**Decision**: {final_signal.direction.upper()}
+**Leverage**: {final_signal.leverage}x
+**Position**: {final_signal.amount_percent*100:.0f}%
+**Confidence**: {final_signal.confidence}%
 
-**止盈**: ${final_signal.take_profit_price:,.2f}
-**止损**: ${final_signal.stop_loss_price:,.2f}
+**Take Profit**: ${final_signal.take_profit_price:,.2f}
+**Stop Loss**: ${final_signal.stop_loss_price:,.2f}
 
-**决策理由**:
+**Reasoning**:
 {final_signal.reasoning}
 """,
                 message_type="decision"
@@ -1729,12 +1727,12 @@ class TradingMeeting(Meeting):
             # 所以这里只需要记录结果，不需要再调用LegacyExecutor
             
             if final_signal.direction != "hold":
-                logger.info(f"[ExecutionPhase] ✅ 交易已由Tool Calling执行: {final_signal.direction.upper()}")
+                logger.info(f"[ExecutionPhase] ✅ Trade executed via Tool Calling: {final_signal.direction.upper()}")
 
                 self._add_message(
                     agent_id="trade_executor",
-                    agent_name="交易执行专员",
-                    content=f"✅ 交易已执行\n\n决策: {final_signal.direction.upper()}\n杠杆: {final_signal.leverage}x\n仓位: {final_signal.amount_percent*100:.0f}%",
+                    agent_name="Trade Executor",
+                    content=f"✅ Trade Executed\n\nDecision: {final_signal.direction.upper()}\nLeverage: {final_signal.leverage}x\nPosition: {final_signal.amount_percent*100:.0f}%",
                     message_type="execution"
                 )
 
@@ -1755,7 +1753,7 @@ class TradingMeeting(Meeting):
                 await self._record_agent_predictions_for_trade(final_signal.entry_price)
 
             else:
-                logger.info("[ExecutionPhase] 📊 决策为观望，无交易执行")
+                logger.info("[ExecutionPhase] 📊 Decision is hold, no trade executed")
                 self._execution_result = {
                     "status": "hold",
                     "action": "hold",
@@ -1766,17 +1764,17 @@ class TradingMeeting(Meeting):
             self._final_signal = final_signal
             
         except Exception as e:
-            logger.error(f"[ExecutionPhase] ❌ 执行阶段失败: {e}", exc_info=True)
+            logger.error(f"[ExecutionPhase] ❌ Execution phase failed: {e}", exc_info=True)
             self._add_message(
                 agent_id="system",
-                agent_name="系统",
-                content=f"❌ 交易执行阶段失败: {str(e)}",
+                agent_name="System",
+                content=f"❌ Trade execution phase failed: {str(e)}",
                 message_type="error"
             )
-            # 返回hold信号
+            # Return hold signal
             self._final_signal = await self._create_hold_signal(
                 "",
-                f"执行阶段失败: {str(e)}"
+                f"Execution phase failed: {str(e)}"
             )
     
     async def _create_trade_executor_agent_instance(self):
@@ -2564,89 +2562,89 @@ class TradingMeeting(Meeting):
             return f"📊 决定观望: {reason}"
         
         # 🆕 创建真正的Agent实例并注册FunctionTool
-        # 🔧 FIX: Agent使用id而不是agent_id，使用llm_gateway_url而不是llm_endpoint
+        # FIX: Agent uses id instead of agent_id, uses llm_gateway_url instead of llm_endpoint
         trade_executor = Agent(
             id="trade_executor",
             name="TradeExecutor",
-            role="交易执行决策专员",
-            system_prompt="""你是交易执行专员 (TradeExecutor)，负责根据专家会议结果执行交易。
+            role="Trade Execution Specialist",
+            system_prompt="""You are the Trade Executor, responsible for executing trades based on expert meeting results.
 
-你必须通过调用工具来执行决策，可用工具:
-- open_long: 开多仓（做多BTC）
-- open_short: 开空仓（做空BTC）
-- close_position: 平仓当前持仓
-- hold: 观望不操作
+You must call a tool to execute decisions. Available tools:
+- open_long: Open long position (buy BTC)
+- open_short: Open short position (sell BTC)
+- close_position: Close current position
+- hold: Hold/wait, no action
 
-决策规则:
-1. 专家3-4票一致看多 → 调用open_long
-2. 专家3-4票一致看空 → 调用open_short
-3. 专家意见分歧或不明朗 → 调用hold
-4. 有反向持仓需要平仓 → 调用close_position
+Decision Rules:
+1. Experts 3-4 votes unanimous bullish → Call open_long
+2. Experts 3-4 votes unanimous bearish → Call open_short
+3. Experts split or unclear → Call hold
+4. Has opposite position to close → Call close_position
 
-你必须根据会议结果调用一个工具！""",
+You MUST call a tool based on meeting results!""",
             llm_gateway_url=leader.llm_gateway_url if hasattr(leader, 'llm_gateway_url') else "http://llm_gateway:8003",
             temperature=0.3
         )
-        
-        # 注册交易工具（使用FunctionTool包装）
+
+        # Register trading tools (using FunctionTool wrapper)
         trade_executor.register_tool(FunctionTool(
             name="open_long",
-            description="开多仓（做多BTC）- 当专家共识看涨时调用",
+            description="Open long position (buy BTC) - Call when expert consensus is bullish",
             func=open_long_tool,
             parameters_schema={
                 "type": "object",
                 "properties": {
-                    "leverage": {"type": "integer", "description": "杠杆倍数1-20"},
-                    "amount_percent": {"type": "number", "description": "仓位比例0.0-1.0"},
-                    "confidence": {"type": "integer", "description": "信心度0-100"},
-                    "reasoning": {"type": "string", "description": "决策理由"}
+                    "leverage": {"type": "integer", "description": "Leverage multiplier 1-20"},
+                    "amount_percent": {"type": "number", "description": "Position ratio 0.0-1.0"},
+                    "confidence": {"type": "integer", "description": "Confidence level 0-100"},
+                    "reasoning": {"type": "string", "description": "Decision reasoning"}
                 },
                 "required": ["leverage", "amount_percent"]
             }
         ))
-        
+
         trade_executor.register_tool(FunctionTool(
             name="open_short",
-            description="开空仓（做空BTC）- 当专家共识看跌时调用",
+            description="Open short position (sell BTC) - Call when expert consensus is bearish",
             func=open_short_tool,
             parameters_schema={
                 "type": "object",
                 "properties": {
-                    "leverage": {"type": "integer", "description": "杠杆倍数1-20"},
-                    "amount_percent": {"type": "number", "description": "仓位比例0.0-1.0"},
-                    "confidence": {"type": "integer", "description": "信心度0-100"},
-                    "reasoning": {"type": "string", "description": "决策理由"}
+                    "leverage": {"type": "integer", "description": "Leverage multiplier 1-20"},
+                    "amount_percent": {"type": "number", "description": "Position ratio 0.0-1.0"},
+                    "confidence": {"type": "integer", "description": "Confidence level 0-100"},
+                    "reasoning": {"type": "string", "description": "Decision reasoning"}
                 },
                 "required": ["leverage", "amount_percent"]
             }
         ))
-        
+
         trade_executor.register_tool(FunctionTool(
             name="close_position",
-            description="平仓当前持仓 - 当需要止盈止损或反向操作时调用",
+            description="Close current position - Call when need TP/SL or reverse operation",
             func=close_position_tool,
             parameters_schema={
                 "type": "object",
                 "properties": {
-                    "reasoning": {"type": "string", "description": "平仓理由"}
+                    "reasoning": {"type": "string", "description": "Close reasoning"}
                 }
             }
         ))
-        
+
         trade_executor.register_tool(FunctionTool(
             name="hold",
-            description="观望不操作 - 当市场不明朗或专家意见分歧时调用",
+            description="Hold/wait, no action - Call when market unclear or experts split",
             func=hold_tool,
             parameters_schema={
                 "type": "object",
                 "properties": {
-                    "reason": {"type": "string", "description": "观望原因"}
+                    "reason": {"type": "string", "description": "Hold reason"}
                 },
                 "required": ["reason"]
             }
         ))
-        
-        logger.info(f"[TradeExecutor] ✅ 创建Agent成功，注册了{len(trade_executor.tools)}个交易工具")
+
+        logger.info(f"[TradeExecutor] ✅ Agent created successfully, registered {len(trade_executor.tools)} trading tools")
         
         # 🆕 包装器类，提供run()方法返回TradingSignal
         class TradeExecutorWrapper:
@@ -2859,90 +2857,90 @@ class TradingMeeting(Meeting):
         position_context: PositionContext
     ) -> str:
         """
-        构建执行阶段的prompt
+        Build execution phase prompt
 
-        这个prompt会发送给TradeExecutor的LLM，让它调用工具执行交易
+        This prompt is sent to TradeExecutor's LLM to call tools and execute trades
         """
 
-        # 🔧 FIX: 确保 agents_votes 是字典类型
+        # FIX: Ensure agents_votes is dict type
         if isinstance(agents_votes, list):
-            logger.warning(f"[_build_execution_prompt] agents_votes 是列表类型，转换为字典")
+            logger.warning(f"[_build_execution_prompt] agents_votes is list type, converting to dict")
             try:
                 agents_votes = {v.agent_name: v.direction for v in agents_votes if hasattr(v, 'agent_name') and hasattr(v, 'direction')}
             except Exception as e:
-                logger.error(f"[_build_execution_prompt] 无法转换 agents_votes: {e}")
+                logger.error(f"[_build_execution_prompt] Cannot convert agents_votes: {e}")
                 agents_votes = {}
 
-        # 格式化投票
+        # Format votes
         long_count = sum(1 for v in agents_votes.values() if v == 'long')
         short_count = sum(1 for v in agents_votes.values() if v == 'short')
         hold_count = sum(1 for v in agents_votes.values() if v == 'hold')
-        
+
         vote_details = []
         for agent, vote in agents_votes.items():
             emoji = "🟢" if vote == "long" else "🔴" if vote == "short" else "⚪"
-            vote_text = "做多" if vote == "long" else "做空" if vote == "short" else "观望"
+            vote_text = "Long" if vote == "long" else "Short" if vote == "short" else "Hold"
             vote_details.append(f"  {emoji} {agent}: {vote_text}")
-        
-        # 格式化持仓状态
+
+        # Format position status
         if position_context.has_position:
             direction = position_context.direction or "unknown"
-            position_status = f"""**有持仓** ({direction.upper()})
-- 入场价: ${position_context.entry_price:,.2f}
-- 当前价: ${position_context.current_price:,.2f}
-- 持仓量: {position_context.size:.4f} BTC
-- 杠杆: {position_context.leverage}x
-- 浮动盈亏: ${position_context.unrealized_pnl:,.2f} ({position_context.unrealized_pnl_percent:+.2f}%)
-- 可用余额: ${position_context.available_balance:,.2f}"""
+            position_status = f"""**Has Position** ({direction.upper()})
+- Entry Price: ${position_context.entry_price:,.2f}
+- Current Price: ${position_context.current_price:,.2f}
+- Position Size: {position_context.size:.4f} BTC
+- Leverage: {position_context.leverage}x
+- Unrealized P&L: ${position_context.unrealized_pnl:,.2f} ({position_context.unrealized_pnl_percent:+.2f}%)
+- Available Balance: ${position_context.available_balance:,.2f}"""
         else:
-            position_status = f"""**无持仓**
-- 可用余额: ${position_context.available_balance:,.2f}
-- 总权益: ${position_context.total_equity:,.2f}"""
-        
-        prompt = f"""## 交易执行任务
+            position_status = f"""**No Position**
+- Available Balance: ${position_context.available_balance:,.2f}
+- Total Equity: ${position_context.total_equity:,.2f}"""
 
-### 1. 专家投票结果
-**统计**: {long_count}票做多 / {short_count}票做空 / {hold_count}票观望
+        prompt = f"""## Trade Execution Task
+
+### 1. Expert Voting Results
+**Summary**: {long_count} Long / {short_count} Short / {hold_count} Hold
 
 {chr(10).join(vote_details)}
 
-### 2. 当前持仓状态
+### 2. Current Position Status
 {position_status}
 
-### 3. Leader的会议总结
+### 3. Leader's Meeting Summary
 {leader_summary}
 
 ---
 
-### 你的任务
-根据以上信息，**必须调用一个工具**来执行交易决策。
+### Your Task
+Based on the above information, you **MUST call a tool** to execute the trading decision.
 
-**决策规则（基于投票共识程度）**:
-- 高度共识(4-5票一致) → 调用 open_long/open_short，参数会基于投票自动计算
-- 温和共识(3票) → 调用 open_long/open_short，参数会基于投票自动计算
-- 弱共识(2票) → 调用 open_long/open_short，参数会基于投票自动计算
-- 意见分歧或不明朗 → 调用 hold(reason="...")
-- 有反向持仓需要处理 → 先调用 close_position()
+**Decision Rules (based on voting consensus level)**:
+- High consensus (4-5 unanimous votes) → Call open_long/open_short, parameters auto-calculated based on votes
+- Moderate consensus (3 votes) → Call open_long/open_short, parameters auto-calculated based on votes
+- Weak consensus (2 votes) → Call open_long/open_short, parameters auto-calculated based on votes
+- Split opinions or unclear → Call hold(reason="...")
+- Has opposite position to handle → First call close_position()
 
-**重要**: confidence/leverage/amount_percent 会根据投票共识程度自动计算，无需手动指定固定值！
+**Important**: confidence/leverage/amount_percent will be auto-calculated based on voting consensus level, no need to manually specify fixed values!
 
-**输出格式（必须遵守）**:
-[USE_TOOL: 工具名(参数=值, ...)]
+**Output Format (must follow)**:
+[USE_TOOL: tool_name(param=value, ...)]
 
-现在，请分析并调用工具执行你的决策。"""
-        
+Now, please analyze and call a tool to execute your decision."""
+
         return prompt
     
     def _get_leader_final_summary(self) -> str:
-        """获取Leader的最后一条消息作为会议总结"""
+        """Get Leader's last message as meeting summary"""
         if not hasattr(self, 'message_bus') or not self.message_bus:
-            self.logger.warning("[TradingMeeting] message_bus不存在")
-            return "无会议记录"
-        
-        # 🔧 FIX: MessageBus使用message_history而不是messages
+            self.logger.warning("[TradingMeeting] message_bus does not exist")
+            return "No meeting record"
+
+        # FIX: MessageBus uses message_history instead of messages
         messages = getattr(self.message_bus, 'message_history', [])
         if not messages:
-            return "无会议消息"
+            return "No meeting messages"
         
         # 从消息历史中找Leader的最后一条消息
         leader_messages = [
@@ -2967,7 +2965,7 @@ class TradingMeeting(Meeting):
             else:
                 return str(last_msg)
         
-        return "Leader未发言（可能LLM失败）"
+        return "Leader did not speak (possibly LLM failure)"
 
     async def _run_agent_turn(self, agent: Agent, prompt: str) -> str:
         """Run a single agent's turn using agent's own LLM call method with tool execution"""
@@ -3009,7 +3007,7 @@ class TradingMeeting(Meeting):
 {memory_context}
 ---
 
-请在分析时参考你的历史表现和经验教训，避免重复过去的错误。"""
+Please reference your historical performance and lessons learned in your analysis, avoid repeating past mistakes."""
             else:
                 enhanced_system_prompt = base_system_prompt
 
@@ -3040,7 +3038,7 @@ class TradingMeeting(Meeting):
                 content = str(response)
 
             if not content:
-                content = f"[{agent.name}] 分析完成，暂无明确建议。"
+                content = f"[{agent.name}] Analysis complete, no clear recommendation at this time."
 
             # Handle blocked or empty responses from Gemini safety filter
             if "[Response blocked or empty]" in content or not content.strip():
@@ -3087,13 +3085,13 @@ class TradingMeeting(Meeting):
                             
                             # Collect tool results
                             if isinstance(tool_result, dict) and "summary" in tool_result:
-                                tool_results.append(f"\n[{tool_name}结果]: {tool_result['summary']}")
+                                tool_results.append(f"\n[{tool_name} Result]: {tool_result['summary']}")
                             else:
-                                tool_results.append(f"\n[{tool_name}结果]: {str(tool_result)[:1000]}")
-                                
+                                tool_results.append(f"\n[{tool_name} Result]: {str(tool_result)[:1000]}")
+
                         except Exception as e:
                             logger.error(f"[{agent.name}] Native tool execution failed: {e}")
-                            tool_results.append(f"\n[{tool_name}错误]: {str(e)}")
+                            tool_results.append(f"\n[{tool_name} Error]: {str(e)}")
                 
                 # If we have tool results, do a follow-up LLM call
                 if tool_results:
@@ -3102,7 +3100,7 @@ class TradingMeeting(Meeting):
                     
                     follow_up_messages = messages + [
                         {"role": "assistant", "content": content or ""},
-                        {"role": "user", "content": f"工具返回结果:\n{tool_results_text}\n\n请基于这些真实数据给出最终分析结论。"}
+                        {"role": "user", "content": f"Tool results:\n{tool_results_text}\n\nPlease provide your final analysis conclusion based on this real data."}
                     ]
                     
                     follow_up_response = await agent._call_llm(follow_up_messages)
@@ -3229,7 +3227,7 @@ class TradingMeeting(Meeting):
 
                     follow_up_messages = messages + [
                         {"role": "assistant", "content": content},
-                        {"role": "user", "content": f"工具返回结果:\n{tool_results_text}\n\n请基于这些真实数据给出最终分析结论。注意：请使用工具返回的真实数据，不要编造数据。**重要：不要再次调用工具，只需要总结分析。**"}
+                        {"role": "user", "content": f"Tool results:\n{tool_results_text}\n\nPlease provide your final analysis conclusion based on this real data. Note: Use the real data returned by tools, do not fabricate data. **Important: Do NOT call tools again, just summarize your analysis.**"}
                     ]
 
                     follow_up_response = await agent._call_llm(follow_up_messages)
@@ -3322,13 +3320,13 @@ class TradingMeeting(Meeting):
     def _summarize_votes(self) -> str:
         """Summarize agent votes"""
         if not self._agent_votes:
-            return "暂无投票"
+            return "No votes yet"
 
         lines = []
         for vote in self._agent_votes:
             lines.append(
                 f"- {vote.agent_name}: {vote.direction} "
-                f"(信心度 {vote.confidence}%, 杠杆 {vote.suggested_leverage}x)"
+                f"(confidence {vote.confidence}%, leverage {vote.suggested_leverage}x)"
             )
 
         # Count votes
@@ -3337,42 +3335,42 @@ class TradingMeeting(Meeting):
         short_count = directions.count("short")
         hold_count = directions.count("hold")
 
-        lines.append(f"\n统计: 做多 {long_count}, 做空 {short_count}, 观望 {hold_count}")
+        lines.append(f"\nSummary: Long {long_count}, Short {short_count}, Hold {hold_count}")
 
         return "\n".join(lines)
 
     def _parse_vote_json(self, agent_id: str, agent_name: str, response: str) -> Optional[AgentVote]:
         """
-        🔧 重构: 从 Agent 回复中解析 JSON 格式的投票信号
+        Parse JSON-formatted voting signal from Agent response
 
-        优先解析 JSON，比字符串匹配更可靠
+        Prefer JSON parsing, more reliable than string matching
         """
         try:
-            # 尝试从回复中提取 JSON 代码块
+            # Try to extract JSON code block from response
             json_data = self._extract_json_from_response(response)
 
             if not json_data:
-                logger.warning(f"[{agent_name}] 未找到有效的 JSON 代码块")
+                logger.warning(f"[{agent_name}] No valid JSON code block found")
                 return None
 
-            # 解析 direction（支持多种格式）
+            # Parse direction (supports multiple formats)
             raw_direction = json_data.get("direction", "hold").lower().strip()
             direction = self._normalize_direction(raw_direction)
 
-            # 解析其他字段
+            # Parse other fields
             confidence = int(json_data.get("confidence", self.config.min_confidence))
             leverage = int(json_data.get("leverage", 1))
             tp_percent = float(json_data.get("take_profit_percent", self.config.default_tp_percent))
             sl_percent = float(json_data.get("stop_loss_percent", self.config.default_sl_percent))
             reasoning = json_data.get("reasoning", "")
 
-            # 验证数值范围
+            # Validate value ranges
             confidence = max(0, min(100, confidence))
             leverage = max(1, min(leverage, self.config.max_leverage))
             tp_percent = max(0.1, min(tp_percent, 50.0))
             sl_percent = max(0.1, min(sl_percent, 50.0))
 
-            logger.info(f"[{agent_name}] ✅ JSON 解析成功: direction={direction}, confidence={confidence}%, leverage={leverage}x")
+            logger.info(f"[{agent_name}] ✅ JSON parsed successfully: direction={direction}, confidence={confidence}%, leverage={leverage}x")
 
             return AgentVote(
                 agent_id=agent_id,
@@ -3386,20 +3384,20 @@ class TradingMeeting(Meeting):
             )
 
         except json.JSONDecodeError as e:
-            logger.warning(f"[{agent_name}] JSON 解析错误: {e}")
+            logger.warning(f"[{agent_name}] JSON decode error: {e}")
             return None
         except Exception as e:
-            logger.error(f"[{agent_name}] 解析投票时发生错误: {e}")
+            logger.error(f"[{agent_name}] Error parsing vote: {e}")
             return None
 
     def _extract_json_from_response(self, response: str) -> Optional[Dict[str, Any]]:
         """
-        从 Agent 回复中提取 JSON 对象
+        Extract JSON object from Agent response
 
-        支持多种格式:
-        1. ```json ... ``` 代码块
-        2. ``` ... ``` 代码块
-        3. 直接的 JSON 对象 {...}
+        Supports multiple formats:
+        1. ```json ... ``` code block
+        2. ``` ... ``` code block
+        3. Direct JSON object {...}
         """
         import json
 

@@ -104,71 +104,71 @@ class PositionContext:
     
     def to_summary(self) -> str:
         """
-        生成人类可读的持仓摘要
-        
-        用于在Agent的prompt中展示持仓信息
+        Generate human-readable position summary for prompt injection.
+
+        Used in Agent prompts to display current position/account state.
         """
         if not self.has_position:
             return """
-📊 **当前持仓状况**: 无持仓
-- 可用余额: ${:.2f} USDT
-- 总权益: ${:.2f} USDT
-- 状态: ✅ 可自由开仓
+📊 **Current Position Status**: No Position
+- Available Balance: ${:.2f} USDT
+- Total Equity: ${:.2f} USDT
+- Status: ✅ Free to open new position
 """.format(self.available_balance, self.total_equity)
-        
-        # 计算盈亏的emoji
+
+        # P&L emoji
         pnl_emoji = "📈" if self.unrealized_pnl >= 0 else "📉"
-        
-        # 计算仓位状态
-        position_status = "✅ 可追加" if self.can_add_position else "❌ 已满仓"
-        
-        # 计算风险等级
+
+        # Position status
+        position_status = "✅ Can add more" if self.can_add_position else "❌ Max position reached"
+
+        # Risk level
         if self.distance_to_liquidation_percent > 50:
-            risk_level = "🟢 安全"
+            risk_level = "🟢 Safe"
         elif self.distance_to_liquidation_percent > 20:
-            risk_level = "🟡 警戒"
+            risk_level = "🟡 Warning"
         else:
-            risk_level = "🔴 危险"
-        
-        # 🔧 FIX: 安全处理可能为None的值
-        tp_price_str = f"${self.take_profit_price:.2f}" if self.take_profit_price else "未设置"
-        sl_price_str = f"${self.stop_loss_price:.2f}" if self.stop_loss_price else "未设置"
-        liq_price_str = f"${self.liquidation_price:.2f}" if self.liquidation_price else "未知"
-        
+            risk_level = "🔴 Danger"
+
+        # Safe handling of None values
+        tp_price_str = f"${self.take_profit_price:.2f}" if self.take_profit_price else "Not set"
+        sl_price_str = f"${self.stop_loss_price:.2f}" if self.stop_loss_price else "Not set"
+        liq_price_str = f"${self.liquidation_price:.2f}" if self.liquidation_price else "Unknown"
+
         return f"""
-📊 **当前持仓状况**: 有持仓 ({(self.direction or 'unknown').upper()})
+📊 **Current Position Status**: Has Position ({(self.direction or 'unknown').upper()})
 
-### 持仓信息
-- 方向: **{(self.direction or 'unknown').upper()}** ({self.leverage}x 杠杆)
-- 入场价: ${self.entry_price:.2f}
-- 当前价: ${self.current_price:.2f}
-- 持仓量: {self.size:.6f} BTC
-- 保证金: ${self.margin_used:.2f} USDT
+### Position Details
+- Direction: **{(self.direction or 'unknown').upper()}** ({self.leverage}x leverage)
+- Entry Price: ${self.entry_price:.2f}
+- Current Price: ${self.current_price:.2f}
+- Position Size: {self.size:.6f} BTC
+- Margin Used: ${self.margin_used:.2f} USDT
 
-### 盈亏情况
-- {pnl_emoji} 浮动盈亏: ${self.unrealized_pnl:.2f} USDT ({self.unrealized_pnl_percent:+.2f}%)
+### Profit & Loss
+- {pnl_emoji} Unrealized P&L: ${self.unrealized_pnl:.2f} USDT ({self.unrealized_pnl_percent:+.2f}%)
 
-### 止盈止损
-- 止盈价: {tp_price_str} (距离: {self.distance_to_tp_percent:+.2f}%)
-- 止损价: {sl_price_str} (距离: {self.distance_to_sl_percent:+.2f}%)
+### Take Profit / Stop Loss
+- Take Profit: {tp_price_str} (distance: {self.distance_to_tp_percent:+.2f}%)
+- Stop Loss: {sl_price_str} (distance: {self.distance_to_sl_percent:+.2f}%)
 
-### 风险指标
-- 强平价: {liq_price_str}
-- 距强平: {self.distance_to_liquidation_percent:.1f}% ({risk_level})
+### Risk Metrics
+- Liquidation Price: {liq_price_str}
+- Distance to Liquidation: {self.distance_to_liquidation_percent:.1f}% ({risk_level})
 
-### 账户状态
-- 可用余额: ${self.available_balance:.2f} USDT
-- 总权益: ${self.total_equity:.2f} USDT
-- 已用保证金: ${self.used_margin:.2f} USDT
+### Account Status
+- Available Balance: ${self.available_balance:.2f} USDT
+- Total Equity: ${self.total_equity:.2f} USDT
+- Used Margin: ${self.used_margin:.2f} USDT
 
-### 仓位管理
-- 当前仓位: {self.current_position_percent*100:.1f}% / {self.max_position_percent*100:.1f}%
-- 状态: {position_status}
-- 可追加: ${self.max_additional_amount:.2f} USDT
+### Position Management
+- Current Position: {self.current_position_percent*100:.1f}% / {self.max_position_percent*100:.1f}%
+- Status: {position_status}
+- Can Add: ${self.max_additional_amount:.2f} USDT
 
-### 持仓时长
-- 开仓时间: {self.opened_at.strftime('%Y-%m-%d %H:%M:%S') if self.opened_at else 'N/A'}
-- 持仓时长: {self.holding_duration_hours:.1f} 小时
+### Holding Duration
+- Opened At: {self.opened_at.strftime('%Y-%m-%d %H:%M:%S') if self.opened_at else 'N/A'}
+- Duration: {self.holding_duration_hours:.1f} hours
 """
     
     def to_dict(self) -> dict:

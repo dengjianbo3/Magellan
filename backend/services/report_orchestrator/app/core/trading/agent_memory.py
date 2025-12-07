@@ -4,10 +4,10 @@ Agent Memory System
 Stores and retrieves agent trading experiences for learning and improvement.
 Each agent maintains its own memory of past trades, predictions, and lessons learned.
 
-增强功能 (2024-12):
-- AgentPrediction: 记录每个 Agent 在开仓时的预测
-- TradeReflection: 平仓后生成的反思总结
-- 增强的记忆注入到下次会议的 Prompt 中
+Enhanced Features (2024-12):
+- AgentPrediction: Records each Agent's prediction at position opening
+- TradeReflection: Post-trade reflection summary generated after closing
+- Enhanced memory injection into next meeting's prompt
 """
 
 import json
@@ -98,18 +98,18 @@ class TradeReflection:
         return cls(**data)
 
     def get_summary_for_prompt(self) -> str:
-        """生成简短的总结，用于注入 Prompt"""
+        """Generate short summary for prompt injection"""
         emoji = "✅" if self.pnl > 0 else "❌"
-        direction_cn = "做多" if self.direction == "long" else "做空" if self.direction == "short" else "观望"
+        direction_text = "Long" if self.direction == "long" else "Short" if self.direction == "short" else "Hold"
 
-        summary = f"{emoji} 上次交易：{direction_cn} BTC，"
+        summary = f"{emoji} Last trade: {direction_text} BTC, "
         if self.pnl > 0:
-            summary += f"盈利 ${self.pnl:.2f} (+{self.pnl_percent:.1f}%)"
+            summary += f"Profit ${self.pnl:.2f} (+{self.pnl_percent:.1f}%)"
         else:
-            summary += f"亏损 ${abs(self.pnl):.2f} ({self.pnl_percent:.1f}%)"
+            summary += f"Loss ${abs(self.pnl):.2f} ({self.pnl_percent:.1f}%)"
 
         if self.lessons_learned:
-            summary += f"\n教训：{self.lessons_learned[0]}"
+            summary += f"\nLesson: {self.lessons_learned[0]}"
 
         return summary
 
@@ -255,48 +255,48 @@ class AgentMemory:
         """Generate enhanced context string for agent's system prompt"""
         context_parts = []
 
-        # 🆕 1. 上次交易回顾（最重要，放在最前面）
+        # 1. Last trade review (most important, placed first)
         if self.last_trade_summary:
-            context_parts.append(f"## 📊 上次交易回顾\n{self.last_trade_summary}")
+            context_parts.append(f"## 📊 Last Trade Review\n{self.last_trade_summary}")
 
-        # 🆕 2. 当前需要注意的重点
+        # 2. Current focus points
         if self.current_focus:
-            context_parts.append(f"\n## ⚠️ 当前需要注意\n{self.current_focus}")
+            context_parts.append(f"\n## ⚠️ Current Focus\n{self.current_focus}")
 
-        # 3. 累积的经验教训
+        # 3. Accumulated lessons learned
         if self.lessons_learned:
-            context_parts.append("\n## 📝 你学到的经验教训")
+            context_parts.append("\n## 📝 Lessons You've Learned")
             for lesson in self.lessons_learned[-5:]:  # Last 5 lessons
                 context_parts.append(f"- {lesson}")
 
-        # 4. 交易统计（如果有交易记录）
+        # 4. Trading statistics (if has trade history)
         if self.total_trades > 0:
             context_parts.append(f"""
-## 📈 你的交易表现
-- 总交易: {self.total_trades} 次
-- 胜率: {self.win_rate*100:.1f}%
-- 总盈亏: ${self.total_pnl:,.2f}
-- 平均盈亏: ${self.average_pnl:,.2f}""")
+## 📈 Your Trading Performance
+- Total Trades: {self.total_trades}
+- Win Rate: {self.win_rate*100:.1f}%
+- Total P&L: ${self.total_pnl:,.2f}
+- Average P&L: ${self.average_pnl:,.2f}""")
 
             if self.consecutive_wins > 0:
-                context_parts.append(f"- 当前连胜: {self.consecutive_wins}次")
+                context_parts.append(f"- Current Win Streak: {self.consecutive_wins}")
             elif self.consecutive_losses > 0:
-                context_parts.append(f"- 当前连败: {self.consecutive_losses}次")
+                context_parts.append(f"- Current Losing Streak: {self.consecutive_losses}")
 
-        # 🆕 5. 常犯错误提醒
+        # 5. Common mistakes reminder
         if self.common_mistakes:
-            context_parts.append("\n## 🚫 需要避免的错误")
+            context_parts.append("\n## 🚫 Mistakes to Avoid")
             for mistake in self.common_mistakes[-3:]:
                 context_parts.append(f"- {mistake}")
 
-        # 6. 优势和弱点
+        # 6. Strengths and weaknesses
         if self.strengths:
-            context_parts.append("\n## ✅ 你的优势")
+            context_parts.append("\n## ✅ Your Strengths")
             for s in self.strengths[:3]:
                 context_parts.append(f"- {s}")
 
         if self.weaknesses:
-            context_parts.append("\n## 🔧 需要改进")
+            context_parts.append("\n## 🔧 Areas for Improvement")
             for w in self.weaknesses[:3]:
                 context_parts.append(f"- {w}")
 
@@ -432,19 +432,19 @@ class AgentMemoryStore:
         """Generate insights about agent's performance"""
         # Analyze strengths
         if memory.win_rate > 0.6:
-            memory.strengths.append("整体胜率较高")
+            memory.strengths.append("High overall win rate")
         if memory.max_consecutive_wins > 5:
-            memory.strengths.append("能够保持连续盈利")
+            memory.strengths.append("Able to maintain consecutive wins")
         if memory.average_pnl > 0:
-            memory.strengths.append("平均每笔交易盈利")
+            memory.strengths.append("Positive average P&L per trade")
 
         # Analyze weaknesses
         if memory.max_consecutive_losses > 3:
-            memory.weaknesses.append("需要注意连续亏损的风险控制")
+            memory.weaknesses.append("Need better risk control for consecutive losses")
         if memory.win_rate < 0.4:
-            memory.weaknesses.append("胜率偏低，需要提高判断准确性")
+            memory.weaknesses.append("Win rate too low, need better judgment accuracy")
         if memory.worst_trade_pnl < -500:
-            memory.weaknesses.append("存在较大单笔亏损，需要更严格的止损")
+            memory.weaknesses.append("Large single-trade loss, need stricter stop loss")
 
         # Keep unique items
         memory.strengths = list(set(memory.strengths))[:5]
@@ -683,53 +683,53 @@ class ReflectionGenerator:
             )
 
         try:
-            direction_cn = {"long": "做多", "short": "做空", "hold": "观望"}.get(
+            direction_text = {"long": "Long", "short": "Short", "hold": "Hold"}.get(
                 prediction.direction, prediction.direction
             )
             pnl = trade_result.get('pnl', 0)
             entry_price = trade_result.get('entry_price', 0)
             exit_price = trade_result.get('exit_price', 0)
 
-            prompt = f"""你是 {prediction.agent_name}，请反思这笔交易：
+            prompt = f"""You are {prediction.agent_name}, please reflect on this trade:
 
-## 你当时的预测
-- 方向: {direction_cn}
-- 置信度: {prediction.confidence}%
-- 理由: {prediction.reasoning}
-- 关键因素: {', '.join(prediction.key_factors) if prediction.key_factors else '无'}
-- 当时价格: ${prediction.market_price:,.2f}
+## Your Prediction at the Time
+- Direction: {direction_text}
+- Confidence: {prediction.confidence}%
+- Reasoning: {prediction.reasoning}
+- Key Factors: {', '.join(prediction.key_factors) if prediction.key_factors else 'None'}
+- Price at Time: ${prediction.market_price:,.2f}
 
-## 实际结果
-- 入场价: ${entry_price:,.2f}
-- 出场价: ${exit_price:,.2f}
-- 盈亏: ${pnl:+,.2f}
-- 平仓原因: {trade_result.get('reason', 'manual')}
-- 持仓时长: {trade_result.get('holding_hours', 0):.1f} 小时
+## Actual Result
+- Entry Price: ${entry_price:,.2f}
+- Exit Price: ${exit_price:,.2f}
+- P&L: ${pnl:+,.2f}
+- Close Reason: {trade_result.get('reason', 'manual')}
+- Holding Duration: {trade_result.get('holding_hours', 0):.1f} hours
 
-## 请回答以下问题
+## Please Answer the Following Questions
 
-1. **你的预测{'正确' if prediction_correct else '错误'}** - 为什么？
+1. **Your prediction was {'correct' if prediction_correct else 'incorrect'}** - Why?
 
-2. **哪些判断是正确的？** 列出 1-2 点
+2. **What judgments were correct?** List 1-2 points
 
-3. **哪些判断是错误的？** 列出 1-2 点
+3. **What judgments were wrong?** List 1-2 points
 
-4. **你学到了什么教训？** 列出 1-2 条具体可执行的教训
+4. **What lessons did you learn?** List 1-2 specific actionable lessons
 
-5. **下次遇到类似情况，你会怎么做？** 一句话总结
+5. **What would you do differently next time?** One sentence summary
 
-请用JSON格式回复，不要包含markdown代码块标记：
+Please respond in JSON format, without markdown code block markers:
 {{
-    "summary": "一两句话总结这次交易的反思",
-    "what_went_well": ["做对的事情1", "做对的事情2"],
-    "what_went_wrong": ["做错的事情1", "做错的事情2"],
-    "lessons_learned": ["教训1", "教训2"],
-    "next_time_action": "下次遇到类似情况的一句话行动建议"
+    "summary": "One or two sentences summarizing the reflection",
+    "what_went_well": ["thing done right 1", "thing done right 2"],
+    "what_went_wrong": ["thing done wrong 1", "thing done wrong 2"],
+    "lessons_learned": ["lesson 1", "lesson 2"],
+    "next_time_action": "One sentence action recommendation for similar situations"
 }}"""
 
-            # 调用 LLM
+            # Call LLM
             messages = [
-                {"role": "system", "content": "你是一个交易反思助手，帮助分析交易得失。请简洁回复，每条教训不超过30字。"},
+                {"role": "system", "content": "You are a trading reflection assistant, helping analyze trading successes and failures. Please respond concisely, each lesson no more than 30 words."},
                 {"role": "user", "content": prompt}
             ]
 
@@ -777,29 +777,29 @@ class ReflectionGenerator:
         trade_result: Dict[str, Any],
         prediction_correct: bool
     ) -> Dict[str, Any]:
-        """使用规则生成简单反思（LLM 失败时的降级方案）"""
+        """Generate simple reflection using rules (fallback when LLM fails)"""
         pnl = trade_result.get('pnl', 0)
-        direction_cn = {"long": "做多", "short": "做空", "hold": "观望"}.get(
+        direction_text = {"long": "Long", "short": "Short", "hold": "Hold"}.get(
             prediction.direction, prediction.direction
         )
 
         if pnl > 0:
-            # 盈利
-            summary = f"交易盈利${pnl:.2f}，{'预测正确' if prediction_correct else '预测方向相反但仍盈利'}"
-            what_went_well = [f"方向判断{'正确' if prediction_correct else '市场给予机会'}"]
+            # Profit
+            summary = f"Trade profit ${pnl:.2f}, {'prediction correct' if prediction_correct else 'opposite prediction but still profitable'}"
+            what_went_well = [f"Direction judgment {'correct' if prediction_correct else 'market gave opportunity'}"]
             what_went_wrong = []
-            lessons = ["保持当前分析方法"]
-            next_action = "继续使用当前策略"
+            lessons = ["Maintain current analysis method"]
+            next_action = "Continue using current strategy"
         else:
-            # 亏损
-            summary = f"交易亏损${abs(pnl):.2f}，需要反思"
+            # Loss
+            summary = f"Trade loss ${abs(pnl):.2f}, needs reflection"
             what_went_well = []
-            what_went_wrong = [f"{'方向判断错误' if not prediction_correct else '虽然方向正确但入场时机不佳'}"]
+            what_went_wrong = [f"{'Direction judgment wrong' if not prediction_correct else 'Direction correct but poor entry timing'}"]
             if prediction.confidence > 70:
-                lessons = ["高置信度预测也可能错误，需要更多确认"]
+                lessons = ["High confidence predictions can also be wrong, need more confirmation"]
             else:
-                lessons = ["低置信度时应该降低仓位或观望"]
-            next_action = "下次更谨慎，等待更明确信号"
+                lessons = ["Should reduce position or hold when low confidence"]
+            next_action = "Be more cautious next time, wait for clearer signals"
 
         return {
             "summary": summary,
