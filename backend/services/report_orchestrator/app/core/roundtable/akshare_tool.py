@@ -1,9 +1,9 @@
 """
-AkShare A股数据工具
-免费获取中国A股市场数据
+AkShare China A-Share Market Data Tool
+Free access to China A-share market data
 
-AkShare是一个开源的Python金融数据接口库
-官方文档: https://akshare.akfamily.xyz/
+AkShare is an open-source Python financial data interface library
+Official docs: https://akshare.akfamily.xyz/
 """
 import asyncio
 from typing import Any, Dict, List, Optional
@@ -13,32 +13,32 @@ from .tool import Tool
 
 class AkShareTool(Tool):
     """
-    AkShare A股数据工具
+    AkShare China A-Share Data Tool
 
-    支持的功能:
-    - 股票实时行情
-    - 历史K线数据
-    - 财务报表数据
-    - 行业板块数据
-    - 北向资金数据
-    - 龙虎榜数据
+    Supported features:
+    - Real-time stock quotes
+    - Historical K-line data
+    - Financial statement data
+    - Industry sector data
+    - Northbound capital flow data
+    - Dragon Tiger List data
     """
 
     def __init__(self):
         super().__init__(
             name="akshare_a_stock",
-            description="获取中国A股市场数据，包括实时行情、历史K线、财务报表、北向资金等。支持沪深两市所有股票。"
+            description="Get China A-share market data including real-time quotes, historical K-lines, financial statements, northbound capital flow, etc. Supports all stocks in Shanghai and Shenzhen markets."
         )
         self._ak = None
 
     def _get_akshare(self):
-        """延迟导入akshare"""
+        """Lazy import akshare"""
         if self._ak is None:
             try:
                 import akshare as ak
                 self._ak = ak
             except ImportError:
-                raise ImportError("akshare未安装，请运行: pip install akshare")
+                raise ImportError("akshare not installed, please run: pip install akshare")
         return self._ak
 
     async def execute(

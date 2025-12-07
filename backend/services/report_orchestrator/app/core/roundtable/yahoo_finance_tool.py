@@ -1,6 +1,5 @@
 """
 Yahoo Finance MCP Tool for Financial Data Retrieval
-雅虎财经MCP工具，用于获取实时金融数据
 """
 import httpx
 import yfinance as yf
@@ -11,16 +10,16 @@ from .tool import Tool
 
 class YahooFinanceTool(Tool):
     """
-    Yahoo Finance 数据获取工具
+    Yahoo Finance Data Retrieval Tool
 
-    提供股票价格、财务报表、公司信息、市场数据等功能
+    Provides stock prices, financial statements, company info, market data, etc.
     """
 
     def __init__(self):
-        """初始化 Yahoo Finance 工具"""
+        """Initialize Yahoo Finance Tool"""
         super().__init__(
             name="yahoo_finance",
-            description="获取股票实时价格、历史数据、财务报表、公司信息、市场新闻等。支持全球主要股票市场。"
+            description="Get real-time stock prices, historical data, financial statements, company info, market news, etc. Supports major global stock markets."
         )
 
     async def execute(self, action: str, symbol: str, **kwargs) -> Dict[str, Any]:

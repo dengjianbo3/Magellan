@@ -1,13 +1,12 @@
 """
 Enhanced Tools for Roundtable Discussion Agents - Phase 1
-增强版工具集 - 第一阶段
 
-包含:
-1. ChinaMarketDataTool - 中国市场数据（A股/港股）
-2. QichaChaTool - 企查查企业信息查询
-3. GitHubAnalyzerTool - GitHub项目分析
-4. PatentSearchTool - 专利检索
-5. SentimentMonitorTool - 舆情监控
+Contains:
+1. ChinaMarketDataTool - China market data (A-shares/HK stocks)
+2. QichaChaTool - Company info lookup
+3. GitHubAnalyzerTool - GitHub project analysis
+4. PatentSearchTool - Patent search
+5. SentimentMonitorTool - Sentiment monitoring
 """
 import os
 import httpx
@@ -17,42 +16,42 @@ from datetime import datetime, timedelta
 from .tool import Tool
 
 
-# ==================== 1. 中国市场数据工具 ====================
+# ==================== 1. China Market Data Tool ====================
 
 class ChinaMarketDataTool(Tool):
     """
-    中国市场数据工具
+    China Market Data Tool
 
-    支持A股、港股数据查询，通过多种数据源获取:
-    - 东方财富 (eastmoney)
-    - 新浪财经 (sina)
-    - 同花顺 (10jqka) - 备用
+    Supports A-share and HK stock data queries through multiple data sources:
+    - Eastmoney
+    - Sina Finance
+    - 10jqka (backup)
 
-    功能:
-    - 实时行情
-    - 历史K线
-    - 财务报表
-    - 公司资料
+    Features:
+    - Real-time quotes
+    - Historical K-lines
+    - Financial statements
+    - Company info
     """
 
     def __init__(self):
         super().__init__(
             name="china_market_data",
-            description="""获取中国A股和港股市场数据。
+            description="""Get China A-share and Hong Kong stock market data.
 
-功能:
-- 实时股价和行情数据
-- 历史K线数据
-- 财务报表（资产负债表、利润表、现金流量表）
-- 公司基本资料
+Features:
+- Real-time stock prices and quotes
+- Historical K-line data
+- Financial statements (balance sheet, income statement, cash flow)
+- Company basic info
 
-支持的市场:
-- A股 (上海: SH, 深圳: SZ, 如 600519.SH, 000001.SZ)
-- 港股 (HK, 如 00700.HK, 09988.HK)
+Supported markets:
+- A-shares (Shanghai: SH, Shenzhen: SZ, e.g., 600519.SH, 000001.SZ)
+- HK stocks (HK, e.g., 00700.HK, 09988.HK)
 
-示例:
-- 查询贵州茅台: symbol="600519" 或 "600519.SH"
-- 查询腾讯: symbol="00700" 或 "00700.HK"
+Examples:
+- Query Kweichow Moutai: symbol="600519" or "600519.SH"
+- Query Tencent: symbol="00700" or "00700.HK"
 """
         )
         # 东方财富API配置
