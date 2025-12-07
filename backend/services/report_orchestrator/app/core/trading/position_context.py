@@ -1,7 +1,7 @@
 """
 Position Context Model
 
-持仓上下文数据模型，用于在交易决策过程中传递完整的持仓信息。
+Position context data model for passing complete position information during trading decisions.
 """
 
 from dataclasses import dataclass
@@ -12,96 +12,96 @@ from datetime import datetime
 @dataclass
 class PositionContext:
     """
-    完整的持仓上下文
-    
-    包含当前持仓、账户状态、风险指标等所有决策所需信息。
+    Complete Position Context
+
+    Contains all information needed for decision making: current position, account state, risk metrics.
     """
-    
-    # ========== 基础信息 ==========
+
+    # ========== Basic Info ==========
     has_position: bool
-    """是否有持仓"""
-    
+    """Whether there is a position"""
+
     current_position: Optional[dict] = None
-    """当前持仓详情（如果有）"""
-    
-    # ========== 持仓详情 ==========
+    """Current position details (if any)"""
+
+    # ========== Position Details ==========
     direction: Optional[str] = None
-    """持仓方向: 'long' or 'short'"""
-    
+    """Position direction: 'long' or 'short'"""
+
     entry_price: float = 0.0
-    """入场价格"""
-    
+    """Entry price"""
+
     current_price: float = 0.0
-    """当前价格"""
-    
+    """Current price"""
+
     size: float = 0.0
-    """持仓数量"""
-    
+    """Position size"""
+
     leverage: int = 1
-    """杠杆倍数"""
-    
+    """Leverage multiplier"""
+
     margin_used: float = 0.0
-    """已用保证金"""
-    
-    # ========== 盈亏情况 ==========
+    """Margin used"""
+
+    # ========== Profit & Loss ==========
     unrealized_pnl: float = 0.0
-    """未实现盈亏（USDT）"""
-    
+    """Unrealized PnL (USDT)"""
+
     unrealized_pnl_percent: float = 0.0
-    """未实现盈亏百分比"""
-    
-    # ========== 风险指标 ==========
+    """Unrealized PnL percentage"""
+
+    # ========== Risk Metrics ==========
     liquidation_price: Optional[float] = None
-    """强平价格"""
-    
+    """Liquidation price"""
+
     distance_to_liquidation_percent: float = 0.0
-    """距离强平的距离（百分比）"""
-    
-    # ========== 止盈止损 ==========
+    """Distance to liquidation (percentage)"""
+
+    # ========== Take Profit / Stop Loss ==========
     take_profit_price: Optional[float] = None
-    """止盈价格"""
-    
+    """Take profit price"""
+
     stop_loss_price: Optional[float] = None
-    """止损价格"""
-    
+    """Stop loss price"""
+
     distance_to_tp_percent: float = 0.0
-    """距离止盈的距离（百分比）"""
-    
+    """Distance to take profit (percentage)"""
+
     distance_to_sl_percent: float = 0.0
-    """距离止损的距离（百分比）"""
-    
-    # ========== 账户状态 ==========
+    """Distance to stop loss (percentage)"""
+
+    # ========== Account Status ==========
     available_balance: float = 0.0
-    """可用余额"""
-    
+    """Available balance"""
+
     total_equity: float = 0.0
-    """总权益"""
-    
+    """Total equity"""
+
     used_margin: float = 0.0
-    """已用保证金（总计）"""
-    
-    # ========== 仓位限制 ==========
+    """Used margin (total)"""
+
+    # ========== Position Limits ==========
     max_position_percent: float = 1.0
-    """最大仓位比例（0-1）"""
-    
+    """Max position ratio (0-1)"""
+
     current_position_percent: float = 0.0
-    """当前仓位占比（0-1）"""
-    
+    """Current position ratio (0-1)"""
+
     can_add_position: bool = False
-    """是否可以追加仓位"""
-    
+    """Whether can add to position"""
+
     max_additional_amount: float = 0.0
-    """最多还能追加多少USDT"""
-    
-    # ========== 持仓时长 ==========
+    """Max additional amount in USDT"""
+
+    # ========== Holding Duration ==========
     opened_at: Optional[datetime] = None
-    """开仓时间"""
-    
+    """Position open time"""
+
     holding_duration_hours: float = 0.0
-    """持仓时长（小时）"""
-    
-    # ========== 辅助方法 ==========
-    
+    """Holding duration (hours)"""
+
+    # ========== Helper Methods ==========
+
     def to_summary(self) -> str:
         """
         Generate human-readable position summary for prompt injection.
@@ -170,9 +170,9 @@ class PositionContext:
 - Opened At: {self.opened_at.strftime('%Y-%m-%d %H:%M:%S') if self.opened_at else 'N/A'}
 - Duration: {self.holding_duration_hours:.1f} hours
 """
-    
+
     def to_dict(self) -> dict:
-        """转换为字典格式"""
+        """Convert to dictionary format"""
         return {
             "has_position": self.has_position,
             "direction": self.direction,

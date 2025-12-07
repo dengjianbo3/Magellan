@@ -51,50 +51,50 @@ from app.core.trading.agent_memory import (
 )
 from app.core.trading.price_service import get_current_btc_price
 from app.core.trading.position_context import PositionContext
-# 🔧 TradeExecutorAgent已内联到TradeExecutorAgentWithTools，不再需要导入
+# TradeExecutorAgent is inlined into TradeExecutorAgentWithTools, no need to import
 
 logger = logging.getLogger(__name__)
 
 
 def calculate_confidence_from_votes(votes: Dict[str, str], direction: str = None) -> int:
     """
-    基于专家投票动态计算置信度
+    Calculate confidence based on expert votes
 
-    计算规则:
-    - 5票一致: 90%
-    - 4票一致: 80%
-    - 3票一致: 65%
-    - 2票一致: 50%
-    - 1票或更少: 30%
+    Calculation rules:
+    - 5 unanimous votes: 90%
+    - 4 unanimous votes: 80%
+    - 3 unanimous votes: 65%
+    - 2 unanimous votes: 50%
+    - 1 or fewer votes: 30%
 
     Args:
-        votes: 专家投票字典 {"agent_name": "long/short/hold"}
-        direction: 目标方向，如果为None则使用多数方向
+        votes: Expert vote dict {"agent_name": "long/short/hold"}
+        direction: Target direction, if None use majority direction
 
     Returns:
-        int: 置信度 0-100
+        int: Confidence 0-100
     """
     if not votes:
-        logger.warning("[Confidence] 没有投票数据，使用最低置信度 30%")
+        logger.warning("[Confidence] No vote data, using minimum confidence 30%")
         return 30
 
-    # 🔧 FIX: 确保 votes 是字典类型
+    # FIX: Ensure votes is dict type
     if isinstance(votes, list):
-        logger.warning(f"[Confidence] votes 是列表类型，转换为字典")
-        # 尝试转换列表为字典（假设是 AgentVote 对象列表）
+        logger.warning(f"[Confidence] votes is list type, converting to dict")
+        # Try to convert list to dict (assuming AgentVote object list)
         try:
             votes = {v.agent_name: v.direction for v in votes if hasattr(v, 'agent_name') and hasattr(v, 'direction')}
         except Exception as e:
-            logger.error(f"[Confidence] 无法转换 votes: {e}")
+            logger.error(f"[Confidence] Unable to convert votes: {e}")
             return 30
 
-    # 统计各方向票数
+    # Count votes by direction
     long_count = sum(1 for v in votes.values() if v == 'long')
     short_count = sum(1 for v in votes.values() if v == 'short')
     hold_count = sum(1 for v in votes.values() if v == 'hold')
     total = len(votes)
 
-    # 确定目标方向和票数
+    # Determine target direction and vote count
     if direction:
         if direction == 'long':
             target_count = long_count
@@ -103,10 +103,10 @@ def calculate_confidence_from_votes(votes: Dict[str, str], direction: str = None
         else:
             target_count = hold_count
     else:
-        # 使用多数方向
+        # Use majority direction
         target_count = max(long_count, short_count, hold_count)
 
-    # 基于票数计算置信度
+    # Calculate confidence based on vote count
     if target_count >= 5:
         confidence = 90
     elif target_count == 4:
@@ -118,30 +118,30 @@ def calculate_confidence_from_votes(votes: Dict[str, str], direction: str = None
     else:
         confidence = 30
 
-    logger.info(f"[Confidence] 投票统计: {long_count}多/{short_count}空/{hold_count}观望, "
-                f"目标方向={direction or '多数'}, 票数={target_count}, 置信度={confidence}%")
+    logger.info(f"[Confidence] Vote stats: {long_count} long/{short_count} short/{hold_count} hold, "
+                f"target_direction={direction or 'majority'}, votes={target_count}, confidence={confidence}%")
 
     return confidence
 
 
 def calculate_leverage_from_confidence(confidence: int, max_leverage: int = 20) -> int:
     """
-    基于置信度计算合理杠杆
+    Calculate appropriate leverage based on confidence
 
-    规则:
-    - confidence >= 85: 10x (高信心)
+    Rules:
+    - confidence >= 85: 10x (high confidence)
     - confidence >= 75: 8x
     - confidence >= 65: 6x
     - confidence >= 55: 5x
     - confidence >= 45: 3x
-    - confidence < 45: 2x (低信心)
+    - confidence < 45: 2x (low confidence)
 
     Args:
-        confidence: 置信度 0-100
-        max_leverage: 最大允许杠杆
+        confidence: Confidence 0-100
+        max_leverage: Maximum allowed leverage
 
     Returns:
-        int: 推荐杠杆倍数
+        int: Recommended leverage multiplier
     """
     if confidence >= 85:
         leverage = 10
@@ -156,30 +156,30 @@ def calculate_leverage_from_confidence(confidence: int, max_leverage: int = 20) 
     else:
         leverage = 2
 
-    # 限制在最大杠杆范围内
+    # Limit to max leverage
     leverage = min(leverage, max_leverage)
 
-    logger.info(f"[Leverage] 置信度={confidence}% -> 推荐杠杆={leverage}x (上限={max_leverage}x)")
+    logger.info(f"[Leverage] confidence={confidence}% -> recommended leverage={leverage}x (max={max_leverage}x)")
 
     return leverage
 
 
 def calculate_amount_from_confidence(confidence: int) -> float:
     """
-    基于置信度计算合理仓位比例
+    Calculate appropriate position size based on confidence
 
-    规则:
-    - confidence >= 85: 60% (高信心)
+    Rules:
+    - confidence >= 85: 60% (high confidence)
     - confidence >= 75: 50%
     - confidence >= 65: 40%
     - confidence >= 55: 30%
-    - confidence < 55: 20% (低信心)
+    - confidence < 55: 20% (low confidence)
 
     Args:
-        confidence: 置信度 0-100
+        confidence: Confidence 0-100
 
     Returns:
-        float: 仓位比例 0.0-1.0
+        float: Position ratio 0.0-1.0
     """
     if confidence >= 85:
         amount = 0.6
@@ -192,7 +192,7 @@ def calculate_amount_from_confidence(confidence: int) -> float:
     else:
         amount = 0.2
 
-    logger.info(f"[Amount] 置信度={confidence}% -> 推荐仓位={amount*100:.0f}%")
+    logger.info(f"[Amount] confidence={confidence}% -> recommended position={amount*100:.0f}%")
 
     return amount
 
@@ -208,12 +208,12 @@ class TradingMeetingConfig:
     min_confidence: int = field(default_factory=lambda: _get_env_int("MIN_CONFIDENCE", 60))
     max_rounds: int = 3
     require_risk_manager_approval: bool = True
-    # 默认止盈止损百分比
+    # Default take profit / stop loss percentages
     default_tp_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_TP_PERCENT", 5.0))
     default_sl_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_SL_PERCENT", 2.0))
-    # 默认余额（用于计算，如果无法获取实际余额）
+    # Default balance (for calculation if unable to get actual balance)
     default_balance: float = 10000.0
-    # 回退价格（仅在无法获取实时价格时使用）
+    # Fallback price (only used when unable to get real-time price)
     fallback_price: float = 95000.0
 
     def __post_init__(self):
@@ -266,15 +266,15 @@ class TradingMeeting(Meeting):
         # Track executed tool calls (tool_name, params, result)
         self._last_executed_tools: List[Dict[str, Any]] = []
 
-        # 🆕 记录 Agent 预测（用于平仓后反思）
+        # Record Agent predictions (for reflection after closing position)
         self._current_predictions: Dict[str, Dict[str, Any]] = {}
         self._current_trade_id: Optional[str] = None
 
-        # 🆕 注册平仓回调（用于触发 Agent 反思）
+        # Register position closed callback (for triggering Agent reflection)
         self._register_position_closed_callback()
 
     def _register_position_closed_callback(self):
-        """注册平仓回调，用于触发 Agent 反思生成"""
+        """Register position closed callback for triggering Agent reflection generation"""
         if not self.toolkit:
             logger.debug("No toolkit available, skipping position closed callback registration")
             return
@@ -284,21 +284,21 @@ class TradingMeeting(Meeting):
             logger.debug("No paper_trader in toolkit, skipping callback registration")
             return
 
-        # 保存原有回调（如果有的话）
+        # Save original callback (if any)
         original_callback = getattr(paper_trader, 'on_position_closed', None)
 
         async def on_position_closed_with_reflection(position, pnl, reason="manual"):
-            """平仓回调：触发 Agent 反思生成"""
+            """Position closed callback: trigger Agent reflection generation"""
             logger.info(f"🔄 Position closed callback triggered: PnL=${pnl:.2f}, reason={reason}")
 
             try:
-                # 获取交易 ID
+                # Get trade ID
                 trade_id = getattr(position, 'id', None) or self._current_trade_id
                 if not trade_id:
                     logger.warning("No trade_id available for reflection generation")
                     return
 
-                # 计算持仓时长
+                # Calculate holding duration
                 holding_hours = 0
                 opened_at = getattr(position, 'opened_at', None)
                 if opened_at:
@@ -306,7 +306,7 @@ class TradingMeeting(Meeting):
                         opened_at = datetime.fromisoformat(opened_at)
                     holding_hours = (datetime.now() - opened_at).total_seconds() / 3600
 
-                # 构建交易结果
+                # Build trade result
                 trade_result = {
                     'entry_price': getattr(position, 'entry_price', 0),
                     'exit_price': getattr(position, 'current_price', 0),
@@ -316,10 +316,10 @@ class TradingMeeting(Meeting):
                     'holding_hours': holding_hours
                 }
 
-                # 生成 Agent 反思
+                # Generate Agent reflections
                 logger.info(f"📝 Generating agent reflections for trade {trade_id}...")
 
-                # 获取一个可用的 agent 作为 LLM 客户端（用于生成反思）
+                # Get an available agent as LLM client (for generating reflections)
                 llm_client = None
                 if self.agents:
                     llm_client = self.agents[0]
@@ -333,33 +333,33 @@ class TradingMeeting(Meeting):
                 if reflections:
                     logger.info(f"✅ Generated {len(reflections)} agent reflections")
                     for r in reflections:
-                        status = "正确" if r.prediction_was_correct else "错误"
-                        logger.info(f"  - {r.agent_name}: 预测{status}, 教训: {r.lessons_learned[0] if r.lessons_learned else '无'}")
+                        status = "correct" if r.prediction_was_correct else "incorrect"
+                        logger.info(f"  - {r.agent_name}: prediction {status}, lesson: {r.lessons_learned[0] if r.lessons_learned else 'none'}")
                 else:
                     logger.warning(f"No reflections generated for trade {trade_id}")
 
             except Exception as e:
                 logger.error(f"Error in position closed callback: {e}", exc_info=True)
 
-            # 调用原有回调（如果有的话）
+            # Call original callback (if any)
             if original_callback:
                 try:
                     await original_callback(position, pnl, reason)
                 except Exception as e:
                     logger.error(f"Error in original position closed callback: {e}")
 
-        # 注册回调
+        # Register callback
         paper_trader.on_position_closed = on_position_closed_with_reflection
         logger.info("✅ Registered position closed callback for agent reflection")
 
     async def _record_agent_predictions_for_trade(self, market_price: float = 0.0):
         """
-        记录所有 Agent 的预测（用于平仓后反思）
+        Record all Agent predictions (for reflection after closing position)
 
-        在开仓成功后调用，将当前会议中所有 Agent 的投票记录到预测存储中。
+        Called after successful position opening, records all Agent votes from current meeting to prediction storage.
         """
         try:
-            # 获取当前持仓 ID 作为 trade_id
+            # Get current position ID as trade_id
             trade_id = None
             if self.toolkit and hasattr(self.toolkit, 'paper_trader'):
                 position = await self.toolkit.paper_trader.get_position()
@@ -367,21 +367,21 @@ class TradingMeeting(Meeting):
                     trade_id = getattr(position, 'id', None)
 
             if not trade_id:
-                # 如果没有仓位 ID，使用时间戳生成一个
+                # If no position ID, generate one using timestamp
                 trade_id = f"trade_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                 logger.warning(f"No position ID found, using generated trade_id: {trade_id}")
 
-            # 保存 trade_id 用于平仓时查找
+            # Save trade_id for lookup when closing position
             self._current_trade_id = trade_id
 
-            # 从 _agent_votes 收集预测
+            # Collect predictions from _agent_votes
             votes_dict = {}
             for vote in self._agent_votes:
                 votes_dict[vote.agent_name] = {
                     'direction': vote.direction,
                     'confidence': vote.confidence,
                     'reasoning': vote.reasoning,
-                    'key_factors': [],  # 可以从 reasoning 中提取
+                    'key_factors': [],  # Can be extracted from reasoning
                     'market_snapshot': {}
                 }
 
@@ -418,7 +418,7 @@ class TradingMeeting(Meeting):
         """
         logger.info(f"Starting trading meeting for {self.config.symbol}")
 
-        # 🆕 Step 0: 收集持仓上下文
+        # Step 0: Collect position context
         logger.info("[PositionContext] Collecting position context...")
         position_context = await self._get_position_context()
         logger.info(f"[PositionContext] Has position: {position_context.has_position}")
@@ -433,7 +433,7 @@ class TradingMeeting(Meeting):
         # Add agenda as initial message
         self._add_message(
             agent_id="system",
-            agent_name="系统",
+            agent_name="System",
             content=agenda,
             message_type="agenda"
         )
@@ -448,16 +448,16 @@ class TradingMeeting(Meeting):
             # Phase 3: Risk Assessment (with position context)
             await self._run_risk_assessment_phase(position_context)
 
-            # Phase 4: Consensus Building (Leader总结会议)
+            # Phase 4: Consensus Building (Leader summarizes meeting)
             _temp_signal = await self._run_consensus_phase(position_context)
-            # 注：Phase 4不再产生最终signal，只是Leader的总结
+            # Note: Phase 4 no longer produces final signal, only Leader's summary
 
-            # Phase 5: Trade Execution (TradeExecutor分析并决策)
-            # 🆕 NEW: TradeExecutor会分析Leader的总结并做出决策
-            # 不管Leader说了什么，TradeExecutor都会运行
+            # Phase 5: Trade Execution (TradeExecutor analyzes and decides)
+            # NEW: TradeExecutor analyzes Leader's summary and makes decision
+            # Regardless of what Leader said, TradeExecutor will run
             await self._run_execution_phase(_temp_signal, position_context)
-            
-            # 最终signal来自TradeExecutor
+
+            # Final signal comes from TradeExecutor
             if self._final_signal:
                 # Notify callback
                 if self.on_signal:
@@ -478,61 +478,61 @@ class TradingMeeting(Meeting):
     def _build_agenda(self, context: Optional[str] = None, position_context: Optional[PositionContext] = None) -> str:
         """Build the meeting agenda with position context"""
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
-        reason = context or "定时分析"
+        reason = context or "Scheduled analysis"
 
-        # 🆕 添加持仓状况到议程中
+        # Add position status to agenda
         position_summary = ""
         if position_context:
             if position_context.has_position and position_context.direction:
                 pnl_emoji = "📈" if position_context.unrealized_pnl >= 0 else "📉"
                 position_summary = f"""
-## 💼 当前持仓状况 ⚠️ 重要！
+## 💼 Current Position Status ⚠️ Important!
 
-- **持仓**: {position_context.direction.upper()} ({position_context.leverage}x 杠杆)
-- **入场价**: ${position_context.entry_price:.2f}
-- **当前价**: ${position_context.current_price:.2f}
-- {pnl_emoji} **浮动盈亏**: ${position_context.unrealized_pnl:.2f} ({position_context.unrealized_pnl_percent:+.2f}%)
-- **仓位占比**: {position_context.current_position_percent*100:.1f}% / {position_context.max_position_percent*100:.1f}%
-- **状态**: {'✅ 可追加' if position_context.can_add_position else '❌ 已满仓'}
-- **持仓时长**: {position_context.holding_duration_hours:.1f} 小时
+- **Position**: {position_context.direction.upper()} ({position_context.leverage}x leverage)
+- **Entry Price**: ${position_context.entry_price:.2f}
+- **Current Price**: ${position_context.current_price:.2f}
+- {pnl_emoji} **Unrealized PnL**: ${position_context.unrealized_pnl:.2f} ({position_context.unrealized_pnl_percent:+.2f}%)
+- **Position Size**: {position_context.current_position_percent*100:.1f}% / {position_context.max_position_percent*100:.1f}%
+- **Status**: {'✅ Can add more' if position_context.can_add_position else '❌ Max position reached'}
+- **Holding Duration**: {position_context.holding_duration_hours:.1f} hours
 
-⚠️ **请所有专家在分析时考虑当前持仓情况！**
+⚠️ **All experts please consider current position when analyzing!**
 """
             else:
                 position_summary = f"""
-## 💼 当前持仓状况
+## 💼 Current Position Status
 
-- **持仓**: 无持仓
-- **可用余额**: ${position_context.available_balance:.2f} USDT
-- **总权益**: ${position_context.total_equity:.2f} USDT
-- **状态**: ✅ 可自由开仓
+- **Position**: No position
+- **Available Balance**: ${position_context.available_balance:.2f} USDT
+- **Total Equity**: ${position_context.total_equity:.2f} USDT
+- **Status**: ✅ Free to open position
 """
 
-        return f"""# 交易分析会议
+        return f"""# Trading Analysis Meeting
 
-**时间**: {now}
-**标的**: {self.config.symbol}
-**触发原因**: {reason}
+**Time**: {now}
+**Symbol**: {self.config.symbol}
+**Trigger Reason**: {reason}
 {position_summary}
-## 会议议程
+## Meeting Agenda
 
-1. **市场分析阶段**: 各位专家获取并分析市场数据
-2. **信号生成阶段**: 每位专家提出交易建议
-3. **风险评估阶段**: 风险管理师评估交易风险
-4. **共识形成阶段**: 主持人综合意见形成决策
-5. **执行阶段**: 根据决策执行交易
+1. **Market Analysis Phase**: Experts obtain and analyze market data
+2. **Signal Generation Phase**: Each expert provides trading recommendations
+3. **Risk Assessment Phase**: Risk manager evaluates trading risks
+4. **Consensus Building Phase**: Leader synthesizes opinions to form decision
+5. **Execution Phase**: Execute trades based on decision
 
-## 交易参数限制
-- 最大杠杆: {self.config.max_leverage}倍 (可选: 1,2,3,...,{self.config.max_leverage})
-- 最大仓位: {self.config.max_position_percent*100:.0f}%资金
-- 最低信心度要求: {self.config.min_confidence}%
+## Trading Parameters
+- Max Leverage: {self.config.max_leverage}x (options: 1,2,3,...,{self.config.max_leverage})
+- Max Position: {self.config.max_position_percent*100:.0f}% of funds
+- Min Confidence Required: {self.config.min_confidence}%
 
-## 杠杆选择参考
-- 高信心度(>80%): {int(self.config.max_leverage * 0.5)}-{self.config.max_leverage}倍
-- 中信心度(60-80%): {int(self.config.max_leverage * 0.25)}-{int(self.config.max_leverage * 0.5)}倍
-- 低信心度(<60%): 1-{int(self.config.max_leverage * 0.25)}倍或观望
+## Leverage Selection Guide
+- High confidence (>80%): {int(self.config.max_leverage * 0.5)}-{self.config.max_leverage}x
+- Medium confidence (60-80%): {int(self.config.max_leverage * 0.25)}-{int(self.config.max_leverage * 0.5)}x
+- Low confidence (<60%): 1-{int(self.config.max_leverage * 0.25)}x or hold
 
-请各位专家开始分析。
+Experts, please begin your analysis.
 """
 
     async def _run_market_analysis_phase(self, position_context: PositionContext):
@@ -683,7 +683,7 @@ Provide your analysis and views based on real data."""
         """
         Phase 2: Signal Generation
 
-        🔧 重构: 使用结构化 JSON 输出，避免字符串匹配错误
+        Refactored: Use structured JSON output to avoid string matching errors
         """
         self._add_message(
             agent_id="system",
@@ -969,11 +969,11 @@ Please begin your summary!
                    f"Vote breakdown: {vote_summary}")
         logger.info(f"[Leader Summary] {response[:200]}...")
 
-        # 🆕 NEW: 不再在这里提取signal
-        # Phase 5的TradeExecutor会根据这个总结做决策
-        # 这里返回一个临时signal只是为了保持接口兼容
+        # NEW: No longer extract signal here
+        # Phase 5 TradeExecutor will make decision based on this summary
+        # Return a temporary signal here just to maintain interface compatibility
         return TradingSignal(
-            direction="hold",  # 🔧 FIX: 使用有效值而不是"pending"
+            direction="hold",  # FIX: Use valid value instead of "pending"
             symbol=self.config.symbol,
             leverage=1,
             amount_percent=0.0,
@@ -982,7 +982,7 @@ Please begin your summary!
             stop_loss_price=0.0,
             confidence=0,
             reasoning=response[:500],
-            agents_consensus=self._get_agents_consensus(),  # 🔧 FIX: 使用方法而不是属性
+            agents_consensus=self._get_agents_consensus(),  # FIX: Use method instead of property
             timestamp=datetime.now()
         )
     
@@ -1171,8 +1171,8 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
     
     def _get_agents_consensus(self) -> Dict[str, str]:
         """
-        从_agent_votes构建agents_consensus字典
-        
+        Build agents_consensus dict from _agent_votes
+
         Returns:
             Dict[str, str]: {agent_name: direction}
         """
@@ -1305,102 +1305,155 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
 
     async def _extract_signal_from_text(self, response: str) -> Optional[TradingSignal]:
         """
-        🔧 NEW: Extract trading signal from Leader's structured text output.
-        
+        NEW: Extract trading signal from Leader's structured text output.
+
         Leader no longer calls tools, but outputs a structured decision in text format:
-        
-        【最终决策】
-        - 决策: 做多/做空/观望/平仓/追加多仓/追加空仓
-        - 标的: BTC-USDT-SWAP
-        - 杠杆倍数: 5
-        - 仓位比例: 30%
-        - 止盈价格: 98000 USDT
-        - 止损价格: 92000 USDT
-        - 信心度: 75%
-        - 决策理由: ...
+
+        【Final Decision】
+        - Decision: long/short/hold/close/add_long/add_short
+        - Symbol: BTC-USDT-SWAP
+        - Leverage: 5
+        - Position Percent: 30%
+        - Take Profit Price: 98000 USDT
+        - Stop Loss Price: 92000 USDT
+        - Confidence: 75%
+        - Reasoning: ...
         """
         try:
             import re
-            
+
             logger.info("[SignalExtraction] Extracting signal from Leader's text output")
-            
-            # 🔧 CRITICAL FIX: MUST have 【最终决策】 marker
+
+            # CRITICAL FIX: MUST have Final Decision marker
             # Without this marker, Leader is just discussing, not making final decision
-            decision_pattern = r'【最终决策】(.*?)(?=\n\n|$)'
-            match = re.search(decision_pattern, response, re.DOTALL)
-            
+            # Support both English and Chinese markers for compatibility
+            decision_patterns = [
+                r'【Final Decision】(.*?)(?=\n\n|$)',      # English with Chinese brackets
+                r'\[Final Decision\](.*?)(?=\n\n|$)',     # English with square brackets
+                r'【最终决策】(.*?)(?=\n\n|$)',             # Chinese (legacy)
+                r'\*\*Final Decision\*\*(.*?)(?=\n\n|$)', # Markdown bold
+            ]
+
+            match = None
+            for pattern in decision_patterns:
+                match = re.search(pattern, response, re.DOTALL | re.IGNORECASE)
+                if match:
+                    break
+
             if not match:
-                logger.warning("[SignalExtraction] ⚠️  No 【最终决策】 section found in response")
+                logger.warning("[SignalExtraction] ⚠️ No Final Decision section found in response")
                 logger.warning("[SignalExtraction] This indicates Leader is discussing, not making final decision")
                 logger.warning("[SignalExtraction] Returning hold signal to avoid premature execution")
-                # 🔧 FIX: Do NOT fallback to parsing the entire response
-                # If there's no 【最终决策】 marker, it means Leader is just discussing
+                # FIX: Do NOT fallback to parsing the entire response
+                # If there's no Final Decision marker, it means Leader is just discussing
                 # Return a hold signal to prevent premature execution
                 return await self._create_hold_signal(
-                    response, 
-                    "Leader没有输出【最终决策】标记，可能还在讨论中"
+                    response,
+                    "Leader did not output Final Decision marker, may still be discussing"
                 )
-            
+
             decision_text = match.group(1)
-            logger.info(f"[SignalExtraction] ✅ Found 【最终决策】 section")
+            logger.info(f"[SignalExtraction] ✅ Found Final Decision section")
             logger.info(f"[SignalExtraction] Decision text: {decision_text[:200]}...")
-            
-            # Extract fields using regex
-            def extract_field(pattern, text, default=None):
-                match = re.search(pattern, text, re.IGNORECASE)
-                return match.group(1).strip() if match else default
-            
-            # 决策 (决策类型)
-            decision_type = extract_field(r'-\s*决策\s*[:：]\s*([^\n]+)', decision_text)
+
+            # Extract fields using regex - try multiple patterns (English first, Chinese fallback)
+            def extract_field_multi(patterns, text, default=None):
+                """Try multiple patterns and return first match"""
+                for pattern in patterns:
+                    match = re.search(pattern, text, re.IGNORECASE)
+                    if match:
+                        return match.group(1).strip()
+                return default
+
+            # Decision type (English first, Chinese fallback)
+            decision_type = extract_field_multi([
+                r'-\s*Decision\s*[:：]\s*([^\n]+)',      # English
+                r'-\s*决策\s*[:：]\s*([^\n]+)',           # Chinese (legacy)
+            ], decision_text)
             logger.info(f"[SignalExtraction] decision_type: {decision_type}")
-            
-            # 标的
-            symbol = extract_field(r'-\s*标的\s*[:：]\s*([^\n]+)', decision_text, self.config.symbol)
-            
-            # 杠杆倍数
-            leverage_str = extract_field(r'-\s*杠杆倍数\s*[:：]\s*(\d+)', decision_text, "1")
+
+            # Symbol (English first, Chinese fallback)
+            symbol = extract_field_multi([
+                r'-\s*Symbol\s*[:：]\s*([^\n]+)',        # English
+                r'-\s*标的\s*[:：]\s*([^\n]+)',           # Chinese (legacy)
+            ], decision_text, self.config.symbol)
+
+            # Leverage (English first, Chinese fallback)
+            leverage_str = extract_field_multi([
+                r'-\s*Leverage\s*[:：]\s*(\d+)',         # English
+                r'-\s*杠杆倍数\s*[:：]\s*(\d+)',          # Chinese (legacy)
+            ], decision_text, "1")
             leverage = int(leverage_str)
-            
-            # 仓位比例
-            position_str = extract_field(r'-\s*仓位比例\s*[:：]\s*(\d+)', decision_text, "0")
+
+            # Position percent (English first, Chinese fallback)
+            position_str = extract_field_multi([
+                r'-\s*Position\s*(?:Percent|Size|%)\s*[:：]\s*(\d+)',  # English
+                r'-\s*仓位比例\s*[:：]\s*(\d+)',          # Chinese (legacy)
+            ], decision_text, "0")
             amount_percent = float(position_str)
-            
-            # 止盈价格
-            tp_str = extract_field(r'-\s*止盈价格\s*[:：]\s*([\d.]+)', decision_text, "0")
+
+            # Take profit price (English first, Chinese fallback)
+            tp_str = extract_field_multi([
+                r'-\s*Take\s*Profit\s*(?:Price)?\s*[:：]\s*([\d.]+)',  # English
+                r'-\s*止盈价格\s*[:：]\s*([\d.]+)',       # Chinese (legacy)
+            ], decision_text, "0")
             take_profit_price = float(tp_str)
-            
-            # 止损价格
-            sl_str = extract_field(r'-\s*止损价格\s*[:：]\s*([\d.]+)', decision_text, "0")
+
+            # Stop loss price (English first, Chinese fallback)
+            sl_str = extract_field_multi([
+                r'-\s*Stop\s*Loss\s*(?:Price)?\s*[:：]\s*([\d.]+)',    # English
+                r'-\s*止损价格\s*[:：]\s*([\d.]+)',       # Chinese (legacy)
+            ], decision_text, "0")
             stop_loss_price = float(sl_str)
-            
-            # 信心度
-            confidence_str = extract_field(r'-\s*信心度\s*[:：]\s*(\d+)', decision_text, "0")
+
+            # Confidence (English first, Chinese fallback)
+            confidence_str = extract_field_multi([
+                r'-\s*Confidence\s*[:：]\s*(\d+)',       # English
+                r'-\s*信心度\s*[:：]\s*(\d+)',            # Chinese (legacy)
+            ], decision_text, "0")
             confidence = int(confidence_str)
-            
-            # 决策理由
-            reasoning = extract_field(r'-\s*决策理由\s*[:：]\s*([^\n]+)', decision_text, "")
-            
-            # Map decision_type to direction
+
+            # Reasoning (English first, Chinese fallback)
+            reasoning = extract_field_multi([
+                r'-\s*Reasoning\s*[:：]\s*([^\n]+)',     # English
+                r'-\s*决策理由\s*[:：]\s*([^\n]+)',       # Chinese (legacy)
+            ], decision_text, "")
+
+            # Map decision_type to direction (English first, Chinese fallback)
             direction = "hold"  # default
             if decision_type:
                 dt_lower = decision_type.lower()
-                if "做多" in dt_lower or "开多" in dt_lower:
+                # English keywords (primary)
+                if "long" in dt_lower or "buy" in dt_lower or "bullish" in dt_lower:
+                    direction = "long"
+                elif "short" in dt_lower or "sell" in dt_lower or "bearish" in dt_lower:
+                    direction = "short"
+                elif "add_long" in dt_lower or "add long" in dt_lower:
+                    direction = "long"  # Add to long position
+                elif "add_short" in dt_lower or "add short" in dt_lower:
+                    direction = "short"  # Add to short position
+                elif "close" in dt_lower:
+                    direction = "hold"  # FIX: TradingSignal doesn't support "close", use hold after closing
+                elif "hold" in dt_lower or "wait" in dt_lower:
+                    direction = "hold"
+                # Chinese keywords (legacy fallback)
+                elif "做多" in dt_lower or "开多" in dt_lower:
                     direction = "long"
                 elif "做空" in dt_lower or "开空" in dt_lower:
                     direction = "short"
                 elif "追加多" in dt_lower:
-                    direction = "long"  # 追加也是long
+                    direction = "long"
                 elif "追加空" in dt_lower:
                     direction = "short"
                 elif "平仓" in dt_lower:
-                    direction = "hold"  # 🔧 FIX: TradingSignal不支持"close"，平仓后使用hold
+                    direction = "hold"
                 elif "观望" in dt_lower or "持有" in dt_lower:
                     direction = "hold"
             
             logger.info(f"[SignalExtraction] Parsed direction: {direction}, leverage: {leverage}, "
                        f"position: {amount_percent}%, confidence: {confidence}%")
             
-            # 🔧 FIX: Convert amount_percent from percentage to decimal (e.g., 90% → 0.9)
+            # FIX: Convert amount_percent from percentage to decimal (e.g., 90% → 0.9)
             # TradingSignal expects amount_percent in range [0, 1], not [0, 100]
             amount_percent_decimal = amount_percent / 100.0
             logger.info(f"[SignalExtraction] Converted amount_percent: {amount_percent}% → {amount_percent_decimal}")
@@ -1440,35 +1493,35 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
 
     async def _get_position_context(self) -> PositionContext:
         """
-        🆕 获取完整的持仓上下文
-        
-        收集所有持仓、账户、风险相关的信息，用于：
-        1. 注入到Agents的prompt中
-        2. 传递给Leader做决策
-        3. 传递给TradeExecutor做执行
-        
+        Get complete position context
+
+        Collect all position, account, and risk related information for:
+        1. Injecting into Agents' prompts
+        2. Passing to Leader for decision making
+        3. Passing to TradeExecutor for execution
+
         Returns:
-            PositionContext: 完整的持仓上下文对象
+            PositionContext: Complete position context object
         """
         try:
-            # 检查toolkit和paper_trader是否存在
+            # Check if toolkit and paper_trader exist
             if not hasattr(self, 'toolkit') or not self.toolkit:
                 logger.error("[PositionContext] No toolkit available")
                 raise AttributeError("toolkit not available")
-            
+
             if not hasattr(self.toolkit, 'paper_trader') or not self.toolkit.paper_trader:
                 logger.error("[PositionContext] No paper_trader in toolkit")
                 raise AttributeError("paper_trader not available")
-            
-            # 获取当前持仓
+
+            # Get current position
             position = await self.toolkit.paper_trader.get_position()
             if position is None:
                 logger.warning("[PositionContext] get_position() returned None, using default empty position")
                 position = {'has_position': False}
-            
+
             has_position = position.get('has_position', False)
-            
-            # 获取账户信息
+
+            # Get account info
             account = await self.toolkit.paper_trader.get_account()
             if account is None:
                 logger.warning("[PositionContext] get_account() returned None, using default balance")
@@ -1477,8 +1530,8 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                     'total_equity': self.config.default_balance,
                     'used_margin': 0
                 }
-            
-            # 如果无持仓，返回简化的context
+
+            # If no position, return simplified context
             if not has_position:
                 return PositionContext(
                     has_position=False,
@@ -1488,12 +1541,12 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                     max_position_percent=self.config.max_position_percent,
                     can_add_position=False
                 )
-            
-            # 有持仓，收集详细信息
-            # 🔧 FIX: get_position() 返回的是平面字典，不是嵌套在 'position' 键下
-            # 直接从 position 字典获取数据，而不是 position.get('position', {})
-            current_position = position  # position 本身就是持仓详情
-            
+
+            # Has position, collect detailed info
+            # FIX: get_position() returns flat dict, not nested under 'position' key
+            # Get data directly from position dict, not position.get('position', {})
+            current_position = position  # position itself is the position details
+
             direction = position.get('direction', '')
             entry_price = position.get('entry_price', 0)
             current_price = position.get('current_price', 0)
@@ -1506,34 +1559,34 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             take_profit_price = position.get('take_profit_price')
             stop_loss_price = position.get('stop_loss_price')
             opened_at_str = position.get('opened_at')
-            
-            # 计算距离止盈止损的距离
+
+            # Calculate distance to TP/SL
             distance_to_tp_percent = 0.0
             distance_to_sl_percent = 0.0
             if take_profit_price and current_price:
                 distance_to_tp_percent = ((take_profit_price - current_price) / current_price) * 100
             if stop_loss_price and current_price:
                 distance_to_sl_percent = ((stop_loss_price - current_price) / current_price) * 100
-            
-            # 计算距离强平的距离
+
+            # Calculate distance to liquidation
             distance_to_liquidation_percent = 0.0
             if liquidation_price and current_price:
                 if direction == "long":
                     distance_to_liquidation_percent = ((current_price - liquidation_price) / current_price) * 100
                 else:  # short
                     distance_to_liquidation_percent = ((liquidation_price - current_price) / current_price) * 100
-            
-            # 计算当前仓位占比
+
+            # Calculate current position percent
             total_equity = account.get('total_equity', self.config.default_balance)
             current_position_percent = margin_used / total_equity if total_equity > 0 else 0
-            
-            # 计算是否可以追加
+
+            # Calculate if can add position
             max_margin = total_equity * self.config.max_position_percent
             available_balance = account.get('available_balance', 0)
             can_add_position = (margin_used < max_margin) and (available_balance >= 10)
             max_additional_amount = min(max_margin - margin_used, available_balance) if can_add_position else 0
             
-            # 计算持仓时长
+            # Calculate holding duration
             opened_at = None
             holding_duration_hours = 0.0
             if opened_at_str:
@@ -1542,8 +1595,8 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                     holding_duration_hours = (datetime.now(opened_at.tzinfo) - opened_at).total_seconds() / 3600
                 except Exception as e:
                     logger.warning(f"Failed to parse opened_at: {e}")
-            
-            # 返回完整的持仓上下文
+
+            # Return complete position context
             return PositionContext(
                 has_position=True,
                 current_position=current_position,
@@ -1574,7 +1627,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
         
         except Exception as e:
             logger.error(f"[PositionContext] Error getting position context: {e}", exc_info=True)
-            # 返回默认的空持仓context
+            # Return default empty position context
             return PositionContext(
                 has_position=False,
                 available_balance=self.config.default_balance,
@@ -1612,18 +1665,18 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                     "can_add": False
                 }
             
-            # Get account and position (使用正确的异步方法)
-            # 🔧 FIX: get_account和get_position都是异步方法，需要await
+            # Get account and position (using correct async methods)
+            # FIX: get_account and get_position are async methods, need await
             account = await paper_trader.get_account()
             position = await paper_trader.get_position()
-            
+
             has_position = position is not None and position.get("has_position", False)
-            
+
             # Calculate if can add more position
             can_add = False
             if has_position:
-                # 🔧 FIX: position_value 不存在于 get_position() 返回值中
-                # 使用 margin × leverage 计算持仓价值
+                # FIX: position_value doesn't exist in get_position() return value
+                # Use margin × leverage to calculate position value
                 margin = position.get('margin', 0)
                 leverage = position.get('leverage', 1)
                 current_value = margin * leverage
@@ -1651,15 +1704,15 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
     async def _run_execution_phase(self, signal: TradingSignal, position_context: PositionContext = None):
         """
         Phase 5: Trade Execution - NEW Intelligent TradeExecutor
-        
-        TradeExecutor现在是一个真正的决策Agent，它会：
-        1. 理解Leader的会议总结
-        2. 分析所有专家的投票
-        3. 考虑当前持仓状态
-        4. 做出独立的交易决策
-        5. 执行交易
-        
-        不再依赖固定格式或标记！
+
+        TradeExecutor is now a true decision-making Agent that:
+        1. Understands Leader's meeting summary
+        2. Analyzes all expert votes
+        3. Considers current position state
+        4. Makes independent trading decisions
+        5. Executes trades
+
+        No longer relies on fixed formats or markers!
         """
         self._add_message(
             agent_id="system",
@@ -1669,38 +1722,38 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
         )
         
         try:
-            # Step 1: 获取Leader的会议总结
+            # Step 1: Get Leader's meeting summary
             leader_summary = self._get_leader_final_summary()
-            logger.info(f"[ExecutionPhase] 📝 Leader总结长度: {len(leader_summary)} 字符")
-            
-            # Step 2: 收集专家投票
+            logger.info(f"[ExecutionPhase] Leader summary length: {len(leader_summary)} chars")
+
+            # Step 2: Collect expert votes
             agents_votes = self._get_agents_consensus()
-            logger.info(f"[ExecutionPhase] 🗳️ 专家投票: {agents_votes}")
-            
-            # Step 3: 创建TradeExecutor Agent (具备直接工具调用能力)
-            logger.info("[ExecutionPhase] 🤖 创建TradeExecutor Agent...")
+            logger.info(f"[ExecutionPhase] Expert votes: {agents_votes}")
+
+            # Step 3: Create TradeExecutor Agent (with direct tool calling capability)
+            logger.info("[ExecutionPhase] Creating TradeExecutor Agent...")
             trade_executor_agent = await self._create_trade_executor_agent_instance()
-            
-            # Step 4: 构建执行prompt
+
+            # Step 4: Build execution prompt
             execution_prompt = self._build_execution_prompt(
                 leader_summary=leader_summary,
                 agents_votes=agents_votes,
                 position_context=position_context
             )
-            logger.info(f"[ExecutionPhase] 📝 执行Prompt构建完成，长度: {len(execution_prompt)} 字符")
-            
-            # Step 5: TradeExecutor通过Tool Calling执行交易
-            # 🔧 核心改变: run()直接返回TradingSignal，不需要二次解析！
-            logger.info("[ExecutionPhase] 🔍 TradeExecutor开始Tool Calling...")
+            logger.info(f"[ExecutionPhase] Execution prompt built, length: {len(execution_prompt)} chars")
+
+            # Step 5: TradeExecutor executes trade via Tool Calling
+            # KEY CHANGE: run() returns TradingSignal directly, no secondary parsing needed!
+            logger.info("[ExecutionPhase] TradeExecutor starting Tool Calling...")
             final_signal = await trade_executor_agent.run(execution_prompt)
-            
+
             logger.info(
-                f"[ExecutionPhase] ✅ TradeExecutor决策完成: {final_signal.direction.upper()} "
-                f"| 杠杆 {final_signal.leverage}x "
-                f"| 仓位 {final_signal.amount_percent*100:.0f}%"
+                f"[ExecutionPhase] TradeExecutor decision complete: {final_signal.direction.upper()} "
+                f"| Leverage {final_signal.leverage}x "
+                f"| Position {final_signal.amount_percent*100:.0f}%"
             )
-            
-            # Step 5: 添加决策消息
+
+            # Step 6: Add decision message
             # FIX: _add_message doesn't support metadata parameter, removed
             self._add_message(
                 agent_id="trade_executor",
@@ -1721,18 +1774,18 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                 message_type="decision"
             )
             
-            # Step 6: 记录执行结果（工具函数已经执行过交易，无需再次执行！）
-            # 🔧 核心改变: TradeExecutorAgentWithTools的工具函数已经直接执行了交易
-            # open_long/open_short/close_position 函数内部调用了 paper_trader.open_position()
-            # 所以这里只需要记录结果，不需要再调用LegacyExecutor
-            
+            # Step 7: Record execution result (tool functions already executed trade, no need to execute again!)
+            # KEY CHANGE: TradeExecutorAgentWithTools tool functions already executed the trade directly
+            # open_long/open_short/close_position functions internally called paper_trader.open_position()
+            # So here we only need to record the result, no need to call LegacyExecutor
+
             if final_signal.direction != "hold":
-                logger.info(f"[ExecutionPhase] ✅ Trade executed via Tool Calling: {final_signal.direction.upper()}")
+                logger.info(f"[ExecutionPhase] Trade executed via Tool Calling: {final_signal.direction.upper()}")
 
                 self._add_message(
                     agent_id="trade_executor",
                     agent_name="Trade Executor",
-                    content=f"✅ Trade Executed\n\nDecision: {final_signal.direction.upper()}\nLeverage: {final_signal.leverage}x\nPosition: {final_signal.amount_percent*100:.0f}%",
+                    content=f"Trade Executed\n\nDecision: {final_signal.direction.upper()}\nLeverage: {final_signal.leverage}x\nPosition: {final_signal.amount_percent*100:.0f}%",
                     message_type="execution"
                 )
 
@@ -1749,7 +1802,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                     }
                 }
 
-                # 🆕 记录 Agent 预测（用于平仓后反思）
+                # Record Agent predictions (for post-close reflection)
                 await self._record_agent_predictions_for_trade(final_signal.entry_price)
 
             else:
@@ -1779,42 +1832,42 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
     
     async def _create_trade_executor_agent_instance(self):
         """
-        创建TradeExecutor的Agent实例
-        
-        🆕 重构: 使用现有的Agent类和FunctionTool机制
-        - Agent类已有完整的Tool Calling支持（原生 + Legacy）
-        - 使用FunctionTool包装交易函数
-        - 不再需要硬编码正则检测
-        
-        架构:
-        Leader总结 → TradeExecutor Agent → Agent.call_llm() with tools → 原生Tool Calling → 执行
+        Create TradeExecutor Agent instance
+
+        Refactored: Uses existing Agent class and FunctionTool mechanism
+        - Agent class already has full Tool Calling support (native + legacy)
+        - Uses FunctionTool to wrap trading functions
+        - No longer needs hardcoded regex detection
+
+        Architecture:
+        Leader summary -> TradeExecutor Agent -> Agent.call_llm() with tools -> Native Tool Calling -> Execute
         """
         from app.core.roundtable.tool import FunctionTool
-        
-        # 获取Leader的LLM配置
+
+        # Get Leader's LLM config
         leader = self._get_agent_by_id("Leader")
         if not leader:
             raise RuntimeError("Leader agent not found, cannot create TradeExecutor")
         
-        # 🆕 重构: 使用现有Agent类 + FunctionTool，利用Agent原生的Tool Calling能力
-        # 不再使用硬编码的正则检测！
-        
-        # 保存toolkit引用，供工具函数使用
+        # Refactored: Use existing Agent class + FunctionTool, leverage Agent's native Tool Calling capability
+        # No longer uses hardcoded regex detection!
+
+        # Save toolkit reference for use in tool functions
         toolkit = self.toolkit
-        
-        # 🔧 创建交易工具函数（这些会被包装成FunctionTool）
-        # 每个工具执行交易并返回结果字符串，同时保存TradingSignal到外部变量
-        
-        # 用于保存执行结果的容器
+
+        # Create trading tool functions (these will be wrapped as FunctionTool)
+        # Each tool executes trade and returns result string, also saves TradingSignal to external variable
+
+        # Container to save execution result
         execution_result = {"signal": None}
-        
+
         async def get_current_price() -> float:
-            """获取当前BTC价格"""
+            """Get current BTC price"""
             try:
                 if toolkit and hasattr(toolkit, '_get_market_price'):
                     result = await toolkit._get_market_price()
                     if isinstance(result, str):
-                        # 🔧 FIX: 优先尝试解析JSON获取price字段
+                        # FIX: Prefer parsing JSON to get price field
                         try:
                             import json as json_module
                             data = json_module.loads(result)
@@ -1822,13 +1875,13 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                 return float(data['price'])
                         except (json_module.JSONDecodeError, ValueError, KeyError):
                             pass
-                        
-                        # 🔧 FIX: 改进正则表达式 - 匹配数字开头的价格格式
-                        # 先尝试匹配 $XX,XXX.XX 格式
+
+                        # FIX: Improved regex - match price format starting with number
+                        # First try to match $XX,XXX.XX format
                         price_match = re.search(r'\$(\d[\d,]*\.?\d*)', result)
                         if price_match:
                             return float(price_match.group(1).replace(',', ''))
-                        # 再尝试匹配纯数字（如 93000.0）
+                        # Then try to match pure number (e.g., 93000.0)
                         price_match = re.search(r'(\d[\d,]*\.?\d*)', result)
                         if price_match:
                             price_str = price_match.group(1).replace(',', '')
@@ -1836,147 +1889,147 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                 return float(price_str)
                     elif isinstance(result, (int, float)):
                         return float(result)
-                
+
                 if toolkit and hasattr(toolkit, 'paper_trader'):
-                    # 🔧 FIX: PaperTrader使用_current_price属性（私有）
+                    # FIX: PaperTrader uses _current_price attribute (private)
                     if hasattr(toolkit.paper_trader, '_current_price') and toolkit.paper_trader._current_price:
                         return float(toolkit.paper_trader._current_price)
             except Exception as e:
-                logger.error(f"[TradeExecutor] 获取价格失败: {e}")
+                logger.error(f"[TradeExecutor] Failed to get price: {e}")
             return 93000.0  # fallback
-        
-        # 最小追加金额（美元）
+
+        # Minimum add amount (USD)
         MIN_ADD_AMOUNT = 10.0
-        # 安全缓冲（保留一定余额防止意外）
+        # Safety buffer (reserve some balance to prevent accidents)
         SAFETY_BUFFER = 50.0
-        
+
         def calculate_safe_stop_loss(direction: str, entry_price: float, leverage: int, margin: float) -> float:
             """
-            计算安全的止损价格（确保在强平之前触发）
-            
-            强平条件: 亏损达到保证金的80%
-            安全止损: 在强平价格的基础上增加5%安全缓冲
+            Calculate safe stop loss price (ensure trigger before liquidation)
+
+            Liquidation condition: Loss reaches 80% of margin
+            Safe stop loss: Add 5% safety buffer on top of liquidation price
             """
-            # 🔧 FIX: 防止除零错误
+            # FIX: Prevent division by zero
             if entry_price <= 0 or margin <= 0 or leverage <= 0:
-                # 返回默认止损（3%）
+                # Return default stop loss (3%)
                 if direction == "long":
                     return entry_price * 0.97 if entry_price > 0 else 0
                 else:
                     return entry_price * 1.03 if entry_price > 0 else float('inf')
-            
+
             size = (margin * leverage) / entry_price
-            liquidation_loss = margin * 0.8  # 80%保证金亏损触发强平
-            
+            liquidation_loss = margin * 0.8  # 80% margin loss triggers liquidation
+
             if direction == "long":
-                # 做多: 强平价 = 入场价 - (强平亏损 / 持仓量)
+                # Long: liquidation price = entry price - (liquidation loss / position size)
                 liquidation_price = entry_price - (liquidation_loss / size) if size > 0 else 0
-                # 安全止损 = 强平价 × 1.05 (比强平价高5%)
+                # Safe stop loss = liquidation price × 1.05 (5% above liquidation)
                 safe_sl = liquidation_price * 1.05
-                # 但不能超过默认止损（3%）
+                # But cannot exceed default stop loss (3%)
                 default_sl = entry_price * 0.97
                 return max(safe_sl, default_sl)
             else:
-                # 做空: 强平价 = 入场价 + (强平亏损 / 持仓量)
+                # Short: liquidation price = entry price + (liquidation loss / position size)
                 liquidation_price = entry_price + (liquidation_loss / size) if size > 0 else float('inf')
-                # 安全止损 = 强平价 × 0.95 (比强平价低5%)
+                # Safe stop loss = liquidation price × 0.95 (5% below liquidation)
                 safe_sl = liquidation_price * 0.95
-                # 但不能低于默认止损（3%）
+                # But cannot go below default stop loss (3%)
                 default_sl = entry_price * 1.03
                 return min(safe_sl, default_sl)
-        
-        def validate_stop_loss(direction: str, entry_price: float, sl_price: float, 
+
+        def validate_stop_loss(direction: str, entry_price: float, sl_price: float,
                               leverage: int, margin: float) -> tuple[bool, str, float]:
             """
-            验证止损价格是否安全（在强平之前触发）
-            
+            Validate if stop loss price is safe (triggers before liquidation)
+
             Returns:
                 (is_safe, message, safe_sl_price)
             """
-            # 🔧 FIX: 防止除零错误
+            # FIX: Prevent division by zero
             if entry_price <= 0 or margin <= 0 or leverage <= 0:
-                # 无法验证，直接返回原止损价格
+                # Cannot validate, return original stop loss price
                 return True, "", sl_price
-            
+
             size = (margin * leverage) / entry_price
             if size <= 0:
                 return True, "", sl_price
-            
+
             liquidation_loss = margin * 0.8
-            
+
             if direction == "long":
                 liquidation_price = entry_price - (liquidation_loss / size)
                 if sl_price <= liquidation_price:
                     safe_sl = calculate_safe_stop_loss(direction, entry_price, leverage, margin)
-                    return False, f"止损价${sl_price:.2f}低于强平价${liquidation_price:.2f}，已自动调整为${safe_sl:.2f}", safe_sl
+                    return False, f"SL ${sl_price:.2f} below liquidation ${liquidation_price:.2f}, auto-adjusted to ${safe_sl:.2f}", safe_sl
             else:
                 liquidation_price = entry_price + (liquidation_loss / size)
                 if sl_price >= liquidation_price:
                     safe_sl = calculate_safe_stop_loss(direction, entry_price, leverage, margin)
-                    return False, f"止损价${sl_price:.2f}高于强平价${liquidation_price:.2f}，已自动调整为${safe_sl:.2f}", safe_sl
-            
+                    return False, f"SL ${sl_price:.2f} above liquidation ${liquidation_price:.2f}, auto-adjusted to ${safe_sl:.2f}", safe_sl
+
             return True, "", sl_price
-        
+
         async def open_long_tool(leverage: int = None, amount_percent: float = None,
                                 confidence: int = None, reasoning: str = "") -> str:
             """
-            开多仓（做多BTC）- 完整智能仓位处理 + 保证金风险管理
+            Open long position (buy BTC) - Complete intelligent position handling + margin risk management
 
-            决策矩阵:
-            - 无仓位 → 正常开多
-            - 已有多仓+可追加 → 追加多仓
-            - 已有多仓+满仓 → 维持多仓
-            - 已有空仓 → 平空→开多（反向操作）
+            Decision matrix:
+            - No position -> Normal open long
+            - Has long + can add -> Add to long
+            - Has long + full position -> Maintain long
+            - Has short -> Close short -> Open long (reverse operation)
 
-            风险检查:
-            - 使用真实可用保证金(考虑浮盈亏)
-            - 验证止损价格不低于强平价
-            - 保留安全缓冲
+            Risk checks:
+            - Use real available margin (considering unrealized PnL)
+            - Validate stop loss price not below liquidation
+            - Reserve safety buffer
 
             Args:
-                leverage: 杠杆倍数 1-20 (None=基于置信度自动计算)
-                amount_percent: 仓位比例 0.0-1.0 (None=基于置信度自动计算)
-                confidence: 信心度 0-100 (None=基于投票自动计算)
-                reasoning: 决策理由
+                leverage: Leverage 1-20 (None=auto-calculate based on confidence)
+                amount_percent: Position ratio 0.0-1.0 (None=auto-calculate based on confidence)
+                confidence: Confidence 0-100 (None=auto-calculate based on votes)
+                reasoning: Decision reasoning
             """
             current_price = await get_current_price()
 
-            # 🔧 FIX: 动态计算参数，不再使用硬编码默认值
-            # 如果 confidence 未提供，基于投票动态计算
+            # FIX: Dynamically calculate parameters, no longer use hardcoded defaults
+            # If confidence not provided, calculate dynamically based on votes
             if confidence is None:
-                # 使用 _get_agents_consensus() 获取投票字典
+                # Use _get_agents_consensus() to get vote dict
                 votes_dict = self._get_agents_consensus() if hasattr(self, '_get_agents_consensus') else {}
                 confidence = calculate_confidence_from_votes(votes_dict, direction='long')
-                logger.info(f"[open_long] confidence未提供，基于投票计算: {confidence}%")
+                logger.info(f"[open_long] confidence not provided, calculated from votes: {confidence}%")
 
-            # 如果 leverage 未提供，基于 confidence 计算
+            # If leverage not provided, calculate based on confidence
             if leverage is None:
                 leverage = calculate_leverage_from_confidence(confidence)
-                logger.info(f"[open_long] leverage未提供，基于confidence计算: {leverage}x")
+                logger.info(f"[open_long] leverage not provided, calculated from confidence: {leverage}x")
 
-            # 如果 amount_percent 未提供，基于 confidence 计算
+            # If amount_percent not provided, calculate based on confidence
             if amount_percent is None:
                 amount_percent = calculate_amount_from_confidence(confidence)
-                logger.info(f"[open_long] amount_percent未提供，基于confidence计算: {amount_percent*100:.0f}%")
+                logger.info(f"[open_long] amount_percent not provided, calculated from confidence: {amount_percent*100:.0f}%")
 
             leverage = min(max(int(leverage), 1), 20)
             amount_percent = min(max(float(amount_percent), 0.0), 1.0)
-            
+
             trade_success = False
             entry_price = current_price
             action_taken = "open_long"
             final_reasoning = reasoning or ""
-            
-            # 根据杠杆调整止盈止损比例
-            # 高杠杆 = 更紧的止损
+
+            # Adjust TP/SL ratios based on leverage
+            # Higher leverage = tighter stop loss
             if leverage >= 15:
-                tp_percent, sl_percent = 0.05, 0.02  # 5%止盈, 2%止损
+                tp_percent, sl_percent = 0.05, 0.02  # 5% TP, 2% SL
             elif leverage >= 10:
-                tp_percent, sl_percent = 0.06, 0.025  # 6%止盈, 2.5%止损
+                tp_percent, sl_percent = 0.06, 0.025  # 6% TP, 2.5% SL
             elif leverage >= 5:
-                tp_percent, sl_percent = 0.08, 0.03  # 8%止盈, 3%止损
+                tp_percent, sl_percent = 0.08, 0.03  # 8% TP, 3% SL
             else:
-                tp_percent, sl_percent = 0.10, 0.05  # 10%止盈, 5%止损
+                tp_percent, sl_percent = 0.10, 0.05  # 10% TP, 5% SL
             
             take_profit = current_price * (1 + tp_percent)
             stop_loss = current_price * (1 - sl_percent)
@@ -3488,33 +3541,39 @@ Please reference your historical performance and lessons learned in your analysi
             tp_percent = self.config.default_tp_percent
             sl_percent = self.config.default_sl_percent
 
-            # 使用改进的方向解析
+            # Use improved direction parsing
             direction = self._extract_direction_from_response(response)
 
-            # Parse confidence - support markdown format like **信心度**: **75%**
-            conf_match = re.search(r'\*{0,2}信心度\*{0,2}[：:\s]*\*{0,2}(\d+)', response)
+            # Parse confidence - support both English and Chinese formats
+            # English: **Confidence**: **75%**, Confidence: 75
+            # Chinese: **信心度**: **75%** (legacy)
+            conf_match = re.search(r'\*{0,2}(?:Confidence|信心度)\*{0,2}[：:\s]*\*{0,2}(\d+)', response, re.IGNORECASE)
             if conf_match:
                 confidence = int(conf_match.group(1))
 
-            # Parse leverage - support formats like **建议杠杆**: **3倍**, 杠杆: 3, 3倍杠杆
-            lev_match = re.search(r'\*{0,2}(?:建议)?杠杆\*{0,2}[：:\s]*\*{0,2}(\d+)', response)
+            # Parse leverage - support both English and Chinese formats
+            # English: Leverage: 3, 3x leverage
+            # Chinese: **建议杠杆**: **3倍**, 杠杆: 3, 3倍杠杆 (legacy)
+            lev_match = re.search(r'\*{0,2}(?:Suggested\s*)?(?:Leverage|杠杆)\*{0,2}[：:\s]*\*{0,2}(\d+)', response, re.IGNORECASE)
             if not lev_match:
-                lev_match = re.search(r'(\d+)\s*[倍x].*杠杆|杠杆.*?(\d+)\s*[倍x]', response)
+                lev_match = re.search(r'(\d+)\s*[倍x].*(?:leverage|杠杆)|(?:leverage|杠杆).*?(\d+)\s*[倍x]', response, re.IGNORECASE)
             if lev_match:
                 lev_value = lev_match.group(1) if lev_match.group(1) else lev_match.group(2)
                 if lev_value:
                     leverage = int(lev_value)
 
-            # Parse TP/SL
-            tp_match = re.search(r'止盈[：:]\s*(\d+\.?\d*)', response)
+            # Parse TP/SL - support both English and Chinese formats
+            # English: Take Profit: 5%, Stop Loss: 3%
+            # Chinese: 止盈: 5%, 止损: 3% (legacy)
+            tp_match = re.search(r'(?:Take\s*Profit|TP|止盈)[：:\s]*(\d+\.?\d*)', response, re.IGNORECASE)
             if tp_match:
                 tp_percent = float(tp_match.group(1))
 
-            sl_match = re.search(r'止损[：:]\s*(\d+\.?\d*)', response)
+            sl_match = re.search(r'(?:Stop\s*Loss|SL|止损)[：:\s]*(\d+\.?\d*)', response, re.IGNORECASE)
             if sl_match:
                 sl_percent = float(sl_match.group(1))
 
-            logger.info(f"[{agent_name}] ⚠️ 降级解析: direction={direction}, confidence={confidence}%")
+            logger.info(f"[{agent_name}] Fallback parsing: direction={direction}, confidence={confidence}%")
 
             return AgentVote(
                 agent_id=agent_id,
@@ -3536,37 +3595,56 @@ Please reference your historical performance and lessons learned in your analysi
 
     def _extract_direction_from_response(self, response: str) -> str:
         """
-        🔧 FIX: 从回复中提取交易方向，避免做多偏见
+        Extract trading direction from response, avoiding long bias.
 
-        改进策略：
-        1. 首先查找结构化格式 "方向: XXX"
-        2. 然后查找特定的决策关键词
-        3. 最后统计关键词出现次数，取多数
-        4. 避免匹配 "long-term" 等无关词
+        Strategy:
+        1. First look for structured format "Direction: XXX"
+        2. Then look for specific decision keywords
+        3. Finally count keyword occurrences, take majority
+        4. Avoid matching "long-term" and similar irrelevant words
         """
         response_lower = response.lower()
 
-        # 策略1: 查找结构化格式 "方向: XXX" 或 "- 方向: XXX"
+        # Strategy 1: Look for structured format "Direction: XXX" or "- Direction: XXX"
+        # Support both English and Chinese (legacy)
         direction_match = re.search(
-            r'[-\*]*\s*方向[：:\s]*[-\*]*\s*(做多|做空|观望|追加多仓|追加空仓|平仓|反向|long|short|hold)',
+            r'[-\*]*\s*(?:Direction|方向)[：:\s]*[-\*]*\s*(long|short|hold|buy|sell|bullish|bearish|做多|做空|观望|追加多仓|追加空仓|平仓|反向)',
             response,
             re.IGNORECASE
         )
         if direction_match:
             raw_direction = direction_match.group(1).lower()
-            if raw_direction in ['做多', 'long', '追加多仓']:
+            # English keywords
+            if raw_direction in ['long', 'buy', 'bullish']:
                 return 'long'
-            elif raw_direction in ['做空', 'short', '追加空仓']:
+            elif raw_direction in ['short', 'sell', 'bearish']:
                 return 'short'
-            elif raw_direction in ['平仓', '反向']:
-                # 平仓/反向需要看当前持仓，暂时返回 hold
+            elif raw_direction in ['hold', 'wait']:
+                return 'hold'
+            # Chinese keywords (legacy)
+            elif raw_direction in ['做多', '追加多仓']:
+                return 'long'
+            elif raw_direction in ['做空', '追加空仓']:
+                return 'short'
+            elif raw_direction in ['平仓', '反向', '观望']:
                 return 'hold'
             else:
                 return 'hold'
 
-        # 策略2: 查找明确的决策语句（在句子结尾或独立行）
-        # 匹配 "建议做多"、"我认为应该做空"、"结论是做多" 等
+        # Strategy 2: Look for explicit decision statements
+        # English patterns (primary)
         decision_patterns = [
+            # English patterns
+            (r'(?:recommend|suggest)[：:\s]*(long|buy|bullish)', 'long'),
+            (r'(?:recommend|suggest)[：:\s]*(short|sell|bearish)', 'short'),
+            (r'(?:recommend|suggest)[：:\s]*(hold|wait|neutral)', 'hold'),
+            (r'(?:conclusion|decision)[：:\s]*(long|buy|bullish)', 'long'),
+            (r'(?:conclusion|decision)[：:\s]*(short|sell|bearish)', 'short'),
+            (r'(?:should|can|suitable to)\s*(go long|buy|open long)', 'long'),
+            (r'(?:should|can|suitable to)\s*(go short|sell|open short)', 'short'),
+            (r'I\s*(?:recommend|suggest|think).{0,15}(long|buy|bullish)', 'long'),
+            (r'I\s*(?:recommend|suggest|think).{0,15}(short|sell|bearish)', 'short'),
+            # Chinese patterns (legacy)
             (r'建议[：:\s]*(做多|开多|买入|看多)', 'long'),
             (r'建议[：:\s]*(做空|开空|卖出|看空)', 'short'),
             (r'建议[：:\s]*(观望|持币|不操作|等待)', 'hold'),
@@ -3579,31 +3657,44 @@ Please reference your historical performance and lessons learned in your analysi
         ]
 
         for pattern, direction in decision_patterns:
-            if re.search(pattern, response):
+            if re.search(pattern, response, re.IGNORECASE):
                 logger.debug(f"[VoteParsing] Matched decision pattern: {pattern} -> {direction}")
                 return direction
 
-        # 策略3: 统计关键词出现次数（避免误匹配）
-        # 使用更精确的匹配，排除 "long-term", "belong" 等
-        long_keywords = ['做多', '开多', '买入', '看多', '多头']
-        short_keywords = ['做空', '开空', '卖出', '看空', '空头']
-        hold_keywords = ['观望', '持币观望', '等待', '不操作', '维持']
+        # Strategy 3: Count keyword occurrences (avoid false matches)
+        # Use precise matching, exclude "long-term", "belong" etc.
+        # English keywords (higher weight)
+        long_keywords_en = ['bullish', 'upward', 'uptrend']
+        short_keywords_en = ['bearish', 'downward', 'downtrend']
+        hold_keywords_en = ['neutral', 'sideways', 'wait']
 
-        # 计算每个方向的"强度"
-        long_score = sum(response.count(kw) for kw in long_keywords)
-        short_score = sum(response.count(kw) for kw in short_keywords)
-        hold_score = sum(response.count(kw) for kw in hold_keywords)
+        # Chinese keywords (legacy)
+        long_keywords_zh = ['做多', '开多', '买入', '看多', '多头']
+        short_keywords_zh = ['做空', '开空', '卖出', '看空', '空头']
+        hold_keywords_zh = ['观望', '持币观望', '等待', '不操作', '维持']
 
-        # 只有在英文环境下才检查 long/short，并排除常见误匹配
-        # 使用单词边界匹配
+        # Calculate "strength" for each direction
+        long_score = sum(response_lower.count(kw) for kw in long_keywords_en)
+        short_score = sum(response_lower.count(kw) for kw in short_keywords_en)
+        hold_score = sum(response_lower.count(kw) for kw in hold_keywords_en)
+
+        # Add Chinese keyword scores
+        long_score += sum(response.count(kw) for kw in long_keywords_zh)
+        short_score += sum(response.count(kw) for kw in short_keywords_zh)
+        hold_score += sum(response.count(kw) for kw in hold_keywords_zh)
+
+        # Check for English long/short, excluding common false matches
+        # Use word boundary matching
         if re.search(r'\blong\b(?!\s*-?\s*term)', response_lower):
-            long_score += 1
+            long_score += 2  # Higher weight for explicit "long"
         if re.search(r'\bshort\b(?!\s*-?\s*term)', response_lower):
-            short_score += 1
+            short_score += 2  # Higher weight for explicit "short"
+        if re.search(r'\bhold\b', response_lower):
+            hold_score += 2
 
         logger.debug(f"[VoteParsing] Keyword scores: long={long_score}, short={short_score}, hold={hold_score}")
 
-        # 取最高分，如果平局则返回 hold
+        # Take highest score, return hold if tied
         if long_score > short_score and long_score > hold_score:
             return 'long'
         elif short_score > long_score and short_score > hold_score:
@@ -3622,18 +3713,20 @@ Please reference your historical performance and lessons learned in your analysi
             tp_percent = self.config.default_tp_percent
             sl_percent = self.config.default_sl_percent
 
-            # 🔧 FIX: 使用改进的方向解析方法，避免做多偏见
+            # FIX: Use improved direction parsing method to avoid long bias
             direction = self._extract_direction_from_response(response)
 
-            # Parse confidence - support multiple formats
-            conf_match = re.search(r'\*{0,2}信心度\*{0,2}[：:\s]*(\d+)', response)
+            # Parse confidence - support both English and Chinese formats
+            conf_match = re.search(r'\*{0,2}(?:Confidence|信心度)\*{0,2}[：:\s]*(\d+)', response, re.IGNORECASE)
             if conf_match:
                 confidence = int(conf_match.group(1))
 
-            # Parse leverage - support multiple formats like "杠杆: 3", "**杠杆**: 3", "杠杆3倍"
-            lev_match = re.search(r'\*{0,2}杠杆\*{0,2}[：:\s]*(\d+)', response)
+            # Parse leverage - support both English and Chinese formats
+            # English: "Leverage: 3", "**Leverage**: 3", "3x leverage"
+            # Chinese: "杠杆: 3", "**杠杆**: 3", "杠杆3倍" (legacy)
+            lev_match = re.search(r'\*{0,2}(?:Leverage|杠杆)\*{0,2}[：:\s]*(\d+)', response, re.IGNORECASE)
             if not lev_match:
-                lev_match = re.search(r'(\d+)\s*[倍x].*杠杆|杠杆.*?(\d+)\s*[倍x]', response)
+                lev_match = re.search(r'(\d+)\s*[倍x].*(?:leverage|杠杆)|(?:leverage|杠杆).*?(\d+)\s*[倍x]', response, re.IGNORECASE)
             if lev_match:
                 lev_value = lev_match.group(1) or lev_match.group(2) if lev_match.lastindex and lev_match.lastindex > 1 else lev_match.group(1)
                 leverage = min(int(lev_value), self.config.max_leverage)
@@ -3641,19 +3734,19 @@ Please reference your historical performance and lessons learned in your analysi
             # Log parsed leverage for debugging
             logger.info(f"Parsed leverage: {leverage} (max allowed: {self.config.max_leverage})")
 
-            # Parse position size
-            pos_match = re.search(r'仓位[：:]\s*(\d+\.?\d*)', response)
+            # Parse position size - support both English and Chinese formats
+            pos_match = re.search(r'(?:Position|仓位)[：:\s]*(\d+\.?\d*)', response, re.IGNORECASE)
             if pos_match:
                 raw_percent = float(pos_match.group(1)) / 100
                 amount_percent = max(self.config.min_position_percent, min(raw_percent, self.config.max_position_percent))
                 logger.info(f"Parsed position percent: {raw_percent*100:.1f}% -> clamped to {amount_percent*100:.1f}%")
 
-            # Parse TP/SL percentages
-            tp_match = re.search(r'止盈[：:]\s*(\d+\.?\d*)', response)
+            # Parse TP/SL percentages - support both English and Chinese formats
+            tp_match = re.search(r'(?:Take\s*Profit|TP|止盈)[：:\s]*(\d+\.?\d*)', response, re.IGNORECASE)
             if tp_match:
                 tp_percent = float(tp_match.group(1))
 
-            sl_match = re.search(r'止损[：:]\s*(\d+\.?\d*)', response)
+            sl_match = re.search(r'(?:Stop\s*Loss|SL|止损)[：:\s]*(\d+\.?\d*)', response, re.IGNORECASE)
             if sl_match:
                 sl_percent = float(sl_match.group(1))
 
