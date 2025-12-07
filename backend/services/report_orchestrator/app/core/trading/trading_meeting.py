@@ -682,7 +682,11 @@ class TradingMeeting(Meeting):
                 await self._run_agent_turn(agent, prompt)
 
     async def _run_signal_generation_phase(self, position_context: PositionContext):
-        """Phase 2: Signal Generation"""
+        """
+        Phase 2: Signal Generation
+
+        🔧 重构: 使用结构化 JSON 输出，避免字符串匹配错误
+        """
         self._add_message(
             agent_id="system",
             agent_name="系统",
@@ -693,6 +697,7 @@ class TradingMeeting(Meeting):
         # 🆕 根据持仓状态生成不同的决策选项提示
         decision_options = self._get_decision_options_for_analysts(position_context)
 
+        # 🔧 重构: JSON 结构化输出 prompt
         vote_prompt = f"""基于以上分析和你收集到的实时数据，请给出你的交易建议。
 
 {position_context.to_summary()}
@@ -705,20 +710,41 @@ class TradingMeeting(Meeting):
 - 你现在处于"信号生成阶段"，只需要给出**文字建议**
 - **不要**调用任何决策工具（open_long/open_short/hold/close_position）
 - 只有TradeExecutor（交易执行专员）在Phase 5才能执行交易
-- 如果你调用了决策工具，系统会阻止并忽略
 
-**重要：杠杆倍数必须与信心度严格对应！**
-- 高信心度(>80%): 必须使用 {int(self.config.max_leverage * 0.5)}-{self.config.max_leverage}倍杠杆
-- 中信心度(60-80%): 必须使用 {int(self.config.max_leverage * 0.25)}-{int(self.config.max_leverage * 0.5)}倍杠杆
-- 低信心度(<60%): 使用 1-{int(self.config.max_leverage * 0.25)}倍杠杆或观望
+---
 
-请按以下格式回复：
-- 方向: [做多/做空/观望/追加多仓/追加空仓/平仓/反向]
-- 信心度: [0-100]%
-- 建议杠杆: [根据信心度选择对应区间的杠杆，最高{self.config.max_leverage}倍]
-- 建议止盈: [X]%
-- 建议止损: [X]%
-- 理由: [简述，必须引用具体数据支撑你的判断，并说明是否考虑了当前持仓]
+## 📋 输出要求
+
+请先给出你的分析思路，然后在回复的**最后**输出一个 JSON 格式的交易信号。
+
+**JSON 必须是有效格式，放在 ```json 代码块中：**
+
+```json
+{{
+  "direction": "long",
+  "confidence": 75,
+  "leverage": 6,
+  "take_profit_percent": 5.0,
+  "stop_loss_percent": 2.0,
+  "reasoning": "简述理由，引用具体数据"
+}}
+```
+
+**direction 字段可选值**:
+- `"long"`: 做多/开多/买入
+- `"short"`: 做空/开空/卖出
+- `"hold"`: 观望/等待/不操作
+- `"add_long"`: 追加多仓（已有多仓时）
+- `"add_short"`: 追加空仓（已有空仓时）
+- `"close"`: 平仓
+- `"reverse"`: 反向（平仓后反向开仓）
+
+**confidence 与 leverage 对应规则**:
+- confidence >= 80: leverage 应在 {int(self.config.max_leverage * 0.5)}-{self.config.max_leverage} 范围
+- confidence 60-79: leverage 应在 {int(self.config.max_leverage * 0.25)}-{int(self.config.max_leverage * 0.5)} 范围
+- confidence < 60: leverage 应在 1-{int(self.config.max_leverage * 0.25)} 范围，或选择 hold
+
+**重要**: JSON 必须放在回复的最后，确保格式正确！
 """
 
         vote_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "QuantStrategist"]
@@ -726,9 +752,15 @@ class TradingMeeting(Meeting):
             agent = self._get_agent_by_id(agent_id)
             if agent:
                 response = await self._run_agent_turn(agent, vote_prompt)
-                vote = self._parse_vote(agent_id, agent.name, response)
+                vote = self._parse_vote_json(agent_id, agent.name, response)
                 if vote:
                     self._agent_votes.append(vote)
+                else:
+                    # 🔧 JSON 解析失败时的降级处理
+                    logger.warning(f"[{agent.name}] JSON 解析失败，尝试文本解析降级")
+                    vote = self._parse_vote_fallback(agent_id, agent.name, response)
+                    if vote:
+                        self._agent_votes.append(vote)
 
     async def _run_risk_assessment_phase(self, position_context: PositionContext):
         """Phase 3: Risk Assessment"""
@@ -3309,8 +3341,147 @@ class TradingMeeting(Meeting):
 
         return "\n".join(lines)
 
-    def _parse_vote(self, agent_id: str, agent_name: str, response: str) -> Optional[AgentVote]:
-        """Parse agent vote from response"""
+    def _parse_vote_json(self, agent_id: str, agent_name: str, response: str) -> Optional[AgentVote]:
+        """
+        🔧 重构: 从 Agent 回复中解析 JSON 格式的投票信号
+
+        优先解析 JSON，比字符串匹配更可靠
+        """
+        try:
+            # 尝试从回复中提取 JSON 代码块
+            json_data = self._extract_json_from_response(response)
+
+            if not json_data:
+                logger.warning(f"[{agent_name}] 未找到有效的 JSON 代码块")
+                return None
+
+            # 解析 direction（支持多种格式）
+            raw_direction = json_data.get("direction", "hold").lower().strip()
+            direction = self._normalize_direction(raw_direction)
+
+            # 解析其他字段
+            confidence = int(json_data.get("confidence", self.config.min_confidence))
+            leverage = int(json_data.get("leverage", 1))
+            tp_percent = float(json_data.get("take_profit_percent", self.config.default_tp_percent))
+            sl_percent = float(json_data.get("stop_loss_percent", self.config.default_sl_percent))
+            reasoning = json_data.get("reasoning", "")
+
+            # 验证数值范围
+            confidence = max(0, min(100, confidence))
+            leverage = max(1, min(leverage, self.config.max_leverage))
+            tp_percent = max(0.1, min(tp_percent, 50.0))
+            sl_percent = max(0.1, min(sl_percent, 50.0))
+
+            logger.info(f"[{agent_name}] ✅ JSON 解析成功: direction={direction}, confidence={confidence}%, leverage={leverage}x")
+
+            return AgentVote(
+                agent_id=agent_id,
+                agent_name=agent_name,
+                direction=direction,
+                confidence=confidence,
+                reasoning=reasoning[:500] if reasoning else response[:200],
+                suggested_leverage=leverage,
+                suggested_tp_percent=tp_percent,
+                suggested_sl_percent=sl_percent
+            )
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"[{agent_name}] JSON 解析错误: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"[{agent_name}] 解析投票时发生错误: {e}")
+            return None
+
+    def _extract_json_from_response(self, response: str) -> Optional[Dict[str, Any]]:
+        """
+        从 Agent 回复中提取 JSON 对象
+
+        支持多种格式:
+        1. ```json ... ``` 代码块
+        2. ``` ... ``` 代码块
+        3. 直接的 JSON 对象 {...}
+        """
+        import json
+
+        # 策略1: 匹配 ```json ... ``` 代码块
+        json_block_match = re.search(r'```json\s*([\s\S]*?)\s*```', response, re.IGNORECASE)
+        if json_block_match:
+            try:
+                return json.loads(json_block_match.group(1).strip())
+            except json.JSONDecodeError:
+                pass
+
+        # 策略2: 匹配 ``` ... ``` 代码块（不带 json 标记）
+        code_block_match = re.search(r'```\s*([\s\S]*?)\s*```', response)
+        if code_block_match:
+            content = code_block_match.group(1).strip()
+            if content.startswith('{'):
+                try:
+                    return json.loads(content)
+                except json.JSONDecodeError:
+                    pass
+
+        # 策略3: 直接匹配 JSON 对象（找最后一个，因为结论通常在最后）
+        json_matches = list(re.finditer(r'\{[^{}]*"direction"[^{}]*\}', response, re.DOTALL))
+        if json_matches:
+            try:
+                return json.loads(json_matches[-1].group())
+            except json.JSONDecodeError:
+                pass
+
+        # 策略4: 更宽松的 JSON 匹配（多层嵌套）
+        brace_matches = list(re.finditer(r'\{[\s\S]*?\}', response))
+        for match in reversed(brace_matches):  # 从后往前尝试
+            try:
+                data = json.loads(match.group())
+                if "direction" in data:
+                    return data
+            except json.JSONDecodeError:
+                continue
+
+        return None
+
+    def _normalize_direction(self, raw_direction: str) -> str:
+        """
+        标准化交易方向字符串
+
+        将各种输入格式统一转换为 long/short/hold
+        """
+        direction_map = {
+            # Long 方向
+            "long": "long",
+            "做多": "long",
+            "开多": "long",
+            "买入": "long",
+            "看多": "long",
+            "add_long": "long",
+            "追加多仓": "long",
+            # Short 方向
+            "short": "short",
+            "做空": "short",
+            "开空": "short",
+            "卖出": "short",
+            "看空": "short",
+            "add_short": "short",
+            "追加空仓": "short",
+            # Hold 方向
+            "hold": "hold",
+            "观望": "hold",
+            "等待": "hold",
+            "不操作": "hold",
+            "close": "hold",  # 平仓视为 hold（不开新仓）
+            "平仓": "hold",
+            "reverse": "hold",  # 反向需要特殊处理，暂时视为 hold
+            "反向": "hold",
+        }
+        return direction_map.get(raw_direction, "hold")
+
+    def _parse_vote_fallback(self, agent_id: str, agent_name: str, response: str) -> Optional[AgentVote]:
+        """
+        降级解析: 当 JSON 解析失败时，使用文本匹配作为备选
+
+        保留原有的字符串匹配逻辑作为兜底
+        """
         try:
             # Try to extract structured data - use config for defaults
             direction = "hold"
@@ -3319,7 +3490,7 @@ class TradingMeeting(Meeting):
             tp_percent = self.config.default_tp_percent
             sl_percent = self.config.default_sl_percent
 
-            # 🔧 FIX: 改进方向解析，避免做多偏见
+            # 使用改进的方向解析
             direction = self._extract_direction_from_response(response)
 
             # Parse confidence - support markdown format like **信心度**: **75%**
@@ -3345,6 +3516,8 @@ class TradingMeeting(Meeting):
             if sl_match:
                 sl_percent = float(sl_match.group(1))
 
+            logger.info(f"[{agent_name}] ⚠️ 降级解析: direction={direction}, confidence={confidence}%")
+
             return AgentVote(
                 agent_id=agent_id,
                 agent_name=agent_name,
@@ -3357,11 +3530,10 @@ class TradingMeeting(Meeting):
             )
 
         except Exception as e:
-            logger.error(f"[{agent_name}] Error parsing vote: {e}")
+            logger.error(f"[{agent_name}] Error parsing vote (fallback): {e}")
             logger.error(f"[{agent_name}] Response content: {response[:500]}")
 
             # Return None to signal parsing failure - caller will handle it
-            # This makes parsing errors distinguishable from genuine "hold" votes
             return None
 
     def _extract_direction_from_response(self, response: str) -> str:
