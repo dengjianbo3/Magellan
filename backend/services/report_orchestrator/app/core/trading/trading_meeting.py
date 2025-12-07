@@ -3319,11 +3319,8 @@ class TradingMeeting(Meeting):
             tp_percent = self.config.default_tp_percent
             sl_percent = self.config.default_sl_percent
 
-            # Parse direction
-            if "做多" in response or "long" in response.lower():
-                direction = "long"
-            elif "做空" in response or "short" in response.lower():
-                direction = "short"
+            # 🔧 FIX: 改进方向解析，避免做多偏见
+            direction = self._extract_direction_from_response(response)
 
             # Parse confidence - support markdown format like **信心度**: **75%**
             conf_match = re.search(r'\*{0,2}信心度\*{0,2}[：:\s]*\*{0,2}(\d+)', response)
@@ -3367,6 +3364,83 @@ class TradingMeeting(Meeting):
             # This makes parsing errors distinguishable from genuine "hold" votes
             return None
 
+    def _extract_direction_from_response(self, response: str) -> str:
+        """
+        🔧 FIX: 从回复中提取交易方向，避免做多偏见
+
+        改进策略：
+        1. 首先查找结构化格式 "方向: XXX"
+        2. 然后查找特定的决策关键词
+        3. 最后统计关键词出现次数，取多数
+        4. 避免匹配 "long-term" 等无关词
+        """
+        response_lower = response.lower()
+
+        # 策略1: 查找结构化格式 "方向: XXX" 或 "- 方向: XXX"
+        direction_match = re.search(
+            r'[-\*]*\s*方向[：:\s]*[-\*]*\s*(做多|做空|观望|追加多仓|追加空仓|平仓|反向|long|short|hold)',
+            response,
+            re.IGNORECASE
+        )
+        if direction_match:
+            raw_direction = direction_match.group(1).lower()
+            if raw_direction in ['做多', 'long', '追加多仓']:
+                return 'long'
+            elif raw_direction in ['做空', 'short', '追加空仓']:
+                return 'short'
+            elif raw_direction in ['平仓', '反向']:
+                # 平仓/反向需要看当前持仓，暂时返回 hold
+                return 'hold'
+            else:
+                return 'hold'
+
+        # 策略2: 查找明确的决策语句（在句子结尾或独立行）
+        # 匹配 "建议做多"、"我认为应该做空"、"结论是做多" 等
+        decision_patterns = [
+            (r'建议[：:\s]*(做多|开多|买入|看多)', 'long'),
+            (r'建议[：:\s]*(做空|开空|卖出|看空)', 'short'),
+            (r'建议[：:\s]*(观望|持币|不操作|等待)', 'hold'),
+            (r'结论[：:\s]*(做多|开多|买入|看多)', 'long'),
+            (r'结论[：:\s]*(做空|开空|卖出|看空)', 'short'),
+            (r'我(认为|建议|推荐).{0,10}(做多|开多|买入)', 'long'),
+            (r'我(认为|建议|推荐).{0,10}(做空|开空|卖出)', 'short'),
+            (r'(应该|可以|适合)(做多|开多|买入)', 'long'),
+            (r'(应该|可以|适合)(做空|开空|卖出)', 'short'),
+        ]
+
+        for pattern, direction in decision_patterns:
+            if re.search(pattern, response):
+                logger.debug(f"[VoteParsing] Matched decision pattern: {pattern} -> {direction}")
+                return direction
+
+        # 策略3: 统计关键词出现次数（避免误匹配）
+        # 使用更精确的匹配，排除 "long-term", "belong" 等
+        long_keywords = ['做多', '开多', '买入', '看多', '多头']
+        short_keywords = ['做空', '开空', '卖出', '看空', '空头']
+        hold_keywords = ['观望', '持币观望', '等待', '不操作', '维持']
+
+        # 计算每个方向的"强度"
+        long_score = sum(response.count(kw) for kw in long_keywords)
+        short_score = sum(response.count(kw) for kw in short_keywords)
+        hold_score = sum(response.count(kw) for kw in hold_keywords)
+
+        # 只有在英文环境下才检查 long/short，并排除常见误匹配
+        # 使用单词边界匹配
+        if re.search(r'\blong\b(?!\s*-?\s*term)', response_lower):
+            long_score += 1
+        if re.search(r'\bshort\b(?!\s*-?\s*term)', response_lower):
+            short_score += 1
+
+        logger.debug(f"[VoteParsing] Keyword scores: long={long_score}, short={short_score}, hold={hold_score}")
+
+        # 取最高分，如果平局则返回 hold
+        if long_score > short_score and long_score > hold_score:
+            return 'long'
+        elif short_score > long_score and short_score > hold_score:
+            return 'short'
+        else:
+            return 'hold'
+
     async def _parse_signal(self, response: str) -> Optional[TradingSignal]:
         """Parse final trading signal from leader's response"""
         try:
@@ -3378,11 +3452,8 @@ class TradingMeeting(Meeting):
             tp_percent = self.config.default_tp_percent
             sl_percent = self.config.default_sl_percent
 
-            # Parse direction
-            if "做多" in response or "方向: long" in response.lower():
-                direction = "long"
-            elif "做空" in response or "方向: short" in response.lower():
-                direction = "short"
+            # 🔧 FIX: 使用改进的方向解析方法，避免做多偏见
+            direction = self._extract_direction_from_response(response)
 
             # Parse confidence - support multiple formats
             conf_match = re.search(r'\*{0,2}信心度\*{0,2}[：:\s]*(\d+)', response)
