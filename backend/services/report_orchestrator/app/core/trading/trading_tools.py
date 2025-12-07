@@ -71,13 +71,13 @@ class TradingToolkit:
         # Market Data Tools
         self._tools['get_market_price'] = FunctionTool(
             name="get_market_price",
-            description=f"获取当前市场价格和24小时行情数据，包括价格、涨跌幅、成交量等",
+            description=f"Get current market price and 24h data including price, change percentage, and volume",
             parameters_schema={
                 "type": "object",
                 "properties": {
                     "symbol": {
                         "type": "string",
-                        "description": f"交易对，默认{self.config.symbol}",
+                        "description": f"Trading pair, default {self.config.symbol}",
                         "default": self.config.symbol
                     }
                 }
@@ -87,23 +87,23 @@ class TradingToolkit:
 
         self._tools['get_klines'] = FunctionTool(
             name="get_klines",
-            description="获取K线数据用于技术分析，支持不同时间周期",
+            description="Get K-line/candlestick data for technical analysis, supports various timeframes",
             parameters_schema={
                 "type": "object",
                 "properties": {
                     "symbol": {
                         "type": "string",
-                        "description": f"交易对，默认{self.config.symbol}",
+                        "description": f"Trading pair, default {self.config.symbol}",
                         "default": self.config.symbol
                     },
                     "timeframe": {
                         "type": "string",
-                        "description": "时间周期: 1m, 5m, 15m, 1h, 4h, 1d",
+                        "description": "Timeframe: 1m, 5m, 15m, 1h, 4h, 1d",
                         "default": "4h"
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "获取的K线数量",
+                        "description": "Number of K-lines to fetch",
                         "default": 100
                     }
                 }
@@ -113,7 +113,7 @@ class TradingToolkit:
 
         self._tools['calculate_technical_indicators'] = FunctionTool(
             name="calculate_technical_indicators",
-            description="计算技术指标：RSI、MACD、布林带、EMA等",
+            description="Calculate technical indicators: RSI, MACD, Bollinger Bands, EMA, etc.",
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -134,10 +134,10 @@ class TradingToolkit:
         self._tools['get_account_balance'] = FunctionTool(
             name="get_account_balance",
             description=(
-                "获取账户余额和可用资金。"
-                "⚠️ 重要: 使用 'true_available_margin' 字段来判断可用于开仓的资金！"
-                "这个值考虑了未实现盈亏对保证金的影响。"
-                "'available_balance' 仅显示账户现金余额，不考虑持仓浮动盈亏。"
+                "Get account balance and available funds. "
+                "⚠️ IMPORTANT: Use 'true_available_margin' field to determine funds available for opening positions! "
+                "This value accounts for the impact of unrealized PnL on margin. "
+                "'available_balance' only shows cash balance without considering position floating PnL."
             ),
             parameters_schema={"type": "object", "properties": {}},
             func=self._get_account_balance
@@ -145,7 +145,7 @@ class TradingToolkit:
 
         self._tools['get_current_position'] = FunctionTool(
             name="get_current_position",
-            description="获取当前持仓信息，包括方向、杠杆、盈亏等",
+            description="Get current position info including direction, leverage, and PnL",
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -161,7 +161,7 @@ class TradingToolkit:
         # Trading Execution Tools
         self._tools['open_long'] = FunctionTool(
             name="open_long",
-            description=f"开多仓（做多）。⚠️ 必须提供全部4个参数: leverage, amount_usdt, tp_percent, sl_percent! 如果缺少任何一个参数，调用将失败!",
+            description=f"Open long position (buy). ⚠️ MUST provide all 4 parameters: leverage, amount_usdt, tp_percent, sl_percent! Call will fail if any parameter is missing!",
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -171,29 +171,29 @@ class TradingToolkit:
                     },
                     "leverage": {
                         "type": "integer",
-                        "description": f"【必填】杠杆倍数(1-{self.config.max_leverage})",
+                        "description": f"[REQUIRED] Leverage multiplier (1-{self.config.max_leverage})",
                         "minimum": 1,
                         "maximum": self.config.max_leverage
                     },
                     "amount_usdt": {
                         "type": "number",
-                        "description": "【必填】投入的USDT金额"
+                        "description": "[REQUIRED] USDT amount to invest"
                     },
                     "tp_percent": {
                         "type": "number",
-                        "description": "【必填】止盈百分比，例如5表示涨5%止盈",
+                        "description": "[REQUIRED] Take profit percentage, e.g. 5 means take profit at +5%",
                         "minimum": 0.5,
                         "maximum": 50
                     },
                     "sl_percent": {
                         "type": "number",
-                        "description": "【必填】止损百分比，例如2表示跌2%止损",
+                        "description": "[REQUIRED] Stop loss percentage, e.g. 2 means stop loss at -2%",
                         "minimum": 0.5,
                         "maximum": 20
                     },
                     "reason": {
                         "type": "string",
-                        "description": "开仓理由"
+                        "description": "Reason for opening position"
                     }
                 },
                 "required": ["leverage", "amount_usdt", "tp_percent", "sl_percent"]
@@ -203,7 +203,7 @@ class TradingToolkit:
 
         self._tools['open_short'] = FunctionTool(
             name="open_short",
-            description=f"开空仓（做空）。⚠️ 必须提供全部4个参数: leverage, amount_usdt, tp_percent, sl_percent! 如果缺少任何一个参数，调用将失败!",
+            description=f"Open short position (sell). ⚠️ MUST provide all 4 parameters: leverage, amount_usdt, tp_percent, sl_percent! Call will fail if any parameter is missing!",
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -213,29 +213,29 @@ class TradingToolkit:
                     },
                     "leverage": {
                         "type": "integer",
-                        "description": f"【必填】杠杆倍数(1-{self.config.max_leverage})",
+                        "description": f"[REQUIRED] Leverage multiplier (1-{self.config.max_leverage})",
                         "minimum": 1,
                         "maximum": self.config.max_leverage
                     },
                     "amount_usdt": {
                         "type": "number",
-                        "description": "【必填】投入的USDT金额"
+                        "description": "[REQUIRED] USDT amount to invest"
                     },
                     "tp_percent": {
                         "type": "number",
-                        "description": "【必填】止盈百分比，例如5表示跌5%止盈",
+                        "description": "[REQUIRED] Take profit percentage, e.g. 5 means take profit at -5%",
                         "minimum": 0.5,
                         "maximum": 50
                     },
                     "sl_percent": {
                         "type": "number",
-                        "description": "【必填】止损百分比，例如2表示涨2%止损",
+                        "description": "[REQUIRED] Stop loss percentage, e.g. 2 means stop loss at +2%",
                         "minimum": 0.5,
                         "maximum": 20
                     },
                     "reason": {
                         "type": "string",
-                        "description": "开仓理由"
+                        "description": "Reason for opening position"
                     }
                 },
                 "required": ["leverage", "amount_usdt", "tp_percent", "sl_percent"]
@@ -245,7 +245,7 @@ class TradingToolkit:
 
         self._tools['close_position'] = FunctionTool(
             name="close_position",
-            description="平仓当前持仓",
+            description="Close current position",
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -258,16 +258,16 @@ class TradingToolkit:
             func=self._close_position
         )
 
-        # Hold Decision Tool - 观望决策
+        # Hold Decision Tool
         self._tools['hold'] = FunctionTool(
             name="hold",
-            description="决定观望，不进行任何交易操作。当市场不明朗或风险过高时调用此工具",
+            description="Decide to hold/wait, no trading action. Call this when market is unclear or risk is too high",
             parameters_schema={
                 "type": "object",
                 "properties": {
                     "reason": {
                         "type": "string",
-                        "description": "观望的原因说明"
+                        "description": "Reason for holding/waiting"
                     }
                 },
                 "required": ["reason"]
@@ -278,14 +278,14 @@ class TradingToolkit:
         # Analysis Tools
         self._tools['get_fear_greed_index'] = FunctionTool(
             name="get_fear_greed_index",
-            description="获取加密货币恐慌贪婪指数，反映市场情绪",
+            description="Get crypto Fear & Greed Index reflecting market sentiment",
             parameters_schema={"type": "object", "properties": {}},
             func=self._get_fear_greed_index
         )
 
         self._tools['get_funding_rate'] = FunctionTool(
             name="get_funding_rate",
-            description="获取资金费率，反映多空力量对比",
+            description="Get funding rate reflecting long/short position balance",
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -300,7 +300,7 @@ class TradingToolkit:
 
         self._tools['get_trade_history'] = FunctionTool(
             name="get_trade_history",
-            description="获取历史交易记录",
+            description="Get historical trade records",
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -316,34 +316,34 @@ class TradingToolkit:
         # Web Search Tool - Tavily
         self._tools['tavily_search'] = FunctionTool(
             name="tavily_search",
-            description="使用Tavily搜索引擎搜索加密货币相关新闻和市场信息，获取最新的市场动态、重大事件、监管消息等",
+            description="Search for crypto news and market info using Tavily search engine, get latest market updates, major events, regulatory news, etc.",
             parameters_schema={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "搜索查询词，如'BTC news today'或'Bitcoin regulation 2024'"
+                        "description": "Search query, e.g. 'BTC news today' or 'Bitcoin regulation 2024'"
                     },
                     "max_results": {
                         "type": "integer",
-                        "description": "返回结果数量，默认5条",
+                        "description": "Number of results to return, default 5",
                         "default": 5
                     },
                     "time_range": {
                         "type": "string",
-                        "description": "时间范围: day(最近24小时), week(最近一周), month(最近一月)",
+                        "description": "Time range: day (last 24h), week (last week), month (last month)",
                         "enum": ["day", "week", "month"],
                         "default": None
                     },
                     "topic": {
                         "type": "string",
-                        "description": "搜索主题: general(通用), news(新闻)",
+                        "description": "Search topic: general or news",
                         "enum": ["general", "news"],
                         "default": "general"
                     },
                     "days": {
                         "type": "integer",
-                        "description": "限制搜索结果的天数范围(1-30)",
+                        "description": "Limit search results to days range (1-30)",
                         "default": None
                     }
                 },
@@ -455,7 +455,7 @@ class TradingToolkit:
             logger.error(f"[TradingTools] All price sources failed: {e}")
             return json.dumps({
                 "error": True,
-                "message": f"无法获取市场价格，所有价格源均不可用: {str(e)}",
+                "message": f"Unable to fetch market price, all price sources unavailable: {str(e)}",
                 "timestamp": datetime.now().isoformat()
             }, ensure_ascii=False)
 
@@ -517,7 +517,7 @@ class TradingToolkit:
 
                         # Calculate simple trend
                         closes = [float(k[4]) for k in klines_data]
-                        trend = "上涨" if closes[-1] > closes[0] else "下跌"
+                        trend = "uptrend" if closes[-1] > closes[0] else "downtrend"
                         change_pct = ((closes[-1] - closes[0]) / closes[0]) * 100
 
                         logger.info(f"[TradingTools] Fetched REAL K-lines: {len(klines_data)} candles, latest close: ${latest_candle['close']:,.2f}")
@@ -534,7 +534,7 @@ class TradingToolkit:
                             "trend": trend,
                             "change_pct": f"{change_pct:+.2f}%",
                             "source": "Binance API (REAL DATA)",
-                            "message": f"获取到{len(klines_data)}根{timeframe}级别K线，趋势{trend}"
+                            "message": f"Fetched {len(klines_data)} {timeframe} K-lines, trend: {trend}"
                         }, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Error getting real K-lines from Binance: {e}")
@@ -557,7 +557,7 @@ class TradingToolkit:
                 logger.error(f"[TradingTools] Klines: All price sources failed: {e}")
                 return json.dumps({
                     "error": True,
-                    "message": f"无法获取K线数据，所有价格源均不可用: {str(e)}",
+                    "message": f"Unable to fetch K-line data, all price sources unavailable: {str(e)}",
                     "timestamp": datetime.now().isoformat()
                 }, ensure_ascii=False)
 
@@ -577,8 +577,8 @@ class TradingToolkit:
                 "high": base_price * 1.05,
                 "low": base_price * 0.95,
             },
-            "source": "Fallback (基于实时价格)",
-            "message": "基于实时价格的模拟K线数据（Binance API不可用时的备选）"
+            "source": "Fallback (based on real-time price)",
+            "message": "Simulated K-line data based on real-time price (fallback when Binance API unavailable)"
         }, ensure_ascii=False)
 
     async def _calculate_indicators(
@@ -645,7 +645,7 @@ class TradingToolkit:
                             return rsi
 
                         rsi = calculate_rsi(closes, 14)
-                        rsi_signal = "超买" if rsi > 70 else "超卖" if rsi < 30 else "中性"
+                        rsi_signal = "overbought" if rsi > 70 else "oversold" if rsi < 30 else "neutral"
 
                         # Calculate EMAs
                         def calculate_ema(prices, period):
@@ -659,7 +659,7 @@ class TradingToolkit:
 
                         ema_20 = calculate_ema(closes, 20)
                         ema_50 = calculate_ema(closes, 50) if len(closes) >= 50 else closes[0]
-                        ema_trend = "上升趋势" if current_price > ema_20 and ema_20 > ema_50 else "下降趋势"
+                        ema_trend = "uptrend" if current_price > ema_20 and ema_20 > ema_50 else "downtrend"
 
                         # Calculate Bollinger Bands (20-period, 2 std dev)
                         if len(closes) >= 20:
@@ -671,16 +671,16 @@ class TradingToolkit:
 
                             # Determine position
                             if current_price > bb_upper * 0.98:
-                                bb_position = "上轨附近"
+                                bb_position = "near upper band"
                             elif current_price < bb_lower * 1.02:
-                                bb_position = "下轨附近"
+                                bb_position = "near lower band"
                             else:
-                                bb_position = "中轨区域"
+                                bb_position = "middle zone"
                         else:
                             bb_upper = current_price * 1.03
                             bb_lower = current_price * 0.97
                             sma_20 = current_price
-                            bb_position = "中轨区域"
+                            bb_position = "middle zone"
 
                         # Simple MACD approximation (12, 26, 9)
                         ema_12 = calculate_ema(closes, 12)
@@ -689,7 +689,7 @@ class TradingToolkit:
                         # Simplified signal line (we'd need more data for proper calculation)
                         signal_line = macd_line * 0.8  # Approximation
                         macd_histogram = macd_line - signal_line
-                        macd_trend = "看涨" if macd_histogram > 0 else "看跌"
+                        macd_trend = "bullish" if macd_histogram > 0 else "bearish"
 
                         logger.info(f"[TradingTools] Calculated REAL indicators: RSI={rsi:.1f}, Price=${current_price:,.2f}")
 
@@ -717,7 +717,7 @@ class TradingToolkit:
                                 "position": bb_position
                             },
                             "source": "Calculated from Binance REAL DATA",
-                            "message": f"基于真实{timeframe}级别K线计算的技术指标"
+                            "message": f"Technical indicators calculated from real {timeframe} K-line data"
                         }, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Error calculating real indicators: {e}")
@@ -740,7 +740,7 @@ class TradingToolkit:
                 logger.error(f"[TradingTools] Indicators: All price sources failed: {e}")
                 return json.dumps({
                     "error": True,
-                    "message": f"无法计算技术指标，所有价格源均不可用: {str(e)}",
+                    "message": f"Unable to calculate technical indicators, all price sources unavailable: {str(e)}",
                     "timestamp": datetime.now().isoformat()
                 }, ensure_ascii=False)
 
@@ -753,26 +753,26 @@ class TradingToolkit:
             "timeframe": timeframe,
             "current_price": current_price,
             "rsi_14": round(rsi, 2),
-            "rsi_signal": "超买" if rsi > 70 else "超卖" if rsi < 30 else "中性",
+            "rsi_signal": "overbought" if rsi > 70 else "oversold" if rsi < 30 else "neutral",
             "macd": {
                 "macd": round(random.uniform(-500, 500), 2),
                 "signal": round(random.uniform(-400, 400), 2),
                 "histogram": round(macd_histogram, 2),
-                "trend": "看涨" if macd_histogram > 0 else "看跌"
+                "trend": "bullish" if macd_histogram > 0 else "bearish"
             },
             "ema": {
                 "ema_20": round(current_price * (1 + random.uniform(-0.01, 0.01)), 2),
                 "ema_50": round(current_price * (1 + random.uniform(-0.02, 0.02)), 2),
-                "trend": random.choice(["上升趋势", "下降趋势"])
+                "trend": random.choice(["uptrend", "downtrend"])
             },
             "bollinger_bands": {
                 "upper": round(current_price * 1.03, 2),
                 "middle": round(current_price, 2),
                 "lower": round(current_price * 0.97, 2),
-                "position": random.choice(["上轨附近", "中轨区域", "下轨附近"])
+                "position": random.choice(["near upper band", "middle zone", "near lower band"])
             },
-            "source": "Fallback (基于实时价格)",
-            "message": "基于实时价格的模拟技术指标（Binance API不可用时的备选）"
+            "source": "Fallback (based on real-time price)",
+            "message": "Simulated technical indicators based on real-time price (fallback when Binance API unavailable)"
         }, ensure_ascii=False)
 
     async def _get_account_balance(self) -> str:
@@ -781,11 +781,11 @@ class TradingToolkit:
             if self.paper_trader:
                 account = await self.paper_trader.get_account()
                 return json.dumps({
-                    "⚠️ 使用这个值开仓": "↓ true_available_margin ↓",
+                    "⚠️ USE THIS VALUE FOR OPENING POSITIONS": "↓ true_available_margin ↓",
                     "true_available_margin": f"${account['true_available_margin']:,.2f}",
-                    "说明": "真实可用保证金 = 总权益 - 已用保证金 (考虑了浮动盈亏)",
+                    "note": "True available margin = Total equity - Used margin (accounts for unrealized PnL)",
                     "total_equity": f"${account['total_equity']:,.2f}",
-                    "available_balance": f"${account['available_balance']:,.2f} (仅现金余额)",
+                    "available_balance": f"${account['available_balance']:,.2f} (cash balance only)",
                     "used_margin": f"${account['used_margin']:,.2f}",
                     "unrealized_pnl": f"${account['unrealized_pnl']:,.2f}",
                     "realized_pnl": f"${account['realized_pnl']:,.2f}",
@@ -830,7 +830,7 @@ class TradingToolkit:
 
         return json.dumps({
             "has_position": False,
-            "message": "当前无持仓"
+            "message": "No current position"
         }, ensure_ascii=False)
 
     async def _open_long(
@@ -855,11 +855,11 @@ class TradingToolkit:
             tp_percent = float(tp_percent) if tp_percent else None
             sl_percent = float(sl_percent) if sl_percent else None
 
-            # 校验：必须提供止盈止损参数
+            # Validation: TP/SL parameters required
             if not tp_percent and not tp_price:
                 return json.dumps({
                     "success": False,
-                    "error": "缺少止盈参数！请提供 tp_percent（止盈百分比，如5表示涨5%止盈）。这是风控强制要求！",
+                    "error": "Missing take profit parameter! Please provide tp_percent (e.g. 5 means take profit at +5%). This is a mandatory risk control requirement!",
                     "retry_required": True,
                     "missing_params": ["tp_percent"]
                 }, ensure_ascii=False)
@@ -867,7 +867,7 @@ class TradingToolkit:
             if not sl_percent and not sl_price:
                 return json.dumps({
                     "success": False,
-                    "error": "缺少止损参数！请提供 sl_percent（止损百分比，如2表示跌2%止损）。这是风控强制要求！",
+                    "error": "Missing stop loss parameter! Please provide sl_percent (e.g. 2 means stop loss at -2%). This is a mandatory risk control requirement!",
                     "retry_required": True,
                     "missing_params": ["sl_percent"]
                 }, ensure_ascii=False)
@@ -887,15 +887,15 @@ class TradingToolkit:
                     logger.warning(f"Could not calculate tp/sl prices from percent: {e}")
                     return json.dumps({
                         "success": False,
-                        "error": f"无法计算止盈止损价格: {e}",
+                        "error": f"Unable to calculate TP/SL prices: {e}",
                         "retry_required": True
                     }, ensure_ascii=False)
 
-            # 最终校验：确保 tp_price 和 sl_price 都已设置
+            # Final validation: ensure tp_price and sl_price are set
             if not tp_price or not sl_price:
                 return json.dumps({
                     "success": False,
-                    "error": "止盈止损价格计算失败，请重新调用并提供正确的 tp_percent 和 sl_percent 参数",
+                    "error": "TP/SL price calculation failed, please retry with correct tp_percent and sl_percent parameters",
                     "retry_required": True
                 }, ensure_ascii=False)
 
@@ -916,7 +916,7 @@ class TradingToolkit:
                     "entry_price": result.get('executed_price'),
                     "take_profit": tp_price,
                     "stop_loss": sl_price,
-                    "message": "开仓成功" if result['success'] else result.get('error', '开仓失败')
+                    "message": "Position opened successfully" if result['success'] else result.get('error', 'Failed to open position')
                 }, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Error opening long: {e}")
@@ -944,11 +944,11 @@ class TradingToolkit:
             tp_percent = float(tp_percent) if tp_percent else None
             sl_percent = float(sl_percent) if sl_percent else None
 
-            # 校验：必须提供止盈止损参数
+            # Validation: TP/SL parameters required
             if not tp_percent and not tp_price:
                 return json.dumps({
                     "success": False,
-                    "error": "缺少止盈参数！请提供 tp_percent（止盈百分比，如5表示跌5%止盈）。这是风控强制要求！",
+                    "error": "Missing take profit parameter! Please provide tp_percent (e.g. 5 means take profit at -5%). This is a mandatory risk control requirement!",
                     "retry_required": True,
                     "missing_params": ["tp_percent"]
                 }, ensure_ascii=False)
@@ -956,7 +956,7 @@ class TradingToolkit:
             if not sl_percent and not sl_price:
                 return json.dumps({
                     "success": False,
-                    "error": "缺少止损参数！请提供 sl_percent（止损百分比，如2表示涨2%止损）。这是风控强制要求！",
+                    "error": "Missing stop loss parameter! Please provide sl_percent (e.g. 2 means stop loss at +2%). This is a mandatory risk control requirement!",
                     "retry_required": True,
                     "missing_params": ["sl_percent"]
                 }, ensure_ascii=False)
@@ -976,15 +976,15 @@ class TradingToolkit:
                     logger.warning(f"Could not calculate tp/sl prices from percent: {e}")
                     return json.dumps({
                         "success": False,
-                        "error": f"无法计算止盈止损价格: {e}",
+                        "error": f"Unable to calculate TP/SL prices: {e}",
                         "retry_required": True
                     }, ensure_ascii=False)
 
-            # 最终校验：确保 tp_price 和 sl_price 都已设置
+            # Final validation: ensure tp_price and sl_price are set
             if not tp_price or not sl_price:
                 return json.dumps({
                     "success": False,
-                    "error": "止盈止损价格计算失败，请重新调用并提供正确的 tp_percent 和 sl_percent 参数",
+                    "error": "TP/SL price calculation failed, please retry with correct tp_percent and sl_percent parameters",
                     "retry_required": True
                 }, ensure_ascii=False)
 
@@ -1005,7 +1005,7 @@ class TradingToolkit:
                     "entry_price": result.get('executed_price'),
                     "take_profit": tp_price,
                     "stop_loss": sl_price,
-                    "message": "开仓成功" if result['success'] else result.get('error', '开仓失败')
+                    "message": "Position opened successfully" if result['success'] else result.get('error', 'Failed to open position')
                 }, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Error opening short: {e}")
@@ -1023,25 +1023,25 @@ class TradingToolkit:
                         "pnl": result.get('pnl'),
                         "pnl_percent": result.get('pnl_percent'),
                         "reason": result.get('reason', 'manual'),
-                        "message": "平仓成功"
+                        "message": "Position closed successfully"
                     }, ensure_ascii=False)
                 else:
                     return json.dumps({
                         "success": False,
-                        "error": result.get('error', '平仓失败')
+                        "error": result.get('error', 'Failed to close position')
                     }, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Error closing position: {e}")
             return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
 
-    async def _hold(self, reason: str = "市场不明朗", **kwargs) -> str:
+    async def _hold(self, reason: str = "Market unclear", **kwargs) -> str:
         """Hold decision - do not trade"""
         logger.info(f"Hold decision made: {reason}")
         return json.dumps({
             "success": True,
             "action": "hold",
             "reason": reason,
-            "message": f"决定观望: {reason}"
+            "message": f"Decision: Hold - {reason}"
         }, ensure_ascii=False)
 
     async def _get_fear_greed_index(self) -> str:
@@ -1059,15 +1059,8 @@ class TradingToolkit:
                         index = int(fng_data["value"])
                         classification_en = fng_data["value_classification"]
 
-                        # Translate to Chinese
-                        classification_map = {
-                            "Extreme Fear": "极度恐慌",
-                            "Fear": "恐慌",
-                            "Neutral": "中性",
-                            "Greed": "贪婪",
-                            "Extreme Greed": "极度贪婪"
-                        }
-                        classification = classification_map.get(classification_en, classification_en)
+                        # Use English classification
+                        classification = classification_en
 
                         logger.info(f"[TradingTools] Fetched REAL Fear & Greed Index: {index} ({classification})")
 
@@ -1075,7 +1068,7 @@ class TradingToolkit:
                             "value": index,
                             "classification": classification,
                             "timestamp": datetime.now().isoformat(),
-                            "interpretation": f"当前市场情绪为{classification}，指数值{index}/100",
+                            "interpretation": f"Current market sentiment is {classification}, index value {index}/100",
                             "source": "Alternative.me API (REAL DATA)"
                         }, ensure_ascii=False)
         except Exception as e:
@@ -1084,9 +1077,9 @@ class TradingToolkit:
         # Fallback: use neutral value
         return json.dumps({
             "value": 50,
-            "classification": "中性",
+            "classification": "Neutral",
             "timestamp": datetime.now().isoformat(),
-            "interpretation": "暂时无法获取恐慌贪婪指数，默认中性",
+            "interpretation": "Unable to fetch Fear & Greed Index, defaulting to Neutral",
             "source": "Fallback (NEUTRAL DEFAULT)"
         }, ensure_ascii=False)
 
@@ -1114,7 +1107,7 @@ class TradingToolkit:
                     hours_left = int(time_diff.total_seconds() / 3600)
                     minutes_left = int((time_diff.total_seconds() % 3600) / 60)
 
-                    time_str = f"{hours_left}小时{minutes_left}分钟后" if hours_left > 0 else f"{minutes_left}分钟后"
+                    time_str = f"in {hours_left}h {minutes_left}m" if hours_left > 0 else f"in {minutes_left}m"
 
                     logger.info(f"[TradingTools] Fetched REAL Funding Rate: {rate*100:.4f}%")
 
@@ -1124,9 +1117,9 @@ class TradingToolkit:
                         "funding_rate_value": rate,
                         "next_funding_time": time_str,
                         "interpretation": (
-                            f"资金费率为正({rate*100:.4f}%)，多头支付空头，市场偏多" if rate > 0 else
-                            f"资金费率为负({rate*100:.4f}%)，空头支付多头，市场偏空" if rate < 0 else
-                            "资金费率为零，多空平衡"
+                            f"Positive funding rate ({rate*100:.4f}%), longs pay shorts, market bullish" if rate > 0 else
+                            f"Negative funding rate ({rate*100:.4f}%), shorts pay longs, market bearish" if rate < 0 else
+                            "Zero funding rate, balanced market"
                         ),
                         "source": "Binance Futures API (REAL DATA)"
                     }, ensure_ascii=False)
@@ -1138,8 +1131,8 @@ class TradingToolkit:
             "symbol": symbol,
             "funding_rate": "0.0000%",
             "funding_rate_value": 0,
-            "next_funding_time": "8小时后",
-            "interpretation": "暂时无法获取资金费率数据",
+            "next_funding_time": "in 8h",
+            "interpretation": "Unable to fetch funding rate data",
             "source": "Fallback (NEUTRAL DEFAULT)"
         }, ensure_ascii=False)
 
@@ -1161,7 +1154,7 @@ class TradingToolkit:
         return json.dumps({
             "count": 0,
             "trades": [],
-            "message": "暂无交易记录"
+            "message": "No trade history"
         }, ensure_ascii=False)
 
     async def _tavily_search(self, query: str, max_results: int = 5, time_range: str = None, topic: str = "general", days: int = None) -> str:
@@ -1229,7 +1222,7 @@ class TradingToolkit:
                     "results": formatted_results,
                     "result_count": len(formatted_results),
                     "source": "MCP Web Search",
-                    "message": f"搜索'{query}'返回{len(formatted_results)}条结果"
+                    "message": f"Search '{query}' returned {len(formatted_results)} results"
                 }, ensure_ascii=False)
             else:
                 error_msg = result.get("error", "Unknown error")
@@ -1237,7 +1230,7 @@ class TradingToolkit:
                 return json.dumps({
                     "success": False,
                     "error": error_msg,
-                    "message": f"搜索失败: {error_msg}"
+                    "message": f"Search failed: {error_msg}"
                 }, ensure_ascii=False)
 
         except Exception as e:
@@ -1245,5 +1238,5 @@ class TradingToolkit:
             return json.dumps({
                 "success": False,
                 "error": str(e),
-                "message": f"搜索出错: {str(e)}"
+                "message": f"Search error: {str(e)}"
             }, ensure_ascii=False)
