@@ -98,7 +98,7 @@ class OKXClient:
 
         # Test connection and setup
         try:
-            # 1. Check and set position mode to long_short_mode (双向持仓)
+            # 1. Check and set position mode to long_short_mode (bidirectional position)
             await self._ensure_long_short_mode()
 
             # 2. Test connection by getting balance
@@ -111,34 +111,34 @@ class OKXClient:
 
     async def _ensure_long_short_mode(self):
         """
-        确保账户配置正确：
-        1. 账户模式 = 单币种保证金模式 (1)
-        2. 持仓模式 = 双向持仓模式 (long_short_mode)
+        Ensure account configuration is correct:
+        1. Account mode = Single-currency margin mode (2)
+        2. Position mode = Long/short mode (long_short_mode)
         """
         try:
-            # 获取当前账户配置
+            # Get current account config
             config_data = await self._request('GET', '/api/v5/account/config')
 
             if config_data.get('code') == '0' and config_data.get('data'):
                 config = config_data['data'][0]
-                acct_lv = config.get('acctLv')  # 账户模式: 1=简单, 2=单币种, 3=多币种, 4=组合
-                pos_mode = config.get('posMode')  # 持仓模式: net_mode, long_short_mode
+                acct_lv = config.get('acctLv')  # Account mode: 1=simple, 2=single-currency, 3=multi-currency, 4=portfolio
+                pos_mode = config.get('posMode')  # Position mode: net_mode, long_short_mode
 
                 logger.info(f"OKX account config: acctLv={acct_lv}, posMode={pos_mode}")
 
-                # 检查账户模式
-                # 51010 错误表示账户模式不支持当前操作
-                # 需要切换到单币种保证金模式(2)或更高级模式
+                # Check account mode
+                # Error 51010 indicates account mode does not support current operation
+                # Need to switch to single-currency margin mode (2) or higher
                 if acct_lv == '1':
                     logger.warning("⚠️ OKX account is in Simple mode (acctLv=1)")
                     logger.warning("   Simple mode does not support contract trading!")
                     logger.warning("   Please switch to Single-currency margin mode in OKX web/app:")
                     logger.warning("   Settings -> Account mode -> Single-currency margin mode")
 
-                    # 尝试自动切换账户模式
+                    # Attempt to auto-switch account mode
                     logger.info("Attempting to switch to Single-currency margin mode...")
                     result = await self._request('POST', '/api/v5/account/set-account-level', {
-                        'acctLv': '2'  # 2 = 单币种保证金模式
+                        'acctLv': '2'  # 2 = Single-currency margin mode
                     })
 
                     if result.get('code') == '0':
@@ -149,7 +149,7 @@ class OKXClient:
                 else:
                     logger.info(f"✅ OKX account mode OK (acctLv={acct_lv})")
 
-                # 检查持仓模式
+                # Check position mode
                 if pos_mode == 'net_mode':
                     logger.warning("OKX account is in net_mode, switching to long_short_mode...")
 
@@ -158,7 +158,7 @@ class OKXClient:
                     })
 
                     if result.get('code') == '0':
-                        logger.info("✅ Successfully switched to long_short_mode (双向持仓)")
+                        logger.info("✅ Successfully switched to long_short_mode (bidirectional position)")
                     else:
                         error_msg = result.get('msg', '')
                         if '51020' in str(result):
@@ -166,7 +166,7 @@ class OKXClient:
                         else:
                             logger.error(f"Failed to switch position mode: {error_msg}")
                 else:
-                    logger.info("✅ OKX account already in long_short_mode (双向持仓)")
+                    logger.info("✅ OKX account already in long_short_mode (bidirectional position)")
 
         except Exception as e:
             logger.error(f"Error checking/setting account config: {e}")
@@ -179,7 +179,7 @@ class OKXClient:
 
     def _get_proxy(self) -> Optional[str]:
         """Get proxy from environment variables"""
-        # 优先使用 HTTPS 代理
+        # Prefer HTTPS proxy
         proxy = os.getenv('https_proxy') or os.getenv('HTTPS_PROXY')
         if proxy:
             return proxy
@@ -189,7 +189,7 @@ class OKXClient:
     async def _request(self, method: str, path: str, body: Optional[Dict] = None) -> Dict:
         """Make authenticated API request"""
         if not self._session:
-            # 🔧 增加超时时间到 30 秒
+            # Increase timeout to 30 seconds
             timeout = aiohttp.ClientTimeout(total=30)
             self._session = aiohttp.ClientSession(timeout=timeout)
 
@@ -222,16 +222,16 @@ class OKXClient:
 
     async def get_max_avail_size(self, symbol: str = "BTC-USDT-SWAP") -> float:
         """
-        获取 OKX 计算的真实最大可开仓金额
+        Get OKX calculated real maximum available position size
 
-        使用 /api/v5/account/max-avail-size API
-        这个 API 返回的是 OKX 内部计算的可开仓金额，考虑了：
-        - 现有仓位的维持保证金
-        - 新仓位的初始保证金率
-        - 账户风险控制要求
+        Uses /api/v5/account/max-avail-size API
+        This API returns OKX internally calculated available size, considering:
+        - Existing position maintenance margin
+        - New position initial margin rate
+        - Account risk control requirements
 
         Returns:
-            float: 可用于开仓的最大 USDT 金额
+            float: Maximum USDT amount available for opening position
         """
         try:
             if self.api_key and self.secret_key:
@@ -242,7 +242,7 @@ class OKXClient:
 
                 if data.get('code') == '0' and data.get('data'):
                     result = data['data'][0]
-                    # availBuy 是以计价货币(USDT)计算的最大可买入金额
+                    # availBuy is max buy amount in quote currency (USDT)
                     avail_buy = float(result.get('availBuy', 0) or 0)
                     logger.info(f"[OKXClient] Max avail size for {symbol}: ${avail_buy:.2f} USDT")
                     return avail_buy
@@ -256,7 +256,7 @@ class OKXClient:
         return 0.0
 
     async def get_account_balance(self) -> AccountBalance:
-        """Get account balance - 获取完整的账户信息，包括 OKX 计算的真实可开仓金额"""
+        """Get account balance - including OKX calculated real max available size"""
         try:
             if self.api_key and self.secret_key:
                 data = await self._request('GET', '/api/v5/account/balance')
@@ -266,36 +266,36 @@ class OKXClient:
                     details = account.get('details', [])
 
                     usdt_balance = 0.0
-                    frozen_balance = 0.0  # 🆕 冻结余额 = 已用保证金
+                    frozen_balance = 0.0  # Frozen balance = used margin
                     unrealized_pnl = 0.0
 
                     for d in details:
                         if d.get('ccy') == 'USDT':
                             usdt_balance = float(d.get('availBal', 0) or 0)
-                            frozen_balance = float(d.get('frozenBal', 0) or 0)  # 🆕 获取冻结余额
-                            unrealized_pnl = float(d.get('upl', 0) or 0)  # 🆕 获取未实现盈亏
+                            frozen_balance = float(d.get('frozenBal', 0) or 0)  # Get frozen balance
+                            unrealized_pnl = float(d.get('upl', 0) or 0)  # Get unrealized PnL
                             break
 
                     total_equity = float(account.get('totalEq', 0) or 0)
 
-                    # 🆕 获取 OKX 计算的真实可开仓金额
+                    # Get OKX calculated real max available size
                     max_avail_size = await self.get_max_avail_size()
 
-                    # 🔧 日志：记录账户状态
-                    # 注意：totalEq 在合约账户可能包含持仓名义价值，不等于可用 USDT
-                    # max_avail_size 才是真实可开仓金额
+                    # Log: record account status
+                    # Note: totalEq in contract account may include position notional value, not equal to available USDT
+                    # max_avail_size is the real available amount for opening position
                     logger.info(
-                        f"[OKXClient] 账户状态: 可开仓=${max_avail_size:.2f}, "
-                        f"USDT余额=${usdt_balance:.2f}, totalEq=${total_equity:.2f}"
+                        f"[OKXClient] Account status: maxAvail=${max_avail_size:.2f}, "
+                        f"USDTBalance=${usdt_balance:.2f}, totalEq=${total_equity:.2f}"
                     )
 
                     return AccountBalance(
                         total_equity=total_equity,
                         available_balance=usdt_balance,
-                        used_margin=frozen_balance,  # 🆕 使用冻结余额作为已用保证金
+                        used_margin=frozen_balance,  # Use frozen balance as used margin
                         unrealized_pnl=unrealized_pnl,
                         realized_pnl_today=0.0,
-                        max_avail_size=max_avail_size,  # 🆕 OKX 计算的真实可开仓金额
+                        max_avail_size=max_avail_size,  # OKX calculated real max available size
                         currency="USDT"
                     )
 
@@ -360,7 +360,7 @@ class OKXClient:
                             margin = float(pos.get('margin', 0) or 0)
                             liq_price = float(pos.get('liqPx', 0) or 0)
 
-                            # 🆕 获取 TP/SL 价格
+                            # Get TP/SL prices
                             tp_price, sl_price = await self._get_tp_sl_prices(symbol, side)
 
                             return Position(
@@ -385,12 +385,12 @@ class OKXClient:
         return None
 
     async def _get_tp_sl_prices(self, symbol: str, pos_side: str) -> tuple[Optional[float], Optional[float]]:
-        """获取当前持仓的止盈止损价格"""
+        """Get take-profit and stop-loss prices for current position"""
         tp_price = None
         sl_price = None
 
         try:
-            # 查询算法单（包括条件单）
+            # Query algo orders (including conditional orders)
             data = await self._request('GET', f'/api/v5/trade/orders-algo-pending?instId={symbol}&ordType=conditional')
 
             if data.get('code') == '0':
@@ -399,12 +399,12 @@ class OKXClient:
                     if order_pos_side != pos_side:
                         continue
 
-                    # 止盈单
+                    # Take profit order
                     tp_trigger = order.get('tpTriggerPx')
                     if tp_trigger:
                         tp_price = float(tp_trigger)
 
-                    # 止损单
+                    # Stop loss order
                     sl_trigger = order.get('slTriggerPx')
                     if sl_trigger:
                         sl_price = float(sl_trigger)
@@ -463,14 +463,14 @@ class OKXClient:
         sl_price: Optional[float] = None
     ) -> Dict[str, Any]:
         """Internal method to open position"""
-        # 确保类型正确（防止从LLM解析时传入字符串）
+        # Ensure correct types (prevent string input from LLM parsing)
         try:
             leverage = int(leverage) if leverage else 1
             amount_usdt = float(amount_usdt) if amount_usdt else 100
             tp_price = float(tp_price) if tp_price else None
             sl_price = float(sl_price) if sl_price else None
         except (TypeError, ValueError) as e:
-            return {'success': False, 'error': f'参数类型错误: {e}'}
+            return {'success': False, 'error': f'Parameter type error: {e}'}
 
         try:
             if self.api_key and self.secret_key:

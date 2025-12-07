@@ -1,13 +1,13 @@
 """
 Paper Trading Simulator
 
-本地模拟交易器，无需连接真实交易所。
-提供完整的模拟交易功能，包括：
-- 模拟账户余额
-- 模拟开平仓
-- 模拟止盈止损触发
-- 实时价格模拟（基于真实行情或随机波动）
-- 交易历史记录
+Local trading simulator, no real exchange connection required.
+Provides complete simulated trading features:
+- Simulated account balance
+- Simulated open/close positions
+- Simulated TP/SL triggers
+- Real-time price simulation (based on real market data or random fluctuation)
+- Trade history records
 """
 
 import asyncio
@@ -40,34 +40,34 @@ def _get_env_float(key: str, default: float) -> float:
 
 @dataclass
 class PaperTraderConfig:
-    """Paper Trader 配置"""
+    """Paper Trader Configuration"""
     initial_balance: float = 10000.0
     max_leverage: int = 20
-    min_price: float = 1000.0  # 最低价格限制（用于价格模拟）
-    max_price: float = 500000.0  # 最高价格限制（用于价格模拟）
+    min_price: float = 1000.0  # Min price limit (for price simulation)
+    max_price: float = 500000.0  # Max price limit (for price simulation)
     redis_url: str = "redis://redis:6379"
     demo_mode: bool = False  # False = use real CoinGecko price, True = simulated price
-    # 默认止盈止损百分比 - 从环境变量读取
+    # Default TP/SL percentages - read from environment variables
     default_tp_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_TP_PERCENT", 5.0))
     default_sl_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_SL_PERCENT", 2.0))
 
 
 @dataclass
 class PaperPosition:
-    """模拟持仓"""
+    """Simulated Position"""
     id: str
     symbol: str
     direction: str  # "long" or "short"
-    size: float  # 持仓数量 (BTC)
+    size: float  # Position size (BTC)
     entry_price: float
     leverage: int
-    margin: float  # 保证金
+    margin: float  # Margin used
     take_profit_price: Optional[float] = None
     stop_loss_price: Optional[float] = None
     opened_at: datetime = field(default_factory=datetime.now)
 
     def calculate_pnl(self, current_price: float) -> tuple[float, float]:
-        """计算未实现盈亏"""
+        """Calculate unrealized PnL"""
         if self.direction == "long":
             pnl = (current_price - self.entry_price) * self.size
         else:
@@ -77,13 +77,13 @@ class PaperPosition:
         return pnl, pnl_percent
 
     def calculate_liquidation_price(self) -> float:
-        """计算强平价格 (简化版)"""
-        # 🔧 FIX: 防止除零错误
+        """Calculate liquidation price (simplified)"""
+        # FIX: Prevent division by zero
         if self.size <= 0:
-            # 无法计算强平价，返回极端值
+            # Cannot calculate liquidation price, return extreme value
             return 0 if self.direction == "long" else float('inf')
-        
-        # 当亏损达到保证金的80%时强平
+
+        # Liquidate when loss reaches 80% of margin
         liquidation_loss = self.margin * 0.8
         if self.direction == "long":
             return self.entry_price - (liquidation_loss / self.size)
@@ -104,7 +104,7 @@ class PaperPosition:
 
 @dataclass
 class PaperTrade:
-    """模拟交易记录"""
+    """Simulated Trade Record"""
     id: str
     symbol: str
     direction: str
@@ -127,13 +127,13 @@ class PaperTrade:
 
 @dataclass
 class PaperAccount:
-    """模拟账户"""
+    """Simulated Account"""
     initial_balance: float = 10000.0
-    balance: float = 10000.0  # 可用余额
-    total_equity: float = 10000.0  # 总权益 (余额 + 未实现盈亏)
-    used_margin: float = 0.0  # 已用保证金
+    balance: float = 10000.0  # Available balance
+    total_equity: float = 10000.0  # Total equity (balance + unrealized PnL)
+    used_margin: float = 0.0  # Used margin
     unrealized_pnl: float = 0.0
-    realized_pnl: float = 0.0  # 已实现盈亏
+    realized_pnl: float = 0.0  # Realized PnL
     total_trades: int = 0
     winning_trades: int = 0
     losing_trades: int = 0
@@ -156,14 +156,14 @@ class PaperAccount:
 
 class PaperTrader:
     """
-    本地模拟交易器
+    Local Paper Trading Simulator
 
     Features:
-    - 完全本地运行，无需外部API
-    - 模拟账户余额和持仓
-    - 模拟止盈止损触发
-    - 实时价格模拟
-    - 交易历史持久化到Redis
+    - Runs fully locally, no external API required
+    - Simulated account balance and positions
+    - Simulated TP/SL triggers
+    - Real-time price simulation
+    - Trade history persisted to Redis
     """
 
     def __init__(
@@ -173,7 +173,7 @@ class PaperTrader:
         demo_mode: bool = False,  # False = use real CoinGecko price, True = simulated price
         config: PaperTraderConfig = None
     ):
-        # 使用 config 或单独参数
+        # Use config or individual parameters
         self.config = config or PaperTraderConfig(
             initial_balance=initial_balance,
             redis_url=redis_url,
@@ -193,13 +193,13 @@ class PaperTrader:
         self._trades: List[PaperTrade] = []
         self._equity_history: List[Dict] = []
 
-        # 价格服务 - 使用真实或模拟价格
+        # Price service - use real or simulated price
         self._price_service: Optional[PriceService] = None
-        self._current_price: Optional[float] = None  # 缓存当前价格，初始化时从API获取
+        self._current_price: Optional[float] = None  # Cache current price, fetched from API on init
         self._price_history: List[float] = []
         self._last_price_update = datetime.now()
 
-        # 回调
+        # Callbacks
         self.on_position_closed = None
         self.on_tp_hit = None
         self.on_sl_hit = None
@@ -211,7 +211,7 @@ class PaperTrader:
         self._trade_lock = asyncio.Lock()
 
     async def initialize(self):
-        """初始化，加载历史数据"""
+        """Initialize and load historical data"""
         if self._initialized:
             return
 
@@ -219,7 +219,7 @@ class PaperTrader:
             self._redis = redis.from_url(self.redis_url, decode_responses=True)
             await self._redis.ping()
 
-            # 加载账户状态
+            # Load account state
             await self._load_state()
             logger.info(f"Paper trader initialized. Balance: ${self._account.balance:.2f}")
 
@@ -234,23 +234,23 @@ class PaperTrader:
         self._initialized = True
 
     async def _load_state(self):
-        """从Redis加载状态"""
+        """Load state from Redis"""
         if not self._redis:
             return
 
         try:
-            # 加载账户
+            # Load account
             account_data = await self._redis.get(f"{self._key_prefix}account")
             if account_data:
                 data = json.loads(account_data)
                 self._account = PaperAccount(**data)
 
-            # 加载持仓
+            # Load position
             position_data = await self._redis.get(f"{self._key_prefix}position")
             if position_data:
                 self._position = PaperPosition.from_dict(json.loads(position_data))
 
-            # 加载交易历史
+            # Load trade history
             trades_data = await self._redis.get(f"{self._key_prefix}trades")
             if trades_data:
                 self._trades = [
@@ -261,7 +261,7 @@ class PaperTrader:
                     for t in json.loads(trades_data)
                 ]
 
-            # 加载净值历史
+            # Load equity history
             equity_data = await self._redis.get(f"{self._key_prefix}equity_history")
             if equity_data:
                 self._equity_history = json.loads(equity_data)
@@ -270,18 +270,18 @@ class PaperTrader:
             logger.error(f"Error loading state: {e}")
 
     async def _save_state(self):
-        """保存状态到Redis"""
+        """Save state to Redis"""
         if not self._redis:
             return
 
         try:
-            # 保存账户
+            # Save account
             await self._redis.set(
                 f"{self._key_prefix}account",
                 json.dumps(self._account.to_dict())
             )
 
-            # 保存持仓
+            # Save position
             if self._position:
                 await self._redis.set(
                     f"{self._key_prefix}position",
@@ -290,13 +290,13 @@ class PaperTrader:
             else:
                 await self._redis.delete(f"{self._key_prefix}position")
 
-            # 保存交易历史 (只保留最近100条)
+            # Save trade history (keep last 100 only)
             await self._redis.set(
                 f"{self._key_prefix}trades",
                 json.dumps([t.to_dict() for t in self._trades[-100:]])
             )
 
-            # 保存净值历史 (只保留最近1000条)
+            # Save equity history (keep last 1000 only)
             await self._redis.set(
                 f"{self._key_prefix}equity_history",
                 json.dumps(self._equity_history[-1000:])
@@ -306,15 +306,15 @@ class PaperTrader:
             logger.error(f"Error saving state: {e}")
 
     async def get_current_price(self, symbol: str = "BTC-USDT-SWAP") -> float:
-        """获取当前价格 - 使用价格服务获取真实/模拟价格"""
+        """Get current price - use price service for real/simulated price"""
         now = datetime.now()
 
-        # 使用价格服务获取价格（每秒最多更新一次）
+        # Use price service to get price (update at most once per second)
         if (now - self._last_price_update).seconds >= 1:
             if self._price_service:
                 self._current_price = await self._price_service.get_btc_price()
             else:
-                # Fallback: 简单模拟波动
+                # Fallback: simple simulated fluctuation
                 change = random.uniform(-0.001, 0.001)
                 self._current_price *= (1 + change)
                 self._current_price = max(self.config.min_price, min(self.config.max_price, self._current_price))
@@ -327,22 +327,22 @@ class PaperTrader:
         return self._current_price
 
     def set_price(self, price: float):
-        """手动设置当前价格（用于测试或同步真实价格）"""
+        """Manually set current price (for testing or syncing real price)"""
         self._current_price = price
         self._last_price_update = datetime.now()
 
     async def get_account(self) -> Dict:
-        """获取账户信息 - 包含真实可用保证金"""
+        """Get account info - including true available margin"""
         await self._update_equity()
 
-        # 真实可用保证金 = 总权益 - 已用保证金
-        # 这考虑了未实现盈亏对可用资金的影响
+        # True available margin = total equity - used margin
+        # This accounts for unrealized PnL impact on available funds
         true_available_margin = self._account.total_equity - self._account.used_margin
 
         return {
             "total_equity": self._account.total_equity,
             "available_balance": self._account.balance,
-            "true_available_margin": true_available_margin,  # 新增: 真实可用保证金
+            "true_available_margin": true_available_margin,  # True available margin
             "used_margin": self._account.used_margin,
             "unrealized_pnl": self._account.unrealized_pnl,
             "realized_pnl": self._account.realized_pnl,
@@ -354,14 +354,14 @@ class PaperTrader:
         }
 
     async def get_position(self, symbol: str = "BTC-USDT-SWAP") -> Optional[Dict]:
-        """获取当前持仓"""
+        """Get current position"""
         if not self._position or self._position.symbol != symbol:
             return None
 
         current_price = await self.get_current_price(symbol)
         pnl, pnl_percent = self._position.calculate_pnl(current_price)
 
-        # 计算仓位百分比 (margin / initial_balance * 100)
+        # Calculate position percentage (margin / initial_balance * 100)
         position_percent = (self._position.margin / self.initial_balance * 100) if self.initial_balance > 0 else 0
 
         return {
@@ -373,7 +373,7 @@ class PaperTrader:
             "current_price": current_price,
             "leverage": self._position.leverage,
             "margin": self._position.margin,
-            "position_percent": position_percent,  # 仓位百分比
+            "position_percent": position_percent,  # Position percentage
             "unrealized_pnl": pnl,
             "unrealized_pnl_percent": pnl_percent,
             "take_profit_price": self._position.take_profit_price,
@@ -390,7 +390,7 @@ class PaperTrader:
         tp_price: Optional[float] = None,
         sl_price: Optional[float] = None
     ) -> Dict:
-        """开多仓"""
+        """Open long position"""
         return await self._open_position(
             symbol=symbol,
             direction="long",
@@ -408,7 +408,7 @@ class PaperTrader:
         tp_price: Optional[float] = None,
         sl_price: Optional[float] = None
     ) -> Dict:
-        """开空仓"""
+        """Open short position"""
         return await self._open_position(
             symbol=symbol,
             direction="short",
@@ -427,92 +427,92 @@ class PaperTrader:
         tp_price: Optional[float] = None,
         sl_price: Optional[float] = None
     ) -> Dict:
-        """开仓 - 增强版余额检查"""
-        # 🔒 CRITICAL: Use lock to prevent duplicate trades
+        """Open position - enhanced balance check"""
+        # CRITICAL: Use lock to prevent duplicate trades
         async with self._trade_lock:
             logger.info(f"[TRADE_LOCK] Acquired lock for {direction} position")
-            
+
             if self._position:
                 logger.warning(f"[TRADE_LOCK] Cannot open {direction}: already have a {self._position.direction} position")
                 return {
                     "success": False,
-                    "error": f"已有持仓（{self._position.direction}），请先平仓"
+                    "error": f"Already have position ({self._position.direction}), please close it first"
                 }
 
-            # 确保类型正确（防止从LLM解析时传入字符串）
+            # Ensure correct types (prevent string input from LLM parsing)
             try:
                 amount_usdt = float(amount_usdt)
                 leverage = int(leverage)
             except (TypeError, ValueError) as e:
                 return {
                     "success": False,
-                    "error": f"参数类型错误: {e}"
+                    "error": f"Parameter type error: {e}"
                 }
 
-            # 更新权益,计算真实可用保证金
+            # Update equity, calculate true available margin
             await self._update_equity()
             true_available_margin = self._account.total_equity - self._account.used_margin
 
-            # 检查1: 真实可用保证金是否足够
+            # Check 1: Is true available margin sufficient
             if amount_usdt > true_available_margin:
                 return {
                     "success": False,
                     "error": (
-                        f"保证金不足! 需要: ${amount_usdt:.2f}, "
-                        f"真实可用: ${true_available_margin:.2f} "
-                        f"(总权益: ${self._account.total_equity:.2f} - "
-                        f"已用: ${self._account.used_margin:.2f})"
+                        f"Insufficient margin! Required: ${amount_usdt:.2f}, "
+                        f"True available: ${true_available_margin:.2f} "
+                        f"(Total equity: ${self._account.total_equity:.2f} - "
+                        f"Used: ${self._account.used_margin:.2f})"
                     )
                 }
 
-            # 检查2: 账户余额是否足够 (用于扣款)
+            # Check 2: Is account balance sufficient (for deduction)
             if amount_usdt > self._account.balance:
                 unrealized_loss = -self._account.unrealized_pnl if self._account.unrealized_pnl < 0 else 0
                 return {
                     "success": False,
                     "error": (
-                        f"账户余额不足! 需要: ${amount_usdt:.2f}, "
-                        f"可用余额: ${self._account.balance:.2f}. "
-                        f"{'持仓浮亏: $' + f'{unrealized_loss:.2f}, ' if unrealized_loss > 0 else ''}"
-                        f"建议先平仓或减少开仓金额"
+                        f"Insufficient balance! Required: ${amount_usdt:.2f}, "
+                        f"Available balance: ${self._account.balance:.2f}. "
+                        f"{'Unrealized loss: $' + f'{unrealized_loss:.2f}, ' if unrealized_loss > 0 else ''}"
+                        f"Suggest closing position or reducing amount"
                     )
                 }
 
-            # 限制杠杆 (1-max_leverage倍)
+            # Limit leverage (1 to max_leverage)
             leverage = min(max(1, leverage), self.config.max_leverage)
 
             current_price = await self.get_current_price(symbol)
 
-            # 计算持仓数量
+            # Calculate position size
             position_value = amount_usdt * leverage
             size = position_value / current_price
 
-            # 重新计算止盈止损价格（基于实际入场价，而不是 LLM 预期的价格）
-            # 如果传入的 tp/sl 价格与实际入场价不匹配，使用默认百分比重新计算
+            # Recalculate TP/SL prices (based on actual entry price, not LLM expected price)
+            # If provided tp/sl prices don't match actual entry price, use default percentages
             if tp_price is not None and sl_price is not None:
                 if direction == "long":
-                    # 做多：止盈应该高于入场价，止损应该低于入场价
+                    # Long: TP should be above entry, SL should be below entry
                     if tp_price <= current_price or sl_price >= current_price:
-                        # 止盈止损价格不合理，使用默认百分比重新计算
+                        # Invalid TP/SL prices, recalculate using default percentages
                         logger.warning(
-                            f"止盈止损价格不合理 (tp={tp_price}, sl={sl_price}, entry={current_price})，"
-                            f"使用默认百分比重新计算"
+                            f"Invalid TP/SL prices (tp={tp_price}, sl={sl_price}, entry={current_price}), "
+                            f"recalculating using default percentages"
                         )
                         tp_price = current_price * (1 + self.config.default_tp_percent / 100)
                         sl_price = current_price * (1 - self.config.default_sl_percent / 100)
                 else:  # short
-                    # 做空：止盈应该低于入场价，止损应该高于入场价
+                    # Short: TP should be below entry, SL should be above entry
                     if tp_price >= current_price or sl_price <= current_price:
                         logger.warning(
-                            f"止盈止损价格不合理 (tp={tp_price}, sl={sl_price}, entry={current_price})，"
-                            f"使用默认百分比重新计算"
+                            f"Invalid TP/SL prices (tp={tp_price}, sl={sl_price}, entry={current_price}), "
+                            f"recalculating using default percentages"
                         )
                         tp_price = current_price * (1 - self.config.default_tp_percent / 100)
                         sl_price = current_price * (1 + self.config.default_sl_percent / 100)
 
-            logger.info(f"开仓参数: entry={current_price}, tp={tp_price}, sl={sl_price}")
+            logger.info(f"Open position params: entry={current_price}, tp={tp_price}, sl={sl_price}")
 
-            # 创建持仓
+            # Create position
             self._position = PaperPosition(
             id=str(uuid.uuid4()),
             symbol=symbol,
@@ -525,16 +525,16 @@ class PaperTrader:
             stop_loss_price=sl_price
         )
 
-        # 更新账户
+        # Update account
         self._account.balance -= amount_usdt
         self._account.used_margin += amount_usdt
 
         await self._save_state()
 
         logger.info(
-            f"✅ [TRADE_LOCK] 开仓成功: {direction.upper()} {size:.6f} BTC @ ${current_price:.2f}, "
-            f"杠杆: {leverage}x, 保证金: ${amount_usdt:.2f}, "
-            f"剩余可用: ${self._account.balance:.2f}"
+            f"✅ [TRADE_LOCK] Position opened: {direction.upper()} {size:.6f} BTC @ ${current_price:.2f}, "
+            f"leverage: {leverage}x, margin: ${amount_usdt:.2f}, "
+            f"remaining: ${self._account.balance:.2f}"
         )
         logger.info(f"[TRADE_LOCK] Releasing lock after successful {direction} position")
 
@@ -553,17 +553,17 @@ class PaperTrader:
         }
 
     async def close_position(self, symbol: str = "BTC-USDT-SWAP", reason: str = "manual") -> Dict:
-        """平仓"""
+        """Close position"""
         if not self._position:
             return {
                 "success": False,
-                "error": "无持仓"
+                "error": "No position to close"
             }
 
         current_price = await self.get_current_price(symbol)
         pnl, pnl_percent = self._position.calculate_pnl(current_price)
 
-        # 创建交易记录
+        # Create trade record
         trade = PaperTrade(
             id=str(uuid.uuid4()),
             symbol=self._position.symbol,
@@ -580,7 +580,7 @@ class PaperTrader:
         )
         self._trades.append(trade)
 
-        # 更新账户
+        # Update account
         self._account.balance += self._position.margin + pnl
         self._account.used_margin -= self._position.margin
         self._account.realized_pnl += pnl
@@ -597,11 +597,11 @@ class PaperTrader:
         await self._save_state()
 
         logger.info(
-            f"平仓成功: {old_position.direction.upper()} @ ${current_price:.2f}, "
-            f"盈亏: ${pnl:.2f} ({pnl_percent:.2f}%), 原因: {reason}"
+            f"Position closed: {old_position.direction.upper()} @ ${current_price:.2f}, "
+            f"PnL: ${pnl:.2f} ({pnl_percent:.2f}%), reason: {reason}"
         )
 
-        # 触发回调
+        # Trigger callback
         if self.on_position_closed:
             await self.on_position_closed(old_position, pnl, reason)
 
@@ -615,14 +615,14 @@ class PaperTrader:
         }
 
     async def check_tp_sl(self) -> Optional[str]:
-        """检查止盈止损是否触发"""
+        """Check if TP/SL is triggered"""
         if not self._position:
             return None
 
         current_price = await self.get_current_price(self._position.symbol)
 
         if self._position.direction == "long":
-            # 多仓：价格高于TP或低于SL
+            # Long: price above TP or below SL
             if self._position.take_profit_price and current_price >= self._position.take_profit_price:
                 await self.close_position(reason="tp")
                 if self.on_tp_hit:
@@ -635,13 +635,13 @@ class PaperTrader:
                     await self.on_sl_hit(self._position, current_price)
                 return "sl"
 
-            # 检查强平
+            # Check liquidation
             if current_price <= self._position.calculate_liquidation_price():
                 await self.close_position(reason="liquidation")
                 return "liquidation"
 
         else:  # short
-            # 空仓：价格低于TP或高于SL
+            # Short: price below TP or above SL
             if self._position.take_profit_price and current_price <= self._position.take_profit_price:
                 await self.close_position(reason="tp")
                 if self.on_tp_hit:
@@ -654,7 +654,7 @@ class PaperTrader:
                     await self.on_sl_hit(self._position, current_price)
                 return "sl"
 
-            # 检查强平
+            # Check liquidation
             if current_price >= self._position.calculate_liquidation_price():
                 await self.close_position(reason="liquidation")
                 return "liquidation"
@@ -662,7 +662,7 @@ class PaperTrader:
         return None
 
     async def _update_equity(self):
-        """更新权益"""
+        """Update equity"""
         if self._position:
             current_price = await self.get_current_price(self._position.symbol)
             pnl, _ = self._position.calculate_pnl(current_price)
@@ -672,7 +672,7 @@ class PaperTrader:
 
         self._account.total_equity = self._account.balance + self._account.used_margin + self._account.unrealized_pnl
 
-        # 记录净值
+        # Record equity
         self._equity_history.append({
             "timestamp": datetime.now().isoformat(),
             "equity": self._account.total_equity,
@@ -683,18 +683,18 @@ class PaperTrader:
         })
 
     async def get_equity_history(self, limit: int = 100) -> List[Dict]:
-        """获取净值历史"""
+        """Get equity history"""
         return self._equity_history[-limit:]
 
     async def get_trade_history(self, limit: int = 50) -> List[Dict]:
-        """获取交易历史"""
+        """Get trade history"""
         return [t.to_dict() for t in self._trades[-limit:]]
 
     async def get_market_data(self, symbol: str = "BTC-USDT-SWAP") -> Dict:
-        """获取市场数据"""
+        """Get market data"""
         current_price = await self.get_current_price(symbol)
 
-        # 模拟24小时数据
+        # Simulate 24h data
         if len(self._price_history) > 100:
             prices = self._price_history[-100:]
             high_24h = max(prices)
@@ -720,7 +720,7 @@ class PaperTrader:
         }
 
     async def reset(self):
-        """重置账户到初始状态"""
+        """Reset account to initial state"""
         self._account = PaperAccount(
             initial_balance=self.initial_balance,
             balance=self.initial_balance,
@@ -731,14 +731,14 @@ class PaperTrader:
         self._equity_history = []
         self._price_history = []
 
-        # 重新获取真实价格
+        # Re-fetch real price
         if self._price_service:
             try:
                 self._current_price = await self._price_service.get_btc_price()
                 logger.info(f"Reset: Fetched current price ${self._current_price:,.2f}")
             except Exception as e:
                 logger.error(f"Reset: Failed to fetch price: {e}")
-                # 保持之前的价格，不使用硬编码
+                # Keep previous price, don't use hardcoded value
         else:
             self._current_price = None
 
@@ -746,7 +746,7 @@ class PaperTrader:
         logger.info(f"Paper trader reset. Balance: ${self.initial_balance:.2f}")
 
     def get_status(self) -> Dict:
-        """获取Paper Trader状态"""
+        """Get Paper Trader status"""
         return {
             "initialized": self._initialized,
             "has_position": self._position is not None,
@@ -760,12 +760,12 @@ class PaperTrader:
         }
 
 
-# 单例
+# Singleton
 _paper_trader: Optional[PaperTrader] = None
 
 
 async def get_paper_trader(initial_balance: float = 10000.0) -> PaperTrader:
-    """获取或创建Paper Trader单例"""
+    """Get or create Paper Trader singleton"""
     global _paper_trader
     if _paper_trader is None:
         _paper_trader = PaperTrader(initial_balance=initial_balance)

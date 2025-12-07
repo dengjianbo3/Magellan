@@ -57,8 +57,8 @@ def create_trading_agents(toolkit=None) -> List[Any]:
     for agent_id in analysis_agent_ids:
         try:
             # Create agent instance from registry
-            # Pass language='zh' for Chinese output
-            agent = registry.create_agent(agent_id, language='zh')
+            # Pass language='en' for English output (better for LLM understanding)
+            agent = registry.create_agent(agent_id, language='en')
             agents.append(agent)
         except Exception as e:
             logger.error(f"Failed to load agent '{agent_id}' from registry: {e}")
@@ -66,7 +66,7 @@ def create_trading_agents(toolkit=None) -> List[Any]:
 
     # Create Leader agent for final decision and execution
     try:
-        leader = create_leader(language='zh')
+        leader = create_leader(language='en')
         agents.append(leader)
         logger.info("Created Leader agent for trading decision execution")
     except Exception as e:
@@ -89,9 +89,9 @@ def create_trading_agents(toolkit=None) -> List[Any]:
                     agent.register_tool(tool)
                 logger.info(f"Registered {len(analysis_tools)} analysis tools to {agent.name}")
 
-            # 🔧 ARCHITECTURE CHANGE: Leader no longer gets execution tools
-            # - Leader只负责决策（synthesize opinions, make decisions）
-            # - TradeExecutor负责执行（execute trades）
+            # ARCHITECTURE CHANGE: Leader no longer gets execution tools
+            # - Leader only makes decisions (synthesize opinions, make decisions)
+            # - TradeExecutor handles execution (execute trades)
             # - This follows Separation of Concerns principle
             if is_leader:
                 logger.info(f"Leader has NO tools - it only makes decisions, TradeExecutor handles execution")
