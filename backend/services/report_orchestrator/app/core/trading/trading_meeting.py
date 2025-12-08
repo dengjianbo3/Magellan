@@ -2243,49 +2243,49 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
         async def open_short_tool(leverage: int = None, amount_percent: float = None,
                                  confidence: int = None, reasoning: str = "") -> str:
             """
-            开空仓（做空BTC）- 完整智能仓位处理 + 保证金风险管理
+            Open short position (short BTC) - Smart position handling + margin risk management
 
-            决策矩阵:
-            - 无仓位 → 正常开空
-            - 已有空仓+可追加 → 追加空仓
-            - 已有空仓+满仓 → 维持空仓
-            - 已有多仓 → 平多→开空（反向操作）
+            Decision matrix:
+            - No position -> Normal open short
+            - Already short + can add -> Add to short
+            - Already short + full position -> Maintain short
+            - Already long -> Close long -> Open short (reverse)
 
-            风险检查:
-            - 使用真实可用保证金(考虑浮盈亏)
-            - 验证止损价格不高于强平价
-            - 保留安全缓冲
+            Risk checks:
+            - Uses true available margin (considers unrealized PnL)
+            - Validates stop loss not above liquidation price
+            - Maintains safety buffer
 
             Args:
-                leverage: 杠杆倍数 1-20 (None=基于置信度自动计算)
-                amount_percent: 仓位比例 0.0-1.0 (None=基于置信度自动计算)
-                confidence: 信心度 0-100 (None=基于投票自动计算)
-                reasoning: 决策理由
+                leverage: Leverage 1-20 (None=auto-calculate based on confidence)
+                amount_percent: Position ratio 0.0-1.0 (None=auto-calculate based on confidence)
+                confidence: Confidence 0-100 (None=auto-calculate based on votes)
+                reasoning: Decision reasoning
             """
             current_price = await get_current_price()
 
-            # 🔧 FIX: 动态计算参数，不再使用硬编码默认值
-            # 如果 confidence 未提供，基于投票动态计算
+            # 🔧 FIX: Dynamic parameter calculation, no longer using hardcoded defaults
+            # If confidence not provided, calculate based on votes
             if confidence is None:
-                # 使用 _get_agents_consensus() 获取投票字典
+                # Use _get_agents_consensus() to get votes dict
                 votes_dict = self._get_agents_consensus() if hasattr(self, '_get_agents_consensus') else {}
                 confidence = calculate_confidence_from_votes(votes_dict, direction='short')
-                logger.info(f"[open_short] confidence未提供，基于投票计算: {confidence}%")
+                logger.info(f"[open_short] confidence not provided, calculated from votes: {confidence}%")
 
-            # 如果 leverage 未提供，基于 confidence 计算
+            # If leverage not provided, calculate based on confidence
             if leverage is None:
                 leverage = calculate_leverage_from_confidence(confidence)
-                logger.info(f"[open_short] leverage未提供，基于confidence计算: {leverage}x")
+                logger.info(f"[open_short] leverage not provided, calculated from confidence: {leverage}x")
 
-            # 如果 amount_percent 未提供，基于 confidence 计算
+            # If amount_percent not provided, calculate based on confidence
             if amount_percent is None:
                 amount_percent = calculate_amount_from_confidence(confidence)
-                logger.info(f"[open_short] amount_percent未提供，基于confidence计算: {amount_percent*100:.0f}%")
+                logger.info(f"[open_short] amount_percent not provided, calculated from confidence: {amount_percent*100:.0f}%")
 
             leverage = min(max(int(leverage), 1), 20)
             amount_percent = min(max(float(amount_percent), 0.0), 1.0)
             
-            # 根据杠杆调整止盈止损比例（做空）
+            # Adjust TP/SL ratios based on leverage (for short)
             if leverage >= 15:
                 tp_percent, sl_percent = 0.05, 0.02
             elif leverage >= 10:
@@ -2295,8 +2295,8 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             else:
                 tp_percent, sl_percent = 0.10, 0.05
             
-            take_profit = current_price * (1 - tp_percent)  # 做空：价格下跌止盈
-            stop_loss = current_price * (1 + sl_percent)    # 做空：价格上涨止损
+            take_profit = current_price * (1 - tp_percent)  # Short: TP when price drops
+            stop_loss = current_price * (1 + sl_percent)    # Short: SL when price rises
             
             trade_success = False
             entry_price = current_price
@@ -2305,13 +2305,13 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             
             if toolkit and toolkit.paper_trader:
                 try:
-                    # 📊 Step 1: 收集完整状态信息
+                    # 📊 Step 1: Collect complete status info
                     position = await toolkit.paper_trader.get_position()
                     account = await toolkit.paper_trader.get_account()
                     
                     has_position = position and position.get("has_position", False)
-                    # 🔧 FIX: get_position() 返回的是平面字典，不是嵌套结构
-                    # 直接从 position 字典获取数据
+                    # 🔧 FIX: get_position() returns flat dict, not nested structure
+                    # Get data directly from position dict
                     current_direction = position.get("direction") if has_position else None
                     existing_entry = position.get("entry_price", 0) if has_position else 0
                     existing_margin = position.get("margin", 0) if has_position else 0
