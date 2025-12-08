@@ -353,6 +353,55 @@ async def call_deepseek(request: GenerateRequest) -> str:
 
 # --- Tool Calling Helper Functions ---
 
+def normalize_tools_format(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Normalize tools to OpenAI/DeepSeek compatible format
+    
+    DeepSeek requires tools to have the format:
+    {
+        "type": "function",
+        "function": {
+            "name": "...",
+            "description": "...",
+            "parameters": {...}
+        }
+    }
+    
+    Some tools may be in legacy format (without type wrapper):
+    {
+        "name": "...",
+        "description": "...",
+        "parameters": {...}
+    }
+    
+    This function converts legacy format to the required format.
+    """
+    normalized = []
+    for tool in tools:
+        if tool.get("type") == "function" and "function" in tool:
+            # Already in correct format
+            normalized.append(tool)
+        elif "name" in tool and "type" not in tool:
+            # Legacy format - wrap it
+            normalized.append({
+                "type": "function",
+                "function": {
+                    "name": tool.get("name"),
+                    "description": tool.get("description", ""),
+                    "parameters": tool.get("parameters", {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    })
+                }
+            })
+        else:
+            # Unknown format, pass through
+            print(f"[Tool Normalize] WARNING: Unknown tool format: {list(tool.keys())}")
+            normalized.append(tool)
+    
+    return normalized
+
 def convert_openai_to_gemini_tools(openai_tools: List[Dict[str, Any]]) -> List[Any]:
     """Convert OpenAI tools format to Gemini function declarations"""
     from google.genai import types
@@ -523,10 +572,12 @@ async def call_gemini_with_tools(request: ChatCompletionRequest) -> Dict[str, An
                 for i, msg in enumerate(request.messages):
                     print(f"  msg[{i}]: role={msg.role}, content={msg.content[:50] if msg.content else None}...")
 
-            # Convert tools if present
+            # Convert tools if present - normalize first to handle legacy format
             tools_config = None
             if request.tools:
-                function_declarations = convert_openai_to_gemini_tools(request.tools)
+                # Normalize tools to OpenAI format first
+                normalized_tools = normalize_tools_format(request.tools)
+                function_declarations = convert_openai_to_gemini_tools(normalized_tools)
                 if function_declarations:
                     tools_config = [types.Tool(function_declarations=function_declarations)]
                     if attempt == 0:
@@ -630,9 +681,10 @@ async def call_deepseek_with_tools(request: ChatCompletionRequest) -> Dict[str, 
             else:
                 kwargs["temperature"] = 1.0
 
-            # Add tools if present
+            # Add tools if present - normalize to OpenAI format
             if request.tools:
-                kwargs["tools"] = request.tools
+                # Normalize tools to ensure they have type: function wrapper
+                kwargs["tools"] = normalize_tools_format(request.tools)
                 if request.tool_choice:
                     kwargs["tool_choice"] = request.tool_choice
                 if attempt == 0:  # Only log on first attempt
@@ -716,9 +768,9 @@ async def call_kimi_with_tools(request: ChatCompletionRequest) -> Dict[str, Any]
                 "temperature": request.temperature if request.temperature is not None else 0.6
             }
 
-            # Add tools if present
+            # Add tools if present - normalize to OpenAI format
             if request.tools:
-                kwargs["tools"] = request.tools
+                kwargs["tools"] = normalize_tools_format(request.tools)
                 kwargs["tool_choice"] = request.tool_choice
                 if attempt == 0:  # Only log on first attempt
                     print(f"[Kimi Tool Calling] Configured {len(request.tools)} tools")
