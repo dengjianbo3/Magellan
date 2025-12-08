@@ -846,7 +846,10 @@ Use cases:
         Returns:
             订单簿分析结果
         """
+        # Normalize symbol - handle formats like BTC/USDT, BTC-USDT, BTCUSDT, BTC
         symbol = symbol.upper()
+        symbol = symbol.replace('-USDT', '').replace('/USDT', '').replace('USDT', '')
+        symbol = symbol.replace('-', '').replace('/', '').strip()
 
         try:
             # 使用带fallback的方法获取订单簿
