@@ -629,12 +629,15 @@ Now, please make your final decision. Output JSON only, no other explanation nee
         position_context: PositionContext
     ) -> TradingSignal:
         """
-        Extract decision from natural language (last resort)
+        Extract decision from natural language (DEPRECATED - last resort)
 
         Example:
         "I decide to go long BTC, 5x leverage, 50% position, TP 98000, SL 92000"
         """
 
+        self.logger.warning("[TradeExecutor] ⚠️ DEPRECATED: Using natural language extraction fallback. "
+                           "This indicates LLM did not output valid JSON. "
+                           "This fallback will be removed in future versions.")
         self.logger.info("[TradeExecutor] Extracting decision from natural language...")
 
         # Extract direction
