@@ -538,78 +538,129 @@ async def call_gemini_with_tools(request: ChatCompletionRequest) -> Dict[str, An
         raise HTTPException(status_code=500, detail=f"Gemini error: {str(e)}")
 
 async def call_deepseek_with_tools(request: ChatCompletionRequest) -> Dict[str, Any]:
-    """Call DeepSeek API with tool calling support (OpenAI compatible)"""
+    """Call DeepSeek API with tool calling support (OpenAI compatible)
+    
+    Includes retry logic for transient errors (500, rate limit, timeout, overload)
+    """
     if not deepseek_client:
         raise HTTPException(status_code=503, detail="DeepSeek client is not available")
 
-    try:
-        # Convert messages to OpenAI format
-        messages = [msg.dict(exclude_none=True) for msg in request.messages]
+    max_retries = 3
+    retry_delay = 2
 
-        # DeepSeek uses OpenAI SDK natively
-        import asyncio
-        loop = asyncio.get_event_loop()
+    for attempt in range(max_retries):
+        try:
+            # Convert messages to OpenAI format
+            messages = [msg.dict(exclude_none=True) for msg in request.messages]
 
-        # Prepare kwargs
-        kwargs = {
-            "model": settings.DEEPSEEK_MODEL_NAME,
-            "messages": messages,
-            "temperature": request.temperature if request.temperature is not None else 1.0
-        }
+            # DeepSeek uses OpenAI SDK natively
+            import asyncio
+            loop = asyncio.get_event_loop()
 
-        # Add tools if present
-        if request.tools:
-            kwargs["tools"] = request.tools
-            kwargs["tool_choice"] = request.tool_choice
-            print(f"[DeepSeek Tool Calling] Configured {len(request.tools)} tools")
+            # Prepare kwargs
+            kwargs = {
+                "model": settings.DEEPSEEK_MODEL_NAME,
+                "messages": messages,
+                "temperature": request.temperature if request.temperature is not None else 1.0
+            }
 
-        response = await loop.run_in_executor(
-            None,
-            lambda: deepseek_client.chat.completions.create(**kwargs)
-        )
+            # Add tools if present
+            if request.tools:
+                kwargs["tools"] = request.tools
+                kwargs["tool_choice"] = request.tool_choice
+                if attempt == 0:  # Only log on first attempt
+                    print(f"[DeepSeek Tool Calling] Configured {len(request.tools)} tools")
 
-        return response.model_dump()
+            response = await loop.run_in_executor(
+                None,
+                lambda: deepseek_client.chat.completions.create(**kwargs)
+            )
 
-    except Exception as e:
-        print(f"[DeepSeek Tool Calling] Error: {e}")
-        raise HTTPException(status_code=500, detail=f"DeepSeek error: {str(e)}")
+            return response.model_dump()
+
+        except Exception as e:
+            error_str = str(e)
+            
+            # Check if this is a retryable error
+            is_retryable = (
+                "500" in error_str or 
+                "503" in error_str or 
+                "rate" in error_str.lower() or 
+                "timeout" in error_str.lower() or 
+                "overloaded" in error_str.lower() or
+                "internal" in error_str.lower() or
+                "server" in error_str.lower()
+            )
+
+            if is_retryable and attempt < max_retries - 1:
+                print(f"[DeepSeek Tool Calling] Attempt {attempt + 1}/{max_retries} failed: {error_str[:100]}. Retrying in {retry_delay}s...")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+                continue
+
+            print(f"[DeepSeek Tool Calling] Error after {attempt + 1} attempts: {e}")
+            raise HTTPException(status_code=500, detail=f"DeepSeek error: {str(e)}")
 
 async def call_kimi_with_tools(request: ChatCompletionRequest) -> Dict[str, Any]:
-    """Call Kimi API with tool calling support (OpenAI compatible)"""
+    """Call Kimi API with tool calling support (OpenAI compatible)
+    
+    Includes retry logic for transient errors (500, rate limit, timeout)
+    """
     if not kimi_client:
         raise HTTPException(status_code=503, detail="Kimi client is not available")
 
-    try:
-        # Convert messages to OpenAI format
-        messages = [msg.dict(exclude_none=True) for msg in request.messages]
+    max_retries = 3
+    retry_delay = 2
 
-        # Kimi uses OpenAI SDK
-        import asyncio
-        loop = asyncio.get_event_loop()
+    for attempt in range(max_retries):
+        try:
+            # Convert messages to OpenAI format
+            messages = [msg.dict(exclude_none=True) for msg in request.messages]
 
-        # Prepare kwargs
-        kwargs = {
-            "model": settings.KIMI_MODEL_NAME,
-            "messages": messages,
-            "temperature": request.temperature if request.temperature is not None else 0.6
-        }
+            # Kimi uses OpenAI SDK
+            import asyncio
+            loop = asyncio.get_event_loop()
 
-        # Add tools if present
-        if request.tools:
-            kwargs["tools"] = request.tools
-            kwargs["tool_choice"] = request.tool_choice
-            print(f"[Kimi Tool Calling] Configured {len(request.tools)} tools")
+            # Prepare kwargs
+            kwargs = {
+                "model": settings.KIMI_MODEL_NAME,
+                "messages": messages,
+                "temperature": request.temperature if request.temperature is not None else 0.6
+            }
 
-        response = await loop.run_in_executor(
-            None,
-            lambda: kimi_client.chat.completions.create(**kwargs)
-        )
+            # Add tools if present
+            if request.tools:
+                kwargs["tools"] = request.tools
+                kwargs["tool_choice"] = request.tool_choice
+                if attempt == 0:  # Only log on first attempt
+                    print(f"[Kimi Tool Calling] Configured {len(request.tools)} tools")
 
-        return response.model_dump()
+            response = await loop.run_in_executor(
+                None,
+                lambda: kimi_client.chat.completions.create(**kwargs)
+            )
 
-    except Exception as e:
-        print(f"[Kimi Tool Calling] Error: {e}")
-        raise HTTPException(status_code=500, detail=f"Kimi error: {str(e)}")
+            return response.model_dump()
+
+        except Exception as e:
+            error_str = str(e)
+            
+            # Check if this is a retryable error
+            is_retryable = (
+                "500" in error_str or 
+                "503" in error_str or 
+                "rate" in error_str.lower() or 
+                "timeout" in error_str.lower()
+            )
+
+            if is_retryable and attempt < max_retries - 1:
+                print(f"[Kimi Tool Calling] Attempt {attempt + 1}/{max_retries} failed: {error_str[:100]}. Retrying in {retry_delay}s...")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+                continue
+
+            print(f"[Kimi Tool Calling] Error after {attempt + 1} attempts: {e}")
+            raise HTTPException(status_code=500, detail=f"Kimi error: {str(e)}")
 
 # --- API Endpoints ---
 
