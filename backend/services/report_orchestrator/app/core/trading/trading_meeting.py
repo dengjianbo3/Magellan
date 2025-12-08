@@ -2296,15 +2296,15 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                     unrealized_pnl = position.get("unrealized_pnl", 0) if has_position else 0
                     liquidation_price = position.get("liquidation_price", 0) if has_position else 0
                     
-                    # 🔧 关键修复: 优先使用 OKX 的 max_avail_size（真实可开仓金额）
+                    # 🔧 Key fix: Prioritize OKX's max_avail_size (real available margin)
                     max_avail_size = account.get("max_avail_size", 0)
 
-                    # Fallback: 本地计算
+                    # Fallback: Local calculation
                     total_equity = account.get("total_equity", 10000)
                     used_margin = account.get("used_margin", 0)
                     local_available = total_equity - used_margin
 
-                    # 使用 OKX 提供的值（如果有效）
+                    # Use OKX value if valid
                     if max_avail_size > 0:
                         true_available_margin = max_avail_size
                         margin_source = "OKX API"
@@ -2960,7 +2960,7 @@ Now, please analyze and execute your trading decision."""
         if not messages:
             return "No meeting messages"
         
-        # 从消息历史中找Leader的最后一条消息
+        # Find Leader's last message from message history
         leader_messages = [
             msg for msg in messages
             if (hasattr(msg, 'sender') and msg.sender == "Leader") or
@@ -2975,7 +2975,7 @@ Now, please analyze and execute your trading decision."""
         
         if leader_messages:
             last_msg = leader_messages[-1]
-            # 处理Message对象或dict
+            # Handle Message object or dict
             if isinstance(last_msg, dict):
                 return last_msg.get("content", "")
             elif hasattr(last_msg, 'content'):
@@ -3008,8 +3008,8 @@ Now, please analyze and execute your trading decision."""
             else:
                 base_system_prompt = agent.system_prompt or agent.role_prompt
 
-            # 🔧 FIX: 检查是否有任何有意义的记忆内容需要注入
-            # 不仅检查 total_trades，还要检查反思记录和教训
+            # 🔧 FIX: Check if there's any meaningful memory content to inject
+            # Check not only total_trades but also reflections and lessons
             has_memory_content = (
                 memory.total_trades > 0 or
                 len(memory.recent_reflections) > 0 or
@@ -3067,7 +3067,7 @@ Please reference your historical performance and lessons learned in your analysi
             # Clear previous tool executions for this agent turn
             self._last_executed_tools = []
             
-            # 🆕 Step 1: 检测原生tool_calls (OpenAI格式)
+            # Step 1: Detect native tool_calls (OpenAI format)
             native_tool_calls = []
             if isinstance(response, dict) and "choices" in response:
                 try:
@@ -3077,7 +3077,7 @@ Please reference your historical performance and lessons learned in your analysi
                     pass
             
             if native_tool_calls and hasattr(agent, 'tools') and agent.tools:
-                logger.info(f"[{agent.name}] 🎯 检测到原生Tool Calls: {len(native_tool_calls)}")
+                logger.info(f"[{agent.name}] 🎯 Detected native Tool Calls: {len(native_tool_calls)}")
                 tool_results = []
                 
                 for tc in native_tool_calls:
@@ -3134,7 +3134,7 @@ Please reference your historical performance and lessons learned in your analysi
                     elif isinstance(follow_up_response, str):
                         content = follow_up_response
             
-            # 🆕 Step 2: 检测Legacy格式 [USE_TOOL: xxx] (兼容模式)
+            # Step 2: Detect Legacy format [USE_TOOL: xxx] (compatibility mode)
             tool_pattern = r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]'
             tool_matches = re.findall(tool_pattern, content or "")
 
@@ -3172,8 +3172,8 @@ Please reference your historical performance and lessons learned in your analysi
                             f"but only Leader can execute trades in Phase 4. BLOCKING this call."
                         )
                         tool_results.append(
-                            f"\n[{tool_name}被阻止]: 权限不足 - 只有Leader在Phase 4（共识形成阶段）才能执行交易决策。"
-                            f"你现在应该只提供分析建议，不要调用决策工具。"
+                            f"\n[{tool_name} Blocked]: Insufficient permissions - only Leader can execute trade decisions in Phase 4 (consensus formation phase). "
+                            f"You should only provide analysis recommendations, do not call decision tools."
                         )
                         continue  # Skip this tool call
                     
@@ -3228,13 +3228,13 @@ Please reference your historical performance and lessons learned in your analysi
 
                             # Collect tool results
                             if isinstance(tool_result, dict) and "summary" in tool_result:
-                                tool_results.append(f"\n[{tool_name}结果]: {tool_result['summary']}")
+                                tool_results.append(f"\n[{tool_name} Result]: {tool_result['summary']}")
                             else:
-                                tool_results.append(f"\n[{tool_name}结果]: {str(tool_result)[:1000]}")
+                                tool_results.append(f"\n[{tool_name} Result]: {str(tool_result)[:1000]}")
 
                         except Exception as tool_error:
                             logger.error(f"[{agent.name}] Tool {tool_name} error: {tool_error}")
-                            tool_results.append(f"\n[{tool_name}错误]: {str(tool_error)}")
+                            tool_results.append(f"\n[{tool_name} Error]: {str(tool_error)}")
                     else:
                         logger.warning(f"[{agent.name}] Tool {tool_name} not found in agent's tools")
 
@@ -3268,7 +3268,7 @@ Please reference your historical performance and lessons learned in your analysi
                         for tool_name, _ in follow_up_tool_matches:
                             logger.warning(f"[{agent.name}] Blocked tool call in follow-up: {tool_name}")
                         # Remove all tool call markers from follow-up content
-                        content = re.sub(follow_up_tool_pattern, '[工具调用已阻止]', content)
+                        content = re.sub(follow_up_tool_pattern, '[Tool Call Blocked]', content)
                         logger.info(f"[{agent.name}] Follow-up content cleaned, tool calls removed")
             # ===== End Tool Execution =====
 
@@ -3288,8 +3288,8 @@ Please reference your historical performance and lessons learned in your analysi
             logger.error(f"Error in agent turn for {agent.name}: {e}")
             self._add_message(
                 agent_id="system",
-                agent_name="系统",
-                content=f"❌ {agent.name} 分析失败: {str(e)[:100]}",
+                agent_name="System",
+                content=f"❌ {agent.name} analysis failed: {str(e)[:100]}",
                 message_type="error"
             )
             return ""
@@ -3419,7 +3419,7 @@ Please reference your historical performance and lessons learned in your analysi
         """
         import json
 
-        # 策略1: 匹配 ```json ... ``` 代码块
+        # Strategy 1: Match ```json ... ``` code block
         json_block_match = re.search(r'```json\s*([\s\S]*?)\s*```', response, re.IGNORECASE)
         if json_block_match:
             try:
@@ -3427,7 +3427,7 @@ Please reference your historical performance and lessons learned in your analysi
             except json.JSONDecodeError:
                 pass
 
-        # 策略2: 匹配 ``` ... ``` 代码块（不带 json 标记）
+        # Strategy 2: Match ``` ... ``` code block (without json tag)
         code_block_match = re.search(r'```\s*([\s\S]*?)\s*```', response)
         if code_block_match:
             content = code_block_match.group(1).strip()
@@ -3437,7 +3437,7 @@ Please reference your historical performance and lessons learned in your analysi
                 except json.JSONDecodeError:
                     pass
 
-        # 策略3: 直接匹配 JSON 对象（找最后一个，因为结论通常在最后）
+        # Strategy 3: Direct match JSON object (find last one, as conclusion is usually at end)
         json_matches = list(re.finditer(r'\{[^{}]*"direction"[^{}]*\}', response, re.DOTALL))
         if json_matches:
             try:
@@ -3445,9 +3445,9 @@ Please reference your historical performance and lessons learned in your analysi
             except json.JSONDecodeError:
                 pass
 
-        # 策略4: 更宽松的 JSON 匹配（多层嵌套）
+        # Strategy 4: More lenient JSON matching (nested objects)
         brace_matches = list(re.finditer(r'\{[\s\S]*?\}', response))
-        for match in reversed(brace_matches):  # 从后往前尝试
+        for match in reversed(brace_matches):  # Try from back to front
             try:
                 data = json.loads(match.group())
                 if "direction" in data:
@@ -3503,32 +3503,29 @@ Please reference your historical performance and lessons learned in your analysi
             # Use improved direction parsing
             direction = self._extract_direction_from_response(response)
 
-            # Parse confidence - support both English and Chinese formats
-            # English: **Confidence**: **75%**, Confidence: 75
-            # Chinese: **信心度**: **75%** (legacy)
-            conf_match = re.search(r'\*{0,2}(?:Confidence|信心度)\*{0,2}[：:\s]*\*{0,2}(\d+)', response, re.IGNORECASE)
+            # Parse confidence - English only
+            # Format: **Confidence**: **75%**, Confidence: 75
+            conf_match = re.search(r'\*{0,2}(?:Confidence)\*{0,2}[:\s]*\*{0,2}(\d+)', response, re.IGNORECASE)
             if conf_match:
                 confidence = int(conf_match.group(1))
 
-            # Parse leverage - support both English and Chinese formats
-            # English: Leverage: 3, 3x leverage
-            # Chinese: **建议杠杆**: **3倍**, 杠杆: 3, 3倍杠杆 (legacy)
-            lev_match = re.search(r'\*{0,2}(?:Suggested\s*)?(?:Leverage|杠杆)\*{0,2}[：:\s]*\*{0,2}(\d+)', response, re.IGNORECASE)
+            # Parse leverage - English only
+            # Format: Leverage: 3, 3x leverage
+            lev_match = re.search(r'\*{0,2}(?:Suggested\s*)?(?:Leverage)\*{0,2}[:\s]*\*{0,2}(\d+)', response, re.IGNORECASE)
             if not lev_match:
-                lev_match = re.search(r'(\d+)\s*[倍x].*(?:leverage|杠杆)|(?:leverage|杠杆).*?(\d+)\s*[倍x]', response, re.IGNORECASE)
+                lev_match = re.search(r'(\d+)\s*[xX].*leverage|leverage.*?(\d+)\s*[xX]', response, re.IGNORECASE)
             if lev_match:
                 lev_value = lev_match.group(1) if lev_match.group(1) else lev_match.group(2)
                 if lev_value:
                     leverage = int(lev_value)
 
-            # Parse TP/SL - support both English and Chinese formats
-            # English: Take Profit: 5%, Stop Loss: 3%
-            # Chinese: 止盈: 5%, 止损: 3% (legacy)
-            tp_match = re.search(r'(?:Take\s*Profit|TP|止盈)[：:\s]*(\d+\.?\d*)', response, re.IGNORECASE)
+            # Parse TP/SL - English only
+            # Format: Take Profit: 5%, Stop Loss: 3%
+            tp_match = re.search(r'(?:Take\s*Profit|TP)[:\s]*(\d+\.?\d*)', response, re.IGNORECASE)
             if tp_match:
                 tp_percent = float(tp_match.group(1))
 
-            sl_match = re.search(r'(?:Stop\s*Loss|SL|止损)[：:\s]*(\d+\.?\d*)', response, re.IGNORECASE)
+            sl_match = re.search(r'(?:Stop\s*Loss|SL)[:\s]*(\d+\.?\d*)', response, re.IGNORECASE)
             if sl_match:
                 sl_percent = float(sl_match.group(1))
 
@@ -3648,17 +3645,16 @@ Please reference your historical performance and lessons learned in your analysi
             # FIX: Use improved direction parsing method to avoid long bias
             direction = self._extract_direction_from_response(response)
 
-            # Parse confidence - support both English and Chinese formats
-            conf_match = re.search(r'\*{0,2}(?:Confidence|信心度)\*{0,2}[：:\s]*(\d+)', response, re.IGNORECASE)
+            # Parse confidence - English only
+            conf_match = re.search(r'\*{0,2}(?:Confidence)\*{0,2}[:\s]*(\d+)', response, re.IGNORECASE)
             if conf_match:
                 confidence = int(conf_match.group(1))
 
-            # Parse leverage - support both English and Chinese formats
-            # English: "Leverage: 3", "**Leverage**: 3", "3x leverage"
-            # Chinese: "杠杆: 3", "**杠杆**: 3", "杠杆3倍" (legacy)
-            lev_match = re.search(r'\*{0,2}(?:Leverage|杠杆)\*{0,2}[：:\s]*(\d+)', response, re.IGNORECASE)
+            # Parse leverage - English only
+            # Format: "Leverage: 3", "**Leverage**: 3", "3x leverage"
+            lev_match = re.search(r'\*{0,2}(?:Leverage)\*{0,2}[:\s]*(\d+)', response, re.IGNORECASE)
             if not lev_match:
-                lev_match = re.search(r'(\d+)\s*[倍x].*(?:leverage|杠杆)|(?:leverage|杠杆).*?(\d+)\s*[倍x]', response, re.IGNORECASE)
+                lev_match = re.search(r'(\d+)\s*[xX].*leverage|leverage.*?(\d+)\s*[xX]', response, re.IGNORECASE)
             if lev_match:
                 lev_value = lev_match.group(1) or lev_match.group(2) if lev_match.lastindex and lev_match.lastindex > 1 else lev_match.group(1)
                 leverage = min(int(lev_value), self.config.max_leverage)
@@ -3666,19 +3662,19 @@ Please reference your historical performance and lessons learned in your analysi
             # Log parsed leverage for debugging
             logger.info(f"Parsed leverage: {leverage} (max allowed: {self.config.max_leverage})")
 
-            # Parse position size - support both English and Chinese formats
-            pos_match = re.search(r'(?:Position|仓位)[：:\s]*(\d+\.?\d*)', response, re.IGNORECASE)
+            # Parse position size - English only
+            pos_match = re.search(r'(?:Position)[:\s]*(\d+\.?\d*)', response, re.IGNORECASE)
             if pos_match:
                 raw_percent = float(pos_match.group(1)) / 100
                 amount_percent = max(self.config.min_position_percent, min(raw_percent, self.config.max_position_percent))
                 logger.info(f"Parsed position percent: {raw_percent*100:.1f}% -> clamped to {amount_percent*100:.1f}%")
 
-            # Parse TP/SL percentages - support both English and Chinese formats
-            tp_match = re.search(r'(?:Take\s*Profit|TP|止盈)[：:\s]*(\d+\.?\d*)', response, re.IGNORECASE)
+            # Parse TP/SL percentages - English only
+            tp_match = re.search(r'(?:Take\s*Profit|TP)[:\s]*(\d+\.?\d*)', response, re.IGNORECASE)
             if tp_match:
                 tp_percent = float(tp_match.group(1))
 
-            sl_match = re.search(r'(?:Stop\s*Loss|SL|止损)[：:\s]*(\d+\.?\d*)', response, re.IGNORECASE)
+            sl_match = re.search(r'(?:Stop\s*Loss|SL)[:\s]*(\d+\.?\d*)', response, re.IGNORECASE)
             if sl_match:
                 sl_percent = float(sl_match.group(1))
 
@@ -3785,7 +3781,7 @@ Please reference your historical performance and lessons learned in your analysi
             # Build consensus from votes
             consensus = {v.agent_name: v.direction for v in self._agent_votes}
 
-            full_reasoning = f"{reasoning}\n\n风险提示: {risks}" if risks else reasoning
+            full_reasoning = f"{reasoning}\n\nRisk Warning: {risks}" if risks else reasoning
 
             return TradingSignal(
                 direction=direction,

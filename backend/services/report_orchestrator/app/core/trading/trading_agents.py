@@ -117,12 +117,11 @@ def get_trading_agent_config() -> List[Dict[str, Any]]:
     if tech_config:
         agent_configs.append({
             "id": "technical_analyst",
-            "name": tech_config['name'].get('zh', '技术分析师'),
-            "name_en": tech_config['name'].get('en', 'Technical Analyst'),
-            "role": "技术面分析",
+            "name": tech_config['name'].get('en', 'Technical Analyst'),
+            "role": "Technical Analysis",
             "icon": "candlestick_chart",
-            "description": "K线形态、技术指标、支撑阻力位分析",
-            "capabilities": ["RSI/MACD分析", "K线形态识别", "趋势判断"]
+            "description": "K-line patterns, technical indicators, support/resistance analysis",
+            "capabilities": ["RSI/MACD Analysis", "K-line Pattern Recognition", "Trend Analysis"]
         })
 
     # Macro Economist
@@ -130,12 +129,11 @@ def get_trading_agent_config() -> List[Dict[str, Any]]:
     if macro_config:
         agent_configs.append({
             "id": "macro_economist",
-            "name": macro_config['name'].get('zh', '宏观经济分析师'),
-            "name_en": macro_config['name'].get('en', 'Macro Economist'),
-            "role": "宏观分析",
+            "name": macro_config['name'].get('en', 'Macro Economist'),
+            "role": "Macro Analysis",
             "icon": "public",
-            "description": "全球宏观经济、货币政策、流动性分析",
-            "capabilities": ["货币政策分析", "经济周期判断", "风险事件评估"]
+            "description": "Global macroeconomics, monetary policy, liquidity analysis",
+            "capabilities": ["Monetary Policy Analysis", "Economic Cycle Assessment", "Risk Event Evaluation"]
         })
 
     # Sentiment Analyst
@@ -143,12 +141,11 @@ def get_trading_agent_config() -> List[Dict[str, Any]]:
     if sentiment_config:
         agent_configs.append({
             "id": "sentiment_analyst",
-            "name": sentiment_config['name'].get('zh', '情绪分析师'),
-            "name_en": sentiment_config['name'].get('en', 'Sentiment Analyst'),
-            "role": "情绪分析",
+            "name": sentiment_config['name'].get('en', 'Sentiment Analyst'),
+            "role": "Sentiment Analysis",
             "icon": "psychology",
-            "description": "恐慌贪婪指数、资金费率、市场情绪分析",
-            "capabilities": ["情绪指标解读", "资金流向分析", "逆向思维"]
+            "description": "Fear/Greed Index, funding rates, market sentiment analysis",
+            "capabilities": ["Sentiment Indicator Analysis", "Fund Flow Analysis", "Contrarian Thinking"]
         })
 
     # Risk Assessor (as Risk Manager in trading context)
@@ -156,12 +153,11 @@ def get_trading_agent_config() -> List[Dict[str, Any]]:
     if risk_config:
         agent_configs.append({
             "id": "risk_assessor",
-            "name": "风险管理师",  # Override name for trading context
-            "name_en": "Risk Manager",
-            "role": "风险管理",
+            "name": "Risk Manager",
+            "role": "Risk Management",
             "icon": "shield",
-            "description": "仓位控制、止盈止损、风险评估",
-            "capabilities": ["仓位管理", "风险收益比", "资金保护"]
+            "description": "Position control, take profit/stop loss, risk assessment",
+            "capabilities": ["Position Management", "Risk/Reward Ratio", "Capital Protection"]
         })
 
     # Quant Strategist
@@ -169,12 +165,11 @@ def get_trading_agent_config() -> List[Dict[str, Any]]:
     if quant_config:
         agent_configs.append({
             "id": "quant_strategist",
-            "name": quant_config['name'].get('zh', '量化策略师'),
-            "name_en": quant_config['name'].get('en', 'Quant Strategist'),
-            "role": "量化分析",
+            "name": quant_config['name'].get('en', 'Quant Strategist'),
+            "role": "Quantitative Analysis",
             "icon": "analytics",
-            "description": "统计分析、概率计算、历史回测",
-            "capabilities": ["统计分析", "概率评估", "波动率分析"]
+            "description": "Statistical analysis, probability calculation, historical backtesting",
+            "capabilities": ["Statistical Analysis", "Probability Assessment", "Volatility Analysis"]
         })
 
     return agent_configs

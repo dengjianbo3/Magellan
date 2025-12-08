@@ -254,7 +254,7 @@ After tool execution, you will receive results to continue the discussion.
             tools_schema = self.get_tools_schema()
 
             request_data = {
-                "messages": messages,  # 直接传递 OpenAI 格式的 messages
+                "messages": messages,  # Pass OpenAI format messages directly
                 "tools": tools_schema,
                 "tool_choice": "auto",
                 "temperature": self.temperature
@@ -523,8 +523,8 @@ After tool execution, you will receive results to continue the discussion.
         """
         content_lower = content.lower()
 
-        # Detect private message intent (Chinese keywords kept for backward compatibility)
-        if "私聊" in content or "私下" in content or "单独" in content:
+        # Detect private message intent (English only)
+        if "private" in content_lower or "privately" in content_lower:
             # Try to extract target Agent
             for agent_name in self.message_bus.registered_agents:
                 if agent_name.lower() in content_lower and agent_name != self.name:
@@ -532,7 +532,7 @@ After tool execution, you will receive results to continue the discussion.
             return (MessageType.PRIVATE, "ALL")
 
         # Detect question intent
-        if "@" in content or "请问" in content or "想问" in content:
+        if "@" in content or "question" in content_lower or "ask" in content_lower:
             # Try to extract target Agent
             for agent_name in self.message_bus.registered_agents:
                 if agent_name in content and agent_name != self.name:
@@ -540,9 +540,9 @@ After tool execution, you will receive results to continue the discussion.
             return (MessageType.QUESTION, "ALL")
 
         # Detect agreement/disagreement
-        if "同意" in content or "赞同" in content:
+        if "agree" in content_lower or "concur" in content_lower:
             return (MessageType.AGREEMENT, "ALL")
-        if "不同意" in content or "反对" in content:
+        if "disagree" in content_lower or "oppose" in content_lower:
             return (MessageType.DISAGREEMENT, "ALL")
 
         # Default to broadcast message
@@ -691,15 +691,12 @@ Please use tools to obtain necessary data to support your analysis."""
     def _extract_score(self, content: str) -> float:
         """Extract score from analysis content"""
         import re
-        # Try to match "Score: 8/10" or "Rating: 8" etc. formats
+        # Try to match "Score: 8/10" or "Rating: 8" etc. formats (English only)
         score_patterns = [
-            r'评分[::：]\s*(\d+\.?\d*)',  # Chinese: 评分
-            r'得分[::：]\s*(\d+\.?\d*)',  # Chinese: 得分
-            r'分数[::：]\s*(\d+\.?\d*)',  # Chinese: 分数
-            r'[Ss]core[::：]\s*(\d+\.?\d*)',  # English: Score
-            r'[Rr]ating[::：]\s*(\d+\.?\d*)',  # English: Rating
+            r'[Ss]core[::]\s*(\d+\.?\d*)',  # Score
+            r'[Rr]ating[::]\s*(\d+\.?\d*)',  # Rating
             r'(\d+\.?\d*)/10',
-            r'(\d+\.?\d*)分'  # X分 format
+            r'(\d+\.?\d*)\s*out of\s*10',  # X out of 10 format
         ]
         for pattern in score_patterns:
             match = re.search(pattern, content)
@@ -711,14 +708,14 @@ Please use tools to obtain necessary data to support your analysis."""
     def _extract_recommendation(self, content: str) -> str:
         """Extract recommendation from analysis content"""
         content_lower = content.lower()
-        # Check for buy recommendation (Chinese and English)
-        if "建议投资" in content or "推荐买入" in content or "recommend buy" in content_lower:
+        # Check for buy recommendation (English only)
+        if "recommend buy" in content_lower or "recommend investment" in content_lower:
             return "BUY"
         # Check for hold recommendation
-        elif "建议观察" in content or "继续关注" in content or "hold" in content_lower or "watch" in content_lower:
+        elif "hold" in content_lower or "watch" in content_lower or "observe" in content_lower:
             return "HOLD"
         # Check for pass recommendation
-        elif "不建议" in content or "建议放弃" in content or "not recommend" in content_lower or "pass" in content_lower:
+        elif "not recommend" in content_lower or "pass" in content_lower or "avoid" in content_lower:
             return "PASS"
         else:
             return "FURTHER_DD"
