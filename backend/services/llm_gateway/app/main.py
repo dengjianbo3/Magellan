@@ -498,44 +498,87 @@ def convert_gemini_to_openai_response(gemini_response: Any, model_name: str) -> 
 # --- Tool Calling Functions ---
 
 async def call_gemini_with_tools(request: ChatCompletionRequest) -> Dict[str, Any]:
-    """Call Gemini API with tool calling support"""
+    """Call Gemini API with tool calling support
+    
+    Includes retry logic for transient errors (503, server overload)
+    """
     from google.genai import types
+    import traceback
 
     if not gemini_client:
         raise HTTPException(status_code=503, detail="Gemini client is not available")
 
-    # Convert messages
-    contents = convert_openai_to_gemini_messages(request.messages)
+    max_retries = 3
+    retry_delay = 2
 
-    # Convert tools if present
-    tools_config = None
-    if request.tools:
-        function_declarations = convert_openai_to_gemini_tools(request.tools)
-        if function_declarations:
-            tools_config = [types.Tool(function_declarations=function_declarations)]
-            print(f"[Gemini Tool Calling] Configured {len(function_declarations)} tools")
+    for attempt in range(max_retries):
+        try:
+            # Convert messages
+            contents = convert_openai_to_gemini_messages(request.messages)
+            
+            # Check if contents is empty
+            if not contents:
+                print(f"[Gemini Tool Calling] WARNING: Empty contents after conversion!")
+                print(f"[Gemini Tool Calling] Original messages count: {len(request.messages)}")
+                for i, msg in enumerate(request.messages):
+                    print(f"  msg[{i}]: role={msg.role}, content={msg.content[:50] if msg.content else None}...")
 
-    # Build config
-    config_dict = {}
-    if tools_config:
-        config_dict["tools"] = tools_config
-    if request.temperature is not None:
-        config_dict["temperature"] = request.temperature
+            # Convert tools if present
+            tools_config = None
+            if request.tools:
+                function_declarations = convert_openai_to_gemini_tools(request.tools)
+                if function_declarations:
+                    tools_config = [types.Tool(function_declarations=function_declarations)]
+                    if attempt == 0:
+                        print(f"[Gemini Tool Calling] Configured {len(function_declarations)} tools, contents: {len(contents)}")
 
-    config = types.GenerateContentConfig(**config_dict) if config_dict else None
+            # Build config
+            config_dict = {}
+            if tools_config:
+                config_dict["tools"] = tools_config
+            if request.temperature is not None:
+                config_dict["temperature"] = request.temperature
 
-    try:
-        response = gemini_client.models.generate_content(
-            model=settings.GEMINI_MODEL_NAME,
-            contents=contents,
-            config=config
-        )
+            config = types.GenerateContentConfig(**config_dict) if config_dict else None
 
-        return convert_gemini_to_openai_response(response, settings.GEMINI_MODEL_NAME)
+            response = gemini_client.models.generate_content(
+                model=settings.GEMINI_MODEL_NAME,
+                contents=contents,
+                config=config
+            )
 
-    except Exception as e:
-        print(f"[Gemini Tool Calling] Error: {e}")
-        raise HTTPException(status_code=500, detail=f"Gemini error: {str(e)}")
+            return convert_gemini_to_openai_response(response, settings.GEMINI_MODEL_NAME)
+
+        except Exception as e:
+            from google.genai.errors import ServerError
+            
+            error_str = str(e)
+            error_type = type(e).__name__
+            
+            # Log detailed error
+            print(f"[Gemini Tool Calling] Error Type: {error_type}")
+            print(f"[Gemini Tool Calling] Error Details: {error_str[:500]}")
+            
+            # Check if this is a retryable error
+            is_503_error = (isinstance(e, ServerError) and hasattr(e, 'status_code') and e.status_code == 503)
+            is_retryable = (
+                is_503_error or
+                "503" in error_str or
+                "overloaded" in error_str.lower() or
+                "quota" in error_str.lower() or
+                "rate" in error_str.lower()
+            )
+
+            if is_retryable and attempt < max_retries - 1:
+                import asyncio
+                print(f"[Gemini Tool Calling] Attempt {attempt + 1}/{max_retries} failed. Retrying in {retry_delay}s...")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2
+                continue
+
+            print(f"[Gemini Tool Calling] Final failure after {attempt + 1} attempts:")
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Gemini error ({error_type}): {error_str[:200]}")
 
 async def call_deepseek_with_tools(request: ChatCompletionRequest) -> Dict[str, Any]:
     """Call DeepSeek API with tool calling support (OpenAI compatible)
