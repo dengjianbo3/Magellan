@@ -3813,87 +3813,87 @@ Please reference your historical performance and lessons learned in your analysi
         This provides a neutral, conservative response to keep the meeting going.
         """
         fallback_responses = {
-            "MacroEconomist": """## 宏观经济分析 (数据获取受限)
+            "MacroEconomist": """## Macroeconomic Analysis (Data Limited)
 
-我是**宏观经济分析师「全球视野」**。
+I am the **Macro Economist "Global Perspective"**.
 
-由于数据获取暂时受限，我基于历史经验提供以下分析框架：
+Due to temporary data access limitations, I provide the following analysis framework based on historical experience:
 
-### 宏观评分: 5/10 (中性)
+### Macro Score: 5/10 (Neutral)
 
-### 当前观察要点:
-1. **利率环境**: 全球央行货币政策仍需关注
-2. **流动性状况**: 市场流动性变化可能影响加密资产
-3. **美元指数**: 美元走势与BTC通常呈负相关
+### Key Observations:
+1. **Interest Rate Environment**: Global central bank monetary policies require attention
+2. **Liquidity Conditions**: Market liquidity changes may impact crypto assets
+3. **US Dollar Index**: USD typically has negative correlation with BTC
 
-### 宏观面建议:
-- 建议方向: **观望**
-- 当前宏观环境不确定性较高
-- 建议等待更明确的宏观信号
+### Macro Recommendation:
+- Direction: **Hold**
+- Current macro environment uncertainty is high
+- Recommend waiting for clearer macro signals
 
-### 风险提示:
-宏观数据获取受限，建议更多依赖技术面和情绪面分析做出交易决策。""",
+### Risk Note:
+Macro data access is limited, recommend relying more on technical and sentiment analysis for trading decisions.""",
 
-            "TechnicalAnalyst": """## 技术分析 (数据获取受限)
+            "TechnicalAnalyst": """## Technical Analysis (Data Limited)
 
-我是**技术分析师「图表大师」**。
+I am the **Technical Analyst "Chart Master"**.
 
-由于技术数据获取暂时受限，建议参考以下分析框架：
+Due to temporary technical data access limitations, please refer to the following framework:
 
-### 技术评分: 5/10 (中性)
+### Technical Score: 5/10 (Neutral)
 
-### 建议:
-- 等待数据恢复后再进行详细技术分析
-- 短期内建议观望""",
+### Recommendation:
+- Wait for data recovery before detailed technical analysis
+- Short-term recommendation is to hold""",
 
-            "SentimentAnalyst": """## 情绪分析 (数据获取受限)
+            "SentimentAnalyst": """## Sentiment Analysis (Data Limited)
 
-我是**情绪分析专家「人心洞察」**。
+I am the **Sentiment Analyst "Market Pulse"**.
 
-由于情绪数据获取暂时受限，提供以下参考：
+Due to temporary sentiment data access limitations, here is a reference:
 
-### 情绪评分: 5/10 (中性)
+### Sentiment Score: 5/10 (Neutral)
 
-### 建议:
-- 当前无法获取实时恐慌贪婪指数
-- 建议参考其他专家意见
-- 短期内持谨慎态度""",
+### Recommendation:
+- Currently unable to obtain real-time Fear & Greed Index
+- Recommend referring to other expert opinions
+- Short-term stance should be cautious""",
 
-            "QuantStrategist": """## 量化分析 (数据获取受限)
+            "QuantStrategist": """## Quantitative Analysis (Data Limited)
 
-我是**量化策略师「数据猎手」**。
+I am the **Quant Strategist "Data Hunter"**.
 
-由于量化数据获取暂时受限：
+Due to temporary quant data access limitations:
 
-### 量化评分: 5/10 (中性)
+### Quant Score: 5/10 (Neutral)
 
-### 建议:
-- 数据不足，无法提供量化信号
-- 建议观望等待数据恢复""",
+### Recommendation:
+- Insufficient data, unable to provide quant signals
+- Recommend holding and waiting for data recovery""",
 
-            "RiskAssessor": """## 风险评估 (审慎模式)
+            "RiskAssessor": """## Risk Assessment (Cautious Mode)
 
-我是**风险评估师「稳健守护」**。
+I am the **Risk Assessor "Prudent Guardian"**.
 
-由于部分数据获取受限，启用审慎模式：
+Due to partial data access limitations, enabling cautious mode:
 
-### 风险评级: 中高
+### Risk Level: Medium-High
 
-### 建议:
-- 建议降低仓位比例
-- 适当降低杠杆倍数
-- 设置更严格的止损
+### Recommendations:
+- Recommend reducing position size
+- Lower leverage appropriately
+- Set stricter stop losses
 
-### 风险管理建议:
-数据不完整时应采取更保守的交易策略。"""
+### Risk Management Advice:
+A more conservative trading strategy should be adopted when data is incomplete."""
         }
 
-        return fallback_responses.get(agent_id, f"""## {agent_name} 分析 (数据受限)
+        return fallback_responses.get(agent_id, f"""## {agent_name} Analysis (Data Limited)
 
-由于数据获取暂时受限，无法提供完整分析。
+Due to temporary data access limitations, unable to provide complete analysis.
 
-### 建议: 观望
-### 信心度: 50%
+### Recommendation: Hold
+### Confidence: 50%
 
-建议参考其他专家意见做出决策。""")
+Recommend referring to other expert opinions for decision making.""")
     
