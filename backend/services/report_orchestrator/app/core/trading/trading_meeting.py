@@ -2016,38 +2016,38 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             
             if toolkit and toolkit.paper_trader:
                 try:
-                    # 📊 Step 1: 收集完整状态信息
+                    # 📊 Step 1: Collect complete status info
                     position = await toolkit.paper_trader.get_position()
                     account = await toolkit.paper_trader.get_account()
                     
                     has_position = position and position.get("has_position", False)
-                    # 🔧 FIX: get_position() 返回的是平面字典，不是嵌套结构
-                    # 直接从 position 字典获取数据
+                    # 🔧 FIX: get_position() returns flat dict, not nested structure
+                    # Get data directly from position dict
                     current_direction = position.get("direction") if has_position else None
                     existing_entry = position.get("entry_price", 0) if has_position else 0
                     existing_margin = position.get("margin", 0) if has_position else 0
                     unrealized_pnl = position.get("unrealized_pnl", 0) if has_position else 0
                     liquidation_price = position.get("liquidation_price", 0) if has_position else 0
                     
-                    # 🔧 关键修复: 优先使用 OKX 的 max_avail_size（真实可开仓金额）
-                    # max_avail_size 是 OKX 通过 /api/v5/account/max-avail-size 返回的
-                    # 考虑了维持保证金、初始保证金率等因素，比本地计算更准确
+                    # 🔧 Key fix: Prioritize OKX's max_avail_size (real available margin)
+                    # max_avail_size is from OKX /api/v5/account/max-avail-size
+                    # Considers maintenance margin, initial margin rate etc, more accurate than local calc
                     max_avail_size = account.get("max_avail_size", 0)
 
-                    # Fallback: 本地计算 true_available_margin = total_equity - used_margin
+                    # Fallback: Local calc true_available_margin = total_equity - used_margin
                     total_equity = account.get("total_equity", 10000)
                     used_margin = account.get("used_margin", 0)
                     local_available = total_equity - used_margin
 
-                    # 使用 OKX 提供的值（如果有效），否则使用本地计算
+                    # Use OKX value if valid, otherwise use local calculation
                     if max_avail_size > 0:
                         true_available_margin = max_avail_size
                         margin_source = "OKX API"
                     else:
                         true_available_margin = local_available
-                        margin_source = "本地计算"
+                        margin_source = "Local calc"
 
-                    # 兼容旧接口
+                    # Backward compatibility
                     if true_available_margin <= 0:
                         true_available_margin = account.get("true_available_margin", local_available)
 
@@ -2055,29 +2055,29 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                     total_equity = account.get("total_equity", available_balance)
                     used_margin = account.get("used_margin", 0)
 
-                    # 🔧 可追加条件: 真实可用保证金 >= 最小金额 + 安全缓冲
+                    # 🔧 Add condition: true_available_margin >= min_amount + safety_buffer
                     can_add = true_available_margin >= (MIN_ADD_AMOUNT + SAFETY_BUFFER)
 
-                    logger.info(f"[TradeExecutor] 📊 状态: 仓位={current_direction or '无'}, "
-                               f"可用保证金=${true_available_margin:.2f}({margin_source}), "
-                               f"账户余额=${available_balance:.2f}, 已用=${used_margin:.2f}, "
-                               f"浮盈亏=${unrealized_pnl:.2f}, 可追加={can_add}")
+                    logger.info(f"[TradeExecutor] 📊 Status: position={current_direction or 'none'}, "
+                               f"available_margin=${true_available_margin:.2f}({margin_source}), "
+                               f"balance=${available_balance:.2f}, used=${used_margin:.2f}, "
+                               f"unrealized_pnl=${unrealized_pnl:.2f}, can_add={can_add}")
                     
-                    # 📌 场景1: 已有多仓（同方向）
+                    # 📌 Scenario 1: Already have long position (same direction)
                     if current_direction == "long":
                         if can_add:
-                            # 场景1a: 可追加 → 追加多仓
-                            # 🔧 使用 true_available_margin（考虑浮盈亏）
+                            # Scenario 1a: Can add -> Add to long position
+                            # 🔧 Use true_available_margin (considers unrealized PnL)
                             add_amount = min(
                                 true_available_margin * amount_percent,
-                                true_available_margin - SAFETY_BUFFER  # 保留安全缓冲
+                                true_available_margin - SAFETY_BUFFER  # Keep safety buffer
                             )
-                            add_amount = max(add_amount, 0)  # 确保非负
+                            add_amount = max(add_amount, 0)  # Ensure non-negative
                             
                             if add_amount >= MIN_ADD_AMOUNT:
-                                logger.info(f"[TradeExecutor] 🔄 已有多仓，追加${add_amount:.2f} (真实可用${true_available_margin:.2f})")
+                                logger.info(f"[TradeExecutor] 🔄 Already have long, adding ${add_amount:.2f} (available ${true_available_margin:.2f})")
                                 
-                                # 🔧 验证止损价格安全性
+                                # 🔧 Validate stop loss safety
                                 is_safe, sl_msg, safe_sl = validate_stop_loss("long", current_price, stop_loss, leverage, add_amount)
                                 if not is_safe:
                                     logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
@@ -2095,47 +2095,47 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                     trade_success = True
                                     action_taken = "add_to_long"
                                     entry_price = result.get("executed_price", current_price)
-                                    final_reasoning = f"追加多仓成功: 原仓入场${existing_entry:.2f}, 追加${add_amount:.2f}(浮盈亏${unrealized_pnl:.2f})。{reasoning}"
-                                    logger.info(f"[TradeExecutor] ✅ 追加多仓成功")
+                                    final_reasoning = f"Add to long success: original entry ${existing_entry:.2f}, added ${add_amount:.2f}(unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
+                                    logger.info(f"[TradeExecutor] ✅ Add to long success")
                                 else:
-                                    # 追加失败，维持原仓
+                                    # Add failed, maintain original position
                                     trade_success = True
                                     action_taken = "maintain_long"
                                     entry_price = existing_entry
-                                    final_reasoning = f"追加失败({result.get('error')}), 维持原多仓(入场${existing_entry:.2f})。{reasoning}"
+                                    final_reasoning = f"Add failed({result.get('error')}), maintaining long (entry ${existing_entry:.2f}). {reasoning}"
                             else:
-                                # 追加金额太小
+                                # Add amount too small
                                 trade_success = True
                                 action_taken = "maintain_long_small"
                                 entry_price = existing_entry
-                                final_reasoning = f"追加金额太小(${add_amount:.2f}<${MIN_ADD_AMOUNT}), 维持原多仓(浮盈亏${unrealized_pnl:.2f})。{reasoning}"
+                                final_reasoning = f"Add amount too small (${add_amount:.2f}<${MIN_ADD_AMOUNT}), maintaining long (unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
                         else:
-                            # 场景1b: 满仓或接近强平 → 维持多仓
+                            # Scenario 1b: Full position or near liquidation -> Maintain long
                             trade_success = True
                             action_taken = "maintain_long_full"
                             entry_price = existing_entry
-                            # 检查是否接近强平
+                            # Check if near liquidation
                             if liquidation_price > 0 and current_price < liquidation_price * 1.1:
-                                final_reasoning = f"⚠️ 接近强平(强平价${liquidation_price:.2f}), 维持多仓(浮亏${unrealized_pnl:.2f})。{reasoning}"
+                                final_reasoning = f"⚠️ Near liquidation (liq price ${liquidation_price:.2f}), maintaining long (unrealized loss ${unrealized_pnl:.2f}). {reasoning}"
                             else:
-                                final_reasoning = f"已满仓(真实可用${true_available_margin:.2f}), 维持多仓(入场${existing_entry:.2f}, 浮盈亏${unrealized_pnl:.2f})。{reasoning}"
-                            logger.info(f"[TradeExecutor] ✅ 已满仓/不可追加，维持多仓不变")
+                                final_reasoning = f"Full position (available ${true_available_margin:.2f}), maintaining long (entry ${existing_entry:.2f}, unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
+                            logger.info(f"[TradeExecutor] ✅ Full position/cannot add, maintaining long")
                     
-                    # 📌 场景2: 已有空仓（反方向）→ 平空→开多
+                    # 📌 Scenario 2: Have short position (opposite direction) -> Close short -> Open long
                     elif current_direction == "short":
-                        logger.info(f"[TradeExecutor] 🔄 反向操作: 平空→开多 (空仓浮盈亏${unrealized_pnl:.2f})")
+                        logger.info(f"[TradeExecutor] 🔄 Reverse operation: close short -> open long (short unrealized PnL ${unrealized_pnl:.2f})")
                         
-                        # 先平空仓
+                        # Close short position first
                         close_result = await toolkit.paper_trader.close_position(
                             symbol="BTC-USDT-SWAP",
-                            reason="反向操作：空转多"
+                            reason="Reverse: short to long"
                         )
                         
                         if close_result.get("success"):
                             pnl = close_result.get("pnl", 0)
-                            logger.info(f"[TradeExecutor] ✅ 平空仓成功, PnL=${pnl:.2f}")
+                            logger.info(f"[TradeExecutor] ✅ Close short success, PnL=${pnl:.2f}")
                             
-                            # 🔧 重新获取真实可用保证金（平仓后余额变化）
+                            # 🔧 Re-get true available margin (balance changed after closing)
                             account = await toolkit.paper_trader.get_account()
                             new_true_available = account.get("true_available_margin", 0)
                             if new_true_available <= 0:
@@ -2148,13 +2148,13 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                             amount_usdt = max(amount_usdt, 0)
                             
                             if amount_usdt >= MIN_ADD_AMOUNT:
-                                # 🔧 验证止损价格安全性
+                                # 🔧 Validate stop loss safety
                                 is_safe, sl_msg, safe_sl = validate_stop_loss("long", current_price, stop_loss, leverage, amount_usdt)
                                 if not is_safe:
                                     logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
                                     stop_loss = safe_sl
                                 
-                                # 开多仓
+                                # Open long position
                                 result = await toolkit.paper_trader.open_long(
                                     symbol="BTC-USDT-SWAP",
                                     leverage=leverage,
@@ -2166,24 +2166,24 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                     trade_success = True
                                     action_taken = "reverse_short_to_long"
                                     entry_price = result.get("executed_price", current_price)
-                                    final_reasoning = f"反向成功: 平空(PnL=${pnl:.2f})→开多${amount_usdt:.2f}。{reasoning}"
-                                    logger.info(f"[TradeExecutor] ✅ 反向开多成功")
+                                    final_reasoning = f"Reverse success: closed short (PnL=${pnl:.2f}) -> opened long ${amount_usdt:.2f}. {reasoning}"
+                                    logger.info(f"[TradeExecutor] ✅ Reverse to long success")
                                 else:
-                                    trade_success = True  # 平仓成功算部分成功
+                                    trade_success = True  # Close success counts as partial success
                                     action_taken = "close_short_only"
                                     entry_price = current_price
-                                    final_reasoning = f"平空成功(PnL=${pnl:.2f}), 但开多失败({result.get('error')})。{reasoning}"
+                                    final_reasoning = f"Close short success (PnL=${pnl:.2f}), but open long failed ({result.get('error')}). {reasoning}"
                             else:
                                 trade_success = True
                                 action_taken = "close_short_insufficient"
                                 entry_price = current_price
-                                final_reasoning = f"平空成功(PnL=${pnl:.2f}), 但余额不足开多(真实可用${new_true_available:.2f})。{reasoning}"
+                                final_reasoning = f"Close short success (PnL=${pnl:.2f}), but insufficient balance for long (available ${new_true_available:.2f}). {reasoning}"
                         else:
-                            final_reasoning = f"平空仓失败: {close_result.get('error')}。{reasoning}"
+                            final_reasoning = f"Close short failed: {close_result.get('error')}. {reasoning}"
                     
-                    # 📌 场景3: 无仓位 → 正常开多
+                    # 📌 Scenario 3: No position -> Normal open long
                     else:
-                        # 🔧 使用 true_available_margin
+                        # 🔧 Use true_available_margin
                         amount_usdt = min(
                             true_available_margin * amount_percent,
                             true_available_margin - SAFETY_BUFFER
@@ -2191,13 +2191,13 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                         amount_usdt = max(amount_usdt, 0)
                         
                         if amount_usdt >= MIN_ADD_AMOUNT:
-                            # 🔧 验证止损价格安全性
+                            # 🔧 Validate stop loss safety
                             is_safe, sl_msg, safe_sl = validate_stop_loss("long", current_price, stop_loss, leverage, amount_usdt)
                             if not is_safe:
                                 logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
                                 stop_loss = safe_sl
                             
-                            logger.info(f"[TradeExecutor] 📈 正常开多: ${amount_usdt:.2f}, {leverage}x (真实可用${true_available_margin:.2f})")
+                            logger.info(f"[TradeExecutor] 📈 Normal open long: ${amount_usdt:.2f}, {leverage}x (available ${true_available_margin:.2f})")
                             
                             result = await toolkit.paper_trader.open_long(
                                 symbol="BTC-USDT-SWAP",
@@ -2211,18 +2211,18 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                 trade_success = True
                                 action_taken = "new_long"
                                 entry_price = result.get("executed_price", current_price)
-                                final_reasoning = f"开多成功: ${amount_usdt:.2f}, {leverage}x杠杆, 止损${stop_loss:.2f}。{reasoning}"
-                                logger.info(f"[TradeExecutor] ✅ 开多仓成功: 入场价${entry_price:.2f}")
+                                final_reasoning = f"Open long success: ${amount_usdt:.2f}, {leverage}x leverage, SL ${stop_loss:.2f}. {reasoning}"
+                                logger.info(f"[TradeExecutor] ✅ Open long success: entry ${entry_price:.2f}")
                             else:
-                                final_reasoning = f"开多失败: {result.get('error')}。{reasoning}"
+                                final_reasoning = f"Open long failed: {result.get('error')}. {reasoning}"
                         else:
-                            final_reasoning = f"余额不足(${available_balance:.2f}), 无法开仓。{reasoning}"
+                            final_reasoning = f"Insufficient balance (${available_balance:.2f}), cannot open position. {reasoning}"
                         
                 except Exception as e:
-                    logger.error(f"[TradeExecutor] 开多仓异常: {e}", exc_info=True)
-                    final_reasoning = f"执行异常: {e}。{reasoning}"
+                    logger.error(f"[TradeExecutor] Open long exception: {e}", exc_info=True)
+                    final_reasoning = f"Execution exception: {e}. {reasoning}"
             
-            # 保存TradingSignal
+            # Save TradingSignal
             execution_result["signal"] = TradingSignal(
                 direction="long",
                 symbol="BTC-USDT-SWAP",
@@ -2232,13 +2232,13 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                 take_profit_price=take_profit,
                 stop_loss_price=stop_loss,
                 confidence=confidence,
-                reasoning=final_reasoning or f"TradeExecutor决定做多({action_taken})",
+                reasoning=final_reasoning or f"TradeExecutor decided long ({action_taken})",
                 agents_consensus={},
                 timestamp=datetime.now()
             )
             
-            status = "成功" if trade_success else "失败"
-            return f"✅ 做多{status}({action_taken}): {leverage}x杠杆, {amount_percent*100:.0f}%仓位, 入场价${entry_price:,.2f}"
+            status = "Success" if trade_success else "Failed"
+            return f"✅ Long {status}({action_taken}): {leverage}x leverage, {amount_percent*100:.0f}% position, entry ${entry_price:,.2f}"
         
         async def open_short_tool(leverage: int = None, amount_percent: float = None,
                                  confidence: int = None, reasoning: str = "") -> str:
