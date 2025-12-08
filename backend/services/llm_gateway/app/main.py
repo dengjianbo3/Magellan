@@ -583,6 +583,11 @@ async def call_gemini_with_tools(request: ChatCompletionRequest) -> Dict[str, An
 async def call_deepseek_with_tools(request: ChatCompletionRequest) -> Dict[str, Any]:
     """Call DeepSeek API with tool calling support (OpenAI compatible)
     
+    Supports:
+    - deepseek-chat: Standard tool calling
+    - deepseek-reasoner: Thinking mode with tool calling (V3.2+)
+    - Strict mode (Beta): Use base_url/beta for stricter schema validation
+    
     Includes retry logic for transient errors (500, rate limit, timeout, overload)
     """
     if not deepseek_client:
@@ -595,6 +600,9 @@ async def call_deepseek_with_tools(request: ChatCompletionRequest) -> Dict[str, 
     import asyncio
     import traceback
 
+    # Check if using Reasoner model (thinking mode)
+    is_reasoner = "reasoner" in settings.DEEPSEEK_MODEL_NAME.lower()
+    
     for attempt in range(max_retries):
         try:
             # Convert messages to OpenAI format - handle potential issues
@@ -611,15 +619,24 @@ async def call_deepseek_with_tools(request: ChatCompletionRequest) -> Dict[str, 
             kwargs = {
                 "model": settings.DEEPSEEK_MODEL_NAME,
                 "messages": messages,
-                "temperature": request.temperature if request.temperature is not None else 1.0
             }
+            
+            # Temperature handling: Reasoner mode might have different defaults
+            if request.temperature is not None:
+                kwargs["temperature"] = request.temperature
+            elif is_reasoner:
+                # Reasoner mode: recommended to use default or lower temperature
+                kwargs["temperature"] = 0.7
+            else:
+                kwargs["temperature"] = 1.0
 
             # Add tools if present
             if request.tools:
                 kwargs["tools"] = request.tools
-                kwargs["tool_choice"] = request.tool_choice
+                if request.tool_choice:
+                    kwargs["tool_choice"] = request.tool_choice
                 if attempt == 0:  # Only log on first attempt
-                    print(f"[DeepSeek Tool Calling] Configured {len(request.tools)} tools, messages: {len(messages)}")
+                    print(f"[DeepSeek Tool Calling] Model: {settings.DEEPSEEK_MODEL_NAME}, Reasoner: {is_reasoner}, Tools: {len(request.tools)}, Messages: {len(messages)}")
 
             # Use run_in_executor for sync OpenAI SDK call
             loop = asyncio.get_event_loop()
@@ -628,7 +645,16 @@ async def call_deepseek_with_tools(request: ChatCompletionRequest) -> Dict[str, 
                 lambda: deepseek_client.chat.completions.create(**kwargs)
             )
 
-            return response.model_dump()
+            result = response.model_dump()
+            
+            # For Reasoner mode, the response may contain reasoning in a different format
+            # Log if there's reasoning content
+            if is_reasoner and attempt == 0:
+                choices = result.get("choices", [])
+                if choices and choices[0].get("message", {}).get("reasoning_content"):
+                    print(f"[DeepSeek Reasoner] Response includes reasoning content")
+            
+            return result
 
         except Exception as e:
             error_str = str(e)
