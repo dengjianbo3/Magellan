@@ -547,15 +547,22 @@ async def call_deepseek_with_tools(request: ChatCompletionRequest) -> Dict[str, 
 
     max_retries = 3
     retry_delay = 2
+    
+    # Import asyncio at function level to avoid issues
+    import asyncio
+    import traceback
 
     for attempt in range(max_retries):
         try:
-            # Convert messages to OpenAI format
-            messages = [msg.dict(exclude_none=True) for msg in request.messages]
-
-            # DeepSeek uses OpenAI SDK natively
-            import asyncio
-            loop = asyncio.get_event_loop()
+            # Convert messages to OpenAI format - handle potential issues
+            messages = []
+            for msg in request.messages:
+                msg_dict = msg.dict(exclude_none=True)
+                # DeepSeek requires content field, but OpenAI allows None when tool_calls present
+                # Fix: If content is None but role is "assistant" with tool_calls, set content to empty string
+                if msg_dict.get("role") == "assistant" and msg_dict.get("tool_calls") and msg_dict.get("content") is None:
+                    msg_dict["content"] = ""
+                messages.append(msg_dict)
 
             # Prepare kwargs
             kwargs = {
@@ -569,8 +576,10 @@ async def call_deepseek_with_tools(request: ChatCompletionRequest) -> Dict[str, 
                 kwargs["tools"] = request.tools
                 kwargs["tool_choice"] = request.tool_choice
                 if attempt == 0:  # Only log on first attempt
-                    print(f"[DeepSeek Tool Calling] Configured {len(request.tools)} tools")
+                    print(f"[DeepSeek Tool Calling] Configured {len(request.tools)} tools, messages: {len(messages)}")
 
+            # Use run_in_executor for sync OpenAI SDK call
+            loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,
                 lambda: deepseek_client.chat.completions.create(**kwargs)
@@ -580,6 +589,11 @@ async def call_deepseek_with_tools(request: ChatCompletionRequest) -> Dict[str, 
 
         except Exception as e:
             error_str = str(e)
+            error_type = type(e).__name__
+            
+            # Log detailed error information
+            print(f"[DeepSeek Tool Calling] Error Type: {error_type}")
+            print(f"[DeepSeek Tool Calling] Error Details: {error_str[:500]}")
             
             # Check if this is a retryable error
             is_retryable = (
@@ -589,17 +603,22 @@ async def call_deepseek_with_tools(request: ChatCompletionRequest) -> Dict[str, 
                 "timeout" in error_str.lower() or 
                 "overloaded" in error_str.lower() or
                 "internal" in error_str.lower() or
-                "server" in error_str.lower()
+                "server" in error_str.lower() or
+                "connection" in error_str.lower() or
+                "APIConnectionError" in error_type or
+                "InternalServerError" in error_type
             )
 
             if is_retryable and attempt < max_retries - 1:
-                print(f"[DeepSeek Tool Calling] Attempt {attempt + 1}/{max_retries} failed: {error_str[:100]}. Retrying in {retry_delay}s...")
+                print(f"[DeepSeek Tool Calling] Attempt {attempt + 1}/{max_retries} failed. Retrying in {retry_delay}s...")
                 await asyncio.sleep(retry_delay)
                 retry_delay *= 2  # Exponential backoff
                 continue
 
-            print(f"[DeepSeek Tool Calling] Error after {attempt + 1} attempts: {e}")
-            raise HTTPException(status_code=500, detail=f"DeepSeek error: {str(e)}")
+            # Log full traceback for final failure
+            print(f"[DeepSeek Tool Calling] Final failure after {attempt + 1} attempts:")
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"DeepSeek error ({error_type}): {error_str[:200]}")
 
 async def call_kimi_with_tools(request: ChatCompletionRequest) -> Dict[str, Any]:
     """Call Kimi API with tool calling support (OpenAI compatible)
