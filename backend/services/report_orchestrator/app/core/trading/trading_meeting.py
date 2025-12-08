@@ -2779,26 +2779,26 @@ You MUST call a tool based on meeting results!""",
                     )
             
             async def _infer_from_text(self, text: str) -> TradingSignal:
-                """从自然语言响应推断决策（DEPRECATED - 备用方案）"""
+                """Infer decision from natural language response (DEPRECATED - fallback)"""
                 logger.warning("[TradeExecutor] ⚠️ DEPRECATED: Using text inference fallback. "
                               "This indicates LLM did not use native tool calling. "
                               "This fallback will be removed in future versions.")
                 text_lower = text.lower()
 
-                # 检测方向关键词
-                if any(kw in text_lower for kw in ['做多', '开多', 'long', '看涨', '买入']):
-                    # 提取参数 - 如果文本中没有，则设为None让工具函数动态计算
-                    leverage_match = re.search(r'(\d+)\s*[倍xX]', text)
+                # Detect direction keywords (English only)
+                if any(kw in text_lower for kw in ['long', 'buy', 'bullish']):
+                    # Extract parameters - if not in text, set to None for dynamic calculation
+                    leverage_match = re.search(r'(\d+)\s*[xX]', text)
                     leverage = int(leverage_match.group(1)) if leverage_match else None
 
                     amount_match = re.search(r'(\d+)\s*%', text)
                     amount = (int(amount_match.group(1)) / 100) if amount_match else None
 
-                    confidence_match = re.search(r'信心[度]?\s*[:：]?\s*(\d+)', text)
+                    confidence_match = re.search(r'[Cc]onfidence\s*[:：]?\s*(\d+)', text)
                     confidence = int(confidence_match.group(1)) if confidence_match else None
 
-                    logger.info(f"[TradeExecutor] 📊 从文本推断做多: leverage={leverage}, amount={amount}, confidence={confidence}")
-                    logger.info(f"[TradeExecutor] 📊 未提供的参数将基于投票动态计算")
+                    logger.info(f"[TradeExecutor] 📊 Inferred long from text: leverage={leverage}, amount={amount}, confidence={confidence}")
+                    logger.info(f"[TradeExecutor] 📊 Missing parameters will be dynamically calculated from votes")
                     await self.tools['open_long'](
                         leverage=min(leverage, 20) if leverage else None,
                         amount_percent=min(amount, 1.0) if amount else None,
@@ -2806,18 +2806,18 @@ You MUST call a tool based on meeting results!""",
                         reasoning=text[:200]
                     )
 
-                elif any(kw in text_lower for kw in ['做空', '开空', 'short', '看跌', '卖出']):
-                    leverage_match = re.search(r'(\d+)\s*[倍xX]', text)
+                elif any(kw in text_lower for kw in ['short', 'sell', 'bearish']):
+                    leverage_match = re.search(r'(\d+)\s*[xX]', text)
                     leverage = int(leverage_match.group(1)) if leverage_match else None
 
                     amount_match = re.search(r'(\d+)\s*%', text)
                     amount = (int(amount_match.group(1)) / 100) if amount_match else None
 
-                    confidence_match = re.search(r'信心[度]?\s*[:：]?\s*(\d+)', text)
+                    confidence_match = re.search(r'[Cc]onfidence\s*[:：]?\s*(\d+)', text)
                     confidence = int(confidence_match.group(1)) if confidence_match else None
 
-                    logger.info(f"[TradeExecutor] 📊 从文本推断做空: leverage={leverage}, amount={amount}, confidence={confidence}")
-                    logger.info(f"[TradeExecutor] 📊 未提供的参数将基于投票动态计算")
+                    logger.info(f"[TradeExecutor] 📊 Inferred short from text: leverage={leverage}, amount={amount}, confidence={confidence}")
+                    logger.info(f"[TradeExecutor] 📊 Missing parameters will be dynamically calculated from votes")
                     await self.tools['open_short'](
                         leverage=min(leverage, 20) if leverage else None,
                         amount_percent=min(amount, 1.0) if amount else None,
@@ -2825,21 +2825,21 @@ You MUST call a tool based on meeting results!""",
                         reasoning=text[:200]
                     )
                     
-                elif any(kw in text_lower for kw in ['平仓', '关闭', 'close']):
-                    logger.info("[TradeExecutor] 📊 从文本推断平仓")
+                elif any(kw in text_lower for kw in ['close']):
+                    logger.info("[TradeExecutor] 📊 Inferred close position from text")
                     await self.tools['close_position'](reasoning=text[:200])
                     
                 else:
-                    logger.info("[TradeExecutor] 📊 从文本推断观望")
-                    await self.tools['hold'](reason=text[:200] or "市场不明朗")
+                    logger.info("[TradeExecutor] 📊 Inferred hold from text")
+                    await self.tools['hold'](reason=text[:200] or "Market unclear")
                 
-                # 返回执行结果
+                # Return execution result
                 if self.result["signal"]:
                     signal = self.result["signal"]
                     self.result["signal"] = None
                     return signal
                 
-                # 如果工具执行也失败，返回默认hold
+                # If tool execution also failed, return default hold
                 current_price = await get_current_price()
                 return TradingSignal(
                     direction="hold",
@@ -2850,12 +2850,12 @@ You MUST call a tool based on meeting results!""",
                     take_profit_price=current_price,
                     stop_loss_price=current_price,
                     confidence=0,
-                    reasoning=f"无法推断决策: {text[:100]}",
+                    reasoning=f"Cannot infer decision: {text[:100]}",
                     agents_consensus={},
                     timestamp=datetime.now()
                 )
         
-        # 创建工具函数字典供wrapper使用
+        # Create tools dict for wrapper
         tools_dict = {
             'open_long': open_long_tool,
             'open_short': open_short_tool,
@@ -3459,42 +3459,32 @@ Please reference your historical performance and lessons learned in your analysi
 
     def _normalize_direction(self, raw_direction: str) -> str:
         """
-        标准化交易方向字符串
+        Normalize trading direction string
 
-        将各种输入格式统一转换为 long/short/hold
+        Convert various input formats to long/short/hold
         """
         direction_map = {
-            # Long 方向
+            # Long direction
             "long": "long",
-            "做多": "long",
-            "开多": "long",
-            "买入": "long",
-            "看多": "long",
+            "buy": "long",
+            "bullish": "long",
             "add_long": "long",
-            "追加多仓": "long",
-            # Short 方向
+            # Short direction
             "short": "short",
-            "做空": "short",
-            "开空": "short",
-            "卖出": "short",
-            "看空": "short",
+            "sell": "short",
+            "bearish": "short",
             "add_short": "short",
-            "追加空仓": "short",
-            # Hold 方向
+            # Hold direction
             "hold": "hold",
-            "观望": "hold",
-            "等待": "hold",
-            "不操作": "hold",
-            "close": "hold",  # 平仓视为 hold（不开新仓）
-            "平仓": "hold",
-            "reverse": "hold",  # 反向需要特殊处理，暂时视为 hold
-            "反向": "hold",
+            "wait": "hold",
+            "close": "hold",  # Close treated as hold (no new position)
+            "reverse": "hold",  # Reverse needs special handling, temporarily treated as hold
         }
-        return direction_map.get(raw_direction, "hold")
+        return direction_map.get(raw_direction.lower(), "hold")
 
     def _parse_vote_fallback(self, agent_id: str, agent_name: str, response: str) -> Optional[AgentVote]:
         """
-        降级解析: 当 JSON 解析失败时，使用文本匹配作为备选
+        Fallback parsing: Use text matching when JSON parsing fails
         
         DEPRECATED: This fallback method will be removed in future versions.
         Agents should output structured JSON for reliability.
@@ -3575,9 +3565,9 @@ Please reference your historical performance and lessons learned in your analysi
         response_lower = response.lower()
 
         # Strategy 1: Look for structured format "Direction: XXX" or "- Direction: XXX"
-        # Support both English and Chinese (legacy)
+        # English only
         direction_match = re.search(
-            r'[-\*]*\s*(?:Direction|方向)[：:\s]*[-\*]*\s*(long|short|hold|buy|sell|bullish|bearish|做多|做空|观望|追加多仓|追加空仓|平仓|反向)',
+            r'[-\*]*\s*(?:Direction)[：:\s]*[-\*]*\s*(long|short|hold|buy|sell|bullish|bearish|wait)',
             response,
             re.IGNORECASE
         )
@@ -3590,18 +3580,11 @@ Please reference your historical performance and lessons learned in your analysi
                 return 'short'
             elif raw_direction in ['hold', 'wait']:
                 return 'hold'
-            # Chinese keywords (legacy)
-            elif raw_direction in ['做多', '追加多仓']:
-                return 'long'
-            elif raw_direction in ['做空', '追加空仓']:
-                return 'short'
-            elif raw_direction in ['平仓', '反向', '观望']:
-                return 'hold'
             else:
                 return 'hold'
 
         # Strategy 2: Look for explicit decision statements
-        # English patterns (primary)
+        # English patterns only
         decision_patterns = [
             # English patterns
             (r'(?:recommend|suggest)[：:\s]*(long|buy|bullish)', 'long'),
@@ -3613,16 +3596,6 @@ Please reference your historical performance and lessons learned in your analysi
             (r'(?:should|can|suitable to)\s*(go short|sell|open short)', 'short'),
             (r'I\s*(?:recommend|suggest|think).{0,15}(long|buy|bullish)', 'long'),
             (r'I\s*(?:recommend|suggest|think).{0,15}(short|sell|bearish)', 'short'),
-            # Chinese patterns (legacy)
-            (r'建议[：:\s]*(做多|开多|买入|看多)', 'long'),
-            (r'建议[：:\s]*(做空|开空|卖出|看空)', 'short'),
-            (r'建议[：:\s]*(观望|持币|不操作|等待)', 'hold'),
-            (r'结论[：:\s]*(做多|开多|买入|看多)', 'long'),
-            (r'结论[：:\s]*(做空|开空|卖出|看空)', 'short'),
-            (r'我(认为|建议|推荐).{0,10}(做多|开多|买入)', 'long'),
-            (r'我(认为|建议|推荐).{0,10}(做空|开空|卖出)', 'short'),
-            (r'(应该|可以|适合)(做多|开多|买入)', 'long'),
-            (r'(应该|可以|适合)(做空|开空|卖出)', 'short'),
         ]
 
         for pattern, direction in decision_patterns:
@@ -3632,25 +3605,15 @@ Please reference your historical performance and lessons learned in your analysi
 
         # Strategy 3: Count keyword occurrences (avoid false matches)
         # Use precise matching, exclude "long-term", "belong" etc.
-        # English keywords (higher weight)
+        # English keywords only
         long_keywords_en = ['bullish', 'upward', 'uptrend']
         short_keywords_en = ['bearish', 'downward', 'downtrend']
         hold_keywords_en = ['neutral', 'sideways', 'wait']
-
-        # Chinese keywords (legacy)
-        long_keywords_zh = ['做多', '开多', '买入', '看多', '多头']
-        short_keywords_zh = ['做空', '开空', '卖出', '看空', '空头']
-        hold_keywords_zh = ['观望', '持币观望', '等待', '不操作', '维持']
 
         # Calculate "strength" for each direction
         long_score = sum(response_lower.count(kw) for kw in long_keywords_en)
         short_score = sum(response_lower.count(kw) for kw in short_keywords_en)
         hold_score = sum(response_lower.count(kw) for kw in hold_keywords_en)
-
-        # Add Chinese keyword scores
-        long_score += sum(response.count(kw) for kw in long_keywords_zh)
-        short_score += sum(response.count(kw) for kw in short_keywords_zh)
-        hold_score += sum(response.count(kw) for kw in hold_keywords_zh)
 
         # Check for English long/short, excluding common false matches
         # Use word boundary matching
