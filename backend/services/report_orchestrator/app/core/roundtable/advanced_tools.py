@@ -897,34 +897,34 @@ Use cases:
             best_ask = min(ask_prices) if ask_prices else 0
             spread = (best_ask - best_bid) / best_bid * 100 if best_bid > 0 else 0
 
-            # 找到量最大的价格作为关键支撑/阻力
+            # Find price with max volume as key support/resistance
             support_level = max(bids, key=lambda x: x[1])[0] if bids else 0
             resistance_level = max(asks, key=lambda x: x[1])[0] if asks else 0
 
-            summary = f"""【订单簿分析】{symbol}/USDT ({exchange})
+            summary = f"""【Orderbook Analysis】{symbol}/USDT ({exchange})
 
-📊 当前报价:
-  买一: ${best_bid:,.2f}
-  卖一: ${best_ask:,.2f}
-  价差: {spread:.4f}%
+📊 Current Quote:
+  Best Bid: ${best_bid:,.2f}
+  Best Ask: ${best_ask:,.2f}
+  Spread: {spread:.4f}%
 
-📈 深度统计 (前{depth}档):
-  买盘总量: {total_bid_volume:,.2f} {symbol}
-  卖盘总量: {total_ask_volume:,.2f} {symbol}
-  买卖比: {pressure_ratio:.2f}
+📈 Depth Stats (Top {depth} levels):
+  Total Bid Volume: {total_bid_volume:,.2f} {symbol}
+  Total Ask Volume: {total_ask_volume:,.2f} {symbol}
+  Bid/Ask Ratio: {pressure_ratio:.2f}
 
-🎯 关键价位:
-  主要支撑: ${support_level:,.2f}
-  主要阻力: ${resistance_level:,.2f}
+🎯 Key Levels:
+  Major Support: ${support_level:,.2f}
+  Major Resistance: ${resistance_level:,.2f}
 
-🐋 大单监控:
-  大买单: {len(large_bids)}个
-  大卖单: {len(large_asks)}个
+🐋 Large Order Monitor:
+  Large Buy Orders: {len(large_bids)}
+  Large Sell Orders: {len(large_asks)}
 
-💡 市场情绪:
-  {"🟢 买盘强势" if pressure_ratio > 1.2 else "🔴 卖盘强势" if pressure_ratio < 0.8 else "⚪ 买卖均衡"}
-  {"⚠️ 发现大买单支撑" if large_bids else ""}
-  {"⚠️ 发现大卖单压力" if large_asks else ""}"""
+💡 Market Sentiment:
+  {"🟢 Bullish (Strong Bids)" if pressure_ratio > 1.2 else "🔴 Bearish (Strong Asks)" if pressure_ratio < 0.8 else "⚪ Neutral (Balanced)"}
+  {"⚠️ Large buy order support detected" if large_bids else ""}
+  {"⚠️ Large sell order pressure detected" if large_asks else ""}"""
 
             return {
                 "success": True,
@@ -950,7 +950,7 @@ Use cases:
             return {
                 "success": False,
                 "error": str(e),
-                "summary": f"订单簿分析失败: {str(e)}"
+                "summary": f"Orderbook analysis failed: {str(e)}"
             }
 
     def to_schema(self) -> Dict[str, Any]:
