@@ -560,17 +560,12 @@ Experts, please begin your analysis.
 
 {position_analysis_prompt}
 
-**IMPORTANT**: You MUST use tools to get real-time data. Do NOT make up data!
+**IMPORTANT**: Use your tools to get real-time market data. The system will automatically execute tool calls for you.
 
-**Tool Call Format** (must follow strictly):
-```
-[USE_TOOL: tool_name(param1="value1", param2="value2")]
-```
-
-Execute the following steps:
-1. [USE_TOOL: get_market_price(symbol="{self.config.symbol}")]
-2. [USE_TOOL: get_klines(symbol="{self.config.symbol}", timeframe="4h", limit="100")]
-3. [USE_TOOL: calculate_technical_indicators(symbol="{self.config.symbol}", timeframe="4h")]
+**Required Analysis Steps**:
+1. Get the current market price for {self.config.symbol}
+2. Fetch 4-hour candlestick data (100 candles)
+3. Calculate technical indicators (RSI, MACD, Bollinger Bands)
 
 Based on real data, provide **objective analysis**:
 - Current price and 24h change
@@ -586,16 +581,11 @@ Based on real data, provide **objective analysis**:
 
 {position_analysis_prompt}
 
-**IMPORTANT**: You MUST search for latest information. Do NOT rely solely on existing knowledge!
+**IMPORTANT**: Search for the latest market news and information. The system will automatically execute tool calls for you.
 
-**Tool Call Format** (must follow strictly):
-```
-[USE_TOOL: tool_name(param1="value1", param2="value2")]
-```
-
-Execute the following steps:
-1. [USE_TOOL: tavily_search(query="Bitcoin BTC market news today price analysis")]
-2. [USE_TOOL: tavily_search(query="cryptocurrency institutional investment outlook")]
+**Required Analysis Steps**:
+1. Search for "Bitcoin BTC market news today price analysis"
+2. Search for "cryptocurrency institutional investment outlook"
 
 Based on search results, provide **objective analysis**:
 - Current market liquidity conditions
@@ -613,17 +603,12 @@ Based on search results, provide **objective analysis**:
 
 {position_analysis_prompt}
 
-**IMPORTANT**: You MUST fetch real-time data and search for latest information!
+**IMPORTANT**: Use your tools to fetch real-time sentiment data. The system will automatically execute tool calls for you.
 
-**Tool Call Format** (must follow strictly):
-```
-[USE_TOOL: tool_name(param1="value1", param2="value2")]
-```
-
-Execute the following steps:
-1. [USE_TOOL: get_fear_greed_index()]
-2. [USE_TOOL: get_funding_rate(symbol="{self.config.symbol}")]
-3. [USE_TOOL: tavily_search(query="Bitcoin BTC market sentiment social media")]
+**Required Analysis Steps**:
+1. Get the Fear & Greed Index
+2. Get the funding rate for {self.config.symbol}
+3. Search for "Bitcoin BTC market sentiment social media"
 
 Based on real data, provide **objective analysis**:
 - Fear & Greed Index value and interpretation
@@ -639,17 +624,12 @@ Based on real data, provide **objective analysis**:
 
 {position_analysis_prompt}
 
-**IMPORTANT**: You MUST use tools to get real-time data for quantitative analysis!
+**IMPORTANT**: Use your tools to get real-time data for quantitative analysis. The system will automatically execute tool calls for you.
 
-**Tool Call Format** (must follow strictly):
-```
-[USE_TOOL: tool_name(param1="value1", param2="value2")]
-```
-
-Execute the following steps:
-1. [USE_TOOL: get_market_price(symbol="{self.config.symbol}")]
-2. [USE_TOOL: get_klines(symbol="{self.config.symbol}", timeframe="1h", limit="200")]
-3. [USE_TOOL: calculate_technical_indicators(symbol="{self.config.symbol}", timeframe="1h")]
+**Required Analysis Steps**:
+1. Get the current market price for {self.config.symbol}
+2. Fetch 1-hour candlestick data (200 candles)
+3. Calculate technical indicators for 1-hour timeframe
 
 Based on real data, provide **objective** quantitative analysis:
 - Price volatility and volume analysis
@@ -665,11 +645,11 @@ Based on real data, provide **objective** quantitative analysis:
 
 {position_hint}
 
-**IMPORTANT**: You MUST use tools to get real-time data. Do NOT make up data!
+**IMPORTANT**: Use tools to get real-time market data. The system will automatically execute tool calls.
 
-Use one of the following tools:
-- `get_market_price` to get current price
-- `tavily_search` to search for relevant news
+Available tools include:
+- Market price query
+- Search for relevant news
 
 Provide your analysis and views based on real data."""
 
@@ -2755,11 +2735,12 @@ You MUST call a tool based on meeting results!""",
                                 except Exception as e:
                                     logger.error(f"[TradeExecutor] 工具执行失败: {e}")
                     
-                    # Step 4: 处理Legacy格式 [USE_TOOL: xxx]
+                    # Step 4: 处理Legacy格式 [USE_TOOL: xxx] (DEPRECATED - 保留向后兼容)
                     tool_pattern = r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]'
                     legacy_matches = re.findall(tool_pattern, content or "")
                     
                     if legacy_matches:
+                        logger.warning(f"[TradeExecutor] ⚠️ DEPRECATED: Legacy [USE_TOOL: xxx] format detected. This will be removed in future versions.")
                         logger.info(f"[TradeExecutor] 🎯 检测到Legacy Tool Calls: {len(legacy_matches)}")
                         for tool_name, params_str in legacy_matches:
                             if tool_name in self.tools:
@@ -2977,10 +2958,13 @@ Based on the above information, you **MUST call a tool** to execute the trading 
 
 **Important**: confidence/leverage/amount_percent will be auto-calculated based on voting consensus level, no need to manually specify fixed values!
 
-**Output Format (must follow)**:
-[USE_TOOL: tool_name(param=value, ...)]
+**To execute your decision**, simply state your intent clearly and call the appropriate tool:
+- For going long: call open_long with your reasoning
+- For going short: call open_short with your reasoning  
+- For holding: call hold with your reason
+- For closing: call close_position with your reason
 
-Now, please analyze and call a tool to execute your decision."""
+Now, please analyze and execute your trading decision."""
 
         return prompt
     

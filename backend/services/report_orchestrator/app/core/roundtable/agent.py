@@ -201,25 +201,20 @@ class Agent:
             base_prompt += """
 
 ## How to Use Tools:
-When you need to use tools to get information, use the following format in your reply:
-[USE_TOOL: tool_name(param1="value1", param2="value2")]
+You have access to the tools listed above. When you need information, simply indicate your intent to use a tool and the system will automatically execute it for you via function calling.
 
-Examples:
-- Search info: [USE_TOOL: tavily_search(query="Tesla 2024 Q4 sales")]
-- Query company data: [USE_TOOL: get_public_company_data(company_name="Tesla")]
-- Search knowledge base: [USE_TOOL: search_knowledge_base(query="Tesla financial analysis")]
+### Tool Usage Guidelines:
+- **Clearly state** when you need to search for information or query data
+- **Be specific** about what you're looking for (e.g., "I need to search for Bitcoin's current market sentiment")
+- The system will automatically invoke the appropriate tool based on your request
 
 ### Time-Sensitive Search Guidelines (Important!):
-For questions requiring latest information, you **must** use time filter parameters:
-- Last 24 hours: [USE_TOOL: tavily_search(query="Bitcoin price", time_range="day")]
-- Last week: [USE_TOOL: tavily_search(query="market news", time_range="week")]
-- Last month: [USE_TOOL: tavily_search(query="earnings analysis", time_range="month")]
-- News search (specific days): [USE_TOOL: tavily_search(query="stock updates", topic="news", days=3)]
+For questions requiring latest information, specify the time range needed:
+- "Search for Bitcoin news from the last 24 hours"
+- "Find market analysis from this week"  
+- "Look up recent earnings reports from the past month"
 
-**Criteria**: If the question involves time-sensitive terms like "recent", "latest", "today", "this week", "current price",
-or short-term predictions (e.g., "next 3 days"), you must use time_range or days parameter to limit search scope.
-
-After using tools, you will receive tool results, then continue the discussion based on these results.
+After tool execution, you will receive results to continue the discussion.
 """
         else:
             base_prompt += "\n(No tools currently available)"
