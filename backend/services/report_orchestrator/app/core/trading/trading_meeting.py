@@ -1306,11 +1306,10 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
 
             # CRITICAL FIX: MUST have Final Decision marker
             # Without this marker, Leader is just discussing, not making final decision
-            # Support both English and Chinese markers for compatibility
+            # Support English markers for Final Decision
             decision_patterns = [
                 r'【Final Decision】(.*?)(?=\n\n|$)',      # English with Chinese brackets
                 r'\[Final Decision\](.*?)(?=\n\n|$)',     # English with square brackets
-                r'【最终决策】(.*?)(?=\n\n|$)',             # Chinese (legacy)
                 r'\*\*Final Decision\*\*(.*?)(?=\n\n|$)', # Markdown bold
             ]
 
@@ -1345,65 +1344,57 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                         return match.group(1).strip()
                 return default
 
-            # Decision type (English first, Chinese fallback)
+            # Decision type
             decision_type = extract_field_multi([
-                r'-\s*Decision\s*[:：]\s*([^\n]+)',      # English
-                r'-\s*决策\s*[:：]\s*([^\n]+)',           # Chinese (legacy)
+                r'-\s*Decision\s*[::：]\s*([^\n]+)',      # English
             ], decision_text)
             logger.info(f"[SignalExtraction] decision_type: {decision_type}")
 
-            # Symbol (English first, Chinese fallback)
+            # Symbol
             symbol = extract_field_multi([
-                r'-\s*Symbol\s*[:：]\s*([^\n]+)',        # English
-                r'-\s*标的\s*[:：]\s*([^\n]+)',           # Chinese (legacy)
+                r'-\s*Symbol\s*[::：]\s*([^\n]+)',        # English
             ], decision_text, self.config.symbol)
 
-            # Leverage (English first, Chinese fallback)
+            # Leverage
             leverage_str = extract_field_multi([
-                r'-\s*Leverage\s*[:：]\s*(\d+)',         # English
-                r'-\s*杠杆倍数\s*[:：]\s*(\d+)',          # Chinese (legacy)
+                r'-\s*Leverage\s*[::：]\s*(\d+)',         # English
             ], decision_text, "1")
             leverage = int(leverage_str)
 
-            # Position percent (English first, Chinese fallback)
+            # Position percent
             position_str = extract_field_multi([
-                r'-\s*Position\s*(?:Percent|Size|%)\s*[:：]\s*(\d+)',  # English
-                r'-\s*仓位比例\s*[:：]\s*(\d+)',          # Chinese (legacy)
+                r'-\s*Position\s*(?:Percent|Size|%)\s*[::：]\s*(\d+)',  # English
             ], decision_text, "0")
             amount_percent = float(position_str)
 
-            # Take profit price (English first, Chinese fallback)
+            # Take profit price
             tp_str = extract_field_multi([
-                r'-\s*Take\s*Profit\s*(?:Price)?\s*[:：]\s*([\d.]+)',  # English
-                r'-\s*止盈价格\s*[:：]\s*([\d.]+)',       # Chinese (legacy)
+                r'-\s*Take\s*Profit\s*(?:Price)?\s*[::：]\s*([\d.]+)',  # English
             ], decision_text, "0")
             take_profit_price = float(tp_str)
 
-            # Stop loss price (English first, Chinese fallback)
+            # Stop loss price
             sl_str = extract_field_multi([
-                r'-\s*Stop\s*Loss\s*(?:Price)?\s*[:：]\s*([\d.]+)',    # English
-                r'-\s*止损价格\s*[:：]\s*([\d.]+)',       # Chinese (legacy)
+                r'-\s*Stop\s*Loss\s*(?:Price)?\s*[::：]\s*([\d.]+)',    # English
             ], decision_text, "0")
             stop_loss_price = float(sl_str)
 
-            # Confidence (English first, Chinese fallback)
+            # Confidence
             confidence_str = extract_field_multi([
-                r'-\s*Confidence\s*[:：]\s*(\d+)',       # English
-                r'-\s*信心度\s*[:：]\s*(\d+)',            # Chinese (legacy)
+                r'-\s*Confidence\s*[::：]\s*(\d+)',       # English
             ], decision_text, "0")
             confidence = int(confidence_str)
 
-            # Reasoning (English first, Chinese fallback)
+            # Reasoning
             reasoning = extract_field_multi([
-                r'-\s*Reasoning\s*[:：]\s*([^\n]+)',     # English
-                r'-\s*决策理由\s*[:：]\s*([^\n]+)',       # Chinese (legacy)
+                r'-\s*Reasoning\s*[::：]\s*([^\n]+)',     # English
             ], decision_text, "")
 
-            # Map decision_type to direction (English first, Chinese fallback)
+            # Map decision_type to direction
             direction = "hold"  # default
             if decision_type:
                 dt_lower = decision_type.lower()
-                # English keywords (primary)
+                # English keywords only
                 if "long" in dt_lower or "buy" in dt_lower or "bullish" in dt_lower:
                     direction = "long"
                 elif "short" in dt_lower or "sell" in dt_lower or "bearish" in dt_lower:
@@ -1415,19 +1406,6 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                 elif "close" in dt_lower:
                     direction = "hold"  # FIX: TradingSignal doesn't support "close", use hold after closing
                 elif "hold" in dt_lower or "wait" in dt_lower:
-                    direction = "hold"
-                # Chinese keywords (legacy fallback)
-                elif "做多" in dt_lower or "开多" in dt_lower:
-                    direction = "long"
-                elif "做空" in dt_lower or "开空" in dt_lower:
-                    direction = "short"
-                elif "追加多" in dt_lower:
-                    direction = "long"
-                elif "追加空" in dt_lower:
-                    direction = "short"
-                elif "平仓" in dt_lower:
-                    direction = "hold"
-                elif "观望" in dt_lower or "持有" in dt_lower:
                     direction = "hold"
             
             logger.info(f"[SignalExtraction] Parsed direction: {direction}, leverage: {leverage}, "
@@ -2332,7 +2310,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                         margin_source = "OKX API"
                     else:
                         true_available_margin = local_available
-                        margin_source = "本地计算"
+                        margin_source = "Local calc"
 
                     if true_available_margin <= 0:
                         true_available_margin = account.get("true_available_margin", local_available)
@@ -2341,18 +2319,18 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                     total_equity = account.get("total_equity", available_balance)
                     used_margin = account.get("used_margin", 0)
 
-                    # 🔧 可追加条件
+                    # 🔧 Add condition check
                     can_add = true_available_margin >= (MIN_ADD_AMOUNT + SAFETY_BUFFER)
 
-                    logger.info(f"[TradeExecutor] 📊 状态: 仓位={current_direction or '无'}, "
-                               f"可用保证金=${true_available_margin:.2f}({margin_source}), "
-                               f"账户余额=${available_balance:.2f}, 已用=${used_margin:.2f}, "
-                               f"浮盈亏=${unrealized_pnl:.2f}, 可追加={can_add}")
+                    logger.info(f"[TradeExecutor] 📊 Status: position={current_direction or 'none'}, "
+                               f"available_margin=${true_available_margin:.2f}({margin_source}), "
+                               f"balance=${available_balance:.2f}, used=${used_margin:.2f}, "
+                               f"unrealized_pnl=${unrealized_pnl:.2f}, can_add={can_add}")
 
-                    # 📌 场景1: 已有空仓（同方向）
+                    # 📌 Scenario 1: Already have short position (same direction)
                     if current_direction == "short":
                         if can_add:
-                            # 场景1a: 可追加 → 追加空仓
+                            # Scenario 1a: Can add -> Add to short position
                             add_amount = min(
                                 true_available_margin * amount_percent,
                                 true_available_margin - SAFETY_BUFFER
@@ -2360,9 +2338,9 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                             add_amount = max(add_amount, 0)
                             
                             if add_amount >= MIN_ADD_AMOUNT:
-                                logger.info(f"[TradeExecutor] 🔄 已有空仓，追加${add_amount:.2f} (真实可用${true_available_margin:.2f})")
+                                logger.info(f"[TradeExecutor] 🔄 Already have short, adding ${add_amount:.2f} (available ${true_available_margin:.2f})")
                                 
-                                # 🔧 验证止损价格安全性
+                                # 🔧 Validate stop loss safety
                                 is_safe, sl_msg, safe_sl = validate_stop_loss("short", current_price, stop_loss, leverage, add_amount)
                                 if not is_safe:
                                     logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
@@ -2380,44 +2358,44 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                     trade_success = True
                                     action_taken = "add_to_short"
                                     entry_price = result.get("executed_price", current_price)
-                                    final_reasoning = f"追加空仓成功: 原仓入场${existing_entry:.2f}, 追加${add_amount:.2f}(浮盈亏${unrealized_pnl:.2f})。{reasoning}"
-                                    logger.info(f"[TradeExecutor] ✅ 追加空仓成功")
+                                    final_reasoning = f"Add to short success: original entry ${existing_entry:.2f}, added ${add_amount:.2f}(unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
+                                    logger.info(f"[TradeExecutor] ✅ Add to short success")
                                 else:
                                     trade_success = True
                                     action_taken = "maintain_short"
                                     entry_price = existing_entry
-                                    final_reasoning = f"追加失败({result.get('error')}), 维持原空仓(入场${existing_entry:.2f})。{reasoning}"
+                                    final_reasoning = f"Add failed({result.get('error')}), maintaining short (entry ${existing_entry:.2f}). {reasoning}"
                             else:
                                 trade_success = True
                                 action_taken = "maintain_short_small"
                                 entry_price = existing_entry
-                                final_reasoning = f"追加金额太小(${add_amount:.2f}<${MIN_ADD_AMOUNT}), 维持原空仓(浮盈亏${unrealized_pnl:.2f})。{reasoning}"
+                                final_reasoning = f"Add amount too small (${add_amount:.2f}<${MIN_ADD_AMOUNT}), maintaining short (unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
                         else:
-                            # 场景1b: 满仓或接近强平 → 维持空仓
+                            # Scenario 1b: Full position or near liquidation -> Maintain short
                             trade_success = True
                             action_taken = "maintain_short_full"
                             entry_price = existing_entry
                             if liquidation_price > 0 and current_price > liquidation_price * 0.9:
-                                final_reasoning = f"⚠️ 接近强平(强平价${liquidation_price:.2f}), 维持空仓(浮亏${unrealized_pnl:.2f})。{reasoning}"
+                                final_reasoning = f"⚠️ Near liquidation (liq price ${liquidation_price:.2f}), maintaining short (unrealized loss ${unrealized_pnl:.2f}). {reasoning}"
                             else:
-                                final_reasoning = f"已满仓(真实可用${true_available_margin:.2f}), 维持空仓(入场${existing_entry:.2f}, 浮盈亏${unrealized_pnl:.2f})。{reasoning}"
-                            logger.info(f"[TradeExecutor] ✅ 已满仓/不可追加，维持空仓不变")
+                                final_reasoning = f"Full position (available ${true_available_margin:.2f}), maintaining short (entry ${existing_entry:.2f}, unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
+                            logger.info(f"[TradeExecutor] ✅ Full position/cannot add, maintaining short")
                     
-                    # 📌 场景2: 已有多仓（反方向）→ 平多→开空
+                    # 📌 Scenario 2: Have long position (opposite direction) -> Close long -> Open short
                     elif current_direction == "long":
-                        logger.info(f"[TradeExecutor] 🔄 反向操作: 平多→开空 (多仓浮盈亏${unrealized_pnl:.2f})")
+                        logger.info(f"[TradeExecutor] 🔄 Reverse operation: close long -> open short (long unrealized PnL ${unrealized_pnl:.2f})")
                         
-                        # 先平多仓
+                        # Close long position first
                         close_result = await toolkit.paper_trader.close_position(
                             symbol="BTC-USDT-SWAP",
-                            reason="反向操作：多转空"
+                            reason="Reverse: long to short"
                         )
                         
                         if close_result.get("success"):
                             pnl = close_result.get("pnl", 0)
-                            logger.info(f"[TradeExecutor] ✅ 平多仓成功, PnL=${pnl:.2f}")
+                            logger.info(f"[TradeExecutor] ✅ Close long success, PnL=${pnl:.2f}")
                             
-                            # 🔧 重新获取真实可用保证金
+                            # 🔧 Re-get true available margin
                             account = await toolkit.paper_trader.get_account()
                             new_true_available = account.get("true_available_margin", 0)
                             if new_true_available <= 0:
@@ -2430,13 +2408,13 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                             amount_usdt = max(amount_usdt, 0)
                             
                             if amount_usdt >= MIN_ADD_AMOUNT:
-                                # 🔧 验证止损价格安全性
+                                # 🔧 Validate stop loss safety
                                 is_safe, sl_msg, safe_sl = validate_stop_loss("short", current_price, stop_loss, leverage, amount_usdt)
                                 if not is_safe:
                                     logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
                                     stop_loss = safe_sl
                                 
-                                # 开空仓
+                                # Open short position
                                 result = await toolkit.paper_trader.open_short(
                                     symbol="BTC-USDT-SWAP",
                                     leverage=leverage,
@@ -2448,22 +2426,22 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                     trade_success = True
                                     action_taken = "reverse_long_to_short"
                                     entry_price = result.get("executed_price", current_price)
-                                    final_reasoning = f"反向成功: 平多(PnL=${pnl:.2f})→开空${amount_usdt:.2f}。{reasoning}"
-                                    logger.info(f"[TradeExecutor] ✅ 反向开空成功")
+                                    final_reasoning = f"Reverse success: closed long (PnL=${pnl:.2f}) -> opened short ${amount_usdt:.2f}. {reasoning}"
+                                    logger.info(f"[TradeExecutor] ✅ Reverse to short success")
                                 else:
                                     trade_success = True
                                     action_taken = "close_long_only"
                                     entry_price = current_price
-                                    final_reasoning = f"平多成功(PnL=${pnl:.2f}), 但开空失败({result.get('error')})。{reasoning}"
+                                    final_reasoning = f"Close long success (PnL=${pnl:.2f}), but open short failed ({result.get('error')}). {reasoning}"
                             else:
                                 trade_success = True
                                 action_taken = "close_long_insufficient"
                                 entry_price = current_price
-                                final_reasoning = f"平多成功(PnL=${pnl:.2f}), 但余额不足开空(真实可用${new_true_available:.2f})。{reasoning}"
+                                final_reasoning = f"Close long success (PnL=${pnl:.2f}), but insufficient balance for short (available ${new_true_available:.2f}). {reasoning}"
                         else:
-                            final_reasoning = f"平多仓失败: {close_result.get('error')}。{reasoning}"
+                            final_reasoning = f"Close long failed: {close_result.get('error')}. {reasoning}"
                     
-                    # 📌 场景3: 无仓位 → 正常开空
+                    # 📌 Scenario 3: No position -> Normal open short
                     else:
                         amount_usdt = min(
                             true_available_margin * amount_percent,
@@ -2472,13 +2450,13 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                         amount_usdt = max(amount_usdt, 0)
                         
                         if amount_usdt >= MIN_ADD_AMOUNT:
-                            # 🔧 验证止损价格安全性
+                            # 🔧 Validate stop loss safety
                             is_safe, sl_msg, safe_sl = validate_stop_loss("short", current_price, stop_loss, leverage, amount_usdt)
                             if not is_safe:
                                 logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
                                 stop_loss = safe_sl
                             
-                            logger.info(f"[TradeExecutor] 📉 正常开空: ${amount_usdt:.2f}, {leverage}x (真实可用${true_available_margin:.2f})")
+                            logger.info(f"[TradeExecutor] 📉 Normal open short: ${amount_usdt:.2f}, {leverage}x (available ${true_available_margin:.2f})")
                             
                             result = await toolkit.paper_trader.open_short(
                                 symbol="BTC-USDT-SWAP",
@@ -2492,16 +2470,16 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                 trade_success = True
                                 action_taken = "new_short"
                                 entry_price = result.get("executed_price", current_price)
-                                final_reasoning = f"开空成功: ${amount_usdt:.2f}, {leverage}x杠杆, 止损${stop_loss:.2f}。{reasoning}"
-                                logger.info(f"[TradeExecutor] ✅ 开空仓成功: 入场价${entry_price:.2f}")
+                                final_reasoning = f"Open short success: ${amount_usdt:.2f}, {leverage}x leverage, SL ${stop_loss:.2f}. {reasoning}"
+                                logger.info(f"[TradeExecutor] ✅ Open short success: entry ${entry_price:.2f}")
                             else:
-                                final_reasoning = f"开空失败: {result.get('error')}。{reasoning}"
+                                final_reasoning = f"Open short failed: {result.get('error')}. {reasoning}"
                         else:
-                            final_reasoning = f"余额不足(真实可用${true_available_margin:.2f}), 无法开仓。{reasoning}"
+                            final_reasoning = f"Insufficient balance (available ${true_available_margin:.2f}), cannot open position. {reasoning}"
                         
                 except Exception as e:
-                    logger.error(f"[TradeExecutor] 开空仓异常: {e}", exc_info=True)
-                    final_reasoning = f"执行异常: {e}。{reasoning}"
+                    logger.error(f"[TradeExecutor] Open short exception: {e}", exc_info=True)
+                    final_reasoning = f"Execution exception: {e}. {reasoning}"
             
             execution_result["signal"] = TradingSignal(
                 direction="short",
@@ -2512,20 +2490,20 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                 take_profit_price=take_profit,
                 stop_loss_price=stop_loss,
                 confidence=confidence,
-                reasoning=final_reasoning or f"TradeExecutor决定做空({action_taken})",
+                reasoning=final_reasoning or f"TradeExecutor decided short ({action_taken})",
                 agents_consensus={},
                 timestamp=datetime.now()
             )
             
-            status = "成功" if trade_success else "失败"
-            return f"✅ 做空{status}({action_taken}): {leverage}x杠杆, {amount_percent*100:.0f}%仓位, 入场价${entry_price:,.2f}"
+            status = "Success" if trade_success else "Failed"
+            return f"✅ Short {status}({action_taken}): {leverage}x leverage, {amount_percent*100:.0f}% position, entry ${entry_price:,.2f}"
         
         async def close_position_tool(reasoning: str = "") -> str:
             """
-            平仓当前持仓
+            Close current position
             
             Args:
-                reasoning: 平仓理由
+                reasoning: Close reason
             """
             current_price = await get_current_price()
             close_success = False
@@ -2533,24 +2511,24 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             
             if toolkit and toolkit.paper_trader:
                 try:
-                    # 传入reason参数以便记录
+                    # Pass reason parameter for logging
                     result = await toolkit.paper_trader.close_position(
                         symbol="BTC-USDT-SWAP",
-                        reason=reasoning or "TradeExecutor决定平仓"
+                        reason=reasoning or "TradeExecutor decided to close"
                     )
                     
                     if result.get("success"):
                         close_success = True
                         pnl = result.get("pnl", 0)
-                        logger.info(f"[TradeExecutor] ✅ 平仓成功, PnL: ${pnl:.2f}")
+                        logger.info(f"[TradeExecutor] ✅ Close position success, PnL: ${pnl:.2f}")
                     else:
-                        error_msg = result.get("error", "未知错误")
-                        logger.error(f"[TradeExecutor] 平仓失败: {error_msg}")
-                        reasoning = f"平仓执行失败: {error_msg}. " + reasoning
+                        error_msg = result.get("error", "Unknown error")
+                        logger.error(f"[TradeExecutor] Close position failed: {error_msg}")
+                        reasoning = f"Close execution failed: {error_msg}. " + reasoning
                         
                 except Exception as e:
-                    logger.error(f"[TradeExecutor] 平仓异常: {e}")
-                    reasoning = f"平仓执行异常: {e}. " + reasoning
+                    logger.error(f"[TradeExecutor] Close position exception: {e}")
+                    reasoning = f"Close execution exception: {e}. " + reasoning
             
             execution_result["signal"] = TradingSignal(
                 direction="hold",
@@ -2561,22 +2539,22 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                 take_profit_price=current_price,
                 stop_loss_price=current_price,
                 confidence=100 if close_success else 50,
-                reasoning=f"[平仓操作] {reasoning or 'TradeExecutor决定平仓'}" + (f" (PnL: ${pnl:.2f})" if close_success else ""),
+                reasoning=f"[Close position] {reasoning or 'TradeExecutor decided to close'}" + (f" (PnL: ${pnl:.2f})" if close_success else ""),
                 agents_consensus={},
                 timestamp=datetime.now()
             )
             
-            return f"✅ 平仓{'成功' if close_success else '失败'}" + (f" (PnL: ${pnl:.2f})" if close_success else "")
+            return f"✅ Close {'Success' if close_success else 'Failed'}" + (f" (PnL: ${pnl:.2f})" if close_success else "")
         
-        async def hold_tool(reason: str = "市场不明朗，选择观望") -> str:
+        async def hold_tool(reason: str = "Market unclear, choosing to hold") -> str:
             """
-            观望不操作
+            Hold/Wait - no operation
             
             Args:
-                reason: 观望原因
+                reason: Hold reason
             """
             current_price = await get_current_price()
-            logger.info(f"[TradeExecutor] ✅ 决定观望: {reason}")
+            logger.info(f"[TradeExecutor] ✅ Decided to hold: {reason}")
             
             execution_result["signal"] = TradingSignal(
                 direction="hold",
@@ -2592,9 +2570,9 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                 timestamp=datetime.now()
             )
             
-            return f"📊 决定观望: {reason}"
+            return f"📊 Decided to hold: {reason}"
         
-        # 🆕 创建真正的Agent实例并注册FunctionTool
+        # Create Agent instance and register FunctionTool
         # FIX: Agent uses id instead of agent_id, uses llm_gateway_url instead of llm_endpoint
         trade_executor = Agent(
             id="trade_executor",
@@ -2679,34 +2657,34 @@ You MUST call a tool based on meeting results!""",
 
         logger.info(f"[TradeExecutor] ✅ Agent created successfully, registered {len(trade_executor.tools)} trading tools")
         
-        # 🆕 包装器类，提供run()方法返回TradingSignal
+        # Wrapper class providing run() method that returns TradingSignal
         class TradeExecutorWrapper:
             def __init__(self, agent, result_container, tools_dict):
                 self.agent = agent
                 self.result = result_container
-                self.tools = tools_dict  # 工具函数字典
+                self.tools = tools_dict  # Tool functions dict
             
             async def run(self, prompt: str) -> TradingSignal:
                 """
-                运行TradeExecutor，调用LLM并处理工具执行
+                Run TradeExecutor, call LLM and process tool execution
                 
-                流程:
-                1. 调用Agent._call_llm()获取LLM响应
-                2. 检测原生tool_calls或Legacy [USE_TOOL: xxx]格式
-                3. 执行对应的工具函数
-                4. 返回TradingSignal
+                Flow:
+                1. Call Agent._call_llm() to get LLM response
+                2. Detect native tool_calls or Legacy [USE_TOOL: xxx] format
+                3. Execute corresponding tool functions
+                4. Return TradingSignal
                 """
                 try:
-                    # Step 1: 调用LLM
+                    # Step 1: Call LLM
                     messages = [{"role": "user", "content": prompt}]
                     response = await self.agent._call_llm(messages)
                     
-                    # Step 2: 解析响应
+                    # Step 2: Parse response
                     content = ""
                     tool_calls = []
                     
                     if isinstance(response, dict):
-                        # OpenAI格式响应
+                        # OpenAI format response
                         if "choices" in response and response["choices"]:
                             message = response["choices"][0].get("message", {})
                             content = message.get("content", "")
@@ -2716,11 +2694,11 @@ You MUST call a tool based on meeting results!""",
                     else:
                         content = str(response)
                     
-                    logger.info(f"[TradeExecutor] LLM响应: {content[:200] if content else 'None'}...")
+                    logger.info(f"[TradeExecutor] LLM response: {content[:200] if content else 'None'}...")
                     
-                    # Step 3: 处理原生tool_calls (OpenAI格式)
+                    # Step 3: Handle native tool_calls (OpenAI format)
                     if tool_calls:
-                        logger.info(f"[TradeExecutor] 🎯 检测到原生Tool Calls: {len(tool_calls)}")
+                        logger.info(f"[TradeExecutor] 🎯 Detected native Tool Calls: {len(tool_calls)}")
                         for tc in tool_calls:
                             func = tc.get("function", {})
                             tool_name = func.get("name", "")
@@ -2730,34 +2708,34 @@ You MUST call a tool based on meeting results!""",
                                 try:
                                     import json
                                     tool_args = json.loads(tool_args_str) if isinstance(tool_args_str, str) else tool_args_str
-                                    logger.info(f"[TradeExecutor] 🔧 执行原生工具: {tool_name}({tool_args})")
+                                    logger.info(f"[TradeExecutor] 🔧 Executing native tool: {tool_name}({tool_args})")
                                     await self.tools[tool_name](**tool_args)
                                 except Exception as e:
-                                    logger.error(f"[TradeExecutor] 工具执行失败: {e}")
+                                    logger.error(f"[TradeExecutor] Tool execution failed: {e}")
                     
-                    # Step 4: 处理Legacy格式 [USE_TOOL: xxx] (DEPRECATED - 保留向后兼容)
+                    # Step 4: Handle Legacy format [USE_TOOL: xxx] (DEPRECATED - kept for backward compat)
                     tool_pattern = r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]'
                     legacy_matches = re.findall(tool_pattern, content or "")
                     
                     if legacy_matches:
                         logger.warning(f"[TradeExecutor] ⚠️ DEPRECATED: Legacy [USE_TOOL: xxx] format detected. This will be removed in future versions.")
-                        logger.info(f"[TradeExecutor] 🎯 检测到Legacy Tool Calls: {len(legacy_matches)}")
+                        logger.info(f"[TradeExecutor] 🎯 Detected Legacy Tool Calls: {len(legacy_matches)}")
                         for tool_name, params_str in legacy_matches:
                             if tool_name in self.tools:
                                 try:
-                                    # 解析参数
+                                    # Parse arguments
                                     params = {}
-                                    # 尝试各种参数格式
+                                    # Try various argument formats
                                     for pattern in [r'(\w+)="([^"]*)"', r"(\w+)='([^']*)'", r'(\w+)=(\d+\.?\d*)']:
                                         for key, value in re.findall(pattern, params_str):
-                                            # 类型转换
+                                            # Type conversion
                                             if value.replace('.', '').replace('-', '').isdigit():
                                                 value = float(value) if '.' in value else int(value)
                                             params[key] = value
 
-                                    # 参数名映射 (LLM可能用不同的名称)
+                                    # Parameter name mapping (LLM may use different names)
                                     param_aliases = {
-                                        'reason': 'reasoning',  # LLM常用reason而不是reasoning
+                                        'reason': 'reasoning',  # LLM often uses reason instead of reasoning
                                         'amount': 'amount_percent',
                                         'lev': 'leverage',
                                         'conf': 'confidence',
@@ -2766,25 +2744,25 @@ You MUST call a tool based on meeting results!""",
                                         if old_name in params and new_name not in params:
                                             params[new_name] = params.pop(old_name)
 
-                                    logger.info(f"[TradeExecutor] 🔧 执行Legacy工具: {tool_name}({params})")
+                                    logger.info(f"[TradeExecutor] 🔧 Executing Legacy tool: {tool_name}({params})")
                                     await self.tools[tool_name](**params)
                                 except Exception as e:
-                                    logger.error(f"[TradeExecutor] 工具执行失败: {e}")
+                                    logger.error(f"[TradeExecutor] Tool execution failed: {e}")
                     
-                    # Step 5: 检查是否有工具执行结果
+                    # Step 5: Check if there are tool execution results
                     if self.result["signal"]:
                         signal = self.result["signal"]
-                        logger.info(f"[TradeExecutor] ✅ 工具执行完成: {signal.direction}")
-                        # 清空结果容器以供下次使用
+                        logger.info(f"[TradeExecutor] ✅ Tool execution complete: {signal.direction}")
+                        # Clear result container for next use
                         self.result["signal"] = None
                         return signal
                     
-                    # Step 6: 没有工具调用 - 尝试从响应文本推断决策
-                    logger.warning("[TradeExecutor] ⚠️ 未检测到工具调用，尝试从响应推断...")
+                    # Step 6: No tool calls - try to infer decision from response text
+                    logger.warning("[TradeExecutor] ⚠️ No tool calls detected, trying to infer from response...")
                     return await self._infer_from_text(content or "")
                     
                 except Exception as e:
-                    logger.error(f"[TradeExecutor] ❌ 执行失败: {e}", exc_info=True)
+                    logger.error(f"[TradeExecutor] ❌ Execution failed: {e}", exc_info=True)
                     current_price = await get_current_price()
                     return TradingSignal(
                         direction="hold",
@@ -2795,7 +2773,7 @@ You MUST call a tool based on meeting results!""",
                         take_profit_price=current_price,
                         stop_loss_price=current_price,
                         confidence=0,
-                        reasoning=f"TradeExecutor执行失败: {str(e)}",
+                        reasoning=f"TradeExecutor execution failed: {str(e)}",
                         agents_consensus={},
                         timestamp=datetime.now()
                     )
