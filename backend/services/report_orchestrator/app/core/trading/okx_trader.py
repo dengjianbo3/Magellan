@@ -157,6 +157,90 @@ class OKXTrader:
         except Exception as e:
             logger.error(f"Error syncing position: {e}")
 
+    async def validate_stop_loss_against_liquidation(
+        self,
+        direction: str,
+        entry_price: float,
+        sl_price: float,
+        leverage: int,
+        symbol: str = "BTC-USDT-SWAP"
+    ) -> tuple[bool, str, float]:
+        """
+        Validate stop loss price using OKX-provided liquidation price.
+        
+        This is more accurate than local calculation because OKX considers:
+        - Actual maintenance margin rate
+        - Position fees
+        - Funding rate impact
+        
+        Args:
+            direction: 'long' or 'short'
+            entry_price: Entry price
+            sl_price: Proposed stop loss price
+            leverage: Position leverage
+            symbol: Trading pair
+            
+        Returns:
+            Tuple of (is_safe, message, suggested_sl_price)
+        """
+        try:
+            # Get current position to retrieve OKX-calculated liquidation price
+            pos = await self._okx_client.get_current_position(symbol)
+            
+            if pos and pos.liquidation_price:
+                liq_price = pos.liquidation_price
+                logger.info(f"[StopLoss] Using OKX liquidation price: ${liq_price:.2f}")
+                
+                # Calculate safe zone (5% buffer from liquidation)
+                if direction == "long":
+                    # Long: SL must be ABOVE liquidation price
+                    safe_sl = liq_price * 1.05  # 5% above liquidation
+                    
+                    if sl_price <= liq_price:
+                        return False, f"SL ${sl_price:.2f} at/below liquidation ${liq_price:.2f}", safe_sl
+                    elif sl_price < safe_sl:
+                        return False, f"SL ${sl_price:.2f} too close to liquidation ${liq_price:.2f}, adjusted to ${safe_sl:.2f}", safe_sl
+                else:
+                    # Short: SL must be BELOW liquidation price
+                    safe_sl = liq_price * 0.95  # 5% below liquidation
+                    
+                    if sl_price >= liq_price:
+                        return False, f"SL ${sl_price:.2f} at/above liquidation ${liq_price:.2f}", safe_sl
+                    elif sl_price > safe_sl:
+                        return False, f"SL ${sl_price:.2f} too close to liquidation ${liq_price:.2f}, adjusted to ${safe_sl:.2f}", safe_sl
+                
+                return True, "", sl_price
+            else:
+                # Fallback to local calculation if no position or no liq price
+                # This happens when validating before position is opened
+                logger.debug("[StopLoss] No OKX liquidation price available, using local calculation")
+                
+                # Simple local calculation
+                margin = entry_price / leverage  # Approximate
+                liq_loss = margin * 0.80  # 80% loss triggers liquidation
+                size = margin * leverage / entry_price
+                
+                if size <= 0:
+                    return True, "", sl_price
+                    
+                if direction == "long":
+                    liq_price = entry_price - (liq_loss / size)
+                    safe_sl = max(liq_price * 1.05, entry_price * 0.97)
+                    if sl_price <= liq_price:
+                        return False, f"SL ${sl_price:.2f} below calculated liquidation ${liq_price:.2f}", safe_sl
+                else:
+                    liq_price = entry_price + (liq_loss / size)
+                    safe_sl = min(liq_price * 0.95, entry_price * 1.03)
+                    if sl_price >= liq_price:
+                        return False, f"SL ${sl_price:.2f} above calculated liquidation ${liq_price:.2f}", safe_sl
+                        
+                return True, "", sl_price
+                
+        except Exception as e:
+            logger.warning(f"[StopLoss] Error validating stop loss: {e}")
+            # On error, return safe default without blocking
+            return True, f"Warning: Could not validate SL ({e})", sl_price
+
     def set_price(self, price: float):
         """
         Set price (PaperTrader compatible).

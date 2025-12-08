@@ -186,39 +186,85 @@ class OKXClient:
         proxy = os.getenv('http_proxy') or os.getenv('HTTP_PROXY')
         return proxy
     
-    async def _request(self, method: str, path: str, body: Optional[Dict] = None) -> Dict:
-        """Make authenticated API request"""
+    async def _request(self, method: str, path: str, body: Optional[Dict] = None, max_retries: int = 3) -> Dict:
+        """
+        Make authenticated API request with retry mechanism
+        
+        Args:
+            method: HTTP method (GET/POST)
+            path: API path
+            body: Request body for POST
+            max_retries: Maximum retry attempts for transient errors
+        """
         if not self._session:
             # Increase timeout to 30 seconds
             timeout = aiohttp.ClientTimeout(total=30)
             self._session = aiohttp.ClientSession(timeout=timeout)
 
         body_str = json.dumps(body) if body else ''
-        headers = self._get_headers(method.upper(), path, body_str)
-
         url = self.BASE_URL + path
         proxy = self._get_proxy()
-
-        try:
-            if method.upper() == 'GET':
-                async with self._session.get(url, headers=headers, proxy=proxy) as resp:
-                    result = await resp.json()
-                    logger.debug(f"OKX API GET {path}: code={result.get('code')}")
-                    return result
-            else:
-                async with self._session.post(url, headers=headers, data=body_str, proxy=proxy) as resp:
-                    result = await resp.json()
-                    logger.debug(f"OKX API POST {path}: code={result.get('code')}")
-                    return result
-        except asyncio.TimeoutError:
-            logger.error(f"API request timeout: {path}")
-            return {"code": "-1", "msg": f"Request timeout: {path}", "data": []}
-        except aiohttp.ClientError as e:
-            logger.error(f"API client error: {e}")
-            return {"code": "-1", "msg": str(e), "data": []}
-        except Exception as e:
-            logger.error(f"API request failed: {e}")
-            return {"code": "-1", "msg": str(e), "data": []}
+        
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                # Generate fresh headers for each attempt (timestamp must be current)
+                headers = self._get_headers(method.upper(), path, body_str)
+                
+                if method.upper() == 'GET':
+                    async with self._session.get(url, headers=headers, proxy=proxy) as resp:
+                        result = await resp.json()
+                        logger.debug(f"OKX API GET {path}: code={result.get('code')}")
+                        
+                        # Check for rate limit or server errors that warrant retry
+                        if result.get('code') in ['50001', '50004', '50011', '50013']:
+                            # Rate limit or system busy - retry with backoff
+                            if attempt < max_retries - 1:
+                                wait_time = (2 ** attempt) + 0.5  # Exponential backoff
+                                logger.warning(f"[OKX API] Rate limited/busy, retrying in {wait_time:.1f}s (attempt {attempt + 1}/{max_retries})")
+                                await asyncio.sleep(wait_time)
+                                continue
+                        
+                        return result
+                else:
+                    async with self._session.post(url, headers=headers, data=body_str, proxy=proxy) as resp:
+                        result = await resp.json()
+                        logger.debug(f"OKX API POST {path}: code={result.get('code')}")
+                        
+                        # Check for rate limit or server errors
+                        if result.get('code') in ['50001', '50004', '50011', '50013']:
+                            if attempt < max_retries - 1:
+                                wait_time = (2 ** attempt) + 0.5
+                                logger.warning(f"[OKX API] Rate limited/busy, retrying in {wait_time:.1f}s (attempt {attempt + 1}/{max_retries})")
+                                await asyncio.sleep(wait_time)
+                                continue
+                        
+                        return result
+                        
+            except asyncio.TimeoutError as e:
+                last_error = e
+                logger.warning(f"[OKX API] Timeout on {path} (attempt {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                    
+            except aiohttp.ClientError as e:
+                last_error = e
+                logger.warning(f"[OKX API] Client error: {e} (attempt {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                    
+            except Exception as e:
+                last_error = e
+                logger.error(f"[OKX API] Unexpected error: {e}")
+                break  # Don't retry unexpected errors
+        
+        # All retries exhausted
+        error_msg = str(last_error) if last_error else "Max retries exceeded"
+        logger.error(f"[OKX API] Request failed after {max_retries} attempts: {path} - {error_msg}")
+        return {"code": "-1", "msg": error_msg, "data": [], "retry_exhausted": True}
 
     async def get_max_avail_size(self, symbol: str = "BTC-USDT-SWAP") -> float:
         """
@@ -506,6 +552,9 @@ class OKXClient:
 
                 if result.get('code') == '0':
                     order_id = result.get('data', [{}])[0].get('ordId', '')
+                    
+                    # 🆕 Confirm order was filled
+                    actual_price, actual_size = await self._confirm_order_filled(order_id, symbol, price, sz * contract_val)
 
                     # Set TP/SL if provided
                     if tp_price or sl_price:
@@ -514,10 +563,11 @@ class OKXClient:
                     return {
                         'success': True,
                         'order_id': order_id,
-                        'executed_price': price,
-                        'executed_amount': sz * contract_val,
+                        'executed_price': actual_price,
+                        'executed_amount': actual_size,
                         'side': side,
-                        'leverage': leverage
+                        'leverage': leverage,
+                        'confirmed': True
                     }
                 else:
                     return {
@@ -537,6 +587,84 @@ class OKXClient:
             'success': False,
             'error': "OKX API credentials not configured. Cannot execute real trades."
         }
+
+    async def _confirm_order_filled(
+        self, 
+        order_id: str, 
+        symbol: str, 
+        expected_price: float, 
+        expected_size: float,
+        max_wait_seconds: int = 10
+    ) -> tuple[float, float]:
+        """
+        Confirm order was actually filled by querying order details.
+        
+        This is critical for real trading to ensure:
+        1. Order was actually executed
+        2. Get actual fill price (may differ from market price)
+        3. Get actual filled size
+        
+        Args:
+            order_id: The order ID to check
+            symbol: Trading pair
+            expected_price: Expected fill price (fallback)
+            expected_size: Expected fill size (fallback)
+            max_wait_seconds: Max time to wait for fill confirmation
+            
+        Returns:
+            Tuple of (actual_price, actual_size)
+        """
+        if not order_id:
+            return expected_price, expected_size
+            
+        try:
+            # Poll for order status
+            wait_intervals = [0.5, 1, 2, 3, 3.5]  # Total ~10 seconds
+            
+            for wait in wait_intervals:
+                await asyncio.sleep(wait)
+                
+                # Query order details
+                result = await self._request(
+                    'GET', 
+                    f'/api/v5/trade/order?instId={symbol}&ordId={order_id}'
+                )
+                
+                if result.get('code') == '0' and result.get('data'):
+                    order = result['data'][0]
+                    state = order.get('state', '')
+                    
+                    # Check if filled
+                    if state == 'filled':
+                        actual_price = float(order.get('avgPx', expected_price) or expected_price)
+                        actual_size = float(order.get('accFillSz', expected_size) or expected_size)
+                        
+                        # Convert contract size to BTC if needed
+                        contract_val = 0.01  # BTC-USDT-SWAP: 1 contract = 0.01 BTC
+                        if actual_size > 1:  # Likely in contracts not BTC
+                            actual_size = actual_size * contract_val
+                            
+                        logger.info(f"[OKXClient] ✅ Order {order_id} CONFIRMED: price=${actual_price:.2f}, size={actual_size:.6f}")
+                        return actual_price, actual_size
+                    
+                    elif state in ['canceled', 'cancelled']:
+                        logger.error(f"[OKXClient] ❌ Order {order_id} was CANCELLED!")
+                        return expected_price, 0  # Size 0 indicates failed order
+                    
+                    elif state == 'live':
+                        logger.debug(f"[OKXClient] Order {order_id} still pending...")
+                        continue
+                    
+                    else:
+                        logger.debug(f"[OKXClient] Order {order_id} state: {state}")
+                        
+            # Timeout - return expected values with warning
+            logger.warning(f"[OKXClient] ⚠️ Order {order_id} confirmation timeout after {max_wait_seconds}s")
+            return expected_price, expected_size
+            
+        except Exception as e:
+            logger.error(f"[OKXClient] Error confirming order {order_id}: {e}")
+            return expected_price, expected_size
 
     async def _set_tp_sl(self, symbol: str, pos_side: str, tp_price: Optional[float], sl_price: Optional[float]):
         """Set take-profit and stop-loss orders"""
