@@ -1,6 +1,5 @@
 """
 Agent: The fundamental actor in the multi-agent system
-Agent: 多智能体系统中的基本行动者
 """
 from typing import List, Dict, Any, Optional
 from .message import Message, MessageType
@@ -12,13 +11,13 @@ import json
 
 class Agent:
     """
-    Agent抽象基类
+    Agent Abstract Base Class
 
-    代表系统中的自主实体,负责:
-    - 处理收到的消息
-    - 使用工具获取信息
-    - 与LLM交互进行推理
-    - 生成并发送新消息
+    Represents an autonomous entity in the system, responsible for:
+    - Processing received messages
+    - Using tools to gather information
+    - Interacting with LLM for reasoning
+    - Generating and sending new messages
     """
 
     def __init__(
@@ -37,20 +36,20 @@ class Agent:
         avatar: str = None
     ):
         """
-        初始化Agent
+        Initialize Agent
 
         Args:
-            name: Agent的显示名称
-            role_prompt: 定义Agent的人格、专长和目标的系统提示
-            llm_gateway_url: LLM网关服务的URL
-            model: 使用的模型名称
-            temperature: 生成温度参数
-            id: Agent的唯一标识符（可选，默认使用name）
-            role: Agent的角色描述
-            personality: Agent的个性描述
-            system_prompt: 系统提示（与role_prompt可互换）
-            expertise: Agent的专长领域列表
-            avatar: Agent的头像图标
+            name: Agent's display name
+            role_prompt: System prompt defining Agent's personality, expertise, and goals
+            llm_gateway_url: LLM gateway service URL
+            model: Model name to use
+            temperature: Generation temperature parameter
+            id: Agent's unique identifier (optional, defaults to name)
+            role: Agent's role description
+            personality: Agent's personality description
+            system_prompt: System prompt (interchangeable with role_prompt)
+            expertise: List of Agent's expertise areas
+            avatar: Agent's avatar icon
         """
         self.id = id or name  # Use id if provided, otherwise use name
         self.name = name
@@ -67,91 +66,91 @@ class Agent:
         self.model = model
         self.temperature = temperature
 
-        # 工具注册表
+        # Tool registry
         self.tools: Dict[str, Tool] = {}
 
-        # 消息历史（Agent的私有记忆）
+        # Message history (Agent's private memory)
         self.message_history: List[Message] = []
 
-        # MessageBus引用（由Meeting设置）
+        # MessageBus reference (set by Meeting)
         self.message_bus: Optional[MessageBus] = None
 
-        # Agent当前状态
+        # Agent current state
         self.status = "idle"  # idle, thinking, tool_using, speaking
 
     def register_tool(self, tool: Tool):
         """
-        注册工具到Agent的工具带
+        Register a tool to Agent's toolbelt
 
         Args:
-            tool: 要注册的工具
+            tool: Tool to register
         """
         self.tools[tool.name] = tool
         print(f"[Agent:{self.name}] Tool registered: {tool.name}")
 
     def get_tools_schema(self) -> List[Dict[str, Any]]:
         """
-        获取所有工具的Schema（用于LLM function calling）
+        Get schema of all tools (for LLM function calling)
 
         Returns:
-            工具Schema列表
+            List of tool schemas
         """
         return [tool.to_schema() for tool in self.tools.values()]
 
     async def think_and_act(self) -> List[Message]:
         """
-        Agent的主循环：处理消息、决策、生成响应
+        Agent's main loop: process messages, make decisions, generate responses
 
         Returns:
-            要发送的消息列表
+            List of messages to send
         """
         if not self.message_bus:
             raise RuntimeError(f"Agent {self.name} not connected to MessageBus")
 
-        # 1. 获取待处理消息
+        # 1. Get pending messages
         new_messages = self.message_bus.get_messages(self.name)
 
         if not new_messages:
             return []
 
-        # 2. 更新消息历史
+        # 2. Update message history
         self.message_history.extend(new_messages)
 
-        # 3. 状态更新：思考中
+        # 3. Update status: thinking
         self.status = "thinking"
 
-        # 4. 构建LLM提示
+        # 4. Build LLM prompt
         prompt_messages = self._build_llm_prompt()
 
-        # 5. 调用LLM进行推理
+        # 5. Call LLM for reasoning
         llm_response = await self._call_llm(prompt_messages)
 
-        # 6. 解析LLM响应
+        # 6. Parse LLM response
         outgoing_messages = await self._parse_llm_response(llm_response)
 
-        # 7. 状态更新：空闲
+        # 7. Update status: idle
         self.status = "idle"
 
         return outgoing_messages
 
     def _build_llm_prompt(self) -> List[Dict[str, str]]:
         """
-        构建发送给LLM的提示消息
+        Build prompt messages to send to LLM
 
         Returns:
-            符合OpenAI格式的消息列表
+            List of messages in OpenAI format
         """
         messages = []
 
-        # 系统提示（定义角色）
+        # System prompt (defines role)
         messages.append({
             "role": "system",
             "content": self._get_system_prompt()
         })
 
-        # 对话历史 - 保留更多上下文以避免丢失关键信息
-        for msg in self.message_history[-20:]:  # 保留最近20条
-            # 根据消息发送者确定角色
+        # Conversation history - keep more context to avoid losing key info
+        for msg in self.message_history[-20:]:  # Keep last 20 messages
+            # Determine role based on message sender
             if msg.sender == self.name:
                 role = "assistant"
             else:
@@ -233,25 +232,25 @@ After tool execution, you will receive results to continue the discussion.
 
     async def _call_llm(self, messages: List[Dict[str, str]], max_retries: int = 3) -> Dict[str, Any]:
         """
-        调用LLM网关进行推理（带重试机制，支持 Tool Calling）
+        Call LLM gateway for reasoning (with retry mechanism, supports Tool Calling)
 
         Args:
-            messages: 符合OpenAI格式的消息列表
-            max_retries: 最大重试次数
+            messages: List of messages in OpenAI format
+            max_retries: Maximum number of retries
 
         Returns:
-            LLM的响应
+            LLM response
         """
         import asyncio
 
         last_exception = None
 
-        # 检查是否有工具可用
+        # Check if tools are available
         has_tools = len(self.tools) > 0
 
-        # 如果有工具，使用新的 Tool Calling 端点
+        # If tools available, use new Tool Calling endpoint
         if has_tools:
-            # 使用 OpenAI 兼容的 /v1/chat/completions 端点
+            # Use OpenAI compatible /v1/chat/completions endpoint
             tools_schema = self.get_tools_schema()
 
             request_data = {
@@ -292,14 +291,14 @@ After tool execution, you will receive results to continue the discussion.
                         await asyncio.sleep(2)
                     continue
 
-            # 所有重试都失败
+            # All retries failed
             print(f"[Agent:{self.name}] All {max_retries} LLM call attempts failed")
             raise last_exception
 
         else:
-            # 没有工具，使用旧的 /chat 端点（向后兼容）
-            # 转换为 LLM Gateway 格式
-            # LLM Gateway 期望: {"history": [{"role": "user", "parts": ["text"]}]}
+            # No tools, use old /chat endpoint (backward compatibility)
+            # Convert to LLM Gateway format
+            # LLM Gateway expects: {"history": [{"role": "user", "parts": ["text"]}]}
             history = []
             for msg in messages:
                 role = msg["role"]
@@ -312,7 +311,7 @@ After tool execution, you will receive results to continue the discussion.
 
             request_data = {
                 "history": history,
-                "temperature": self.temperature  # 传递temperature参数
+                "temperature": self.temperature  # Pass temperature parameter
             }
 
             for attempt in range(max_retries):
@@ -325,22 +324,22 @@ After tool execution, you will receive results to continue the discussion.
                         response.raise_for_status()
                         result = response.json()
 
-                        # 调试：打印响应类型和内容
+                        # Debug: print response type and content
                         print(f"[Agent:{self.name}] LLM response type: {type(result)}")
 
-                        # 转换响应格式，使其兼容 OpenAI 格式的解析
-                        # LLM Gateway 返回: {"content": "text"}
-                        # 转换为: {"choices": [{"message": {"content": "text"}}]}
+                        # Convert response format to be compatible with OpenAI format parsing
+                        # LLM Gateway returns: {"content": "text"}
+                        # Convert to: {"choices": [{"message": {"content": "text"}}]}
 
-                        # 处理两种可能的响应格式
+                        # Handle two possible response formats
                         if isinstance(result, str):
-                            # 如果result是字符串，直接使用
+                            # If result is string, use directly
                             content = result
                         elif isinstance(result, dict):
-                            # 如果是字典，提取content字段
+                            # If dict, extract content field
                             content = result.get("content", str(result))
                         else:
-                            # 其他类型，转为字符串
+                            # Other types, convert to string
                             content = str(result)
 
                         return {
@@ -358,7 +357,7 @@ After tool execution, you will receive results to continue the discussion.
                     last_exception = e
                     print(f"[Agent:{self.name}] LLM timeout on attempt {attempt + 1}/{max_retries}")
                     if attempt < max_retries - 1:
-                        # 指数退避：2秒, 4秒, 8秒...
+                        # Exponential backoff: 2s, 4s, 8s...
                         wait_time = 2 ** (attempt + 1)
                         print(f"[Agent:{self.name}] Retrying in {wait_time} seconds...")
                         await asyncio.sleep(wait_time)
@@ -371,19 +370,19 @@ After tool execution, you will receive results to continue the discussion.
                         await asyncio.sleep(2)
                     continue
 
-            # 所有重试都失败
+            # All retries failed
             print(f"[Agent:{self.name}] All {max_retries} LLM call attempts failed")
             raise last_exception
 
     async def _parse_llm_response(self, llm_response: Dict[str, Any]) -> List[Message]:
         """
-        解析LLM的响应并生成消息（支持原生 Tool Calling）
+        Parse LLM response and generate messages (supports native Tool Calling)
 
         Args:
-            llm_response: LLM的原始响应
+            llm_response: LLM's raw response
 
         Returns:
-            要发送的消息列表
+            List of messages to send
         """
         messages_to_send = []
 
@@ -391,9 +390,9 @@ After tool execution, you will receive results to continue the discussion.
             choice = llm_response["choices"][0]
             message = choice["message"]
 
-            # 检查是否有原生的 tool_calls (OpenAI 格式)
+            # Check if there are native tool_calls (OpenAI format)
             if message.get("tool_calls") and self.tools:
-                # 原生 Tool Calling
+                # Native Tool Calling
                 self.status = "tool_using"
                 tool_results = []
 
@@ -405,29 +404,29 @@ After tool execution, you will receive results to continue the discussion.
                         print(f"[Agent:{self.name}] Native Tool Calling: {tool_name}")
 
                         try:
-                            # 解析 JSON 参数
+                            # Parse JSON arguments
                             import json
                             tool_args = json.loads(tool_args_str) if isinstance(tool_args_str, str) else tool_args_str
 
                             print(f"[Agent:{self.name}] Tool arguments: {tool_args}")
 
-                            # 执行工具
+                            # Execute tool
                             tool_result = await self.tools[tool_name].execute(**tool_args)
                             print(f"[Agent:{self.name}] Tool {tool_name} result: {tool_result}")
 
-                            # 收集工具结果
+                            # Collect tool results
                             if isinstance(tool_result, dict) and "summary" in tool_result:
-                                tool_results.append(f"\n[{tool_name}结果]: {tool_result['summary']}")
+                                tool_results.append(f"\n[{tool_name} Result]: {tool_result['summary']}")
                             else:
-                                tool_results.append(f"\n[{tool_name}结果]: {str(tool_result)[:500]}")
+                                tool_results.append(f"\n[{tool_name} Result]: {str(tool_result)[:500]}")
 
                         except Exception as e:
                             print(f"[Agent:{self.name}] Tool execution failed: {e}")
-                            tool_results.append(f"\n[{tool_name}错误]: {str(e)}")
+                            tool_results.append(f"\n[{tool_name} Error]: {str(e)}")
                     else:
                         print(f"[Agent:{self.name}] Unknown tool: {tool_name}")
 
-                # 返回工具结果作为消息
+                # Return tool results as message
                 if tool_results:
                     combined_result = "".join(tool_results)
                     messages_to_send.append(Message(
@@ -439,16 +438,16 @@ After tool execution, you will receive results to continue the discussion.
                 self.status = "idle"
                 return messages_to_send
 
-            # 提取文本内容
+            # Extract text content
             content = message.get("content", "")
 
-            # 向后兼容：检测自定义格式的工具调用 [USE_TOOL: tool_name(params)]
+            # Backward compatibility: detect custom format tool calls [USE_TOOL: tool_name(params)]
             import re
             tool_pattern = r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]'
             tool_matches = re.findall(tool_pattern, content)
 
             if tool_matches and self.tools:
-                # 有工具调用（DEPRECATED 向后兼容模式）
+                # Tool call detected (DEPRECATED backward compatibility mode)
                 print(f"[Agent:{self.name}] ⚠️ DEPRECATED: Legacy [USE_TOOL:] format detected. "
                       "This will be removed in future versions. LLM should use native tool_calls.")
                 self.status = "tool_using"
@@ -458,14 +457,14 @@ After tool execution, you will receive results to continue the discussion.
                     if tool_name in self.tools:
                         print(f"[Agent:{self.name}] Legacy tool calling: {tool_name}")
 
-                        # 解析参数
+                        # Parse arguments
                         try:
-                            # 支持双引号和单引号: key="value" 或 key='value'
+                            # Support double and single quotes: key="value" or key='value'
                             params = {}
-                            # 先尝试双引号
+                            # Try double quotes first
                             param_pattern_double = r'(\w+)="([^"]*)"'
                             param_matches = re.findall(param_pattern_double, params_str)
-                            # 再尝试单引号
+                            # Then try single quotes
                             if not param_matches:
                                 param_pattern_single = r"(\w+)='([^']*)'"
                                 param_matches = re.findall(param_pattern_single, params_str)
@@ -473,26 +472,26 @@ After tool execution, you will receive results to continue the discussion.
                             for key, value in param_matches:
                                 params[key] = value
 
-                            # 执行工具
+                            # Execute tool
                             tool_result = await self.tools[tool_name].execute(**params)
                             print(f"[Agent:{self.name}] Tool {tool_name} result: {tool_result}")
 
-                            # 收集工具结果
+                            # Collect tool results
                             if isinstance(tool_result, dict) and "summary" in tool_result:
-                                tool_results.append(f"\n[{tool_name}结果]: {tool_result['summary']}")
+                                tool_results.append(f"\n[{tool_name} Result]: {tool_result['summary']}")
                             else:
-                                tool_results.append(f"\n[{tool_name}结果]: {str(tool_result)[:500]}")
+                                tool_results.append(f"\n[{tool_name} Result]: {str(tool_result)[:500]}")
 
                         except Exception as tool_error:
                             print(f"[Agent:{self.name}] Tool {tool_name} error: {tool_error}")
-                            tool_results.append(f"\n[{tool_name}错误]: {str(tool_error)}")
+                            tool_results.append(f"\n[{tool_name} Error]: {str(tool_error)}")
 
-                # 如果有工具结果，将其添加到内容中
+                # If there are tool results, add them to content
                 if tool_results:
                     content += "\n\n" + "\n".join(tool_results)
 
             if content:
-                # 分析消息类型和目标接收者
+                # Analyze message type and target recipient
                 message_type, recipient = self._analyze_message_intent(content)
 
                 msg = Message(
@@ -514,82 +513,82 @@ After tool execution, you will receive results to continue the discussion.
 
     def _analyze_message_intent(self, content: str) -> tuple[MessageType, str]:
         """
-        分析消息内容，确定消息类型和接收者
+        Analyze message content to determine message type and recipient
 
         Args:
-            content: 消息内容
+            content: Message content
 
         Returns:
-            (消息类型, 接收者名称)
+            (message_type, recipient_name)
         """
         content_lower = content.lower()
 
-        # 检测私聊意图
+        # Detect private message intent (Chinese keywords kept for backward compatibility)
         if "私聊" in content or "私下" in content or "单独" in content:
-            # 尝试提取目标Agent（简化处理）
+            # Try to extract target Agent
             for agent_name in self.message_bus.registered_agents:
                 if agent_name.lower() in content_lower and agent_name != self.name:
                     return (MessageType.PRIVATE, agent_name)
             return (MessageType.PRIVATE, "ALL")
 
-        # 检测提问意图
+        # Detect question intent
         if "@" in content or "请问" in content or "想问" in content:
-            # 尝试提取目标Agent
+            # Try to extract target Agent
             for agent_name in self.message_bus.registered_agents:
                 if agent_name in content and agent_name != self.name:
                     return (MessageType.QUESTION, agent_name)
             return (MessageType.QUESTION, "ALL")
 
-        # 检测赞同/反对
+        # Detect agreement/disagreement
         if "同意" in content or "赞同" in content:
             return (MessageType.AGREEMENT, "ALL")
         if "不同意" in content or "反对" in content:
             return (MessageType.DISAGREEMENT, "ALL")
 
-        # 默认为广播消息
+        # Default to broadcast message
         return (MessageType.BROADCAST, "ALL")
 
     def get_conversation_context(self, limit: int = 20) -> List[Dict[str, Any]]:
         """
-        获取对话上下文（用于调试或展示）
+        Get conversation context (for debugging or display)
 
         Args:
-            limit: 返回的最大消息数
+            limit: Maximum number of messages to return
 
         Returns:
-            消息历史列表
+            Message history list
         """
         return [msg.to_dict() for msg in self.message_history[-limit:]]
 
     async def analyze(self, target: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
-        单独执行分析（兼容BaseOrchestrator接口）
+        Execute analysis independently (compatible with BaseOrchestrator interface)
 
-        这是一个适配方法，允许Agent在BaseOrchestrator的workflow中独立执行分析，
-        而不需要完整的roundtable meeting环境。
+        This is an adapter method that allows Agent to execute analysis independently
+        within BaseOrchestrator's workflow, without needing a complete roundtable meeting.
 
         Args:
-            target: 分析目标数据
-            context: 上下文信息（可选）
+            target: Analysis target data
+            context: Context information (optional)
 
         Returns:
-            分析结果字典
+            Analysis result dictionary
         """
-        # 构建分析提示
-        analysis_prompt = f"""请分析以下投资标的:
+        # Build analysis prompt
+        analysis_prompt = f"""Please analyze the following investment target:
 
 {json.dumps(target, ensure_ascii=False, indent=2)}
 
-请从你的专业角度提供分析，包括:
-1. 关键发现
-2. 风险因素
-3. 优势分析
-4. 评分(1-10分)
-5. 投资建议
+Please provide analysis from your professional perspective, including:
+1. Key findings
+2. Risk factors
+3. Strengths analysis
+4. Score (1-10)
+5. Investment recommendation
 
-请使用工具获取必要的数据支持你的分析。"""
+Please use tools to obtain necessary data to support your analysis."""
 
-        # 创建一个虚拟的分析消息
+        # Create a virtual analysis message
         messages = [
             {
                 "role": "system",
@@ -601,31 +600,31 @@ After tool execution, you will receive results to continue the discussion.
             }
         ]
 
-        # 调用LLM进行分析
+        # Call LLM for analysis
         try:
             llm_response = await self._call_llm(messages)
 
-            # 详细日志：打印响应类型和内容
+            # Detailed log: print response type and content
             print(f"[Agent:{self.name}] 🔍 DEBUG: llm_response type = {type(llm_response)}")
             print(f"[Agent:{self.name}] 🔍 DEBUG: llm_response = {str(llm_response)[:200]}")
 
-            # 安全提取content - 处理可能的类型问题
+            # Safely extract content - handle possible type issues
             if isinstance(llm_response, str):
-                # 如果响应是字符串，直接使用
+                # If response is string, use directly
                 print(f"[Agent:{self.name}] ✅ Response is string, using directly")
                 content = llm_response
             elif isinstance(llm_response, dict) and "choices" in llm_response:
-                # 标准格式
+                # Standard format
                 print(f"[Agent:{self.name}] ✅ Response is dict with 'choices', extracting content")
                 choice = llm_response["choices"][0]
                 content = choice["message"].get("content", "")
             else:
-                # 未知格式，尝试转为字符串
+                # Unknown format, try to convert to string
                 print(f"[Agent:{self.name}] ⚠️ WARNING: Unexpected llm_response type: {type(llm_response)}")
                 print(f"[Agent:{self.name}] ⚠️ WARNING: Full response: {llm_response}")
                 content = str(llm_response)
 
-            # 检测并执行工具调用
+            # Detect and execute tool calls
             import re
             tool_pattern = r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]'
             tool_matches = re.findall(tool_pattern, content)
@@ -635,20 +634,20 @@ After tool execution, you will receive results to continue the discussion.
                 for tool_name, params_str in tool_matches:
                     if tool_name in self.tools:
                         try:
-                            # 解析参数
+                            # Parse arguments
                             params = {}
                             param_pattern = r'(\w+)="([^"]*)"'
                             param_matches = re.findall(param_pattern, params_str)
                             for key, value in param_matches:
                                 params[key] = value
 
-                            # 执行工具
+                            # Execute tool
                             tool_result = await self.tools[tool_name].execute(**params)
                             tool_results.append(f"[{tool_name}]: {tool_result}")
                         except Exception as e:
                             tool_results.append(f"[{tool_name} Error]: {str(e)}")
 
-                # 如果有工具结果，进行第二轮分析
+                # If there are tool results, perform second round analysis
                 if tool_results:
                     follow_up_messages = messages + [
                         {
@@ -657,12 +656,12 @@ After tool execution, you will receive results to continue the discussion.
                         },
                         {
                             "role": "user",
-                            "content": f"工具返回结果:\n{chr(10).join(tool_results)}\n\n请基于这些数据给出最终分析结论。"
+                            "content": f"Tool results:\n{chr(10).join(tool_results)}\n\nPlease provide final analysis conclusion based on this data."
                         }
                     ]
                     llm_response = await self._call_llm(follow_up_messages)
                     
-                    # 安全处理第二轮响应
+                    # Safely handle second round response
                     if isinstance(llm_response, str):
                         content = llm_response
                     elif isinstance(llm_response, dict) and "choices" in llm_response:
@@ -670,7 +669,7 @@ After tool execution, you will receive results to continue the discussion.
                     else:
                         content = str(llm_response)
 
-            # 返回结构化结果
+            # Return structured result
             return {
                 "agent": self.name,
                 "analysis": content,
@@ -686,35 +685,40 @@ After tool execution, you will receive results to continue the discussion.
             return {
                 "agent": self.name,
                 "error": str(e),
-                "analysis": f"分析失败: {str(e)}"
+                "analysis": f"Analysis failed: {str(e)}"
             }
 
     def _extract_score(self, content: str) -> float:
-        """从分析内容中提取评分"""
+        """Extract score from analysis content"""
         import re
-        # 尝试匹配 "评分: 8/10" 或 "得分: 8分" 等格式
+        # Try to match "Score: 8/10" or "Rating: 8" etc. formats
         score_patterns = [
-            r'评分[:：]\s*(\d+\.?\d*)',
-            r'得分[:：]\s*(\d+\.?\d*)',
-            r'分数[:：]\s*(\d+\.?\d*)',
+            r'评分[::：]\s*(\d+\.?\d*)',  # Chinese: 评分
+            r'得分[::：]\s*(\d+\.?\d*)',  # Chinese: 得分
+            r'分数[::：]\s*(\d+\.?\d*)',  # Chinese: 分数
+            r'[Ss]core[::：]\s*(\d+\.?\d*)',  # English: Score
+            r'[Rr]ating[::：]\s*(\d+\.?\d*)',  # English: Rating
             r'(\d+\.?\d*)/10',
-            r'(\d+\.?\d*)分'
+            r'(\d+\.?\d*)分'  # X分 format
         ]
         for pattern in score_patterns:
             match = re.search(pattern, content)
             if match:
                 score = float(match.group(1))
                 return min(score / 10.0 if score > 10 else score, 1.0)
-        return 0.5  # 默认中等评分
+        return 0.5  # Default medium score
 
     def _extract_recommendation(self, content: str) -> str:
-        """从分析内容中提取建议"""
+        """Extract recommendation from analysis content"""
         content_lower = content.lower()
-        if "建议投资" in content_lower or "推荐买入" in content_lower:
+        # Check for buy recommendation (Chinese and English)
+        if "建议投资" in content or "推荐买入" in content or "recommend buy" in content_lower:
             return "BUY"
-        elif "建议观察" in content_lower or "继续关注" in content_lower:
+        # Check for hold recommendation
+        elif "建议观察" in content or "继续关注" in content or "hold" in content_lower or "watch" in content_lower:
             return "HOLD"
-        elif "不建议" in content_lower or "建议放弃" in content_lower:
+        # Check for pass recommendation
+        elif "不建议" in content or "建议放弃" in content or "not recommend" in content_lower or "pass" in content_lower:
             return "PASS"
         else:
             return "FURTHER_DD"
