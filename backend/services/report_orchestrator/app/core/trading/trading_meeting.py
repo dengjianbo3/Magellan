@@ -2801,7 +2801,10 @@ You MUST call a tool based on meeting results!""",
                     )
             
             async def _infer_from_text(self, text: str) -> TradingSignal:
-                """从自然语言响应推断决策（备用方案）"""
+                """从自然语言响应推断决策（DEPRECATED - 备用方案）"""
+                logger.warning("[TradeExecutor] ⚠️ DEPRECATED: Using text inference fallback. "
+                              "This indicates LLM did not use native tool calling. "
+                              "This fallback will be removed in future versions.")
                 text_lower = text.lower()
 
                 # 检测方向关键词
@@ -3514,9 +3517,13 @@ Please reference your historical performance and lessons learned in your analysi
     def _parse_vote_fallback(self, agent_id: str, agent_name: str, response: str) -> Optional[AgentVote]:
         """
         降级解析: 当 JSON 解析失败时，使用文本匹配作为备选
-
-        保留原有的字符串匹配逻辑作为兜底
+        
+        DEPRECATED: This fallback method will be removed in future versions.
+        Agents should output structured JSON for reliability.
         """
+        logger.warning(f"[{agent_name}] ⚠️ DEPRECATED: Using text fallback parsing. "
+                      "This indicates agent did not output valid JSON. "
+                      "This fallback will be removed in future versions.")
         try:
             # Try to extract structured data - use config for defaults
             direction = "hold"

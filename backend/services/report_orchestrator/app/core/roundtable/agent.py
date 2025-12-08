@@ -448,7 +448,9 @@ After tool execution, you will receive results to continue the discussion.
             tool_matches = re.findall(tool_pattern, content)
 
             if tool_matches and self.tools:
-                # 有工具调用（向后兼容模式）
+                # 有工具调用（DEPRECATED 向后兼容模式）
+                print(f"[Agent:{self.name}] ⚠️ DEPRECATED: Legacy [USE_TOOL:] format detected. "
+                      "This will be removed in future versions. LLM should use native tool_calls.")
                 self.status = "tool_using"
                 tool_results = []
 
