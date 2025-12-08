@@ -98,16 +98,71 @@ class OKXClient:
 
         # Test connection and setup
         try:
-            # 1. Check and set position mode to long_short_mode (bidirectional position)
+            # 🆕 1. Verify API key permissions
+            await self._verify_api_permissions()
+            
+            # 2. Check and set position mode to long_short_mode (bidirectional position)
             await self._ensure_long_short_mode()
 
-            # 2. Test connection by getting balance
+            # 3. Test connection by getting balance
             balance = await self.get_account_balance()
             logger.info(f"OKX client initialized (demo={self.demo_mode}), USDT balance: ${balance.available_balance:.2f}")
             self._initialized = True
         except Exception as e:
             logger.error(f"Failed to initialize OKX client: {e}")
             self._initialized = True
+
+    async def _verify_api_permissions(self):
+        """
+        Verify API key has correct permissions.
+        
+        CRITICAL for real trading:
+        - Should have: Trade permission
+        - Should NOT have: Withdraw permission (security risk)
+        - Optional: Read permission
+        """
+        try:
+            # Get API key info
+            result = await self._request('GET', '/api/v5/account/config')
+            
+            if result.get('code') == '0' and result.get('data'):
+                config = result['data'][0]
+                
+                # OKX returns permission info in config
+                # Note: For security, we log what we find but proceed with caution
+                perm = config.get('perm', '')
+                ip = config.get('ip', '')
+                label = config.get('label', '')
+                
+                logger.info(f"[API Security] API Key label: '{label}'")
+                logger.info(f"[API Security] IP whitelist: {ip if ip else 'Not configured (⚠️ risk)'}")
+                logger.info(f"[API Security] Permissions: {perm}")
+                
+                # Check for dangerous permissions
+                if 'withdraw' in perm.lower():
+                    logger.warning("=" * 60)
+                    logger.warning("🚨 SECURITY WARNING: API KEY HAS WITHDRAW PERMISSION!")
+                    logger.warning("   This is a security risk for automated trading.")
+                    logger.warning("   Recommendation: Create a new API key with only 'Trade' permission.")
+                    logger.warning("=" * 60)
+                    # We don't block here but strongly warn
+                
+                # Check for trade permission
+                if 'trade' not in perm.lower() and perm:
+                    logger.error("=" * 60)
+                    logger.error("❌ API KEY DOES NOT HAVE TRADE PERMISSION!")
+                    logger.error("   Trading operations will fail.")
+                    logger.error("   Please update API key permissions in OKX.")
+                    logger.error("=" * 60)
+                    
+                # Check IP whitelist
+                if not ip:
+                    logger.warning("[API Security] ⚠️ No IP whitelist configured - consider adding for extra security")
+                else:
+                    logger.info(f"[API Security] ✅ IP whitelist active: {ip}")
+                    
+        except Exception as e:
+            logger.warning(f"[API Security] Could not verify API permissions: {e}")
 
     async def _ensure_long_short_mode(self):
         """

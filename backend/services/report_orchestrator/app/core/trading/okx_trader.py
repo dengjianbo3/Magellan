@@ -8,9 +8,12 @@ allowing the trading system to use OKX demo trading.
 import os
 import logging
 import asyncio
+import json
 from datetime import datetime
 from typing import Optional, Dict, List, Any, Callable
 from dataclasses import dataclass, field
+
+import redis.asyncio as redis
 
 from app.core.trading.okx_client import OKXClient, get_okx_client
 
@@ -67,10 +70,15 @@ class OKXTrader:
     Uses OKX demo trading API (模拟盘).
     """
 
-    def __init__(self, initial_balance: float = 10000.0, demo_mode: bool = True, config: OKXTraderConfig = None):
+    def __init__(self, initial_balance: float = 10000.0, demo_mode: bool = True, config: OKXTraderConfig = None,
+                 redis_url: str = "redis://redis:6379"):
         self.config = config or OKXTraderConfig(initial_balance=initial_balance, demo_mode=demo_mode)
         self.initial_balance = self.config.initial_balance
         self.demo_mode = self.config.demo_mode
+        self.redis_url = redis_url
+        self._redis: Optional[redis.Redis] = None
+        self._key_prefix = "okx_trader:"
+        
         self._okx_client: Optional[OKXClient] = None
         self._initialized = False
 
@@ -119,6 +127,18 @@ class OKXTrader:
             logger.warning("   - Tested thoroughly on demo first")
             logger.warning("=" * 60)
 
+        # 🆕 Initialize Redis for state persistence
+        try:
+            self._redis = redis.from_url(self.redis_url, decode_responses=True)
+            await self._redis.ping()
+            logger.info(f"[Redis] Connected to {self.redis_url}")
+            
+            # Load saved state (trade history, daily PnL, halt status)
+            await self._load_state()
+        except Exception as e:
+            logger.warning(f"[Redis] Not available, using memory only: {e}")
+            self._redis = None
+
         self._okx_client = await get_okx_client()
 
         # Get initial balance from OKX
@@ -156,6 +176,79 @@ class OKXTrader:
                 self._position = None
         except Exception as e:
             logger.error(f"Error syncing position: {e}")
+
+    async def _save_state(self):
+        """Save trading state to Redis for recovery after restart"""
+        if not self._redis:
+            return
+
+        try:
+            # Save trade history (last 100)
+            await self._redis.set(
+                f"{self._key_prefix}trade_history",
+                json.dumps(self._trade_history[-100:])
+            )
+
+            # Save daily tracking state
+            daily_state = {
+                'daily_pnl': self._daily_pnl,
+                'daily_pnl_reset_date': self._daily_pnl_reset_date.isoformat(),
+                'is_trading_halted': self._is_trading_halted,
+                'max_daily_loss_percent': self._max_daily_loss_percent
+            }
+            await self._redis.set(
+                f"{self._key_prefix}daily_state",
+                json.dumps(daily_state)
+            )
+
+            # Save equity history (last 1000)
+            await self._redis.set(
+                f"{self._key_prefix}equity_history",
+                json.dumps(self._equity_history[-1000:])
+            )
+
+            logger.debug("[Redis] State saved successfully")
+
+        except Exception as e:
+            logger.error(f"[Redis] Error saving state: {e}")
+
+    async def _load_state(self):
+        """Load trading state from Redis on startup"""
+        if not self._redis:
+            return
+
+        try:
+            # Load trade history
+            trade_data = await self._redis.get(f"{self._key_prefix}trade_history")
+            if trade_data:
+                self._trade_history = json.loads(trade_data)
+                logger.info(f"[Redis] Loaded {len(self._trade_history)} trades from history")
+
+            # Load daily tracking state
+            daily_data = await self._redis.get(f"{self._key_prefix}daily_state")
+            if daily_data:
+                state = json.loads(daily_data)
+                saved_date = datetime.fromisoformat(state.get('daily_pnl_reset_date', datetime.now().isoformat()))
+                today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                
+                # Only restore if same day
+                if saved_date.date() == today.date():
+                    self._daily_pnl = state.get('daily_pnl', 0.0)
+                    self._daily_pnl_reset_date = saved_date
+                    self._is_trading_halted = state.get('is_trading_halted', False)
+                    self._max_daily_loss_percent = state.get('max_daily_loss_percent', 10.0)
+                    logger.info(f"[Redis] Restored daily state: PnL=${self._daily_pnl:.2f}, halted={self._is_trading_halted}")
+                else:
+                    logger.info("[Redis] New day detected, starting fresh daily tracking")
+
+            # Load equity history
+            equity_data = await self._redis.get(f"{self._key_prefix}equity_history")
+            if equity_data:
+                self._equity_history = json.loads(equity_data)
+                logger.info(f"[Redis] Loaded {len(self._equity_history)} equity snapshots")
+
+        except Exception as e:
+            logger.error(f"[Redis] Error loading state: {e}")
 
     async def validate_stop_loss_against_liquidation(
         self,
@@ -632,6 +725,9 @@ class OKXTrader:
                     self._position = None
 
                     logger.info(f"OKX position closed: PnL=${pnl:.2f} ({reason})")
+
+                    # 🆕 Save state to Redis after trade
+                    await self._save_state()
 
                     # Trigger callback
                     if self.on_position_closed:
