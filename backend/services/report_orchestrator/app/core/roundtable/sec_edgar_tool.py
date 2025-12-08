@@ -1,16 +1,16 @@
 """
 SEC EDGAR MCP Tool
-获取美国上市公司官方财务披露文件
+Retrieve official financial disclosure documents for US public companies
 """
 import httpx
 from typing import Any, Dict, Optional
 from .tool import Tool
 
 
-# 全面的Ticker到CIK映射表 (1000+常见美股)
-# 数据来源: SEC官方company_tickers.json
+# Comprehensive Ticker to CIK mapping table (1000+ common US stocks)
+# Data source: SEC official company_tickers.json
 TICKER_TO_CIK_MAP = {
-    # ========== 市值TOP 100 ==========
+    # ========== Market Cap Top 100 ==========
     "AAPL": "320193", "MSFT": "789019", "GOOGL": "1652044", "GOOG": "1652044",
     "AMZN": "1018724", "NVDA": "1045810", "TSLA": "1318605", "META": "1326801",
     "FB": "1326801", "BRK.A": "1067983", "BRK.B": "1067983", "BRKB": "1067983",
@@ -38,7 +38,7 @@ TICKER_TO_CIK_MAP = {
     "SCHW": "316709", "KLAC": "319201", "CB": "896159", "TMUS": "1283699",
     "MO": "764180", "SNPS": "883241", "SO": "92122", "DUK": "17797",
     "EQIX": "1101239", "FI": "1403568", "CDNS": "813672", "BSX": "885725",
-    # ========== 市值100-200 ==========
+    # ========== Market Cap 100-200 ==========
     "ICE": "1571949", "PGR": "80661", "PANW": "1327567", "CME": "1156375",
     "AON": "315293", "SHW": "89800", "MU": "723125", "NOC": "1133421",
     "MCK": "927653", "ITW": "49826", "EMR": "32604", "NSC": "702165",
@@ -61,7 +61,7 @@ TICKER_TO_CIK_MAP = {
     "DOW": "1751788", "HLT": "1585689", "CNC": "1071739", "CTSH": "1058290",
     "BK": "1390777", "IQV": "1629939", "BIIB": "875045", "HAL": "45012",
     "GPN": "1123360", "OKE": "1039684", "CMI": "26172", "PRU": "1137774",
-    # ========== 市值200-300 ==========
+    # ========== Market Cap 200-300 ==========
     "MSCI": "1408198", "KDP": "1695580", "MAR": "1048286", "GEHC": "1932393",
     "MRNA": "1682852", "EL": "1001250", "YUM": "1041061", "NUE": "73309",
     "FAST": "815556", "HSY": "47111", "IT": "749251", "PPG": "79879",
@@ -84,7 +84,7 @@ TICKER_TO_CIK_MAP = {
     "DOV": "29905", "SBAC": "1347652", "FTV": "1659166", "BBY": "764478",
     "GRMN": "1121788", "RF": "1281761", "CINF": "20286", "GPC": "40987",
     "HBAN": "49196", "PKI": "31791", "EXPD": "746515", "AKAM": "1086222",
-    # ========== 市值300-400 ==========
+    # ========== Market Cap 300-400 ==========
     "IRM": "1020569", "STE": "310764", "CFG": "1610520", "NTRS": "73124",
     "VTR": "740260", "CLX": "21076", "LYB": "1489393", "ES": "72912",
     "MKC": "63754", "LW": "1679273", "NRG": "1013871", "AVY": "8818",
@@ -101,7 +101,7 @@ TICKER_TO_CIK_MAP = {
     "MGM": "789570", "ZBRA": "877212", "DGX": "1022079", "L": "60714",
     "PKG": "75677", "TRGP": "1389170", "WBA": "1618921", "ULTA": "1403568",
     "DPZ": "1286681", "POOL": "945841", "TDY": "1094285", "HOLX": "859737",
-    # ========== 市值400-500 ==========
+    # ========== Market Cap 400-500 ==========
     "NDAQ": "1120193", "WDC": "106040", "CAG": "23217", "SJM": "91419",
     "ALB": "915913", "HST": "1070750", "CTRA": "858470", "UDR": "74208",
     "RJF": "720005", "ALLE": "1579241", "JBHT": "728535", "HUBB": "48898",
@@ -117,7 +117,7 @@ TICKER_TO_CIK_MAP = {
     "FRT": "34903", "CZR": "1590895", "TAP": "24545", "RHI": "315213",
     "BIO": "12208", "FFIV": "1048695", "DVA": "927066", "MOS": "1285785",
     "RCL": "884887", "CPB": "16732", "KMX": "1170010", "XRAY": "818479",
-    # ========== 科技股补充 ==========
+    # ========== Tech Stocks ==========
     "CZR": "858470", "MTCH": "1575189", "ZS": "1713683", "DDOG": "1561550",
     "CRWD": "1535527", "NET": "1477333", "ZM": "1585521", "ROKU": "1428439",
     "DOCU": "1261333", "OKTA": "1660134", "TWLO": "1447669", "SNOW": "1640147",
@@ -136,7 +136,7 @@ TICKER_TO_CIK_MAP = {
     "PLUG": "1093691", "CHPT": "1777393", "QS": "1779474", "BLNK": "1429764",
     "NKLA": "1731289", "FSR": "1720990", "GOEV": "1733413", "HYLN": "1759631",
     "LAZR": "1849253", "VLDR": "1745317", "MVIS": "65770", "LIDR": "1807717",
-    # ========== 金融股补充 ==========
+    # ========== Financial Stocks ==========
     "GS": "886982", "MS": "895421", "BLK": "1364742", "SCHW": "316709",
     "IBKR": "1381197", "RJF": "720005", "MKTX": "1463208", "NDAQ": "1120193",
     "CME": "1156375", "ICE": "1571949", "CBOE": "1374310", "SPGI": "64040",
@@ -150,7 +150,7 @@ TICKER_TO_CIK_MAP = {
     "AMP": "820027", "LPLA": "1579982", "SF": "1069974", "RJF": "720005",
     "PJT": "1627014", "EVR": "1360901", "MC": "1396814", "HLI": "1280263",
     "LAZ": "1311370", "GHL": "1115768", "PFC": "1104659", "MORN": "1289419",
-    # ========== 医药/生物科技补充 ==========
+    # ========== Pharma/Biotech ==========
     "PFE": "78003", "JNJ": "200406", "MRK": "310158", "ABBV": "1551152",
     "LLY": "59478", "TMO": "97745", "ABT": "1800", "DHR": "313616",
     "BMY": "14272", "AMGN": "318154", "GILD": "882095", "REGN": "872589",
@@ -166,7 +166,7 @@ TICKER_TO_CIK_MAP = {
     "UTHR": "1082554", "JAZZ": "1232524", "RARE": "1428205", "BLUE": "1293971",
     "NTLA": "1649904", "EDIT": "1650664", "CRSP": "1674416", "BEAM": "1725684",
     "FATE": "1221029", "KYMR": "1707323", "ARVN": "1739104", "PCVX": "1691796",
-    # ========== 工业股补充 ==========
+    # ========== Industrial Stocks ==========
     "CAT": "18230", "DE": "315189", "HON": "773840", "RTX": "101829",
     "BA": "12927", "LMT": "936468", "NOC": "1133421", "GD": "40533",
     "TXT": "217346", "HII": "1501585", "LHX": "202058", "TDG": "1260221",
@@ -181,7 +181,7 @@ TICKER_TO_CIK_MAP = {
     "SWK": "93556", "SNA": "91440", "LII": "59527", "GNRC": "1474735",
     "WAB": "943452", "TDY": "1094285", "NDSN": "72331", "IEX": "844965",
     "GGG": "38725", "RRX": "1124198", "HWM": "4281", "ATI": "1018963",
-    # ========== 能源股补充 ==========
+    # ========== Energy Stocks ==========
     "XOM": "34088", "CVX": "93410", "COP": "1163165", "EOG": "821189",
     "SLB": "87347", "PXD": "1038357", "OXY": "797468", "DVN": "1090012",
     "MPC": "1510295", "PSX": "1534701", "VLO": "1035002", "HES": "4447",
@@ -193,7 +193,7 @@ TICKER_TO_CIK_MAP = {
     "IMO": "1037676", "CVE": "1594686", "MEG": "1540107", "OVV": "1792580",
     "AR": "1599553", "RRC": "315852", "EQT": "33213", "SWN": "7332",
     "CHK": "895126", "CNX": "1070412", "MTDR": "1520006", "MGY": "1707925",
-    # ========== 消费股补充 ==========
+    # ========== Consumer Stocks ==========
     "WMT": "104169", "COST": "909832", "TGT": "27419", "HD": "354950",
     "LOW": "60667", "DG": "29534", "DLTR": "935703", "BBY": "764478",
     "TSCO": "916365", "ORLY": "898173", "AZO": "866787", "AAP": "1158449",
@@ -208,7 +208,7 @@ TICKER_TO_CIK_MAP = {
     "MCD": "63908", "SBUX": "829224", "DPZ": "1286681", "CMG": "1058090",
     "YUM": "1041061", "QSR": "1618756", "WING": "1640063", "SHAK": "1620533",
     "DRI": "940944", "BLMN": "1535914", "EAT": "703351", "TXRH": "1091907",
-    # ========== 房地产REITs ==========
+    # ========== Real Estate REITs ==========
     "PLD": "1045609", "AMT": "1053507", "CCI": "1051470", "EQIX": "1101239",
     "DLR": "1297996", "SPG": "1063761", "PSA": "1393311", "WELL": "766704",
     "AVB": "915912", "EQR": "906107", "VTR": "740260", "ESS": "920522",
@@ -221,7 +221,7 @@ TICKER_TO_CIK_MAP = {
     "NRE": "1670541", "ALEX": "878560", "BRX": "1581068", "ROIC": "1393393",
     "EXR": "1289490", "CUBE": "1053435", "LSI": "1392972", "NSA": "1628369",
     "GLPI": "1534023", "VICI": "1814852", "MGP": "1656936", "RHP": "1413159",
-    # ========== 材料股补充 ==========
+    # ========== Materials Stocks ==========
     "LIN": "1707925", "APD": "2969", "ECL": "31462", "SHW": "89800",
     "PPG": "79879", "DD": "1666700", "DOW": "1751788", "LYB": "1489393",
     "CE": "1306830", "EMN": "915389", "ALB": "915913", "CTVA": "1755672",
@@ -236,7 +236,7 @@ TICKER_TO_CIK_MAP = {
     "BALL": "9389", "CCK": "1219601", "PKG": "75677", "SEE": "1012100",
     "AVY": "8818", "SON": "91767", "BMS": "10329", "SLGN": "849869",
     "IP": "51434", "GPK": "1408075", "WRK": "1636023", "CLW": "1618906",
-    # ========== 公用事业补充 ==========
+    # ========== Utilities Stocks ==========
     "NEE": "753308", "DUK": "17797", "SO": "92122", "D": "715957",
     "AEP": "4904", "XEL": "72903", "SRE": "1032208", "WEC": "783325",
     "ED": "23632", "EXC": "1109357", "ES": "72912", "PCG": "75488",
@@ -249,7 +249,7 @@ TICKER_TO_CIK_MAP = {
     "ALE": "3153", "PNM": "1093023", "UTL": "101199", "ELB": "36270",
     "AWK": "1410636", "CWT": "1035002", "SJW": "92222", "WTRG": "78128",
     "MSEX": "66004", "ARTNA": "863110", "AWR": "1056972", "YORW": "106040",
-    # ========== ETF (常见) ==========
+    # ========== Common ETFs ==========
     "SPY": "884394", "IVV": "1100663", "VOO": "1299196", "VTI": "876437",
     "QQQ": "1067839", "VEA": "1015253", "VWO": "1045186", "EFA": "1100663",
     "EEM": "1100663", "VIG": "1177427", "VYM": "876436", "SCHD": "1489510",
@@ -267,10 +267,10 @@ TICKER_TO_CIK_MAP = {
 
 class SECEdgarTool(Tool):
     """
-    SEC EDGAR API工具
+    SEC EDGAR API Tool
 
-    通过 SEC官方API 获取上市公司财务披露
-    支持的文件类型: 10-K, 10-Q, 8-K, DEF 14A
+    Retrieve public company financial disclosures via SEC official API
+    Supported file types: 10-K, 10-Q, 8-K, DEF 14A
     """
 
     def __init__(
@@ -280,11 +280,11 @@ class SECEdgarTool(Tool):
     ):
         super().__init__(
             name="sec_edgar",
-            description="获取美国上市公司的官方SEC财务披露文件，包括年报(10-K)、季报(10-Q)、重大事件(8-K)等。"
+            description="Retrieve official SEC financial disclosure documents for US public companies, including annual reports (10-K), quarterly reports (10-Q), material events (8-K), etc."
         )
         self.base_url = base_url
         self.headers = {
-            "User-Agent": user_agent,  # SEC要求提供User-Agent
+            "User-Agent": user_agent,  # SEC requires User-Agent
             "Accept-Encoding": "gzip, deflate"
         }
 
@@ -297,17 +297,17 @@ class SECEdgarTool(Tool):
         **kwargs
     ) -> Dict[str, Any]:
         """
-        执行SEC EDGAR查询
+        Execute SEC EDGAR query
 
         Args:
-            action: 操作类型 (search_filings, get_company_facts)
-            ticker: 股票代码 (如 AAPL)
-            cik: CIK号码 (Central Index Key)
-            form_type: 文件类型 (10-K, 10-Q, 8-K, DEF 14A)
-            **kwargs: 其他参数
+            action: Action type (search_filings, get_company_facts)
+            ticker: Stock ticker (e.g., AAPL)
+            cik: CIK number (Central Index Key)
+            form_type: File type (10-K, 10-Q, 8-K, DEF 14A)
+            **kwargs: Other parameters
 
         Returns:
-            查询结果
+            Query results
         """
         try:
             if action == "search_filings":
@@ -321,7 +321,7 @@ class SECEdgarTool(Tool):
                 return {
                     "success": False,
                     "error": f"Unknown action: {action}",
-                    "summary": f"不支持的操作: {action}"
+                    "summary": f"Unsupported action: {action}"
                 }
 
         except Exception as e:
@@ -329,7 +329,7 @@ class SECEdgarTool(Tool):
             return {
                 "success": False,
                 "error": str(e),
-                "summary": f"SEC EDGAR查询失败: {str(e)}"
+                "summary": f"SEC EDGAR query failed: {str(e)}"
             }
 
     async def _search_filings(
@@ -339,20 +339,20 @@ class SECEdgarTool(Tool):
         form_type: str,
         limit: int = 5
     ) -> Dict[str, Any]:
-        """搜索公司的财务披露文件"""
-        # 如果提供ticker，先转换为CIK
+        """Search company financial disclosure documents"""
+        # If ticker provided, first convert to CIK
         if ticker and not cik:
             cik = await self._ticker_to_cik(ticker)
             if not cik:
                 return {
                     "success": False,
-                    "summary": f"无法找到股票代码 {ticker} 对应的CIK号码。可能不是美国上市公司。"
+                    "summary": f"Cannot find CIK number for ticker {ticker}. May not be a US public company."
                 }
 
-        # 格式化CIK (10位，前面补0)
+        # Format CIK (10 digits, zero-padded)
         cik_padded = str(cik).zfill(10)
 
-        # 搜索披露文件
+        # Search disclosure documents
         url = f"{self.base_url}/submissions/CIK{cik_padded}.json"
 
         try:
@@ -364,21 +364,21 @@ class SECEdgarTool(Tool):
             return {
                 "success": False,
                 "error": str(e),
-                "summary": f"无法获取CIK {cik}的数据: {str(e)}"
+                "summary": f"Cannot retrieve data for CIK {cik}: {str(e)}"
             }
 
-        # 提取最近的指定类型文件
+        # Extract recent files of specified type
         filings = data.get("filings", {}).get("recent", {})
         forms = filings.get("form", [])
         filing_dates = filings.get("filingDate", [])
         accession_numbers = filings.get("accessionNumber", [])
         primary_documents = filings.get("primaryDocument", [])
 
-        # 过滤指定类型
+        # Filter specified type
         filtered_filings = []
         for i, form in enumerate(forms):
             if form == form_type and len(filtered_filings) < limit:
-                # 移除accession number中的连字符
+                # Remove hyphens from accession number
                 accession_clean = accession_numbers[i].replace("-", "")
                 filing_url = f"https://www.sec.gov/Archives/edgar/data/{cik}/{accession_clean}/{primary_documents[i]}"
 
@@ -393,15 +393,15 @@ class SECEdgarTool(Tool):
         if not filtered_filings:
             return {
                 "success": True,
-                "summary": f"未找到 {data.get('name', ticker or cik)} 的 {form_type} 文件。",
+                "summary": f"No {form_type} filings found for {data.get('name', ticker or cik)}.",
                 "company_name": data.get("name", ticker or cik),
                 "cik": cik,
                 "filings": []
             }
 
-        # 构建摘要
+        # Build summary
         company_name = data.get("name", ticker or cik)
-        summary = f"找到 {company_name} 的 {len(filtered_filings)} 个 {form_type} 文件:\n"
+        summary = f"Found {len(filtered_filings)} {form_type} filings for {company_name}:\n"
         for filing in filtered_filings:
             summary += f"\n- {filing['filing_date']}: {filing['url']}"
 
@@ -418,13 +418,13 @@ class SECEdgarTool(Tool):
         ticker: str,
         cik: str
     ) -> Dict[str, Any]:
-        """获取公司的XBRL财务数据"""
+        """Get company XBRL financial data"""
         if ticker and not cik:
             cik = await self._ticker_to_cik(ticker)
             if not cik:
                 return {
                     "success": False,
-                    "summary": f"无法找到股票代码 {ticker} 对应的CIK号码。"
+                    "summary": f"Cannot find CIK number for ticker {ticker}."
                 }
 
         cik_padded = str(cik).zfill(10)
@@ -439,14 +439,14 @@ class SECEdgarTool(Tool):
             return {
                 "success": False,
                 "error": str(e),
-                "summary": f"无法获取CIK {cik}的财务数据: {str(e)}"
+                "summary": f"Cannot retrieve financial data for CIK {cik}: {str(e)}"
             }
 
-        # 提取关键财务指标
+        # Extract key financial metrics
         facts = data.get("facts", {})
         us_gaap = facts.get("us-gaap", {})
 
-        # 常用指标
+        # Common metrics
         key_metrics = {
             "Revenue": "Revenues",
             "NetIncome": "NetIncomeLoss",
@@ -463,11 +463,11 @@ class SECEdgarTool(Tool):
         for metric_name, xbrl_tag in key_metrics.items():
             if xbrl_tag in us_gaap:
                 metric_data = us_gaap[xbrl_tag]
-                # 获取最新年度数据
+                # Get latest annual data
                 units = metric_data.get("units", {})
                 usd_data = units.get("USD", [])
                 if usd_data:
-                    # 按日期排序，取最新的年度数据(10-K)
+                    # Sort by date, get latest annual data (10-K)
                     annual_data = [d for d in usd_data if d.get("form") == "10-K"]
                     if annual_data:
                         latest = sorted(annual_data, key=lambda x: x.get("end", ""), reverse=True)[0]
@@ -481,17 +481,17 @@ class SECEdgarTool(Tool):
         if not extracted_data:
             return {
                 "success": True,
-                "summary": f"未能从 {data.get('entityName', ticker)} 提取到标准财务指标。",
+                "summary": f"Could not extract standard financial metrics from {data.get('entityName', ticker)}.",
                 "company_name": data.get("entityName"),
                 "cik": cik,
                 "metrics": {}
             }
 
-        # 构建摘要
-        summary = f"提取了 {data.get('entityName', ticker)} 的关键财务指标:\n"
+        # Build summary
+        summary = f"Extracted key financial metrics for {data.get('entityName', ticker)}:\n"
         for metric, info in extracted_data.items():
             value = info['value']
-            # 格式化大数字
+            # Format large numbers
             if value > 1_000_000_000:
                 formatted_value = f"${value/1_000_000_000:.2f}B"
             elif value > 1_000_000:
@@ -499,7 +499,7 @@ class SECEdgarTool(Tool):
             else:
                 formatted_value = f"${value:,.0f}"
 
-            summary += f"\n- {metric}: {formatted_value} (FY{info.get('fy', 'N/A')}, 截至 {info['date']})"
+            summary += f"\n- {metric}: {formatted_value} (FY{info.get('fy', 'N/A')}, as of {info['date']})"
 
         return {
             "success": True,
@@ -510,27 +510,27 @@ class SECEdgarTool(Tool):
         }
 
     async def _get_filing_content(self, filing_url: str) -> Dict[str, Any]:
-        """获取文件内容 (简化版，只返回URL)"""
-        # 注意: 完整实现需要解析HTML/XBRL，这里简化处理
+        """Get filing content (simplified, returns URL only)"""
+        # Note: Full implementation requires HTML/XBRL parsing, simplified here
         return {
             "success": True,
-            "summary": f"文件URL: {filing_url}\n请访问该URL查看完整内容。",
+            "summary": f"Filing URL: {filing_url}\nPlease visit this URL to view full content.",
             "url": filing_url
         }
 
     async def _ticker_to_cik(self, ticker: str) -> Optional[str]:
-        """将股票代码转换为CIK
+        """Convert stock ticker to CIK
 
-        使用全面的映射表覆盖1000+常见美股
-        优先使用本地映射，备用SEC API动态查询
+        Uses comprehensive mapping table covering 1000+ common US stocks
+        Prioritizes local mapping, with SEC API fallback
         """
         ticker_upper = ticker.upper()
 
-        # 先尝试从映射表获取
+        # First try to get from mapping table
         if ticker_upper in TICKER_TO_CIK_MAP:
             return TICKER_TO_CIK_MAP[ticker_upper]
 
-        # 尝试从SEC API动态获取（作为备选）
+        # Try to fetch from SEC API dynamically (as fallback)
         try:
             cik = await self._fetch_cik_from_sec(ticker_upper)
             if cik:
@@ -541,9 +541,9 @@ class SECEdgarTool(Tool):
         return None
 
     async def _fetch_cik_from_sec(self, ticker: str) -> Optional[str]:
-        """从SEC API动态获取CIK"""
+        """Fetch CIK from SEC API dynamically"""
         try:
-            # 使用SEC的company_tickers.json
+            # Use SEC's company_tickers.json
             url = "https://www.sec.gov/files/company_tickers.json"
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(url, headers=self.headers)
@@ -557,7 +557,7 @@ class SECEdgarTool(Tool):
         return None
 
     def to_schema(self) -> Dict[str, Any]:
-        """返回工具的Schema"""
+        """Return tool schema"""
         return {
             "name": self.name,
             "description": self.description,
@@ -567,25 +567,25 @@ class SECEdgarTool(Tool):
                     "action": {
                         "type": "string",
                         "enum": ["search_filings", "get_company_facts"],
-                        "description": "操作类型: search_filings(搜索披露文件) 或 get_company_facts(获取财务数据)"
+                        "description": "Action type: search_filings (search disclosure documents) or get_company_facts (get financial data)"
                     },
                     "ticker": {
                         "type": "string",
-                        "description": "股票代码，如 AAPL, TSLA (仅限美股)"
+                        "description": "Stock ticker, e.g., AAPL, TSLA (US stocks only)"
                     },
                     "cik": {
                         "type": "string",
-                        "description": "公司CIK号码 (可选，如果提供ticker则自动查询)"
+                        "description": "Company CIK number (optional, auto-queried if ticker provided)"
                     },
                     "form_type": {
                         "type": "string",
                         "enum": ["10-K", "10-Q", "8-K", "DEF 14A"],
-                        "description": "文件类型: 10-K(年报), 10-Q(季报), 8-K(重大事件), DEF 14A(代理声明)",
+                        "description": "File type: 10-K (annual report), 10-Q (quarterly report), 8-K (material events), DEF 14A (proxy statement)",
                         "default": "10-K"
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "返回文件数量限制",
+                        "description": "Number of files to return",
                         "default": 5
                     }
                 },
