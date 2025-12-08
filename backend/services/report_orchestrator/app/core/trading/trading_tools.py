@@ -468,8 +468,8 @@ class TradingToolkit:
         **kwargs  # Accept any extra params from LLM
     ) -> str:
         """Get K-line data - fetches REAL data from Binance"""
-        # 确保类型正确
         limit = int(limit) if limit else 100
+        # Ensure type is correct
         # Handle interval as alias for timeframe
         if interval and not timeframe:
             timeframe = interval
@@ -847,7 +847,7 @@ class TradingToolkit:
     ) -> str:
         """Open long position"""
         try:
-            # 确保类型正确（LLM可能传入字符串）
+            # Ensure type is correct (LLM may pass strings)
             leverage = int(leverage) if leverage else 1
             amount_usdt = float(amount_usdt) if amount_usdt else 100
             tp_price = float(tp_price) if tp_price else None
@@ -936,7 +936,7 @@ class TradingToolkit:
     ) -> str:
         """Open short position"""
         try:
-            # 确保类型正确（LLM可能传入字符串）
+            # Ensure type is correct (LLM may pass strings)
             leverage = int(leverage) if leverage else 1
             amount_usdt = float(amount_usdt) if amount_usdt else 100
             tp_price = float(tp_price) if tp_price else None
@@ -1138,7 +1138,7 @@ class TradingToolkit:
 
     async def _get_trade_history(self, limit: int = 20) -> str:
         """Get trade history"""
-        # 确保类型正确
+        # Ensure type is correct
         limit = int(limit) if limit else 20
 
         try:
@@ -1172,23 +1172,23 @@ class TradingToolkit:
             JSON string with search results
         """
         try:
-            # 使用 MCP Client 调用 web-search 服务
+            # Use MCP Client to call web-search service
             from app.core.roundtable.mcp_tools import get_mcp_client
 
             mcp_client = get_mcp_client()
 
-            # 确保参数类型正确
+            # Ensure parameter types are correct
             max_results = int(max_results) if max_results else 5
             max_results = min(max(1, max_results), 10)  # Limit between 1-10
 
-            # 构建 MCP 调用参数
+            # Build MCP call parameters
             params = {
                 "query": query,
                 "max_results": max_results,
                 "topic": topic or "general"
             }
 
-            # 添加可选参数
+            # Add optional parameters
             if time_range and time_range in ["day", "week", "month", "year"]:
                 params["time_range"] = time_range
             if days and isinstance(days, int) and 1 <= days <= 30:
@@ -1196,14 +1196,14 @@ class TradingToolkit:
 
             logger.info(f"[TradingTools] MCP Tavily search: '{query}' (params={params})")
 
-            # 通过 MCP 调用
+            # Call via MCP
             result = await mcp_client.call_tool(
                 server_name="web-search",
                 tool_name="search",
                 **params
             )
 
-            # MCP 响应已经是正确格式
+            # MCP response is already in correct format
             if result.get("success"):
                 logger.info(f"[TradingTools] MCP search success: {len(result.get('result', {}).get('results', []))} results")
                 # 重新格式化为trading_tools期望的格式
@@ -1212,7 +1212,7 @@ class TradingToolkit:
                     "title": r.get("title", ""),
                     "url": r.get("url", ""),
                     "content": r.get("content", "")[:500],
-                    "score": 1.0  # MCP结果没有score，默认1.0
+                    "score": 1.0  # MCP result has no score, default to 1.0
                 } for r in mcp_results]
 
                 return json.dumps({
