@@ -74,6 +74,9 @@ class OKXTrader:
         self._okx_client: Optional[OKXClient] = None
         self._initialized = False
 
+        # 🔒 Trade lock - prevents concurrent trading operations
+        self._trade_lock = asyncio.Lock()
+
         # Current position cache
         self._position: Optional[OKXPosition] = None
         self._last_price: Optional[float] = None  # 初始化时从API获取真实价格
@@ -82,6 +85,12 @@ class OKXTrader:
         # Trade history
         self._trade_history: List[Dict] = []
         self._equity_history: List[Dict] = []
+
+        # 🆕 Daily loss tracking for circuit breaker
+        self._daily_pnl: float = 0.0
+        self._daily_pnl_reset_date: datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        self._max_daily_loss_percent: float = 10.0  # 10% daily loss limit
+        self._is_trading_halted: bool = False
 
         # Callbacks (compatible with PaperTrader)
         self.on_position_closed: Optional[Callable] = None
@@ -94,7 +103,21 @@ class OKXTrader:
         if self._initialized:
             return
 
-        logger.info("Initializing OKX Demo Trader...")
+        # 🚨 Mode confirmation logging
+        if self.demo_mode:
+            logger.info("=" * 60)
+            logger.info("🧪 INITIALIZING OKX DEMO TRADER (模拟盘)")
+            logger.info("   This is SIMULATED trading - no real funds at risk")
+            logger.info("=" * 60)
+        else:
+            logger.warning("=" * 60)
+            logger.warning("🚨🚨🚨 WARNING: REAL TRADING MODE ACTIVE 🚨🚨🚨")
+            logger.warning("   REAL FUNDS ARE AT RISK!")
+            logger.warning("   Make sure you have:")
+            logger.warning("   - API key with LIMITED permissions (no withdrawal)")
+            logger.warning("   - IP whitelist configured")
+            logger.warning("   - Tested thoroughly on demo first")
+            logger.warning("=" * 60)
 
         self._okx_client = await get_okx_client()
 
@@ -102,7 +125,7 @@ class OKXTrader:
         try:
             balance = await self._okx_client.get_account_balance()
             self.initial_balance = balance.total_equity or self.initial_balance
-            logger.info(f"OKX Demo account balance: ${balance.total_equity:.2f}")
+            logger.info(f"OKX {'Demo' if self.demo_mode else 'REAL'} account balance: ${balance.total_equity:.2f}")
         except Exception as e:
             logger.warning(f"Failed to get OKX balance: {e}, using default")
 
@@ -335,165 +358,213 @@ class OKXTrader:
         symbol: str = "BTC-USDT-SWAP"
     ) -> Dict:
         """Open a new position on OKX demo (内部方法)，支持追加仓位"""
-        # 确保类型正确（防止从LLM解析时传入字符串）
-        try:
-            leverage = int(leverage) if leverage else 1
-            amount_usdt = float(amount_usdt) if amount_usdt else 100
-            tp_price = float(tp_price) if tp_price else None
-            sl_price = float(sl_price) if sl_price else None
-        except (TypeError, ValueError) as e:
-            return {'success': False, 'error': f'参数类型错误: {e}'}
+        # 🔒 Use trade lock to prevent concurrent operations
+        async with self._trade_lock:
+            logger.info(f"[TRADE_LOCK] Acquired lock for {direction} position")
+            
+            # 🆕 Check daily loss limit before opening new positions
+            is_allowed, halt_msg = self._check_daily_loss_limit()
+            if not is_allowed:
+                logger.warning(f"[OKXTrader] Trade rejected: {halt_msg}")
+                return {'success': False, 'error': halt_msg}
+            
+            # 确保类型正确（防止从LLM解析时传入字符串）
+            try:
+                leverage = int(leverage) if leverage else 1
+                amount_usdt = float(amount_usdt) if amount_usdt else 100
+                tp_price = float(tp_price) if tp_price else None
+                sl_price = float(sl_price) if sl_price else None
+            except (TypeError, ValueError) as e:
+                return {'success': False, 'error': f'参数类型错误: {e}'}
 
-        # 🆕 检查是否有现有仓位
-        is_adding = False
-        if self._position:
-            if self._position.direction != direction:
-                # 方向不同，不能追加（需要先平仓）
-                logger.warning(f"[OKXTrader] Cannot add to position: existing={self._position.direction}, requested={direction}")
-                return {'success': False, 'error': f'Cannot add {direction} to existing {self._position.direction} position'}
-            else:
-                # 同方向，可以追加
-                is_adding = True
-                logger.info(f"[OKXTrader] 🔄 Adding to existing {direction} position: +${amount_usdt:.2f}")
+            # 🔄 Sync position from OKX before making decisions
+            await self._sync_position()
 
-        try:
-            action = "Adding to" if is_adding else "Opening"
-            logger.info(f"[OKXTrader] {action} {direction} position: ${amount_usdt:.2f}, {leverage}x, symbol={symbol}")
-
-            if direction == "long":
-                result = await self._okx_client.open_long(
-                    symbol=symbol,
-                    leverage=leverage,
-                    amount_usdt=amount_usdt,
-                    tp_price=tp_price,
-                    sl_price=sl_price
-                )
-            else:
-                result = await self._okx_client.open_short(
-                    symbol=symbol,
-                    leverage=leverage,
-                    amount_usdt=amount_usdt,
-                    tp_price=tp_price,
-                    sl_price=sl_price
-                )
-
-            logger.info(f"[OKXTrader] OKX API result: {result}")
-
-            if result.get('success'):
-                executed_price = result.get('executed_price', 0)
-                executed_amount = result.get('executed_amount', 0)
-                order_id = result.get('order_id', f"okx-{datetime.now().timestamp()}")
-
-                if is_adding and self._position:
-                    # 🆕 追加仓位：更新本地缓存
-                    old_size = self._position.size
-                    old_margin = self._position.margin
-                    old_entry = self._position.entry_price
-
-                    # 计算新的平均入场价
-                    new_size = old_size + executed_amount
-                    new_margin = old_margin + amount_usdt
-                    new_entry = (old_entry * old_size + executed_price * executed_amount) / new_size if new_size > 0 else executed_price
-
-                    self._position.size = new_size
-                    self._position.margin = new_margin
-                    self._position.entry_price = new_entry
-                    self._position.current_price = executed_price
-
-                    logger.info(f"OKX position added: {direction} +{executed_amount} BTC @ ${executed_price:.2f}, total={new_size} BTC, avg_entry=${new_entry:.2f}")
+            # 🆕 检查是否有现有仓位
+            is_adding = False
+            if self._position:
+                if self._position.direction != direction:
+                    # 方向不同，不能追加（需要先平仓）
+                    logger.warning(f"[OKXTrader] Cannot add to position: existing={self._position.direction}, requested={direction}")
+                    return {'success': False, 'error': f'Cannot add {direction} to existing {self._position.direction} position'}
                 else:
-                    # 新开仓位
-                    self._position = OKXPosition(
-                        id=order_id,
+                    # 同方向，可以追加
+                    is_adding = True
+                    logger.info(f"[OKXTrader] 🔄 Adding to existing {direction} position: +${amount_usdt:.2f}")
+
+            try:
+                action = "Adding to" if is_adding else "Opening"
+                logger.info(f"[OKXTrader] {action} {direction} position: ${amount_usdt:.2f}, {leverage}x, symbol={symbol}")
+
+                if direction == "long":
+                    result = await self._okx_client.open_long(
                         symbol=symbol,
-                        direction=direction,
-                        size=executed_amount,
-                        entry_price=executed_price,
                         leverage=leverage,
-                        margin=amount_usdt,
-                        take_profit_price=tp_price,
-                        stop_loss_price=sl_price,
-                        current_price=executed_price
+                        amount_usdt=amount_usdt,
+                        tp_price=tp_price,
+                        sl_price=sl_price
                     )
-                    logger.info(f"OKX position opened: {direction} {self._position.size} BTC @ ${self._position.entry_price}")
+                else:
+                    result = await self._okx_client.open_short(
+                        symbol=symbol,
+                        leverage=leverage,
+                        amount_usdt=amount_usdt,
+                        tp_price=tp_price,
+                        sl_price=sl_price
+                    )
 
-                # 🆕 返回格式与 PaperTrader 一致
-                return {
-                    'success': True,
-                    'order_id': order_id,
-                    'direction': direction,
-                    'executed_price': executed_price,
-                    'executed_amount': executed_amount,
-                    'leverage': leverage,
-                    'margin': amount_usdt,
-                    'take_profit': tp_price,
-                    'stop_loss': sl_price,
-                    'remaining_balance': 0.0,  # 需要从 API 获取
-                    'remaining_available_margin': 0.0  # 需要从 API 获取
-                }
-            else:
-                return {'success': False, 'error': result.get('error', 'Failed to open position')}
+                logger.info(f"[OKXTrader] OKX API result: {result}")
 
-        except Exception as e:
-            logger.error(f"Error opening position: {e}")
-            return {'success': False, 'error': str(e)}
+                if result.get('success'):
+                    executed_price = result.get('executed_price', 0)
+                    executed_amount = result.get('executed_amount', 0)
+                    order_id = result.get('order_id', f"okx-{datetime.now().timestamp()}")
+
+                    if is_adding and self._position:
+                        # 🆕 追加仓位：更新本地缓存
+                        old_size = self._position.size
+                        old_margin = self._position.margin
+                        old_entry = self._position.entry_price
+
+                        # 计算新的平均入场价
+                        new_size = old_size + executed_amount
+                        new_margin = old_margin + amount_usdt
+                        new_entry = (old_entry * old_size + executed_price * executed_amount) / new_size if new_size > 0 else executed_price
+
+                        self._position.size = new_size
+                        self._position.margin = new_margin
+                        self._position.entry_price = new_entry
+                        self._position.current_price = executed_price
+
+                        logger.info(f"OKX position added: {direction} +{executed_amount} BTC @ ${executed_price:.2f}, total={new_size} BTC, avg_entry=${new_entry:.2f}")
+                    else:
+                        # 新开仓位
+                        self._position = OKXPosition(
+                            id=order_id,
+                            symbol=symbol,
+                            direction=direction,
+                            size=executed_amount,
+                            entry_price=executed_price,
+                            leverage=leverage,
+                            margin=amount_usdt,
+                            take_profit_price=tp_price,
+                            stop_loss_price=sl_price,
+                            current_price=executed_price
+                        )
+                        logger.info(f"OKX position opened: {direction} {self._position.size} BTC @ ${self._position.entry_price}")
+
+                    # 🆕 返回格式与 PaperTrader 一致
+                    return {
+                        'success': True,
+                        'order_id': order_id,
+                        'direction': direction,
+                        'executed_price': executed_price,
+                        'executed_amount': executed_amount,
+                        'leverage': leverage,
+                        'margin': amount_usdt,
+                        'take_profit': tp_price,
+                        'stop_loss': sl_price,
+                        'remaining_balance': 0.0,  # 需要从 API 获取
+                        'remaining_available_margin': 0.0  # 需要从 API 获取
+                    }
+                else:
+                    return {'success': False, 'error': result.get('error', 'Failed to open position')}
+
+            except Exception as e:
+                logger.error(f"Error opening position: {e}")
+                return {'success': False, 'error': str(e)}
+
+    def _check_daily_loss_limit(self) -> tuple[bool, str]:
+        """
+        Check if daily loss limit has been hit.
+        Returns (is_allowed, message)
+        """
+        # Reset daily PnL at midnight
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        if today > self._daily_pnl_reset_date:
+            logger.info(f"[DailyLimit] Resetting daily PnL (was ${self._daily_pnl:.2f})")
+            self._daily_pnl = 0.0
+            self._daily_pnl_reset_date = today
+            self._is_trading_halted = False
+
+        # Check if halted
+        if self._is_trading_halted:
+            return False, f"Trading halted: daily loss limit hit (${self._daily_pnl:.2f})"
+
+        # Calculate loss percentage
+        if self.initial_balance > 0:
+            loss_percent = abs(self._daily_pnl) / self.initial_balance * 100
+            if self._daily_pnl < 0 and loss_percent >= self._max_daily_loss_percent:
+                self._is_trading_halted = True
+                logger.warning(f"🚨 [DailyLimit] TRADING HALTED: Daily loss {loss_percent:.1f}% >= {self._max_daily_loss_percent}%")
+                return False, f"Trading halted: daily loss {loss_percent:.1f}% exceeds {self._max_daily_loss_percent}% limit"
+
+        return True, ""
 
     async def close_position(self, symbol: str = "BTC-USDT-SWAP", reason: str = "manual") -> Optional[Dict]:
         """Close current position on OKX demo"""
-        if not self._position:
-            return None
+        # 🔒 Use trade lock
+        async with self._trade_lock:
+            logger.info(f"[TRADE_LOCK] Acquired lock for close_position")
+            
+            if not self._position:
+                return None
 
-        try:
-            # Get current price for PnL calculation
-            price = await self.get_current_price(symbol)
+            try:
+                # Get current price for PnL calculation
+                price = await self.get_current_price(symbol)
 
-            # Calculate PnL
-            if self._position.direction == "long":
-                pnl = (price - self._position.entry_price) * self._position.size
-            else:
-                pnl = (self._position.entry_price - price) * self._position.size
+                # Calculate PnL
+                if self._position.direction == "long":
+                    pnl = (price - self._position.entry_price) * self._position.size
+                else:
+                    pnl = (self._position.entry_price - price) * self._position.size
 
-            # Close on OKX
-            result = await self._okx_client.close_position(symbol)
+                # Close on OKX
+                result = await self._okx_client.close_position(symbol)
 
-            if result.get('success'):
-                # Record trade
-                trade_record = {
-                    'id': self._position.id,
-                    'symbol': symbol,
-                    'direction': self._position.direction,
-                    'size': self._position.size,
-                    'entry_price': self._position.entry_price,
-                    'exit_price': price,
-                    'leverage': self._position.leverage,
-                    'pnl': pnl,
-                    'close_reason': reason,
-                    'opened_at': self._position.opened_at.isoformat(),
-                    'closed_at': datetime.now().isoformat()
-                }
-                self._trade_history.append(trade_record)
+                if result.get('success'):
+                    # 🆕 Update daily PnL tracking
+                    self._daily_pnl += pnl
+                    logger.info(f"[DailyLimit] Trade PnL: ${pnl:.2f}, Daily total: ${self._daily_pnl:.2f}")
+                    
+                    # Record trade
+                    trade_record = {
+                        'id': self._position.id,
+                        'symbol': symbol,
+                        'direction': self._position.direction,
+                        'size': self._position.size,
+                        'entry_price': self._position.entry_price,
+                        'exit_price': price,
+                        'leverage': self._position.leverage,
+                        'pnl': pnl,
+                        'close_reason': reason,
+                        'opened_at': self._position.opened_at.isoformat(),
+                        'closed_at': datetime.now().isoformat()
+                    }
+                    self._trade_history.append(trade_record)
 
-                closed_position = self._position
-                self._position = None
+                    closed_position = self._position
+                    self._position = None
 
-                logger.info(f"OKX position closed: PnL=${pnl:.2f} ({reason})")
+                    logger.info(f"OKX position closed: PnL=${pnl:.2f} ({reason})")
 
-                # Trigger callback
-                if self.on_position_closed:
-                    await self.on_position_closed(closed_position, pnl, reason)
+                    # Trigger callback
+                    if self.on_position_closed:
+                        await self.on_position_closed(closed_position, pnl, reason)
 
-                return {
-                    'success': True,
-                    'pnl': pnl,
-                    'exit_price': price,
-                    'trade': trade_record
-                }
-            else:
-                return {'success': False, 'error': result.get('error', 'Failed to close position')}
+                    return {
+                        'success': True,
+                        'pnl': pnl,
+                        'exit_price': price,
+                        'trade': trade_record
+                    }
+                else:
+                    return {'success': False, 'error': result.get('error', 'Failed to close position')}
 
-        except Exception as e:
-            logger.error(f"Error closing position: {e}")
-            return {'success': False, 'error': str(e)}
+            except Exception as e:
+                logger.error(f"Error closing position: {e}")
+                return {'success': False, 'error': str(e)}
 
     async def check_tp_sl(self) -> Optional[str]:
         """
@@ -550,9 +621,13 @@ class OKXTrader:
 
     def get_status(self) -> Dict:
         """Get trader status (PaperTrader compatible)"""
+        # Calculate daily loss percentage
+        daily_loss_percent = (abs(self._daily_pnl) / self.initial_balance * 100) if self.initial_balance > 0 and self._daily_pnl < 0 else 0
+        
         return {
             'initialized': self._initialized,
-            'type': 'okx_demo',
+            'type': 'okx_demo' if self.demo_mode else 'okx_real',
+            'demo_mode': self.demo_mode,
             'has_position': self._position is not None,
             'position_direction': self._position.direction if self._position else None,
             'current_price': self._last_price,
@@ -560,7 +635,12 @@ class OKXTrader:
             'equity': self.initial_balance,
             'total_trades': len(self._trade_history),
             'win_rate': self._calculate_win_rate(),
-            'realized_pnl': sum(t.get('pnl', 0) for t in self._trade_history)
+            'realized_pnl': sum(t.get('pnl', 0) for t in self._trade_history),
+            # 🆕 Daily loss tracking
+            'daily_pnl': self._daily_pnl,
+            'daily_loss_percent': daily_loss_percent,
+            'max_daily_loss_percent': self._max_daily_loss_percent,
+            'is_trading_halted': self._is_trading_halted
         }
 
     def _calculate_win_rate(self) -> str:
