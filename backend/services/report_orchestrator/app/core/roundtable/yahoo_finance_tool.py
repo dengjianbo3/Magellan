@@ -623,7 +623,7 @@ class YahooFinanceTool(Tool):
             }
 
     def to_schema(self) -> Dict[str, Any]:
-        """返回工具的 Schema"""
+        """Return tool schema"""
         return {
             "name": self.name,
             "description": self.description,
@@ -632,22 +632,22 @@ class YahooFinanceTool(Tool):
                 "properties": {
                     "action": {
                         "type": "string",
-                        "description": "操作类型: price(实时价格), history(历史K线), financials(财务报表), info(公司信息), news(新闻), valuation(估值分析), dividends(股息分析), holders(持股分析)",
+                        "description": "Action type: price(real-time price), history(historical K-line), financials(financial statements), info(company info), news(news), valuation(valuation analysis), dividends(dividend analysis), holders(holdings analysis)",
                         "enum": ["price", "history", "financials", "info", "news", "valuation", "dividends", "holders"]
                     },
                     "symbol": {
                         "type": "string",
-                        "description": "股票代码（如 AAPL, TSLA, 0700.HK, BTC-USD）"
+                        "description": "Stock symbol (e.g., AAPL, TSLA, 0700.HK, BTC-USD)"
                     },
                     "period": {
                         "type": "string",
-                        "description": "历史数据周期（仅用于history操作）",
+                        "description": "Historical data period (only for history action)",
                         "enum": ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"],
                         "default": "1mo"
                     },
                     "statement": {
                         "type": "string",
-                        "description": "财务报表类型（仅用于financials操作）",
+                        "description": "Financial statement type (only for financials action)",
                         "enum": ["income", "balance", "cash"],
                         "default": "income"
                     }

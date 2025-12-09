@@ -273,14 +273,14 @@ class KnowledgeBaseTool(Tool):
 
     async def execute(self, query: str, **kwargs) -> Dict[str, Any]:
         """
-        搜索知识库
+        Search knowledge base
 
         Args:
-            query: 搜索查询
-            **kwargs: 其他参数（如 top_k）
+            query: Search query
+            **kwargs: Other parameters (e.g., top_k)
 
         Returns:
-            搜索结果
+            Search results
         """
         top_k = kwargs.get("top_k", 3)
 
@@ -300,17 +300,17 @@ class KnowledgeBaseTool(Tool):
                 if not documents:
                     return {
                         "success": True,
-                        "summary": f"知识库中未找到关于'{query}'的相关内容。",
+                        "summary": f"No relevant content found in knowledge base for '{query}'.",
                         "documents": []
                     }
 
-                # 构建摘要
-                summary_parts = [f"在知识库中找到 {len(documents)} 条关于'{query}'的相关内容:\n"]
+                # Build summary
+                summary_parts = [f"Found {len(documents)} relevant items in knowledge base for '{query}':\n"]
                 for i, doc in enumerate(documents, 1):
                     summary_parts.append(
                         f"\n{i}. {doc.get('source', 'Unknown')}\n"
-                        f"   内容: {doc.get('content', '')[:200]}...\n"
-                        f"   相关度: {doc.get('score', 0):.2f}"
+                        f"   Content: {doc.get('content', '')[:200]}...\n"
+                        f"   Relevance: {doc.get('score', 0):.2f}"
                     )
 
                 return {
@@ -325,11 +325,11 @@ class KnowledgeBaseTool(Tool):
             return {
                 "success": False,
                 "error": str(e),
-                "summary": f"搜索知识库'{query}'时出现错误: {str(e)}"
+                "summary": f"Error searching knowledge base for '{query}': {str(e)}"
             }
 
     def to_schema(self) -> Dict[str, Any]:
-        """返回工具的 Schema"""
+        """Return tool schema"""
         return {
             "name": self.name,
             "description": self.description,
@@ -338,11 +338,11 @@ class KnowledgeBaseTool(Tool):
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "搜索查询内容"
+                        "description": "Search query content"
                     },
                     "top_k": {
                         "type": "integer",
-                        "description": "返回最相关的K个结果",
+                        "description": "Return top K most relevant results",
                         "default": 3
                     }
                 },

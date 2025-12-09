@@ -481,7 +481,7 @@ class AkShareTool(Tool):
             return f"¥{num:.2f}"
 
     def to_schema(self) -> Dict[str, Any]:
-        """返回工具的Schema"""
+        """Return tool schema"""
         return {
             "name": self.name,
             "description": self.description,
@@ -491,29 +491,29 @@ class AkShareTool(Tool):
                     "action": {
                         "type": "string",
                         "enum": ["quote", "history", "financials", "north_flow", "industry", "top_list", "stock_info"],
-                        "description": "操作类型: quote(实时行情), history(历史K线), financials(财务数据), north_flow(北向资金), industry(行业板块), top_list(龙虎榜), stock_info(股票信息)"
+                        "description": "Action type: quote(real-time quotes), history(historical K-line), financials(financial data), north_flow(northbound capital), industry(industry sectors), top_list(Dragon Tiger List), stock_info(stock info)"
                     },
                     "symbol": {
                         "type": "string",
-                        "description": "股票代码，如 600519(贵州茅台), 000001(平安银行)"
+                        "description": "Stock code, e.g., 600519 (Kweichow Moutai), 000001 (Ping An Bank)"
                     },
                     "start_date": {
                         "type": "string",
-                        "description": "开始日期 (YYYY-MM-DD格式)"
+                        "description": "Start date (YYYY-MM-DD format)"
                     },
                     "end_date": {
                         "type": "string",
-                        "description": "结束日期 (YYYY-MM-DD格式)"
+                        "description": "End date (YYYY-MM-DD format)"
                     },
                     "period": {
                         "type": "string",
                         "enum": ["daily", "weekly", "monthly"],
-                        "description": "K线周期: daily(日线), weekly(周线), monthly(月线)",
+                        "description": "K-line period: daily, weekly, monthly",
                         "default": "daily"
                     },
                     "date": {
                         "type": "string",
-                        "description": "查询日期 (用于龙虎榜等，YYYYMMDD格式)"
+                        "description": "Query date (for Dragon Tiger List etc., YYYYMMDD format)"
                     }
                 },
                 "required": ["action"]

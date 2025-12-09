@@ -458,23 +458,23 @@ PB(市净率): {pb_ratio:.2f}
                 "properties": {
                     "symbol": {
                         "type": "string",
-                        "description": "股票代码，如 600519 (贵州茅台), 00700.HK (腾讯)"
+                        "description": "Stock code, e.g., 600519 (Kweichow Moutai), 00700.HK (Tencent)"
                     },
                     "action": {
                         "type": "string",
-                        "description": "操作类型: quote(实时行情), kline(K线), finance(财务), info(公司资料)",
+                        "description": "Action type: quote(real-time quotes), kline(K-line), finance(financials), info(company info)",
                         "enum": ["quote", "kline", "finance", "info"],
                         "default": "quote"
                     },
                     "period": {
                         "type": "string",
-                        "description": "K线周期 (仅action=kline时使用)",
+                        "description": "K-line period (only for action=kline)",
                         "enum": ["daily", "weekly", "monthly"],
                         "default": "daily"
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "K线数量限制",
+                        "description": "K-line count limit",
                         "default": 60
                     }
                 },
@@ -583,11 +583,11 @@ Note: Currently uses public data sources. For more detailed info, recommend usin
                 "properties": {
                     "company_name": {
                         "type": "string",
-                        "description": "公司名称"
+                        "description": "Company name"
                     },
                     "query_type": {
                         "type": "string",
-                        "description": "查询类型",
+                        "description": "Query type",
                         "enum": ["basic", "shareholders", "executives", "legal", "related"],
                         "default": "basic"
                     }
