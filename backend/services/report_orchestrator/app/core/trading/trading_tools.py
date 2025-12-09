@@ -352,6 +352,38 @@ class TradingToolkit:
             func=self._tavily_search
         )
 
+        # Smart Execution Analysis Tool
+        self._tools['analyze_execution_conditions'] = FunctionTool(
+            name="analyze_execution_conditions",
+            description=(
+                "Analyze execution conditions before placing a trade. "
+                "Returns recommended execution strategy (direct/sliced/twap), "
+                "estimated slippage, liquidity rating, and optimal slice count. "
+                "⚠️ Call this BEFORE executing large orders to minimize market impact!"
+            ),
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "amount_usdt": {
+                        "type": "number",
+                        "description": "[REQUIRED] Amount in USDT to trade"
+                    },
+                    "direction": {
+                        "type": "string",
+                        "description": "[REQUIRED] Trade direction: 'long' or 'short'",
+                        "enum": ["long", "short"]
+                    },
+                    "symbol": {
+                        "type": "string",
+                        "description": "Trading symbol, default BTC",
+                        "default": "BTC"
+                    }
+                },
+                "required": ["amount_usdt", "direction"]
+            },
+            func=self._analyze_execution_conditions
+        )
+
     def get_tools(self) -> List[FunctionTool]:
         """Get all tools as a list"""
         return list(self._tools.values())
@@ -366,13 +398,13 @@ class TradingToolkit:
             'get_market_price', 'get_klines', 'calculate_technical_indicators',
             'get_account_balance', 'get_current_position',
             'get_fear_greed_index', 'get_funding_rate', 'get_trade_history',
-            'tavily_search'  # Added web search capability
+            'tavily_search', 'analyze_execution_conditions'  # Added execution analysis
         ]
         return [self._tools[name] for name in analysis_tool_names if name in self._tools]
 
     def get_execution_tools(self) -> List[FunctionTool]:
         """Get only execution tools (including hold for decision making)"""
-        exec_tool_names = ['open_long', 'open_short', 'close_position', 'hold']
+        exec_tool_names = ['open_long', 'open_short', 'close_position', 'hold', 'analyze_execution_conditions']
         return [self._tools[name] for name in exec_tool_names if name in self._tools]
 
     # ===== Tool Implementation Methods =====
@@ -1240,3 +1272,84 @@ class TradingToolkit:
                 "error": str(e),
                 "message": f"Search error: {str(e)}"
             }, ensure_ascii=False)
+
+    async def _analyze_execution_conditions(
+        self,
+        amount_usdt: float,
+        direction: str = "long",
+        symbol: str = "BTC"
+    ) -> str:
+        """
+        Analyze market conditions to determine optimal execution strategy.
+        
+        Args:
+            amount_usdt: Amount in USDT to trade
+            direction: Trade direction ('long' or 'short')
+            symbol: Trading symbol
+            
+        Returns:
+            JSON string with execution analysis and recommendations
+        """
+        try:
+            from app.core.trading.smart_executor import analyze_execution
+            
+            # Normalize direction
+            direction = direction.lower()
+            if direction not in ["long", "short"]:
+                direction = "long"
+            
+            # Perform analysis
+            analysis = await analyze_execution(
+                amount_usdt=float(amount_usdt),
+                direction=direction,
+                symbol=symbol
+            )
+            
+            # Format response for agent consumption
+            capital_tier = analysis.get("capital_tier", "unknown")
+            strategy = analysis.get("recommended_strategy", "direct")
+            slices = analysis.get("recommended_slices", 1)
+            slippage = analysis.get("estimated_slippage_percent", 0)
+            liquidity = analysis.get("liquidity_rating", "unknown")
+            
+            # Generate human-readable summary
+            summary = f"""📊 Execution Analysis for ${amount_usdt:,.2f} {direction.upper()}
+
+💰 Capital Tier: {capital_tier.upper()}
+📈 Recommended Strategy: {strategy.upper()}
+🔢 Recommended Slices: {slices}
+📉 Estimated Slippage: {slippage:.2f}%
+💧 Liquidity Rating: {liquidity.upper()}
+
+💡 Recommendation: {analysis.get('recommendation', 'N/A')}"""
+
+            logger.info(f"[TradingTools] Execution analysis: {strategy} with {slices} slices, slippage {slippage:.2f}%")
+
+            return json.dumps({
+                "success": True,
+                "analysis": analysis,
+                "summary": summary,
+                "execution_parameters": {
+                    "strategy": strategy,
+                    "slice_count": slices,
+                    "slice_interval_seconds": analysis.get("slice_interval_seconds", 60),
+                    "max_slippage_threshold": analysis.get("max_slippage_threshold", 0.5)
+                }
+            }, ensure_ascii=False)
+
+        except Exception as e:
+            logger.error(f"[TradingTools] Execution analysis error: {e}")
+            # Return conservative defaults on error
+            return json.dumps({
+                "success": False,
+                "error": str(e),
+                "analysis": {
+                    "capital_tier": "unknown",
+                    "recommended_strategy": "sliced",
+                    "recommended_slices": 3,
+                    "estimated_slippage_percent": 0.2,
+                    "liquidity_rating": "unknown"
+                },
+                "summary": f"⚠️ Analysis failed: {str(e)}. Using conservative defaults: sliced execution with 3 slices."
+            }, ensure_ascii=False)
+
