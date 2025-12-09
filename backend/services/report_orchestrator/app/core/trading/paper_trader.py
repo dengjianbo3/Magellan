@@ -23,6 +23,7 @@ import json
 import redis.asyncio as redis
 
 from app.core.trading.price_service import get_price_service, PriceService
+from app.core.trading.base_trader import BaseTrader
 
 logger = logging.getLogger(__name__)
 
@@ -154,10 +155,12 @@ class PaperAccount:
         return asdict(self)
 
 
-class PaperTrader:
+class PaperTrader(BaseTrader):
     """
     Local Paper Trading Simulator
 
+    Inherits from BaseTrader to provide consistent interface.
+    
     Features:
     - Runs fully locally, no external API required
     - Simulated account balance and positions
@@ -330,6 +333,19 @@ class PaperTrader:
         """Manually set current price (for testing or syncing real price)"""
         self._current_price = price
         self._last_price_update = datetime.now()
+
+    async def update_price(self, price: float):
+        """
+        Update current market price (implements BaseTrader interface).
+        
+        Args:
+            price: Current market price
+        """
+        self._current_price = price
+        self._last_price_update = datetime.now()
+        self._price_history.append(price)
+        if len(self._price_history) > 10000:
+            self._price_history = self._price_history[-10000:]
 
     async def get_account(self) -> Dict:
         """Get account info - including true available margin"""
