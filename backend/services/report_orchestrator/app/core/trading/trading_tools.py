@@ -821,8 +821,8 @@ class TradingToolkit:
                     "used_margin": f"${account['used_margin']:,.2f}",
                     "unrealized_pnl": f"${account['unrealized_pnl']:,.2f}",
                     "realized_pnl": f"${account['realized_pnl']:,.2f}",
-                    "win_rate": f"{account['win_rate'] * 100:.1f}%",
-                    "total_trades": account['total_trades'],
+                    "win_rate": f"{account.get('win_rate', 0) * 100:.1f}%",
+                    "total_trades": account.get('total_trades', 0),
                     "currency": "USDT"
                 }, ensure_ascii=False)
         except Exception as e:

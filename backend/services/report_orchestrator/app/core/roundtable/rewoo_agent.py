@@ -364,34 +364,34 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
 """
 
     def _create_solving_prompt(self) -> str:
-        """创建综合阶段的Prompt"""
-        return f"""你是 {self.name}，需要基于工具调用结果生成最终分析。
+        """Create the solving phase prompt"""
+        return f"""You are {self.name}, generating the final analysis based on tool execution results.
 
 {self.role_prompt}
 
-## 综合任务:
-你已经执行了一系列工具调用并获得了观察结果。现在需要:
-1. 整合所有观察结果
-2. 进行深入分析
-3. 得出结论和建议
-4. 生成结构化的分析报告
+## Synthesis Task:
+You have executed a series of tool calls and obtained observation results. Now you need to:
+1. Integrate all observation results
+2. Conduct in-depth analysis
+3. Draw conclusions and recommendations
+4. Generate a structured analysis report
 
-## 输出要求:
-- **结构化**: 使用Markdown格式，包含标题、列表、数据表格
-- **数据支撑**: 引用具体数据来源和数值
-- **深度分析**: 不只是数据罗列，要有洞察和判断
-- **客观准确**: 明确区分事实和推断
-- **中文输出**: 使用简洁专业的中文
-- **直接输出**: 不要添加"TO: ALL"、"CC:"等邮件格式前缀，直接输出分析内容
+## Output Requirements:
+- **Structured**: Use Markdown format with headings, lists, and data tables
+- **Data-Driven**: Reference specific data sources and values
+- **In-Depth**: Not just data listing, include insights and judgments
+- **Objective**: Clearly distinguish between facts and inferences
+- **English Output**: Use concise, professional English
+- **Direct Output**: Do not add "TO: ALL", "CC:" or other email format prefixes
 
-## 分析框架:
-根据你的角色特点，采用相应的分析框架（如财务分析的杜邦分析、市场分析的SWOT等）
+## Analysis Framework:
+Apply the appropriate analysis framework based on your role (e.g., DuPont analysis for finance, SWOT for market analysis)
 """
 
     def _format_tools_description(self) -> str:
-        """格式化工具描述"""
+        """Format tool descriptions"""
         if not self.tools:
-            return "无可用工具"
+            return "No tools available"
 
         descriptions = []
         for tool in self.tools.values():
@@ -401,8 +401,8 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
 
             descriptions.append(
                 f"\n**{schema['name']}**:\n"
-                f"  描述: {schema['description']}\n"
-                f"  参数: {params_desc}"
+                f"  Description: {schema['description']}\n"
+                f"  Parameters: {params_desc}"
             )
 
         return "\n".join(descriptions)
@@ -415,13 +415,13 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
         """格式化规划查询"""
         context_str = self._format_context(context)
 
-        return f"""# 分析任务
+        return f"""# Analysis Task
 {query}
 
-# 上下文信息
+# Context Information
 {context_str}
 
-请为此任务制定工具调用计划（JSON格式）。
+Please create a tool call plan for this task (JSON format).
 """
 
     def _format_solving_query(
@@ -434,7 +434,7 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
         """格式化综合查询"""
         context_str = self._format_context(context)
 
-        # 格式化执行结果
+        # Format execution results
         results_text = ""
         for i, (step, obs) in enumerate(zip(plan, observations), 1):
             tool_name = step.get("tool", "unknown")
@@ -442,30 +442,37 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
             purpose = step.get("purpose", "")
 
             results_text += f"\n## Step {i}: {tool_name}\n"
-            results_text += f"**目的**: {purpose}\n"
-            results_text += f"**参数**: {json.dumps(params, ensure_ascii=False)}\n"
+            results_text += f"**Purpose**: {purpose}\n"
+            results_text += f"**Params**: {json.dumps(params, ensure_ascii=False)}\n"
 
-            if obs.get("success"):
-                results_text += f"**结果**: {obs.get('summary', 'N/A')}\n"
+            # Handle both dict and string observations
+            if isinstance(obs, dict):
+                if obs.get("success"):
+                    results_text += f"**Result**: {obs.get('summary', 'N/A')}\n"
+                else:
+                    results_text += f"**Error**: {obs.get('error', 'Unknown error')}\n"
+            elif isinstance(obs, str):
+                # Tool returned raw string
+                results_text += f"**Result**: {obs[:2000]}\n"
             else:
-                results_text += f"**错误**: {obs.get('error', 'Unknown error')}\n"
+                results_text += f"**Result**: {str(obs)[:2000]}\n"
 
-        return f"""# 原始任务
+        return f"""# Original Task
 {query}
 
-# 上下文信息
+# Context Information
 {context_str}
 
-# 执行计划与结果
+# Execution Plan and Results
 {results_text}
 
-请基于以上所有信息进行综合分析，生成结构化报告。
+Please synthesize all the above information and generate a structured analysis report.
 """
 
     def _format_context(self, context: Dict[str, Any]) -> str:
-        """格式化上下文"""
+        """Format context information"""
         if not context:
-            return "无"
+            return "None"
 
         parts = []
         for key, value in context.items():
