@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 
 from app.core.roundtable.meeting import Meeting
 from app.core.roundtable.agent import Agent
+from app.core.roundtable.rewoo_agent import ReWOOAgent
 from app.models.trading_models import TradingSignal, AgentVote
 from app.core.trading.retry_handler import (
     RetryHandler, RetryConfig, CircuitBreaker,
@@ -2873,7 +2874,15 @@ Now, please analyze and execute your trading decision."""
         return "Leader did not speak (possibly LLM failure)"
 
     async def _run_agent_turn(self, agent: Agent, prompt: str) -> str:
-        """Run a single agent's turn using agent's own LLM call method with tool execution"""
+        """Run a single agent's turn using agent's own LLM call method with tool execution
+        
+        For ReWOOAgent instances, uses the 3-phase ReWOO architecture:
+        1. Plan: Generate all tool calls at once
+        2. Execute: Run tools in parallel
+        3. Solve: Synthesize results into final analysis
+        
+        For regular Agent instances, uses direct LLM call with tool execution.
+        """
         # Get conversation history for context
         history = self._get_conversation_history()
 
@@ -2916,54 +2925,83 @@ Please reference your historical performance and lessons learned in your analysi
             else:
                 enhanced_system_prompt = base_system_prompt
 
-            # Build messages for LLM
-            messages = [
-                {"role": "system", "content": enhanced_system_prompt},
-                {"role": "user", "content": full_prompt}
-            ]
-
-            # Use agent's own _call_llm method (has built-in retry)
-            logger.info(f"Calling LLM for agent: {agent.name}")
-            response = await agent._call_llm(messages)
-
-            # Extract content from response
-            # Agent._call_llm returns OpenAI format: {"choices": [{"message": {"content": "..."}}]}
-            content = ""
-            if isinstance(response, dict):
-                if "choices" in response:
-                    # OpenAI format
-                    try:
-                        content = response["choices"][0]["message"]["content"]
-                    except (KeyError, IndexError):
-                        pass
-                if not content:
-                    # Fallback to direct content
-                    content = response.get("content", response.get("response", ""))
+            # ========================================
+            # 🚀 ReWOO vs Regular Agent Routing
+            # ========================================
+            if isinstance(agent, ReWOOAgent) and hasattr(agent, 'analyze_with_rewoo'):
+                # Use ReWOO 3-phase execution for ReWOOAgent instances
+                # This is more efficient: Plan once → Execute in parallel → Solve once
+                logger.info(f"[ReWOO] Using 3-phase execution for agent: {agent.name}")
+                
+                # Build context for ReWOO
+                rewoo_context = {
+                    "system_prompt": enhanced_system_prompt,
+                    "memory": memory_context if has_memory_content else "",
+                    "symbol": self.config.symbol,
+                    "meeting_phase": "trading_analysis"
+                }
+                
+                # Call ReWOO's analyze_with_rewoo method
+                content = await agent.analyze_with_rewoo(full_prompt, rewoo_context)
+                
+                logger.info(f"[ReWOO] {agent.name} completed 3-phase analysis ({len(content) if content else 0} chars)")
+                
+                # Validate content for ReWOO path
+                if not content or not content.strip():
+                    content = f"[{agent.name}] Analysis complete, no clear recommendation at this time."
+                elif "[Response blocked or empty]" in content:
+                    logger.warning(f"[ReWOO] Agent {agent.name} response was blocked by content filter")
+                    content = self._get_fallback_response(agent.id, agent.name)
+                
+                # ReWOO doesn't need additional tool execution - it handles tools internally
+                self._pending_native_tool_calls = []
+                
             else:
-                content = str(response)
-
-            if not content:
-                content = f"[{agent.name}] Analysis complete, no clear recommendation at this time."
-
-            # Handle blocked or empty responses from Gemini safety filter
-            if "[Response blocked or empty]" in content or not content.strip():
-                logger.warning(f"Agent {agent.name} response was blocked by content filter")
-                content = self._get_fallback_response(agent.id, agent.name)
-
-            # ===== Tool Execution =====
-            # Clear previous tool executions for this agent turn
-            self._last_executed_tools = []
+                # Regular Agent: Use direct LLM call with tool execution
+                logger.info(f"Calling LLM for agent: {agent.name} (regular mode)")
+                
+                # Build messages for LLM
+                messages = [
+                    {"role": "system", "content": enhanced_system_prompt},
+                    {"role": "user", "content": full_prompt}
+                ]
+                
+                response = await agent._call_llm(messages)
+                
+                # Extract content from response for regular agents
+                # Agent._call_llm returns OpenAI format: {"choices": [{"message": {"content": "..."}}]}
+                content = ""
+                if isinstance(response, dict):
+                    if "choices" in response:
+                        # OpenAI format
+                        try:
+                            content = response["choices"][0]["message"]["content"]
+                        except (KeyError, IndexError):
+                            pass
+                    if not content:
+                        # Fallback to direct content
+                        content = response.get("content", response.get("response", ""))
+                else:
+                    content = str(response)
+                
+                # ===== Tool Execution for Regular Agents =====
+                # Clear previous tool executions for this agent turn
+                self._last_executed_tools = []
+                
+                # Step 1: Detect native tool_calls (OpenAI format)
+                native_tool_calls = []
+                if isinstance(response, dict) and "choices" in response:
+                    try:
+                        message = response["choices"][0].get("message", {})
+                        native_tool_calls = message.get("tool_calls", [])
+                        self._pending_native_tool_calls = native_tool_calls
+                    except (KeyError, IndexError):
+                        self._pending_native_tool_calls = []
             
-            # Step 1: Detect native tool_calls (OpenAI format)
-            native_tool_calls = []
-            if isinstance(response, dict) and "choices" in response:
-                try:
-                    message = response["choices"][0].get("message", {})
-                    native_tool_calls = message.get("tool_calls", [])
-                except (KeyError, IndexError):
-                    pass
-            
-            if native_tool_calls and hasattr(agent, 'tools') and agent.tools:
+            # For regular agents only: check and execute native tool calls
+            # ReWOO agents handle tool execution internally via analyze_with_rewoo
+            native_tool_calls = getattr(self, '_pending_native_tool_calls', [])
+            if native_tool_calls and hasattr(agent, 'tools') and agent.tools and not isinstance(agent, ReWOOAgent):
                 logger.info(f"[{agent.name}] 🎯 Detected native Tool Calls: {len(native_tool_calls)}")
                 tool_results = []
                 
