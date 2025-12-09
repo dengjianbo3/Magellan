@@ -2580,17 +2580,37 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             role="Trade Execution Specialist",
             system_prompt="""You are the Trade Executor, responsible for executing trades based on expert meeting results.
 
-You must call a tool to execute decisions. Available tools:
-- open_long: Open long position (buy BTC)
-- open_short: Open short position (sell BTC)
-- close_position: Close current position
-- hold: Hold/wait, no action
+## Available Tools
+- **analyze_execution_conditions**: Analyze market liquidity and recommend execution strategy (CALL FIRST for large orders!)
+- **open_long**: Open long position (buy BTC)
+- **open_short**: Open short position (sell BTC)
+- **close_position**: Close current position
+- **hold**: Hold/wait, no action
 
-Decision Rules:
-1. Experts 3-4 votes unanimous bullish → Call open_long
-2. Experts 3-4 votes unanimous bearish → Call open_short
+## Smart Execution Protocol
+
+### For LARGE Orders (>$10,000):
+1. ALWAYS call `analyze_execution_conditions` FIRST
+2. Review the recommended strategy (direct/sliced/twap)
+3. If slippage > 0.5%, consider reducing position size
+4. Use the recommended leverage and slice count
+
+### Capital Tier Guidelines:
+- Small (<$1,000): Direct execution
+- Medium ($1,000-$10,000): Check slippage first
+- Large ($10,000-$50,000): Use sliced execution (3-5 batches)
+- XLarge (>$50,000): Requires TWAP strategy
+
+## Decision Rules
+1. Experts 3-4 votes unanimous bullish → Call open_long (with execution analysis for large orders)
+2. Experts 3-4 votes unanimous bearish → Call open_short (with execution analysis for large orders)
 3. Experts split or unclear → Call hold
 4. Has opposite position to close → Call close_position
+
+## Risk Management
+- Always check liquidity before large orders
+- Reduce leverage if slippage is high  
+- Abort if estimated slippage > 1%
 
 You MUST call a tool based on meeting results!""",
             llm_gateway_url=leader.llm_gateway_url if hasattr(leader, 'llm_gateway_url') else "http://llm_gateway:8003",
@@ -2652,6 +2672,50 @@ You MUST call a tool based on meeting results!""",
                     "reason": {"type": "string", "description": "Hold reason"}
                 },
                 "required": ["reason"]
+            }
+        ))
+
+        # Add execution analysis tool for large orders
+        async def analyze_execution_tool(amount_usdt: float, direction: str = "long") -> str:
+            """
+            Analyze execution conditions before placing a trade.
+            Returns strategy recommendation, estimated slippage, and liquidity rating.
+            """
+            try:
+                from app.core.trading.smart_executor import analyze_execution
+                analysis = await analyze_execution(
+                    amount_usdt=float(amount_usdt),
+                    direction=direction.lower(),
+                    symbol="BTC"
+                )
+                
+                summary = f"""📊 Execution Analysis for ${amount_usdt:,.2f} {direction.upper()}
+
+💰 Capital Tier: {analysis.get('capital_tier', 'unknown').upper()}
+📈 Recommended Strategy: {analysis.get('recommended_strategy', 'direct').upper()}
+🔢 Recommended Slices: {analysis.get('recommended_slices', 1)}
+📉 Estimated Slippage: {analysis.get('estimated_slippage_percent', 0):.3f}%
+💧 Liquidity Rating: {analysis.get('liquidity_rating', 'unknown').upper()}
+
+💡 Recommendation: {analysis.get('recommendation', 'N/A')}"""
+                
+                logger.info(f"[TradeExecutor] Execution analysis: {analysis.get('recommended_strategy')} with slippage {analysis.get('estimated_slippage_percent', 0):.3f}%")
+                return summary
+            except Exception as e:
+                logger.error(f"[TradeExecutor] Execution analysis error: {e}")
+                return f"⚠️ Analysis failed: {e}. Using conservative defaults."
+        
+        trade_executor.register_tool(FunctionTool(
+            name="analyze_execution_conditions",
+            description="Analyze market liquidity and recommend execution strategy. CALL THIS FIRST for orders >$10,000!",
+            func=analyze_execution_tool,
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "amount_usdt": {"type": "number", "description": "Amount in USDT to trade"},
+                    "direction": {"type": "string", "description": "Trade direction: long or short", "enum": ["long", "short"]}
+                },
+                "required": ["amount_usdt", "direction"]
             }
         ))
 
