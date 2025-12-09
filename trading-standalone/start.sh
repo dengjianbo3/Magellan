@@ -188,7 +188,19 @@ fi
 echo -e "${BLUE}Starting Docker services...${NC}"
 echo ""
 
-$DOCKER_COMPOSE up -d --build
+# Smart rebuild: only build if --build flag is passed or if images don't exist
+BUILD_FLAG=""
+if [[ "$*" == *"--build"* ]] || [[ "$*" == *"-b"* ]]; then
+    echo -e "${YELLOW}Build flag detected, rebuilding images...${NC}"
+    BUILD_FLAG="--build"
+elif ! docker images | grep -q "trading-standalone"; then
+    echo -e "${YELLOW}Images not found, building for first time...${NC}"
+    BUILD_FLAG="--build"
+else
+    echo -e "${GREEN}Using existing images (pass --build to force rebuild)${NC}"
+fi
+
+$DOCKER_COMPOSE up -d $BUILD_FLAG
 
 # Wait for services to be healthy
 echo ""
