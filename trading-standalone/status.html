@@ -1,11 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Magellan Trading Status</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #1a1a2e;
@@ -13,6 +19,7 @@
             padding: 10px;
             min-height: 100vh;
         }
+
         .header {
             text-align: center;
             padding: 15px;
@@ -20,15 +27,25 @@
             border-radius: 10px;
             margin-bottom: 15px;
         }
-        .header h1 { font-size: 1.3em; }
-        .header p { font-size: 0.8em; opacity: 0.8; margin-top: 5px; }
+
+        .header h1 {
+            font-size: 1.3em;
+        }
+
+        .header p {
+            font-size: 0.8em;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+
         .card {
             background: #16213e;
             border-radius: 10px;
             padding: 15px;
             margin-bottom: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
         }
+
         .card-title {
             font-size: 0.9em;
             color: #667eea;
@@ -36,36 +53,65 @@
             padding-bottom: 8px;
             border-bottom: 1px solid #333;
         }
+
         .row {
             display: flex;
             justify-content: space-between;
             padding: 6px 0;
             font-size: 0.85em;
         }
-        .label { color: #888; }
-        .value { font-weight: 500; }
-        .positive { color: #4ade80; }
-        .negative { color: #f87171; }
-        .neutral { color: #fbbf24; }
+
+        .label {
+            color: #888;
+        }
+
+        .value {
+            font-weight: 500;
+        }
+
+        .positive {
+            color: #4ade80;
+        }
+
+        .negative {
+            color: #f87171;
+        }
+
+        .neutral {
+            color: #fbbf24;
+        }
+
         .position-card {
             background: linear-gradient(135deg, #1e3a5f 0%, #16213e 100%);
             border: 1px solid #334;
         }
+
         .position-direction {
             font-size: 1.5em;
             font-weight: bold;
             text-align: center;
             padding: 10px;
         }
-        .position-direction.long { color: #4ade80; }
-        .position-direction.short { color: #f87171; }
-        .position-direction.none { color: #888; }
+
+        .position-direction.long {
+            color: #4ade80;
+        }
+
+        .position-direction.short {
+            color: #f87171;
+        }
+
+        .position-direction.none {
+            color: #888;
+        }
+
         .pnl-display {
             text-align: center;
             font-size: 1.8em;
             font-weight: bold;
             padding: 15px;
         }
+
         .trade-item {
             background: #1e293b;
             border-radius: 8px;
@@ -75,42 +121,63 @@
             cursor: pointer;
             transition: background 0.2s, transform 0.1s;
         }
+
         .trade-item:hover {
             background: #2d3a52;
             transform: translateX(3px);
         }
+
         .trade-item:active {
             transform: scale(0.98);
         }
+
         .scrollable-list {
             max-height: 300px;
             overflow-y: auto;
             padding-right: 5px;
         }
+
         .scrollable-list::-webkit-scrollbar {
             width: 6px;
         }
+
         .scrollable-list::-webkit-scrollbar-track {
             background: #1a1a2e;
             border-radius: 3px;
         }
+
         .scrollable-list::-webkit-scrollbar-thumb {
             background: #667eea;
             border-radius: 3px;
         }
+
         .trade-header {
             display: flex;
             justify-content: space-between;
             margin-bottom: 5px;
         }
+
         .trade-direction {
             font-weight: bold;
             padding: 2px 8px;
             border-radius: 4px;
         }
-        .trade-direction.long { background: #166534; color: #4ade80; }
-        .trade-direction.short { background: #991b1b; color: #f87171; }
-        .trade-direction.neutral { background: #854d0e; color: #fbbf24; }
+
+        .trade-direction.long {
+            background: #166534;
+            color: #4ade80;
+        }
+
+        .trade-direction.short {
+            background: #991b1b;
+            color: #f87171;
+        }
+
+        .trade-direction.neutral {
+            background: #854d0e;
+            color: #fbbf24;
+        }
+
         .btn {
             display: block;
             width: 100%;
@@ -121,19 +188,23 @@
             cursor: pointer;
             margin-bottom: 10px;
         }
+
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
+
         .btn-secondary {
             background: #334155;
             color: #eee;
         }
+
         .loading {
             text-align: center;
             padding: 20px;
             color: #888;
         }
+
         .error {
             background: #7f1d1d;
             color: #fca5a5;
@@ -141,12 +212,14 @@
             border-radius: 8px;
             text-align: center;
         }
+
         .last-update {
             text-align: center;
             font-size: 0.75em;
             color: #666;
             margin-top: 10px;
         }
+
         .status-dot {
             display: inline-block;
             width: 8px;
@@ -154,9 +227,15 @@
             border-radius: 50%;
             margin-right: 5px;
         }
-        .status-dot.running { background: #4ade80; }
-        .status-dot.stopped { background: #f87171; }
-        
+
+        .status-dot.running {
+            background: #4ade80;
+        }
+
+        .status-dot.stopped {
+            background: #f87171;
+        }
+
         /* Modal styles */
         .modal-overlay {
             display: none;
@@ -165,22 +244,25 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0,0,0,0.8);
+            background: rgba(0, 0, 0, 0.8);
             z-index: 1000;
             padding: 20px;
             overflow-y: auto;
         }
+
         .modal-overlay.active {
             display: block;
         }
+
         .modal-content {
             background: #16213e;
             border-radius: 12px;
             padding: 20px;
             max-width: 600px;
             margin: 20px auto;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
         }
+
         .modal-header {
             display: flex;
             justify-content: space-between;
@@ -189,10 +271,12 @@
             padding-bottom: 10px;
             border-bottom: 1px solid #333;
         }
+
         .modal-title {
             font-size: 1.1em;
             color: #667eea;
         }
+
         .modal-close {
             background: #334155;
             border: none;
@@ -203,17 +287,21 @@
             cursor: pointer;
             font-size: 1.2em;
         }
+
         .modal-close:hover {
             background: #475569;
         }
+
         .modal-body {
             font-size: 0.9em;
             line-height: 1.6;
         }
+
         .modal-body .row {
             padding: 8px 0;
             border-bottom: 1px solid #333;
         }
+
         .modal-body .reasoning {
             margin-top: 15px;
             padding: 12px;
@@ -223,6 +311,7 @@
             white-space: pre-wrap;
             word-break: break-word;
         }
+
         .click-hint {
             font-size: 0.7em;
             color: #666;
@@ -231,6 +320,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="header">
         <h1>Magellan Trading</h1>
@@ -322,7 +412,7 @@
 
         // Get direction display text (English)
         function getDirectionText(dir) {
-            switch(dir) {
+            switch (dir) {
                 case 'long': return 'LONG';
                 case 'short': return 'SHORT';
                 case 'hold': return 'HOLD';
@@ -333,7 +423,7 @@
 
         // Get direction CSS class
         function getDirectionClass(dir) {
-            switch(dir) {
+            switch (dir) {
                 case 'long': return 'long';
                 case 'short': return 'short';
                 case 'hold': return 'neutral';
@@ -404,6 +494,17 @@
                     <div class="reasoning">${reason}</div>
                 </div>
             `;
+
+            // Add Leader's meeting summary if available
+            const leaderSummary = signal?.leader_summary;
+            if (leaderSummary && leaderSummary.trim()) {
+                html += `
+                    <div style="margin-top: 15px;">
+                        <span class="label" style="color: #667eea;">📋 Leader's Meeting Summary:</span>
+                        <div class="reasoning" style="border-left: 3px solid #667eea; margin-top: 8px;">${leaderSummary}</div>
+                    </div>
+                `;
+            }
 
             document.getElementById('modalTitle').textContent = `Signal Details - ${getDirectionText(dir)}`;
             document.getElementById('modalBody').innerHTML = html;
@@ -658,4 +759,5 @@
         refresh();
     </script>
 </body>
+
 </html>

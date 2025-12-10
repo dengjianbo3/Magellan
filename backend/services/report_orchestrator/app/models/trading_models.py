@@ -21,6 +21,7 @@ class TradingSignal(BaseModel):
     stop_loss_price: float
     confidence: int = Field(ge=0, le=100)
     reasoning: str
+    leader_summary: str = ""  # Leader's meeting summary explaining the decision
     agents_consensus: Dict[str, str] = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=datetime.now)
 

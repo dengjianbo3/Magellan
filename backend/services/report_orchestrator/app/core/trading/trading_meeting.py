@@ -1528,6 +1528,9 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             # KEY CHANGE: run() returns TradingSignal directly, no secondary parsing needed!
             logger.info("[ExecutionPhase] TradeExecutor starting Tool Calling...")
             final_signal = await trade_executor_agent.run(execution_prompt)
+            
+            # Add Leader's summary to the signal for display in frontend
+            final_signal.leader_summary = leader_summary
 
             logger.info(
                 f"[ExecutionPhase] TradeExecutor decision complete: {final_signal.direction.upper()} "
