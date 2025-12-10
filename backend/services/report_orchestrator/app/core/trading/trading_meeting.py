@@ -2844,7 +2844,7 @@ Now, please analyze and execute your trading decision."""
         """Get Leader's last message as meeting summary"""
         # FIX: TradingMeeting uses self.messages, not message_bus
         if not hasattr(self, 'messages') or not self.messages:
-            self.logger.warning("[TradingMeeting] No messages in meeting history")
+            logger.warning("[TradingMeeting] No messages in meeting history")
             return "No meeting messages"
         
         # Find Leader's last message from message history
@@ -2861,18 +2861,18 @@ Now, please analyze and execute your trading decision."""
             )
         ]
         
-        self.logger.info(f"[TradingMeeting] Found {len(leader_messages)} Leader messages in {len(self.messages)} total messages")
+        logger.info(f"[TradingMeeting] Found {len(leader_messages)} Leader messages in {len(self.messages)} total messages")
         
         if leader_messages:
             last_msg = leader_messages[-1]
             content = last_msg.get("content", "")
             if content:
-                self.logger.info(f"[TradingMeeting] Leader summary found: {len(content)} chars")
+                logger.info(f"[TradingMeeting] Leader summary found: {len(content)} chars")
                 return content
         
         # Debug: log all message agent names
         agent_names = [msg.get("agent_name", "unknown") for msg in self.messages if isinstance(msg, dict)]
-        self.logger.warning(f"[TradingMeeting] No Leader messages found. Available agents: {set(agent_names)}")
+        logger.warning(f"[TradingMeeting] No Leader messages found. Available agents: {set(agent_names)}")
         
         return "Leader did not provide summary"
 
