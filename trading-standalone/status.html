@@ -363,6 +363,10 @@
         <button class="btn btn-secondary" onclick="toggleAutoRefresh()">
             Auto: <span id="autoRefreshStatus">OFF</span>
         </button>
+        <button class="btn btn-primary" id="forceAnalyzeBtn" onclick="forceAnalyze()"
+            style="background: linear-gradient(135deg, #059669 0%, #047857 100%);">
+            🚀 Analyze Now
+        </button>
         <button class="btn btn-danger" id="closePositionBtn" onclick="emergencyClosePosition()">
             ⚠️ Close Position
         </button>
@@ -584,6 +588,36 @@
             } catch (error) {
                 console.error('Close position error:', error);
                 alert(`❌ Error closing position:\n\n${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        // Force trigger analysis now (without waiting for interval)
+        async function forceAnalyze() {
+            const btn = document.getElementById('forceAnalyzeBtn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Starting...';
+
+            try {
+                const response = await fetch(`${SERVER}/api/trading/trigger?reason=manual_frontend`, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' }
+                });
+                const result = await response.json();
+
+                if (result.triggered) {
+                    alert('🚀 Analysis Started!\n\nThe analysis cycle has been triggered.\nRefresh the page in a few minutes to see results.');
+                } else if (result.error) {
+                    alert(`❌ Failed to trigger analysis:\n\n${result.error}`);
+                } else {
+                    alert('⚠️ Analysis could not be triggered.\n\nThe scheduler may not be running or is already analyzing.');
+                }
+            } catch (error) {
+                console.error('Force analyze error:', error);
+                alert(`❌ Error triggering analysis:\n\n${error.message}`);
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = originalText;
