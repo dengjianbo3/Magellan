@@ -318,6 +318,33 @@
             text-align: right;
             margin-top: 5px;
         }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+        }
+
+        .btn-danger:disabled {
+            background: #374151;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .button-row .btn {
+            flex: 1;
+            min-width: 120px;
+        }
     </style>
 </head>
 
@@ -331,10 +358,13 @@
         <div class="loading">Loading...</div>
     </div>
 
-    <div style="margin-top: 15px;">
-        <button class="btn btn-primary" onclick="refresh()">Refresh</button>
+    <div class="button-row">
+        <button class="btn btn-primary" onclick="refresh()">🔄 Refresh</button>
         <button class="btn btn-secondary" onclick="toggleAutoRefresh()">
-            Auto Refresh: <span id="autoRefreshStatus">OFF</span>
+            Auto: <span id="autoRefreshStatus">OFF</span>
+        </button>
+        <button class="btn btn-danger" id="closePositionBtn" onclick="emergencyClosePosition()">
+            ⚠️ Close Position
         </button>
     </div>
 
@@ -521,6 +551,44 @@
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') closeModal();
         });
+
+        // Emergency close position
+        async function emergencyClosePosition() {
+            // Confirmation dialog
+            if (!confirm('⚠️ EMERGENCY CLOSE POSITION\n\nAre you sure you want to close the current position at market price?\n\nThis action cannot be undone.')) {
+                return;
+            }
+
+            const btn = document.getElementById('closePositionBtn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Closing...';
+
+            try {
+                const response = await fetch(`${SERVER}/api/trading/close`, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' }
+                });
+                const result = await response.json();
+
+                if (result.status === 'closed') {
+                    const pnlClass = result.pnl >= 0 ? 'positive' : 'negative';
+                    const pnlSign = result.pnl >= 0 ? '+' : '';
+                    alert(`✅ Position Closed Successfully!\n\nP&L: ${pnlSign}$${result.pnl?.toFixed(2) || '0.00'}`);
+                    refresh(); // Refresh to update display
+                } else if (result.error === 'No open position to close') {
+                    alert('ℹ️ No position to close.\n\nThere is no open position currently.');
+                } else {
+                    alert(`❌ Failed to close position:\n\n${result.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Close position error:', error);
+                alert(`❌ Error closing position:\n\n${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
 
         async function refresh() {
             const content = document.getElementById('content');
