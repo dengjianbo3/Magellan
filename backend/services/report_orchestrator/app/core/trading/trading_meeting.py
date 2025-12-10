@@ -3044,9 +3044,22 @@ Please reference your historical performance and lessons learned in your analysi
                     logger.info(f"[{agent.name}] Making follow-up LLM call with native tool results")
                     tool_results_text = "\n".join(tool_results)
                     
+                    # FIX: Make follow-up prompt explicitly forbid more tool calls
+                    # and require the actual summary/analysis
+                    follow_up_prompt = f"""Tool results:
+{tool_results_text}
+
+⚠️ CRITICAL INSTRUCTIONS:
+1. DO NOT request more searches or tool calls
+2. DO NOT say "let me search for more" or "I need more data"
+3. You MUST provide your FINAL analysis/summary NOW based on the data above
+4. Synthesize all the information you have received and provide your conclusion
+
+Please provide your comprehensive analysis conclusion based on the tool results above. This is your FINAL response - no more tools will be called."""
+
                     follow_up_messages = messages + [
                         {"role": "assistant", "content": content or ""},
-                        {"role": "user", "content": f"Tool results:\n{tool_results_text}\n\nPlease provide your final analysis conclusion based on this real data."}
+                        {"role": "user", "content": follow_up_prompt}
                     ]
                     
                     follow_up_response = await agent._call_llm(follow_up_messages)
@@ -3066,8 +3079,17 @@ Please reference your historical performance and lessons learned in your analysi
                     elif isinstance(follow_up_response, str):
                         new_content = follow_up_response
                     
-                    # Use new content if available, otherwise keep old
-                    if new_content and len(new_content.strip()) > 0:
+                    # FIX: Check if new_content is still asking for more tools (looping)
+                    tool_request_patterns = [
+                        "let me search", "i'll search", "i will search", "need more data",
+                        "search for more", "let me look", "i'll look", "need to search"
+                    ]
+                    is_tool_loop = any(pattern in (new_content or "").lower() for pattern in tool_request_patterns)
+                    
+                    if is_tool_loop:
+                        logger.warning(f"[{agent.name}] Follow-up response is still requesting tools, using original content")
+                        # Don't update content, keep the old one
+                    elif new_content and len(new_content.strip()) > 0:
                         content = new_content
                         logger.info(f"[{agent.name}] Follow-up content updated: {len(content)} chars")
                     else:
