@@ -431,10 +431,10 @@ def create_leader(language: str = "zh", meeting=None) -> Agent:
         temperature=1.0
     )
 
-    # 添加 MCP 工具
-    mcp_tools = create_mcp_tools_for_agent("Leader")
-    for tool in mcp_tools:
-        agent.register_tool(tool)
+    # NOTE: Leader should NOT have data-gathering tools (tavily_search, yahoo_finance, etc.)
+    # Leader's role is to SUMMARIZE expert opinions, not collect new data.
+    # Only analysts (TechnicalAnalyst, MacroEconomist, etc.) should have MCP tools.
+    # Keeping Leader tool-free prevents the "let me search for more data" loop.
 
     # 添加 end_meeting 工具（如果有meeting引用）
     if meeting is not None:
