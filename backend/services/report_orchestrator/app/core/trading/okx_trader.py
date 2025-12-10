@@ -831,10 +831,28 @@ class OKXTrader:
     
     async def get_trade_history(self, limit: int = 50) -> List[Dict]:
         """
-        Get trade history (PaperTrader compatible)
+        Get trade history with REAL PnL from OKX API.
         
-        Returns list of closed trades with PnL
+        Uses OKX's /api/v5/account/positions-history endpoint for accurate 
+        realized PnL (including fees and funding).
+        
+        Falls back to local history if API fails.
         """
+        try:
+            # 🆕 Get real trade history from OKX API
+            if self._okx_client:
+                okx_trades = await self._okx_client.get_trade_history(limit=limit)
+                
+                if okx_trades:
+                    logger.info(f"[OKXTrader] Retrieved {len(okx_trades)} trades from OKX positions-history API")
+                    return okx_trades
+            
+            logger.warning("[OKXTrader] OKX API unavailable, using local history (PnL may be inaccurate)")
+            
+        except Exception as e:
+            logger.error(f"[OKXTrader] Error fetching OKX trade history: {e}")
+        
+        # Fallback to local history
         return self._trade_history[-limit:]
     
     async def reset(self):

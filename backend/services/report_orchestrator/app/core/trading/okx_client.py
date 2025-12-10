@@ -797,27 +797,99 @@ class OKXClient:
         }
 
     async def get_trade_history(self, symbol: str = "BTC-USDT-SWAP", limit: int = 50) -> List[Dict]:
-        """Get trade history"""
+        """
+        Get closed positions history with REAL realized PnL from OKX API.
+        
+        Uses /api/v5/account/positions-history for accurate PnL including:
+        - Trading P&L
+        - Funding fees
+        - Trading fees
+        - Liquidation penalties (if any)
+        """
         try:
             if self.api_key and self.secret_key:
-                data = await self._request('GET', f'/api/v5/trade/fills?instId={symbol}&limit={limit}')
+                # 🆕 Use positions-history API for real closed position data
+                data = await self._request(
+                    'GET', 
+                    f'/api/v5/account/positions-history?instType=SWAP&limit={limit}'
+                )
 
                 if data.get('code') == '0':
-                    return [
-                        {
-                            'id': t.get('tradeId'),
-                            'timestamp': int(t.get('ts', 0)),
-                            'side': t.get('side'),
-                            'price': float(t.get('fillPx', 0)),
-                            'amount': float(t.get('fillSz', 0)),
-                            'fee': float(t.get('fee', 0))
-                        }
-                        for t in data.get('data', [])
-                    ]
+                    trades = []
+                    for pos in data.get('data', []):
+                        # Only include matching symbol or all if no filter
+                        inst_id = pos.get('instId', '')
+                        if symbol and inst_id != symbol:
+                            continue
+                            
+                        # Extract realized PnL components
+                        pnl = float(pos.get('pnl', 0) or 0)  # Trading P&L
+                        fee = float(pos.get('fee', 0) or 0)  # Trading fee (negative)
+                        funding_fee = float(pos.get('fundingFee', 0) or 0)  # Funding fee
+                        realized_pnl = float(pos.get('realizedPnl', 0) or 0)  # Total realized
+                        
+                        # If realizedPnl not available, calculate manually
+                        if realized_pnl == 0:
+                            realized_pnl = pnl + fee + funding_fee
+                        
+                        # Parse timestamps
+                        open_time = int(pos.get('cTime', 0))
+                        close_time = int(pos.get('uTime', 0))
+                        
+                        trades.append({
+                            'id': pos.get('posId', ''),
+                            'symbol': inst_id,
+                            'direction': pos.get('direction', pos.get('posSide', 'long')),
+                            'size': float(pos.get('closeTotalPos', 0) or 0),
+                            'entry_price': float(pos.get('openAvgPx', 0) or 0),
+                            'exit_price': float(pos.get('closeAvgPx', 0) or 0),
+                            'leverage': int(pos.get('lever', 1) or 1),
+                            'pnl': realized_pnl,  # 🆕 Use OKX calculated real PnL
+                            'pnl_component': {
+                                'trading_pnl': pnl,
+                                'fee': fee,
+                                'funding_fee': funding_fee
+                            },
+                            'margin': float(pos.get('openMaxPos', 0) or 0) * float(pos.get('openAvgPx', 0) or 0) / int(pos.get('lever', 1) or 1) * 0.01,  # Approximate
+                            'close_reason': pos.get('type', 'unknown'),  # 1=Close by user, 2=Liquidation, 3=ADL, 4=System
+                            'opened_at': datetime.fromtimestamp(open_time / 1000).isoformat() if open_time else None,
+                            'closed_at': datetime.fromtimestamp(close_time / 1000).isoformat() if close_time else None
+                        })
+                    
+                    logger.info(f"[OKXClient] Fetched {len(trades)} closed positions from positions-history API")
+                    return trades
+
+                else:
+                    logger.warning(f"[OKXClient] positions-history API failed: {data.get('msg')}")
+                    # Fallback to trade fills (less accurate)
+                    return await self._get_trade_fills_fallback(symbol, limit)
 
         except Exception as e:
-            logger.error(f"Error fetching trade history: {e}")
+            logger.error(f"Error fetching positions history: {e}")
 
+        return []
+    
+    async def _get_trade_fills_fallback(self, symbol: str, limit: int) -> List[Dict]:
+        """Fallback to trade fills if positions-history fails"""
+        try:
+            data = await self._request('GET', f'/api/v5/trade/fills?instId={symbol}&limit={limit}')
+            
+            if data.get('code') == '0':
+                return [
+                    {
+                        'id': t.get('tradeId'),
+                        'timestamp': int(t.get('ts', 0)),
+                        'side': t.get('side'),
+                        'price': float(t.get('fillPx', 0)),
+                        'amount': float(t.get('fillSz', 0)),
+                        'fee': float(t.get('fee', 0)),
+                        'pnl': 0  # fills don't have PnL, need to pair buys/sells
+                    }
+                    for t in data.get('data', [])
+                ]
+        except Exception as e:
+            logger.error(f"Fallback trade fills also failed: {e}")
+        
         return []
 
     async def get_klines(
