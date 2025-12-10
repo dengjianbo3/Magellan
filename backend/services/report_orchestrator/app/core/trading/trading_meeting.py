@@ -2842,39 +2842,39 @@ Now, please analyze and execute your trading decision."""
     
     def _get_leader_final_summary(self) -> str:
         """Get Leader's last message as meeting summary"""
-        if not hasattr(self, 'message_bus') or not self.message_bus:
-            self.logger.warning("[TradingMeeting] message_bus does not exist")
-            return "No meeting record"
-
-        # FIX: MessageBus uses message_history instead of messages
-        messages = getattr(self.message_bus, 'message_history', [])
-        if not messages:
+        # FIX: TradingMeeting uses self.messages, not message_bus
+        if not hasattr(self, 'messages') or not self.messages:
+            self.logger.warning("[TradingMeeting] No messages in meeting history")
             return "No meeting messages"
         
         # Find Leader's last message from message history
+        # Leader agent has id='leader' and name='Roundtable Leader'
         leader_messages = [
-            msg for msg in messages
-            if (hasattr(msg, 'sender') and msg.sender == "Leader") or
-               (hasattr(msg, 'agent_name') and msg.agent_name == "Leader") or
-               (hasattr(msg, 'agent_id') and msg.agent_id == "leader") or
-               (isinstance(msg, dict) and (
-                   msg.get("sender") == "Leader" or 
-                   msg.get("agent_name") == "Leader" or 
-                   msg.get("agent_id") == "leader"
-               ))
+            msg for msg in self.messages
+            if isinstance(msg, dict) and (
+                msg.get("agent_name") == "Roundtable Leader" or
+                msg.get("agent_name") == "Leader" or
+                msg.get("agent_id") == "leader" or
+                msg.get("agent_id") == "Leader" or
+                "leader" in msg.get("agent_name", "").lower() or
+                "leader" in msg.get("agent_id", "").lower()
+            )
         ]
+        
+        self.logger.info(f"[TradingMeeting] Found {len(leader_messages)} Leader messages in {len(self.messages)} total messages")
         
         if leader_messages:
             last_msg = leader_messages[-1]
-            # Handle Message object or dict
-            if isinstance(last_msg, dict):
-                return last_msg.get("content", "")
-            elif hasattr(last_msg, 'content'):
-                return last_msg.content
-            else:
-                return str(last_msg)
+            content = last_msg.get("content", "")
+            if content:
+                self.logger.info(f"[TradingMeeting] Leader summary found: {len(content)} chars")
+                return content
         
-        return "Leader did not speak (possibly LLM failure)"
+        # Debug: log all message agent names
+        agent_names = [msg.get("agent_name", "unknown") for msg in self.messages if isinstance(msg, dict)]
+        self.logger.warning(f"[TradingMeeting] No Leader messages found. Available agents: {set(agent_names)}")
+        
+        return "Leader did not provide summary"
 
     async def _run_agent_turn(self, agent: Agent, prompt: str) -> str:
         """Run a single agent's turn using agent's own LLM call method with tool execution
