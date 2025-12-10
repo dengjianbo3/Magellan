@@ -214,19 +214,19 @@ class ReWOOAgent(Agent):
             # 查找工具
             tool = self.tools.get(tool_name)
             if not tool:
-                # 工具不存在，添加错误结果
+                # Tool not found, add error result
                 logger.warning(f"[{self.name}] Tool '{tool_name}' not found for step {i+1}")
                 error_result = {
                     "success": False,
                     "error": f"Tool '{tool_name}' not found",
-                    "summary": f"工具'{tool_name}'未找到"
+                    "summary": f"Tool '{tool_name}' not found"
                 }
                 tasks.append(self._create_completed_future(error_result))
                 continue
 
-            # 创建带超时的任务
+            # Create task with timeout
             try:
-                # 使用配置的工具执行超时
+                # Use configured tool execution timeout
                 task = asyncio.wait_for(
                     tool.execute(**tool_params),
                     timeout=TOOL_EXECUTION_TIMEOUT
@@ -238,14 +238,14 @@ class ReWOOAgent(Agent):
                 error_result = {
                     "success": False,
                     "error": str(e),
-                    "summary": f"任务创建失败: {str(e)}"
+                    "summary": f"Task creation failed: {str(e)}"
                 }
                 tasks.append(self._create_completed_future(error_result))
 
-        # 并行执行所有任务
+        # Execute all tasks in parallel
         observations = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 处理结果和异常
+        # Process results and exceptions
         processed_observations = []
         for i, obs in enumerate(observations):
             if isinstance(obs, asyncio.TimeoutError):
@@ -253,25 +253,43 @@ class ReWOOAgent(Agent):
                 processed_observations.append({
                     "success": False,
                     "error": "Tool execution timeout",
-                    "summary": f"工具执行超时({TOOL_EXECUTION_TIMEOUT}s)"
+                    "summary": f"Tool execution timeout ({TOOL_EXECUTION_TIMEOUT}s)"
                 })
             elif isinstance(obs, Exception):
                 logger.error(f"[{self.name}] Step {i+1} failed with exception: {obs}")
                 processed_observations.append({
                     "success": False,
                     "error": str(obs),
-                    "summary": f"工具执行异常: {str(obs)}"
+                    "summary": f"Tool execution error: {str(obs)}"
                 })
-            else:
+            elif isinstance(obs, str):
+                # Tool returned a string instead of dict - wrap it
+                processed_observations.append({
+                    "success": True,
+                    "summary": obs[:2000] if len(obs) > 2000 else obs,
+                    "raw_result": obs
+                })
+            elif isinstance(obs, dict):
+                # Normal dict result
                 processed_observations.append(obs)
+            else:
+                # Unknown type - convert to string
+                processed_observations.append({
+                    "success": True,
+                    "summary": str(obs)[:2000],
+                    "raw_result": str(obs)
+                })
 
-        # 统计成功率
-        success_count = sum(1 for o in processed_observations if o.get('success', False))
+        # Count successes - handle both dict and other types safely
+        success_count = 0
+        for o in processed_observations:
+            if isinstance(o, dict) and o.get('success', False):
+                success_count += 1
         success_rate = success_count / len(plan) if plan else 0
 
         logger.info(f"[{self.name}] Execution complete: {success_count}/{len(plan)} successful ({success_rate:.1%})")
 
-        # 如果成功率太低，记录警告
+        # If success rate is too low, log warning
         if success_rate < 0.3 and len(plan) > 0:
             logger.warning(f"[{self.name}] Low success rate ({success_rate:.1%}), analysis quality may be affected")
 
