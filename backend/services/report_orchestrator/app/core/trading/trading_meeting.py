@@ -3051,16 +3051,27 @@ Please reference your historical performance and lessons learned in your analysi
                     
                     follow_up_response = await agent._call_llm(follow_up_messages)
                     
+                    # FIX: Store old content as fallback, then try to extract new content
+                    old_content = content
+                    new_content = None
+                    
                     if isinstance(follow_up_response, dict):
                         if "choices" in follow_up_response:
                             try:
-                                content = follow_up_response["choices"][0]["message"]["content"]
+                                new_content = follow_up_response["choices"][0]["message"]["content"]
                             except (KeyError, IndexError):
-                                pass
-                        if not content:
-                            content = follow_up_response.get("content", "")
+                                logger.warning(f"[{agent.name}] Failed to extract content from follow-up choices")
+                        if not new_content:
+                            new_content = follow_up_response.get("content", follow_up_response.get("response", ""))
                     elif isinstance(follow_up_response, str):
-                        content = follow_up_response
+                        new_content = follow_up_response
+                    
+                    # Use new content if available, otherwise keep old
+                    if new_content and len(new_content.strip()) > 0:
+                        content = new_content
+                        logger.info(f"[{agent.name}] Follow-up content updated: {len(content)} chars")
+                    else:
+                        logger.warning(f"[{agent.name}] Follow-up returned empty, keeping original content")
             
             # Step 2: Detect Legacy format [USE_TOOL: xxx] (compatibility mode)
             tool_pattern = r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]'
