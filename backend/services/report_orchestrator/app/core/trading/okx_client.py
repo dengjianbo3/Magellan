@@ -843,14 +843,14 @@ class OKXClient:
                             'size': float(pos.get('closeTotalPos', 0) or 0),
                             'entry_price': float(pos.get('openAvgPx', 0) or 0),
                             'exit_price': float(pos.get('closeAvgPx', 0) or 0),
-                            'leverage': int(pos.get('lever', 1) or 1),
+                            'leverage': int(float(pos.get('lever', 1) or 1)),
                             'pnl': realized_pnl,  # 🆕 Use OKX calculated real PnL
                             'pnl_component': {
                                 'trading_pnl': pnl,
                                 'fee': fee,
                                 'funding_fee': funding_fee
                             },
-                            'margin': float(pos.get('openMaxPos', 0) or 0) * float(pos.get('openAvgPx', 0) or 0) / int(pos.get('lever', 1) or 1) * 0.01,  # Approximate
+                            'margin': float(pos.get('openMaxPos', 0) or 0) * float(pos.get('openAvgPx', 0) or 0) / int(float(pos.get('lever', 1) or 1)) * 0.01,  # Approximate
                             'close_reason': pos.get('type', 'unknown'),  # 1=Close by user, 2=Liquidation, 3=ADL, 4=System
                             'opened_at': datetime.fromtimestamp(open_time / 1000).isoformat() if open_time else None,
                             'closed_at': datetime.fromtimestamp(close_time / 1000).isoformat() if close_time else None
