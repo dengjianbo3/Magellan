@@ -1276,7 +1276,7 @@ class TradingToolkit:
     async def _analyze_execution_conditions(
         self,
         amount_usdt: float,
-        direction: str = "long",
+        direction: str,  # REQUIRED - no default to avoid bias
         symbol: str = "BTC"
     ) -> str:
         """
@@ -1284,7 +1284,7 @@ class TradingToolkit:
         
         Args:
             amount_usdt: Amount in USDT to trade
-            direction: Trade direction ('long' or 'short')
+            direction: Trade direction ('long' or 'short') - REQUIRED
             symbol: Trading symbol
             
         Returns:
@@ -1293,10 +1293,14 @@ class TradingToolkit:
         try:
             from app.core.trading.smart_executor import analyze_execution
             
-            # Normalize direction
+            # Normalize and validate direction - NO DEFAULT BIAS
             direction = direction.lower()
             if direction not in ["long", "short"]:
-                direction = "long"
+                return json.dumps({
+                    "success": False,
+                    "error": f"Invalid direction '{direction}'. Must be 'long' or 'short'.",
+                    "message": "Direction parameter is required and must be explicitly 'long' or 'short'"
+                }, ensure_ascii=False)
             
             # Perform analysis
             analysis = await analyze_execution(

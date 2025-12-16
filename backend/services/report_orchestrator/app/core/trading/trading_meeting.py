@@ -2510,16 +2510,23 @@ You MUST call a tool based on meeting results!""",
         ))
 
         # Add execution analysis tool for large orders
-        async def analyze_execution_tool(amount_usdt: float, direction: str = "long") -> str:
+        async def analyze_execution_tool(amount_usdt: float, direction: str) -> str:
             """
             Analyze execution conditions before placing a trade.
+            Direction MUST be explicitly specified ('long' or 'short').
             Returns strategy recommendation, estimated slippage, and liquidity rating.
             """
             try:
                 from app.core.trading.smart_executor import analyze_execution
+                
+                # Validate direction - NO DEFAULT BIAS
+                direction_lower = direction.lower()
+                if direction_lower not in ["long", "short"]:
+                    return f"❌ Error: Invalid direction '{direction}'. Must be 'long' or 'short'."
+                
                 analysis = await analyze_execution(
                     amount_usdt=float(amount_usdt),
-                    direction=direction.lower(),
+                    direction=direction_lower,
                     symbol="BTC"
                 )
                 
