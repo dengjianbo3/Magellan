@@ -521,9 +521,14 @@ First explain your analysis reasoning, then output a JSON trading signal at the 
 
 **JSON must be valid format, placed in a ```json code block:**
 
+⚠️ **CRITICAL**: The example below uses placeholder values. You MUST choose `direction` based on YOUR analysis:
+- If market is BULLISH → `"direction": "long"`
+- If market is BEARISH → `"direction": "short"`  
+- If market is UNCLEAR → `"direction": "hold"`
+
 ```json
 {{
-  "direction": "long",
+  "direction": "<long|short|hold - choose based on YOUR analysis, NOT this example>",
   "confidence": 75,
   "leverage": 6,
   "take_profit_percent": 5.0,
