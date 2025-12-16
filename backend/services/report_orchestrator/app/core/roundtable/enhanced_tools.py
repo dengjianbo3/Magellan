@@ -1167,17 +1167,17 @@ Use cases:
         **kwargs
     ) -> Dict[str, Any]:
         """
-        监控舆情
+        Monitor sentiment for a target
 
         Args:
-            target: 监控目标（公司名/项目名/人名）
-            monitor_type: 监控类型
-                - comprehensive: 综合舆情
-                - negative: 负面新闻
-                - social: 社交媒体
-                - regulatory: 监管动态
-            time_range: 时间范围 (day/week/month)
-            focus_areas: 重点关注领域 (如 ["财务造假", "高管离职", "诉讼"])
+            target: Monitoring target (company name/project name/person name)
+            monitor_type: Monitoring type
+                - comprehensive: Comprehensive sentiment
+                - negative: Negative news
+                - social: Social media
+                - regulatory: Regulatory updates
+            time_range: Time range (day/week/month)
+            focus_areas: Focus areas (e.g. ["financial fraud", "executive departure", "litigation"])
         """
         try:
             results = {
@@ -1187,14 +1187,14 @@ Use cases:
                 "risk_signals": []
             }
 
-            # 构建搜索查询
+            # Build search query
             from .mcp_tools import TavilySearchTool
             tavily = TavilySearchTool()
 
-            # 1. 负面新闻搜索
+            # 1. Negative news search
             negative_keywords = [
-                "负面", "问题", "风险", "调查", "处罚", "诉讼", "裁员",
-                "亏损", "下跌", "暴雷", "违规", "造假", "丑闻"
+                "negative", "problem", "risk", "investigation", "penalty", "lawsuit", "layoff",
+                "loss", "decline", "scandal", "violation", "fraud", "controversy"
             ]
 
             if monitor_type in ["comprehensive", "negative"]:
@@ -1208,9 +1208,9 @@ Use cases:
                 if neg_result.get("success"):
                     results["negative_news"] = neg_result.get("results", [])
 
-            # 2. 监管动态搜索
+            # 2. Regulatory updates search
             if monitor_type in ["comprehensive", "regulatory"]:
-                reg_query = f"{target} (监管 OR 处罚 OR 调查 OR 整改 OR 通报)"
+                reg_query = f"{target} (regulatory OR penalty OR investigation OR compliance OR notice)"
                 reg_result = await tavily.execute(
                     query=reg_query,
                     topic="news",
@@ -1220,7 +1220,7 @@ Use cases:
                 if reg_result.get("success"):
                     results["regulatory_news"] = reg_result.get("results", [])
 
-            # 3. 特定关注领域
+            # 3. Specific focus areas
             if focus_areas:
                 for area in focus_areas[:3]:
                     area_result = await tavily.execute(
@@ -1235,53 +1235,53 @@ Use cases:
                             "news": area_result.get("results", [])
                         })
 
-            # 生成舆情报告
-            time_range_label = {"day": "24小时", "week": "一周", "month": "一个月"}.get(time_range, time_range)
-            summary = f"""【舆情监控报告】{target}
+            # Generate sentiment report
+            time_range_label = {"day": "24 hours", "week": "1 week", "month": "1 month"}.get(time_range, time_range)
+            summary = f"""【Sentiment Monitoring Report】{target}
 
-📅 监控时间范围: 最近{time_range_label}
-📊 监控类型: {monitor_type}
+📅 Monitoring Period: Last {time_range_label}
+📊 Monitoring Type: {monitor_type}
 
 """
 
-            # 负面新闻摘要
+            # Negative news summary
             neg_count = len(results["negative_news"])
-            summary += f"🔴 负面新闻: 发现 {neg_count} 条\n"
+            summary += f"🔴 Negative News: Found {neg_count} items\n"
             if results["negative_news"]:
                 for i, news in enumerate(results["negative_news"][:3], 1):
                     summary += f"   {i}. {news.get('title', 'N/A')}\n"
-                    summary += f"      来源: {news.get('url', 'N/A')}\n"
+                    summary += f"      Source: {news.get('url', 'N/A')}\n"
             else:
-                summary += "   暂未发现明显负面新闻 ✅\n"
+                summary += "   No significant negative news found ✅\n"
 
-            # 监管动态摘要
+            # Regulatory updates summary
             reg_count = len(results["regulatory_news"])
-            summary += f"\n⚖️ 监管动态: 发现 {reg_count} 条\n"
+            summary += f"\n⚖️ Regulatory Updates: Found {reg_count} items\n"
             if results["regulatory_news"]:
                 for i, news in enumerate(results["regulatory_news"][:3], 1):
                     summary += f"   {i}. {news.get('title', 'N/A')}\n"
             else:
-                summary += "   暂未发现监管相关新闻 ✅\n"
+                summary += "   No regulatory-related news found ✅\n"
 
-            # 风险信号
+            # Risk signals
             if results["risk_signals"]:
-                summary += f"\n⚠️ 重点关注领域:\n"
+                summary += f"\n⚠️ Focus Areas:\n"
                 for signal in results["risk_signals"]:
-                    summary += f"   【{signal['area']}】: {len(signal['news'])} 条相关新闻\n"
+                    summary += f"   【{signal['area']}】: {len(signal['news'])} related news items\n"
 
-            # 风险评估
+            # Risk assessment
             total_negative = neg_count + reg_count + sum(len(s["news"]) for s in results["risk_signals"])
             if total_negative == 0:
-                risk_level = "🟢 低风险 - 未发现明显负面舆情"
+                risk_level = "🟢 Low Risk - No significant negative sentiment found"
             elif total_negative <= 3:
-                risk_level = "🟡 中低风险 - 存在少量负面信息"
+                risk_level = "🟡 Low-Medium Risk - Some negative information exists"
             elif total_negative <= 7:
-                risk_level = "🟠 中等风险 - 负面舆情较多，需关注"
+                risk_level = "🟠 Medium Risk - Multiple negative items, requires attention"
             else:
-                risk_level = "🔴 高风险 - 负面舆情密集，建议深入调查"
+                risk_level = "🔴 High Risk - Dense negative sentiment, recommend in-depth investigation"
 
-            summary += f"\n📈 舆情风险评估: {risk_level}\n"
-            summary += f"   负面信息总数: {total_negative} 条\n"
+            summary += f"\n📈 Sentiment Risk Assessment: {risk_level}\n"
+            summary += f"   Total Negative Items: {total_negative}\n"
 
             return {
                 "success": True,
@@ -1300,7 +1300,7 @@ Use cases:
             return {
                 "success": False,
                 "error": str(e),
-                "summary": f"舆情监控出错: {str(e)}"
+                "summary": f"Sentiment monitoring error: {str(e)}"
             }
 
     def to_schema(self) -> Dict[str, Any]:
@@ -1312,24 +1312,24 @@ Use cases:
                 "properties": {
                     "target": {
                         "type": "string",
-                        "description": "监控目标（公司名/项目名/人名）"
+                        "description": "Monitoring target (company name/project name/person name)"
                     },
                     "monitor_type": {
                         "type": "string",
-                        "description": "监控类型",
+                        "description": "Monitoring type",
                         "enum": ["comprehensive", "negative", "social", "regulatory"],
                         "default": "comprehensive"
                     },
                     "time_range": {
                         "type": "string",
-                        "description": "时间范围",
+                        "description": "Time range",
                         "enum": ["day", "week", "month"],
                         "default": "week"
                     },
                     "focus_areas": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "重点关注领域，如 ['财务造假', '高管离职']"
+                        "description": "Focus areas, e.g. ['financial fraud', 'executive departure']"
                     }
                 },
                 "required": ["target"]
@@ -1337,7 +1337,7 @@ Use cases:
         }
 
 
-# ==================== 导出工具列表 ====================
+# ==================== Export Tool List ====================
 
 __all__ = [
     "ChinaMarketDataTool",
