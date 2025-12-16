@@ -2414,10 +2414,12 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
 
 ## Available Tools
 - **analyze_execution_conditions**: Analyze market liquidity and recommend execution strategy (CALL FIRST for large orders!)
-- **open_long**: Open long position (buy BTC)
-- **open_short**: Open short position (sell BTC)
+- **open_short**: Open short position (sell BTC) - use when market is BEARISH
+- **open_long**: Open long position (buy BTC) - use when market is BULLISH
 - **close_position**: Close current position
 - **hold**: Hold/wait, no action
+
+⚠️ **CRITICAL**: Choose direction based ONLY on expert votes. Do NOT default to any direction.
 
 ## Smart Execution Protocol
 
@@ -2433,11 +2435,11 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
 - Large ($10,000-$50,000): Use sliced execution (3-5 batches)
 - XLarge (>$50,000): Requires TWAP strategy
 
-## Decision Rules
-1. Experts 3-4 votes unanimous bullish → Call open_long (with execution analysis for large orders)
-2. Experts 3-4 votes unanimous bearish → Call open_short (with execution analysis for large orders)
-3. Experts split or unclear → Call hold
-4. Has opposite position to close → Call close_position
+## Decision Rules (IMPORTANT: Follow expert consensus, NO default preference!)
+1. If experts vote BEARISH (short/sell majority) → Call open_short
+2. If experts vote BULLISH (long/buy majority) → Call open_long  
+3. If experts split or unclear → Call hold (do NOT guess)
+4. Has opposite position to handle → First call close_position
 
 ## Risk Management
 - Always check liquidity before large orders
@@ -2681,9 +2683,16 @@ You MUST call a tool based on meeting results!""",
                               "This fallback will be removed in future versions.")
                 text_lower = text.lower()
 
-                # Detect direction keywords (English only)
-                if any(kw in text_lower for kw in ['long', 'buy', 'bullish']):
-                    # Extract parameters - if not in text, set to None for dynamic calculation
+                # Count direction keywords to avoid first-match bias (ANTI-BIAS FIX)
+                long_keywords = ['long', 'buy', 'bullish']
+                short_keywords = ['short', 'sell', 'bearish']
+                
+                long_count = sum(1 for kw in long_keywords if kw in text_lower)
+                short_count = sum(1 for kw in short_keywords if kw in text_lower)
+                
+                # Use majority vote to determine direction
+                if short_count > long_count:
+                    # SHORT direction wins
                     leverage_match = re.search(r'(\d+)\s*[xX]', text)
                     leverage = int(leverage_match.group(1)) if leverage_match else None
 
@@ -2693,16 +2702,16 @@ You MUST call a tool based on meeting results!""",
                     confidence_match = re.search(r'[Cc]onfidence\s*[:：]?\s*(\d+)', text)
                     confidence = int(confidence_match.group(1)) if confidence_match else None
 
-                    logger.info(f"[TradeExecutor] 📊 Inferred long from text: leverage={leverage}, amount={amount}, confidence={confidence}")
-                    logger.info(f"[TradeExecutor] 📊 Missing parameters will be dynamically calculated from votes")
-                    await self.tools['open_long'](
+                    logger.info(f"[TradeExecutor] 📊 Inferred SHORT from text (short_count={short_count}, long_count={long_count})")
+                    await self.tools['open_short'](
                         leverage=min(leverage, 20) if leverage else None,
                         amount_percent=min(amount, 1.0) if amount else None,
                         confidence=confidence,
                         reasoning=text[:200]
                     )
 
-                elif any(kw in text_lower for kw in ['short', 'sell', 'bearish']):
+                elif long_count > short_count:
+                    # LONG direction wins
                     leverage_match = re.search(r'(\d+)\s*[xX]', text)
                     leverage = int(leverage_match.group(1)) if leverage_match else None
 
@@ -2712,9 +2721,8 @@ You MUST call a tool based on meeting results!""",
                     confidence_match = re.search(r'[Cc]onfidence\s*[:：]?\s*(\d+)', text)
                     confidence = int(confidence_match.group(1)) if confidence_match else None
 
-                    logger.info(f"[TradeExecutor] 📊 Inferred short from text: leverage={leverage}, amount={amount}, confidence={confidence}")
-                    logger.info(f"[TradeExecutor] 📊 Missing parameters will be dynamically calculated from votes")
-                    await self.tools['open_short'](
+                    logger.info(f"[TradeExecutor] 📊 Inferred LONG from text (long_count={long_count}, short_count={short_count})")
+                    await self.tools['open_long'](
                         leverage=min(leverage, 20) if leverage else None,
                         amount_percent=min(amount, 1.0) if amount else None,
                         confidence=confidence,
@@ -2726,7 +2734,8 @@ You MUST call a tool based on meeting results!""",
                     await self.tools['close_position'](reasoning=text[:200])
                     
                 else:
-                    logger.info("[TradeExecutor] 📊 Inferred hold from text")
+                    # Tie or no direction keywords - default to HOLD (safe)
+                    logger.info(f"[TradeExecutor] 📊 Inferred HOLD from text (long_count={long_count}, short_count={short_count})")
                     await self.tools['hold'](reason=text[:200] or "Market unclear")
                 
                 # Return execution result
@@ -2836,10 +2845,12 @@ Based on the above information, you **MUST call a tool** to execute the trading 
 **Important**: confidence/leverage/amount_percent will be auto-calculated based on voting consensus level, no need to manually specify fixed values!
 
 **To execute your decision**, simply state your intent clearly and call the appropriate tool:
-- For going long: call open_long with your reasoning
-- For going short: call open_short with your reasoning  
-- For holding: call hold with your reason
+- For going short (bearish): call open_short with your reasoning
+- For going long (bullish): call open_long with your reasoning
+- For holding (neutral): call hold with your reason
 - For closing: call close_position with your reason
+
+⚠️ REMINDER: Base your decision SOLELY on the expert votes above. Do NOT default to long or short.
 
 Now, please analyze and execute your trading decision."""
 
