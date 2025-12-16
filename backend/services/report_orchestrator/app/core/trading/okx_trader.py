@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class OKXTraderConfig:
-    """OKX Trader 配置"""
+    """OKX Trader Configuration"""
     initial_balance: float = 10000.0
     symbol: str = "BTC-USDT-SWAP"
     max_leverage: int = 20
@@ -67,7 +67,7 @@ class OKXTrader:
     OKX Demo Trading Adapter
 
     Wraps OKXClient to provide PaperTrader-compatible interface.
-    Uses OKX demo trading API (模拟盘).
+    Uses OKX demo trading API.
     """
 
     def __init__(self, initial_balance: float = 10000.0, demo_mode: bool = True, config: OKXTraderConfig = None,
@@ -87,7 +87,7 @@ class OKXTrader:
 
         # Current position cache
         self._position: Optional[OKXPosition] = None
-        self._last_price: Optional[float] = None  # 初始化时从API获取真实价格
+        self._last_price: Optional[float] = None  # Get real price from API on init
         self._last_price_update: datetime = datetime.now()
 
         # Trade history
@@ -114,7 +114,7 @@ class OKXTrader:
         # 🚨 Mode confirmation logging
         if self.demo_mode:
             logger.info("=" * 60)
-            logger.info("🧪 INITIALIZING OKX DEMO TRADER (模拟盘)")
+            logger.info("🧪 INITIALIZING OKX DEMO TRADER")
             logger.info("   This is SIMULATED trading - no real funds at risk")
             logger.info("=" * 60)
         else:
@@ -361,29 +361,29 @@ class OKXTrader:
         """
         Get account info (PaperTrader compatible)
 
-        🆕 OKX 直接返回所有计算好的值，无需本地计算！
+        OKX directly returns all calculated values, no local calculation needed!
         """
         try:
             balance = await self._okx_client.get_account_balance()
 
-            # 🆕 OKX 直接返回 unrealized_pnl，无需本地计算
+            # OKX directly returns unrealized_pnl, no local calculation needed
             unrealized_pnl = balance.unrealized_pnl or 0.0
 
-            # 🆕 max_avail_size = OKX 计算的真实可开仓金额
-            # 这是通过 /api/v5/account/max-avail-size API 获取的
+            # max_avail_size = OKX calculated real available margin
+            # This is obtained via /api/v5/account/max-avail-size API
             max_avail_size = balance.max_avail_size or 0.0
 
-            # 🔧 优先使用 max_avail_size，否则回退到 available_balance
+            # Prefer max_avail_size, fallback to available_balance
             true_available_margin = max_avail_size if max_avail_size > 0 else balance.available_balance
 
             return {
                 'total_equity': balance.total_equity,
                 'available_balance': balance.available_balance,
-                'true_available_margin': true_available_margin,  # 🔧 现在使用 max_avail_size
-                'max_avail_size': max_avail_size,  # 🆕 传递给 trading_meeting.py
+                'true_available_margin': true_available_margin,  # Now uses max_avail_size
+                'max_avail_size': max_avail_size,  # Pass to trading_meeting.py
                 'used_margin': balance.used_margin or 0,
                 'unrealized_pnl': unrealized_pnl,
-                'realized_pnl': 0.0,  # 可从 API 获取
+                'realized_pnl': 0.0,  # Can be fetched from API
                 'initial_balance': self.initial_balance,
                 'currency': 'USDT'
             }
@@ -405,9 +405,9 @@ class OKXTrader:
         """
         Get current position (PaperTrader compatible)
         
-        🆕 直接从 OKX 获取所有数据，包括强平价格等
+        Get all data directly from OKX, including liquidation price
         """
-        # 🆕 直接从 OKX API 获取最新持仓数据
+        # Get latest position data directly from OKX API
         try:
             pos = await self._okx_client.get_current_position(symbol)
             
@@ -415,7 +415,7 @@ class OKXTrader:
                 self._position = None
                 return {'has_position': False}
             
-            # 更新本地缓存
+            # Update local cache
             self._position = OKXPosition(
                 id=f"okx-{datetime.now().timestamp()}",
                 symbol=pos.symbol,
@@ -428,7 +428,7 @@ class OKXTrader:
                 unrealized_pnl=pos.unrealized_pnl
             )
             
-            # 🆕 计算仓位百分比
+            # Calculate position percentage
             position_percent = (pos.margin / self.initial_balance * 100) if self.initial_balance > 0 else 0
             
             return {
@@ -440,25 +440,25 @@ class OKXTrader:
                 'current_price': pos.current_price,
                 'leverage': pos.leverage,
                 'margin': pos.margin or 0,
-                'position_percent': position_percent,  # 🆕 与 PaperTrader 一致
+                'position_percent': position_percent,  # Consistent with PaperTrader
                 'unrealized_pnl': pos.unrealized_pnl,
                 'unrealized_pnl_percent': pos.unrealized_pnl_percent,
                 'take_profit_price': pos.take_profit_price,
                 'stop_loss_price': pos.stop_loss_price,
-                'liquidation_price': pos.liquidation_price,  # 🆕 交易所直接返回强平价
+                'liquidation_price': pos.liquidation_price,  # Exchange directly returns liquidation price
                 'opened_at': pos.opened_at.isoformat() if pos.opened_at else None
             }
             
         except Exception as e:
             logger.error(f"Error getting position from OKX: {e}")
             
-            # Fallback 到本地缓存
+            # Fallback to local cache
             if not self._position:
                 return {'has_position': False}
 
             price = await self.get_current_price(symbol)
 
-            # 本地计算 PnL (备用)
+            # Local PnL calculation (fallback)
             if self._position.direction == "long":
                 pnl = (price - self._position.entry_price) * self._position.size
             else:
@@ -481,7 +481,7 @@ class OKXTrader:
                 'unrealized_pnl_percent': pnl_percent,
                 'take_profit_price': self._position.take_profit_price,
                 'stop_loss_price': self._position.stop_loss_price,
-                'liquidation_price': None,  # 本地缓存无强平价
+                'liquidation_price': None,  # Local cache has no liquidation price
                 'opened_at': self._position.opened_at.isoformat()
             }
 
@@ -494,7 +494,7 @@ class OKXTrader:
         sl_price: Optional[float] = None
     ) -> Dict:
         """
-        开多仓 - 与 PaperTrader.open_long() 签名一致
+        Open long position - PaperTrader.open_long() compatible signature
         """
         return await self.open_position(
             direction="long",
@@ -514,7 +514,7 @@ class OKXTrader:
         sl_price: Optional[float] = None
     ) -> Dict:
         """
-        开空仓 - 与 PaperTrader.open_short() 签名一致
+        Open short position - PaperTrader.open_short() compatible signature
         """
         return await self.open_position(
             direction="short",
@@ -534,7 +534,7 @@ class OKXTrader:
         sl_price: Optional[float] = None,
         symbol: str = "BTC-USDT-SWAP"
     ) -> Dict:
-        """Open a new position on OKX demo (内部方法)，支持追加仓位"""
+        """Open a new position on OKX demo (internal method), supports adding to position"""
         # 🔒 Use trade lock to prevent concurrent operations
         async with self._trade_lock:
             logger.info(f"[TRADE_LOCK] Acquired lock for {direction} position")
@@ -545,27 +545,27 @@ class OKXTrader:
                 logger.warning(f"[OKXTrader] Trade rejected: {halt_msg}")
                 return {'success': False, 'error': halt_msg}
             
-            # 确保类型正确（防止从LLM解析时传入字符串）
+            # Ensure correct types (prevent string input from LLM parsing)
             try:
                 leverage = int(leverage) if leverage else 1
                 amount_usdt = float(amount_usdt) if amount_usdt else 100
                 tp_price = float(tp_price) if tp_price else None
                 sl_price = float(sl_price) if sl_price else None
             except (TypeError, ValueError) as e:
-                return {'success': False, 'error': f'参数类型错误: {e}'}
+                return {'success': False, 'error': f'Parameter type error: {e}'}
 
             # 🔄 Sync position from OKX before making decisions
             await self._sync_position()
 
-            # 🆕 检查是否有现有仓位
+            # Check if there's an existing position
             is_adding = False
             if self._position:
                 if self._position.direction != direction:
-                    # 方向不同，不能追加（需要先平仓）
+                    # Different direction, cannot add (need to close first)
                     logger.warning(f"[OKXTrader] Cannot add to position: existing={self._position.direction}, requested={direction}")
                     return {'success': False, 'error': f'Cannot add {direction} to existing {self._position.direction} position'}
                 else:
-                    # 同方向，可以追加
+                    # Same direction, can add to position
                     is_adding = True
                     logger.info(f"[OKXTrader] 🔄 Adding to existing {direction} position: +${amount_usdt:.2f}")
 
@@ -598,12 +598,12 @@ class OKXTrader:
                     order_id = result.get('order_id', f"okx-{datetime.now().timestamp()}")
 
                     if is_adding and self._position:
-                        # 🆕 追加仓位：更新本地缓存
+                        # Adding to position: update local cache
                         old_size = self._position.size
                         old_margin = self._position.margin
                         old_entry = self._position.entry_price
 
-                        # 计算新的平均入场价
+                        # Calculate new average entry price
                         new_size = old_size + executed_amount
                         new_margin = old_margin + amount_usdt
                         new_entry = (old_entry * old_size + executed_price * executed_amount) / new_size if new_size > 0 else executed_price
@@ -615,7 +615,7 @@ class OKXTrader:
 
                         logger.info(f"OKX position added: {direction} +{executed_amount} BTC @ ${executed_price:.2f}, total={new_size} BTC, avg_entry=${new_entry:.2f}")
                     else:
-                        # 新开仓位
+                        # New position
                         self._position = OKXPosition(
                             id=order_id,
                             symbol=symbol,
@@ -630,7 +630,7 @@ class OKXTrader:
                         )
                         logger.info(f"OKX position opened: {direction} {self._position.size} BTC @ ${self._position.entry_price}")
 
-                    # 🆕 返回格式与 PaperTrader 一致
+                    # Return format consistent with PaperTrader
                     return {
                         'success': True,
                         'order_id': order_id,
@@ -641,8 +641,8 @@ class OKXTrader:
                         'margin': amount_usdt,
                         'take_profit': tp_price,
                         'stop_loss': sl_price,
-                        'remaining_balance': 0.0,  # 需要从 API 获取
-                        'remaining_available_margin': 0.0  # 需要从 API 获取
+                        'remaining_balance': 0.0,  # Need to fetch from API
+                        'remaining_available_margin': 0.0  # Need to fetch from API
                     }
                 else:
                     return {'success': False, 'error': result.get('error', 'Failed to open position')}

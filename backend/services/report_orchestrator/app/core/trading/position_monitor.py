@@ -58,11 +58,11 @@ class EquityHistory:
 
 @dataclass
 class PositionMonitorConfig:
-    """Position Monitor 配置"""
-    default_balance: float = 10000.0  # 默认余额（用于模拟/测试）
+    """Position Monitor Configuration"""
+    default_balance: float = 10000.0  # Default balance (for simulation/testing)
     check_interval_seconds: int = 60
-    tp_warning_threshold: float = 2.0  # TP 接近警告阈值（百分比）
-    sl_warning_threshold: float = 2.0  # SL 接近警告阈值（百分比）
+    tp_warning_threshold: float = 2.0  # TP proximity warning threshold (percent)
+    sl_warning_threshold: float = 2.0  # SL proximity warning threshold (percent)
 
 
 class PositionMonitor:

@@ -1238,7 +1238,7 @@ class TradingToolkit:
             # MCP response is already in correct format
             if result.get("success"):
                 logger.info(f"[TradingTools] MCP search success: {len(result.get('result', {}).get('results', []))} results")
-                # 重新格式化为trading_tools期望的格式
+                # Reformat to expected trading_tools format
                 mcp_results = result.get("result", {}).get("results", [])
                 formatted_results = [{
                     "title": r.get("title", ""),
