@@ -54,21 +54,21 @@ Examples:
 - Query Tencent: symbol="00700" or "00700.HK"
 """
         )
-        # 东方财富API配置
+        # Eastmoney API configuration
         self.eastmoney_quote_url = "http://push2.eastmoney.com/api/qt/stock/get"
         self.eastmoney_kline_url = "http://push2his.eastmoney.com/api/qt/stock/kline/get"
         self.eastmoney_finance_url = "http://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis"
 
     def _detect_market(self, symbol: str) -> tuple:
         """
-        自动检测市场类型
+        Auto-detect market type
 
         Returns:
             (secid, market_name)
         """
         symbol = symbol.upper().replace(" ", "")
 
-        # 已经带后缀的情况
+        # Already has suffix
         if ".SH" in symbol:
             code = symbol.replace(".SH", "")
             return f"1.{code}", "A股(上海)"
@@ -79,7 +79,7 @@ Examples:
             code = symbol.replace(".HK", "")
             return f"116.{code}", "港股"
 
-        # 纯数字，自动判断
+        # Pure digits, auto-detect
         code = symbol.split(".")[0]
         if code.startswith("6"):
             return f"1.{code}", "A股(上海)"
@@ -88,7 +88,7 @@ Examples:
         elif len(code) == 5:
             return f"116.{code}", "港股"
         else:
-            # 默认尝试上海
+            # Default try Shanghai
             return f"1.{code}", "A股(上海)"
 
     async def execute(
@@ -98,22 +98,22 @@ Examples:
         **kwargs
     ) -> Dict[str, Any]:
         """
-        获取中国市场数据
+        Get China market data
 
         Args:
-            symbol: 股票代码 (如 600519, 00700.HK)
-            action: 操作类型
-                - "quote": 实时行情
-                - "kline": 历史K线
-                - "finance": 财务数据
-                - "info": 公司资料
+            symbol: Stock code (e.g., 600519, 00700.HK)
+            action: Operation type
+                - "quote": Real-time quote
+                - "kline": Historical K-line
+                - "finance": Financial data
+                - "info": Company info
             **kwargs:
-                - period: K线周期 (daily/weekly/monthly)
-                - limit: K线数量限制
-                - report_type: 财务报表类型 (income/balance/cashflow)
+                - period: K-line period (daily/weekly/monthly)
+                - limit: K-line data limit
+                - report_type: Financial report type (income/balance/cashflow)
 
         Returns:
-            市场数据
+            Market data
         """
         secid, market_name = self._detect_market(symbol)
 
@@ -131,8 +131,8 @@ Examples:
             else:
                 return {
                     "success": False,
-                    "error": f"不支持的操作类型: {action}",
-                    "summary": f"请使用 quote/kline/finance/info 之一"
+                    "error": f"Unsupported action type: {action}",
+                    "summary": f"Please use one of: quote/kline/finance/info"
                 }
 
         except Exception as e:
@@ -140,11 +140,11 @@ Examples:
             return {
                 "success": False,
                 "error": str(e),
-                "summary": f"获取{symbol}数据时出错: {str(e)}"
+                "summary": f"Error fetching {symbol} data: {str(e)}"
             }
 
     async def _get_quote(self, secid: str, symbol: str, market_name: str) -> Dict[str, Any]:
-        """获取实时行情"""
+        """Get real-time quote"""
         params = {
             "secid": secid,
             "fields": "f43,f44,f45,f46,f47,f48,f50,f51,f52,f55,f57,f58,f60,f71,f116,f117,f162,f167,f168,f169,f170"
@@ -158,12 +158,12 @@ Examples:
             if data.get("data") is None:
                 return {
                     "success": False,
-                    "summary": f"未找到股票 {symbol} 的行情数据，请检查代码是否正确"
+                    "summary": f"Stock {symbol} quote data not found, please check if the code is correct"
                 }
 
             d = data["data"]
 
-            # 解析数据 (东方财富返回的是整数，需要除以相应倍数)
+            # Parse data (Eastmoney returns integers, need to divide by corresponding multiplier)
             current_price = d.get("f43", 0) / 100 if d.get("f43") else 0
             change = d.get("f169", 0) / 100 if d.get("f169") else 0
             change_pct = d.get("f170", 0) / 100 if d.get("f170") else 0
@@ -171,15 +171,15 @@ Examples:
             low = d.get("f45", 0) / 100 if d.get("f45") else 0
             open_price = d.get("f46", 0) / 100 if d.get("f46") else 0
             prev_close = d.get("f60", 0) / 100 if d.get("f60") else 0
-            volume = d.get("f47", 0)  # 成交量（手）
-            amount = d.get("f48", 0)  # 成交额
-            market_cap = d.get("f116", 0)  # 总市值
-            float_cap = d.get("f117", 0)  # 流通市值
-            pe_ratio = d.get("f162", 0) / 100 if d.get("f162") else 0  # 市盈率
-            pb_ratio = d.get("f167", 0) / 100 if d.get("f167") else 0  # 市净率
+            volume = d.get("f47", 0)  # Volume (lots)
+            amount = d.get("f48", 0)  # Turnover
+            market_cap = d.get("f116", 0)  # Total market cap
+            float_cap = d.get("f117", 0)  # Float market cap
+            pe_ratio = d.get("f162", 0) / 100 if d.get("f162") else 0  # P/E ratio
+            pb_ratio = d.get("f167", 0) / 100 if d.get("f167") else 0  # P/B ratio
             name = d.get("f58", symbol)
 
-            # 格式化市值
+            # Format market cap
             def format_cap(cap):
                 if cap >= 100000000:
                     return f"{cap / 100000000:.2f}亿"
@@ -237,8 +237,8 @@ PB(市净率): {pb_ratio:.2f}
         period: str = "daily",
         limit: int = 60
     ) -> Dict[str, Any]:
-        """获取K线数据"""
-        # 映射周期
+        """Get K-line data"""
+        # Map period
         klt_map = {"daily": 101, "weekly": 102, "monthly": 103}
         klt = klt_map.get(period, 101)
 
@@ -247,7 +247,7 @@ PB(市净率): {pb_ratio:.2f}
             "fields1": "f1,f2,f3,f4,f5,f6",
             "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
             "klt": klt,
-            "fqt": 1,  # 前复权
+            "fqt": 1,  # Forward adjustment
             "lmt": limit
         }
 
@@ -259,13 +259,13 @@ PB(市净率): {pb_ratio:.2f}
             if data.get("data") is None or not data["data"].get("klines"):
                 return {
                     "success": False,
-                    "summary": f"未找到 {symbol} 的K线数据"
+                    "summary": f"K-line data not found for {symbol}"
                 }
 
             klines = data["data"]["klines"]
             name = data["data"].get("name", symbol)
 
-            # 解析K线数据
+            # Parse K-line data
             parsed_klines = []
             for kline in klines[-limit:]:
                 parts = kline.split(",")
@@ -281,7 +281,7 @@ PB(市净率): {pb_ratio:.2f}
                         "change_pct": float(parts[8]) if len(parts) > 8 else 0
                     })
 
-            # 计算简单统计
+            # Calculate simple statistics
             if parsed_klines:
                 closes = [k["close"] for k in parsed_klines]
                 latest = parsed_klines[-1]
@@ -303,7 +303,7 @@ PB(市净率): {pb_ratio:.2f}
                 for k in parsed_klines[-5:]:
                     summary += f"  {k['date']}: 开{k['open']:.2f} 收{k['close']:.2f} 涨跌{k['change_pct']:+.2f}%\n"
             else:
-                summary = f"未找到 {symbol} 的有效K线数据"
+                summary = f"No valid K-line data found for {symbol}"
 
             return {
                 "success": True,
@@ -318,11 +318,11 @@ PB(市净率): {pb_ratio:.2f}
             }
 
     async def _get_finance(self, symbol: str, market_name: str) -> Dict[str, Any]:
-        """获取财务数据 - 使用新浪财经作为备选"""
-        # 简化版：使用东方财富网页接口获取基本财务数据
+        """Get financial data - using Sina Finance as backup"""
+        # Simplified: use Eastmoney web interface for basic financial data
         code = symbol.replace(".SH", "").replace(".SZ", "").replace(".HK", "")
 
-        # 构建新浪财经接口
+        # Build Sina Finance API request
         if "港" in market_name:
             sina_url = f"http://hq.sinajs.cn/list=hk{code}"
         else:
@@ -337,7 +337,7 @@ PB(市净率): {pb_ratio:.2f}
                 )
                 response.raise_for_status()
 
-                # 解析新浪返回的数据
+                # Parse Sina response data
                 content = response.text
                 if "=" in content:
                     data_str = content.split("=")[1].strip().strip('"').strip(";")
@@ -366,7 +366,7 @@ PB(市净率): {pb_ratio:.2f}
 
                 return {
                     "success": False,
-                    "summary": f"无法获取 {symbol} 的财务数据，建议使用搜索工具查询"
+                    "summary": f"Unable to get financial data for {symbol}, suggest using search tool"
                 }
 
         except Exception as e:
