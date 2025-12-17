@@ -1,1708 +1,1241 @@
-# Agent Trading System - Complete Information Flow Documentation
+# Magellan Trading System - Technical Documentation
 
 ## Table of Contents
-1. [System Overview](#1-system-overview)
-2. [Agent Architecture](#2-agent-architecture)
-3. [Complete Information Flow](#3-complete-information-flow)
-4. [Phase-by-Phase Breakdown](#4-phase-by-phase-breakdown)
-5. [Data Structures](#5-data-structures)
-6. [Memory System](#6-memory-system)
-7. [Tool Calling Flow](#7-tool-calling-flow)
-8. [Position Context System](#8-position-context-system)
-9. [Prompt Injection Points](#9-prompt-injection-points)
-10. [File Reference](#10-file-reference)
+
+1. [Project Overview](#1-project-overview)
+2. [Repository Structure](#2-repository-structure)
+3. [Architecture Overview](#3-architecture-overview)
+4. [Core Components Deep Dive](#4-core-components-deep-dive)
+5. [Agent System Architecture](#5-agent-system-architecture)
+6. [Information Flow](#6-information-flow)
+7. [Tool System](#7-tool-system)
+8. [Data Structures](#8-data-structures)
+9. [Memory & Learning System](#9-memory--learning-system)
+10. [Position Management](#10-position-management)
+11. [Configuration & Deployment](#11-configuration--deployment)
+12. [Future Optimization Points](#12-future-optimization-points)
 
 ---
 
-## 1. System Overview
+## 1. Project Overview
 
-### 1.1 High-Level Architecture
+### 1.1 Project Identity
+
+**Name**: Magellan Trading System  
+**Type**: AI-Powered Multi-Agent Autonomous Trading Platform  
+**Primary Asset**: BTC-USDT-SWAP (Cryptocurrency Perpetual Futures)  
+**Exchange**: OKX (Demo/Live Trading Mode)
+
+### 1.2 Project Goals
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                        MAGELLAN TRADING SYSTEM                               │
+│                           PROJECT OBJECTIVES                                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌────────────┐ │
-│  │   Frontend   │───▶│  API Layer   │───▶│   Trading    │───▶│    OKX     │ │
-│  │  (React/TS)  │    │  (FastAPI)   │    │   Meeting    │    │  Exchange  │ │
-│  └──────────────┘    └──────────────┘    └──────────────┘    └────────────┘ │
-│         │                   │                   │                    │       │
-│         │                   │                   ▼                    │       │
-│         │                   │         ┌──────────────────┐          │       │
-│         │                   │         │  Agent Roundtable │          │       │
-│         │                   │         │  (5 Phases)       │          │       │
-│         │                   │         └──────────────────┘          │       │
-│         │                   │                   │                    │       │
-│         ▼                   ▼                   ▼                    ▼       │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                         SHARED SERVICES                               │   │
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────────┐ │   │
-│  │  │  Redis  │  │ LLM GW  │  │ Memory  │  │Position │  │ Paper/Live  │ │   │
-│  │  │  Store  │  │ Service │  │  Store  │  │ Monitor │  │   Trader    │ │   │
-│  │  └─────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────────┘ │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
+│  🎯 PRIMARY: Autonomous Trading Decision Making                              │
+│     └─► Automated 24/7 market analysis and trade execution                  │
+│                                                                              │
+│  🤖 MULTI-AGENT COLLABORATION                                               │
+│     └─► 5+ specialized AI agents with distinct expertise areas              │
+│     └─► Voting-based consensus mechanism for balanced decisions             │
+│     └─► Risk assessment checkpoints before execution                        │
+│                                                                              │
+│  📊 CONTINUOUS LEARNING                                                      │
+│     └─► Agent memory system tracks historical performance                   │
+│     └─► Reflection mechanism learns from past trades                        │
+│     └─► Accumulated lessons influence future decisions                      │
+│                                                                              │
+│  ⚖️ RISK MANAGEMENT                                                         │
+│     └─► Position context injection prevents bias                            │
+│     └─► TP/SL automatic calculation                                         │
+│     └─► Daily loss circuit breaker                                          │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1.2 Core Components
+### 1.3 System Capabilities
 
-| Component | File Location | Purpose |
-|-----------|---------------|---------|
-| TradingMeeting | `app/core/trading/trading_meeting.py` | Orchestrates 5-phase trading decision process |
-| Agent | `app/core/roundtable/agent.py` | Base agent class with LLM and tool support |
-| PositionContext | `app/core/trading/position_context.py` | Current position state for prompt injection |
-| AgentMemory | `app/core/trading/agent_memory.py` | Historical performance and learning |
-| PositionMonitor | `app/core/trading/position_monitor.py` | Real-time position tracking |
-| TradingTools | `app/core/trading/trading_tools.py` | Market data and analysis tools |
+| Capability | Description |
+|------------|-------------|
+| **Market Analysis** | Technical indicators, macro trends, sentiment, quantitative metrics |
+| **Signal Generation** | Each agent votes with direction, confidence, leverage, TP/SL |
+| **Risk Assessment** | Independent risk evaluation before trade execution |
+| **Consensus Building** | Leader synthesizes expert opinions into actionable strategy |
+| **Trade Execution** | Automated order placement via OKX API |
+| **Position Monitoring** | Real-time P&L tracking, TP/SL distance monitoring |
+| **Learning & Memory** | Post-trade reflection, performance tracking, lesson accumulation |
 
 ---
 
-## 2. Agent Architecture
+## 2. Repository Structure
 
-### 2.1 Agent Roster
+### 2.1 Complete Project Layout
+
+```
+magellan/
+├── 📂 trading-standalone/           # 独立部署包 (本文档所在位置)
+│   ├── 📄 AGENT_INFORMATION_FLOW.md  # ← YOU ARE HERE
+│   ├── 📄 config.yaml                # Trading configuration
+│   ├── 📄 docker-compose.yml         # Service orchestration
+│   ├── 📄 start.sh / stop.sh         # Control scripts
+│   ├── 📄 status.html                # Web monitoring dashboard
+│   └── 📂 docs/                      # Additional documentation
+│
+├── 📂 backend/                       # Core Backend Services
+│   └── 📂 services/report_orchestrator/app/
+│       ├── 📄 main.py                # FastAPI entry (186KB)
+│       ├── 📂 api/                   # REST/WebSocket endpoints
+│       ├── 📂 core/                  # ⭐ Core Logic
+│       │   ├── 📂 trading/           # Trading-specific modules
+│       │   │   ├── trading_meeting.py      # (187KB) Orchestrates 5-phase process
+│       │   │   ├── trading_tools.py        # (60KB) Market data tools
+│       │   │   ├── trading_agents.py       # Agent factory
+│       │   │   ├── okx_client.py           # Exchange API wrapper
+│       │   │   ├── okx_trader.py           # Trading execution
+│       │   │   ├── paper_trader.py         # Simulation mode
+│       │   │   ├── position_monitor.py     # Real-time position tracking
+│       │   │   ├── position_context.py     # Position state for prompts
+│       │   │   ├── agent_memory.py         # (35KB) Learning system
+│       │   │   ├── vote_calculator.py      # Vote aggregation
+│       │   │   ├── smart_executor.py       # Execution optimization
+│       │   │   └── scheduler.py            # Cron-based analysis trigger
+│       │   │
+│       │   ├── 📂 roundtable/        # Agent Framework
+│       │   │   ├── agent.py                # (29KB) Base agent class
+│       │   │   ├── rewoo_agent.py          # ReWOO architecture
+│       │   │   ├── investment_agents.py    # (146KB) Agent definitions
+│       │   │   ├── meeting.py              # Meeting orchestration
+│       │   │   ├── message_bus.py          # Agent communication
+│       │   │   ├── 📂 tools/               # Tool implementations
+│       │   │   │   ├── mcp_tools.py        # MCP integration
+│       │   │   │   ├── technical_tools.py  # Technical analysis
+│       │   │   │   ├── analysis_tools.py   # Market analysis
+│       │   │   │   ├── enhanced_tools.py   # China market tools
+│       │   │   │   └── yahoo_finance_tool.py
+│       │   │   └── mcp_client.py           # MCP server client
+│       │   │
+│       │   ├── 📂 orchestrators/     # Scenario Orchestrators (DD)
+│       │   ├── agent_registry.py     # Dynamic agent loading
+│       │   └── agent_event_bus.py    # Event distribution
+│       │
+│       ├── 📂 models/                # Data Models
+│       │   └── trading_models.py     # TradingSignal, Position, etc.
+│       └── 📂 services/              # External service integrations
+│
+├── 📂 frontend/                      # Vue 3 Dashboard (for DD analysis)
+└── 📂 docs/                          # Project-wide documentation
+```
+
+### 2.2 Key Files by Importance
+
+| Priority | File | Lines/Size | Purpose |
+|----------|------|------------|---------|
+| ⭐⭐⭐ | `trading_meeting.py` | ~4000 lines/187KB | **Heart of the system** - 5-phase orchestration |
+| ⭐⭐⭐ | `investment_agents.py` | ~3000 lines/146KB | Agent system prompts & factory |
+| ⭐⭐ | `trading_tools.py` | ~1300 lines/60KB | All market data tools |
+| ⭐⭐ | `agent_memory.py` | ~900 lines/35KB | Learning & reflection system |
+| ⭐⭐ | `agent.py` | ~700 lines/29KB | Base agent with LLM integration |
+| ⭐ | `okx_trader.py` | ~900 lines/37KB | OKX trading execution |
+| ⭐ | `position_context.py` | ~200 lines/6KB | Position state injection |
+
+---
+
+## 3. Architecture Overview
+
+### 3.1 High-Level System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                           MAGELLAN TRADING SYSTEM                                    │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│    ┌─────────────────────────────────────────────────────────────────────────┐      │
+│    │                         TRIGGER LAYER                                    │      │
+│    │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐              │      │
+│    │   │  Scheduler   │    │  Manual API  │    │ Position     │              │      │
+│    │   │ (4h cycle)   │    │  Trigger     │    │ Close Event  │              │      │
+│    │   └──────┬───────┘    └──────┬───────┘    └──────┬───────┘              │      │
+│    └──────────┼───────────────────┼───────────────────┼──────────────────────┘      │
+│               └───────────────────┼───────────────────┘                              │
+│                                   ▼                                                  │
+│    ┌─────────────────────────────────────────────────────────────────────────┐      │
+│    │                      ORCHESTRATION LAYER                                 │      │
+│    │                                                                          │      │
+│    │   ┌─────────────────────────────────────────────────────────────────┐   │      │
+│    │   │                    TradingMeeting                                │   │      │
+│    │   │                                                                  │   │      │
+│    │   │   Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 ──► Phase 5        │   │      │
+│    │   │   Analysis    Voting     Risk       Consensus   Execution        │   │      │
+│    │   │                                                                  │   │      │
+│    │   │   ┌───────────────────────────────────────────────────────┐     │   │      │
+│    │   │   │              MessageBus (Agent Communication)          │     │   │      │
+│    │   │   └───────────────────────────────────────────────────────┘     │   │      │
+│    │   └─────────────────────────────────────────────────────────────────┘   │      │
+│    └─────────────────────────────────────────────────────────────────────────┘      │
+│                                   │                                                  │
+│    ┌─────────────────────────────────────────────────────────────────────────┐      │
+│    │                         AGENT LAYER                                      │      │
+│    │                                                                          │      │
+│    │   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐      │      │
+│    │   │Technical │ │  Macro   │ │Sentiment │ │  Quant   │ │  Risk    │      │      │
+│    │   │ Analyst  │ │Economist │ │ Analyst  │ │Strategist│ │Assessor  │      │      │
+│    │   │   +1     │ │   +1     │ │   +1     │ │   +1     │ │          │      │      │
+│    │   │   vote   │ │   vote   │ │   vote   │ │   vote   │ │  review  │      │      │
+│    │   └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘      │      │
+│    │        └────────────┴────────────┴────────────┴────────────┘            │      │
+│    │                                   │                                      │      │
+│    │                  ┌────────────────┴────────────────┐                    │      │
+│    │                  ▼                                 ▼                    │      │
+│    │          ┌──────────────┐                 ┌──────────────┐              │      │
+│    │          │    Leader    │                 │TradeExecutor │              │      │
+│    │          │  Moderator   │────────────────►│   (Tools)    │              │      │
+│    │          └──────────────┘                 └──────────────┘              │      │
+│    └─────────────────────────────────────────────────────────────────────────┘      │
+│                                   │                                                  │
+│    ┌─────────────────────────────────────────────────────────────────────────┐      │
+│    │                       INFRASTRUCTURE LAYER                               │      │
+│    │                                                                          │      │
+│    │   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐      │      │
+│    │   │   LLM    │ │  Redis   │ │   OKX    │ │  MCP     │ │  Tavily  │      │      │
+│    │   │ Gateway  │ │  State   │ │   API    │ │ Servers  │ │  Search  │      │      │
+│    │   │ (Gemini) │ │  Store   │ │(Exchange)│ │(Web/Doc) │ │  (News)  │      │      │
+│    │   └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘      │      │
+│    └─────────────────────────────────────────────────────────────────────────┘      │
+│                                                                                      │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 3.2 Data Flow Diagram
+
+```
+                                    ┌─────────────────┐
+                                    │   Market Data   │
+                                    │   (BTC Price)   │
+                                    └────────┬────────┘
+                                             │
+                 ┌───────────────────────────┼───────────────────────────┐
+                 │                           │                           │
+                 ▼                           ▼                           ▼
+       ┌─────────────────┐        ┌─────────────────┐        ┌─────────────────┐
+       │   Technical     │        │     Macro       │        │   Sentiment     │
+       │   Indicators    │        │    Analysis     │        │    Analysis     │
+       │  RSI/MACD/BB    │        │   Fed/Economy   │        │  Fear&Greed     │
+       └────────┬────────┘        └────────┬────────┘        └────────┬────────┘
+                │                          │                          │
+                └──────────────────────────┼──────────────────────────┘
+                                           │
+                                           ▼
+                               ┌───────────────────────┐
+                               │    Vote Collection    │
+                               │ ┌─────┬─────┬─────┐  │
+                               │ │LONG │SHORT│HOLD │  │
+                               │ │ 3   │  0  │  1  │  │
+                               │ └─────┴─────┴─────┘  │
+                               └──────────┬───────────┘
+                                          │
+                                          ▼
+                               ┌───────────────────────┐
+                               │   Risk Assessment     │
+                               │  Leverage/Size Check  │
+                               └──────────┬───────────┘
+                                          │
+                                          ▼
+                               ┌───────────────────────┐
+                               │   Leader Consensus    │
+                               │   Meeting Summary     │
+                               └──────────┬───────────┘
+                                          │
+                                          ▼
+                               ┌───────────────────────┐
+                               │   Trade Execution     │
+                               │   open_long/short     │
+                               └──────────┬───────────┘
+                                          │
+                                          ▼
+                               ┌───────────────────────┐
+                               │      OKX Order        │
+                               │   Position Created    │
+                               └───────────────────────┘
+```
+
+---
+
+## 4. Core Components Deep Dive
+
+### 4.1 TradingMeeting (trading_meeting.py)
+
+The **central orchestrator** of the entire trading system.
+
+```python
+class TradingMeeting:
+    """
+    5-Phase Trading Decision Process:
+    
+    Phase 1: Market Analysis     - Agents analyze market with tools
+    Phase 2: Signal Generation   - Each agent votes (direction, confidence, TP/SL)
+    Phase 3: Risk Assessment     - RiskAssessor evaluates proposed trade
+    Phase 4: Consensus Building  - Leader synthesizes opinions
+    Phase 5: Trade Execution     - TradeExecutor calls trading tools
+    """
+```
+
+#### Key Methods
+
+| Method | Purpose |
+|--------|---------|
+| `run_meeting()` | Main entry point, orchestrates all 5 phases |
+| `_run_analysis_phase()` | Phase 1 - Market analysis with tools |
+| `_run_signal_phase()` | Phase 2 - Vote collection |
+| `_run_risk_assessment_phase()` | Phase 3 - Risk evaluation |
+| `_run_consensus_phase()` | Phase 4 - Leader summary |
+| `_run_execution_phase()` | Phase 5 - Trade execution |
+| `_parse_vote_json()` | Parse agent vote from JSON |
+| `_generate_risk_context()` | Build risk context for assessment |
+| `_get_decision_options_for_analysts()` | Generate decision matrix |
+
+#### Phase Execution Details
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           AGENT ROUNDTABLE                                   │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌─────────────────┐                              ┌─────────────────┐       │
-│  │     LEADER      │◀─────── Moderates ──────────▶│  RISK ASSESSOR  │       │
-│  │   (Moderator)   │                              │                 │       │
-│  └────────┬────────┘                              └─────────────────┘       │
-│           │                                                                  │
-│           │ Coordinates                                                      │
-│           ▼                                                                  │
-│  ┌────────────────────────────────────────────────────────────────────┐     │
-│  │                        ANALYST PANEL                                │     │
-│  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────┐ │     │
-│  │  │  Technical   │ │    Macro     │ │  Sentiment   │ │   Quant    │ │     │
-│  │  │   Analyst    │ │  Economist   │ │   Analyst    │ │ Strategist │ │     │
-│  │  └──────────────┘ └──────────────┘ └──────────────┘ └────────────┘ │     │
-│  └────────────────────────────────────────────────────────────────────┘     │
-│                                    │                                         │
-│                                    ▼                                         │
-│                         ┌─────────────────┐                                  │
-│                         │ TRADE EXECUTOR  │                                  │
-│                         │ (Phase 5 Only)  │                                  │
-│                         └─────────────────┘                                  │
-│                                                                              │
+│                           PHASE EXECUTION FLOW                               │
 └─────────────────────────────────────────────────────────────────────────────┘
+
+Phase 1: MARKET ANALYSIS (4 Agents run in parallel)
+  │
+  ├─► TechnicalAnalyst  ──► get_btc_price, get_technical_indicators
+  ├─► MacroEconomist    ──► tavily_search("Fed policy"), get_market_news
+  ├─► SentimentAnalyst  ──► get_fear_greed_index, get_funding_rate
+  └─► QuantStrategist   ──► get_historical_data, get_volatility
+
+Phase 2: SIGNAL GENERATION (Sequential voting)
+  │
+  ├─► Each agent receives analysis context + position context
+  ├─► Each agent outputs JSON vote:
+  │   {
+  │     "direction": "long/short/hold",
+  │     "confidence": 0-100,
+  │     "leverage": 1-20,
+  │     "take_profit_percent": 3.0-10.0,
+  │     "stop_loss_percent": 1.0-5.0,
+  │     "reasoning": "..."
+  │   }
+  └─► Votes collected and summarized
+
+Phase 3: RISK ASSESSMENT (RiskAssessor reviews)
+  │
+  ├─► Receives: vote summary, position context, risk context
+  ├─► Evaluates: leverage appropriateness, TP/SL reasonability
+  └─► Outputs: risk assessment text
+
+Phase 4: CONSENSUS BUILDING (Leader summarizes)
+  │
+  ├─► Receives: full conversation history, decision guidance
+  ├─► Synthesizes: expert consensus, key reasons, recommendation
+  └─► Outputs: meeting summary (stored in signal.leader_summary)
+
+Phase 5: TRADE EXECUTION (TradeExecutor acts)
+  │
+  ├─► Receives: vote results, position status, leader summary
+  ├─► Calls tool: open_long(), open_short(), close_position(), or hold()
+  └─► Tool calculates: leverage, amount, TP/SL prices from vote average
 ```
 
-### 2.2 Agent Details
+### 4.2 Agent System (investment_agents.py)
 
-| Agent ID | Name | Role | Tools | Phase Active |
-|----------|------|------|-------|--------------|
-| `TechnicalAnalyst` | Technical Analyst | K-line patterns, technical indicators | `get_btc_price`, `get_technical_indicators`, `get_funding_rate` | 1, 2 |
-| `MacroEconomist` | Macro Economist | Macro economy, monetary policy | `web_search`, `get_market_news` | 1, 2 |
-| `SentimentAnalyst` | Sentiment Analyst | Market sentiment, capital flow | `get_fear_greed_index`, `get_social_sentiment` | 1, 2 |
-| `QuantStrategist` | Quant Strategist | Quantitative metrics, statistics | `get_technical_indicators`, `get_historical_data` | 1, 2 |
-| `RiskAssessor` | Risk Assessor | Risk evaluation, position sizing | None (advisory) | 3 |
-| `Leader` | Meeting Moderator | Synthesize opinions, form consensus | None (summary) | 4 |
-| `TradeExecutor` | Trade Executor | Execute trading decisions | `open_long`, `open_short`, `close_position`, `hold` | 5 |
+Defines all agent personalities, prompts, and behaviors.
 
----
+#### Agent Factory Functions
 
-## 3. Complete Information Flow
-
-### 3.1 End-to-End Flow Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────────────┐
-│                              COMPLETE INFORMATION FLOW                                   │
-└─────────────────────────────────────────────────────────────────────────────────────────┘
-
-                                    START
-                                      │
-                                      ▼
-                    ┌─────────────────────────────────────┐
-                    │   1. TRIGGER (Scheduler/Manual)     │
-                    │   - Every 4 hours (configurable)    │
-                    │   - Manual trigger via API          │
-                    └─────────────────┬───────────────────┘
-                                      │
-                                      ▼
-                    ┌─────────────────────────────────────┐
-                    │   2. CONTEXT GATHERING              │
-                    │   ┌───────────────────────────────┐ │
-                    │   │ • Get current position        │ │
-                    │   │ • Get account balance         │ │
-                    │   │ • Get market price            │ │
-                    │   │ • Build PositionContext       │ │
-                    │   │ • Load agent memories         │ │
-                    │   └───────────────────────────────┘ │
-                    └─────────────────┬───────────────────┘
-                                      │
-                    ┌─────────────────┴───────────────────┐
-                    │                                     │
-                    ▼                                     ▼
-        ┌───────────────────────┐           ┌───────────────────────┐
-        │  Has Position = TRUE  │           │  Has Position = FALSE │
-        │  ┌─────────────────┐  │           │  ┌─────────────────┐  │
-        │  │ Direction: LONG │  │           │  │ Free to open    │  │
-        │  │ Entry: $98,000  │  │           │  │ new position    │  │
-        │  │ P&L: +$500      │  │           │  │                 │  │
-        │  │ Leverage: 5x    │  │           │  │                 │  │
-        │  └─────────────────┘  │           │  └─────────────────┘  │
-        └───────────┬───────────┘           └───────────┬───────────┘
-                    │                                     │
-                    └─────────────────┬───────────────────┘
-                                      │
-                                      ▼
-            ╔═════════════════════════════════════════════════════════╗
-            ║              PHASE 1: MARKET ANALYSIS                   ║
-            ║  ┌─────────────────────────────────────────────────────┐║
-            ║  │ Each analyst receives:                              │║
-            ║  │ • System prompt (role definition)                   │║
-            ║  │ • Position context summary                          │║
-            ║  │ • Agent memory context                              │║
-            ║  │ • Analysis prompt                                   │║
-            ║  │                                                     │║
-            ║  │ Each analyst:                                       │║
-            ║  │ 1. Calls tools to get market data                   │║
-            ║  │ 2. Analyzes data based on expertise                 │║
-            ║  │ 3. Outputs market analysis text                     │║
-            ║  └─────────────────────────────────────────────────────┘║
-            ╚════════════════════════════╤════════════════════════════╝
-                                         │
-                                         ▼
-            ╔═════════════════════════════════════════════════════════╗
-            ║             PHASE 2: SIGNAL GENERATION                  ║
-            ║  ┌─────────────────────────────────────────────────────┐║
-            ║  │ Each analyst receives vote prompt:                  │║
-            ║  │ • Previous analysis context                         │║
-            ║  │ • Position context summary                          │║
-            ║  │ • Decision options matrix                           │║
-            ║  │ • JSON output requirements                          │║
-            ║  │                                                     │║
-            ║  │ Each analyst outputs JSON:                          │║
-            ║  │ {                                                   │║
-            ║  │   "direction": "long/short/hold",                   │║
-            ║  │   "confidence": 0-100,                              │║
-            ║  │   "leverage": 1-20,                                 │║
-            ║  │   "take_profit_percent": float,                     │║
-            ║  │   "stop_loss_percent": float,                       │║
-            ║  │   "reasoning": "..."                                │║
-            ║  │ }                                                   │║
-            ║  └─────────────────────────────────────────────────────┘║
-            ║                                                         ║
-            ║  Vote Collection:                                       ║
-            ║  ┌─────────┬─────────┬─────────┬─────────┐             ║
-            ║  │Technical│  Macro  │Sentiment│  Quant  │             ║
-            ║  │  LONG   │  LONG   │  HOLD   │  LONG   │             ║
-            ║  │  75%    │  70%    │  55%    │  80%    │             ║
-            ║  │  6x     │  5x     │  3x     │  8x     │             ║
-            ║  └─────────┴─────────┴─────────┴─────────┘             ║
-            ╚════════════════════════════╤════════════════════════════╝
-                                         │
-                                         ▼
-            ╔═════════════════════════════════════════════════════════╗
-            ║             PHASE 3: RISK ASSESSMENT                    ║
-            ║  ┌─────────────────────────────────────────────────────┐║
-            ║  │ Risk Assessor receives:                             │║
-            ║  │ • Vote summary (3 Long, 1 Hold)                     │║
-            ║  │ • Position context                                  │║
-            ║  │ • Risk context (liquidation distance, warnings)     │║
-            ║  │                                                     │║
-            ║  │ Risk Assessor evaluates:                            │║
-            ║  │ • Is entry direction justified?                     │║
-            ║  │ • Is leverage appropriate for confidence?           │║
-            ║  │ • Are TP/SL settings reasonable?                    │║
-            ║  │ • Does position size fit risk limits?               │║
-            ║  │                                                     │║
-            ║  │ Outputs: Risk assessment and recommendations        │║
-            ║  └─────────────────────────────────────────────────────┘║
-            ╚════════════════════════════╤════════════════════════════╝
-                                         │
-                                         ▼
-            ╔═════════════════════════════════════════════════════════╗
-            ║            PHASE 4: CONSENSUS BUILDING                  ║
-            ║  ┌─────────────────────────────────────────────────────┐║
-            ║  │ Leader (Moderator) receives:                        │║
-            ║  │ • Full conversation history                         │║
-            ║  │ • Position context                                  │║
-            ║  │ • Decision guidance matrix                          │║
-            ║  │                                                     │║
-            ║  │ Leader summarizes:                                  │║
-            ║  │ • Expert consensus (3/4 bullish)                    │║
-            ║  │ • Key reasons from each expert                      │║
-            ║  │ • Risk assessment conclusions                       │║
-            ║  │ • Overall market judgment                           │║
-            ║  │ • Recommended strategy                              │║
-            ║  │ • Confidence level                                  │║
-            ║  │                                                     │║
-            ║  │ Outputs: Natural language meeting summary           │║
-            ║  └─────────────────────────────────────────────────────┘║
-            ╚════════════════════════════╤════════════════════════════╝
-                                         │
-                                         ▼
-            ╔═════════════════════════════════════════════════════════╗
-            ║             PHASE 5: TRADE EXECUTION                    ║
-            ║  ┌─────────────────────────────────────────────────────┐║
-            ║  │ TradeExecutor Agent receives:                       │║
-            ║  │ • Vote results (3 Long / 0 Short / 1 Hold)          │║
-            ║  │ • Position status                                   │║
-            ║  │ • Leader's meeting summary                          │║
-            ║  │                                                     │║
-            ║  │ TradeExecutor decides via Tool Calling:             │║
-            ║  │                                                     │║
-            ║  │ IF high consensus (3-4 votes same direction):       │║
-            ║  │   → Call open_long() or open_short()                │║
-            ║  │ IF split opinions:                                  │║
-            ║  │   → Call hold(reason="...")                         │║
-            ║  │ IF has opposite position:                           │║
-            ║  │   → Call close_position() first                     │║
-            ║  │                                                     │║
-            ║  │ Tool calculates parameters from votes:              │║
-            ║  │ • confidence = weighted_average(votes.confidence)   │║
-            ║  │ • leverage = based_on_consensus_strength            │║
-            ║  │ • amount_percent = based_on_confidence              │║
-            ║  └─────────────────────────────────────────────────────┘║
-            ╚════════════════════════════╤════════════════════════════╝
-                                         │
-                                         ▼
-                    ┌─────────────────────────────────────┐
-                    │   6. TRADE EXECUTION RESULT         │
-                    │   ┌───────────────────────────────┐ │
-                    │   │ TradingSignal:                │ │
-                    │   │ • direction: "long"           │ │
-                    │   │ • leverage: 6x                │ │
-                    │   │ • amount_percent: 0.2 (20%)   │ │
-                    │   │ • confidence: 75%             │ │
-                    │   │ • entry_price: $98,500        │ │
-                    │   │ • take_profit: $103,425       │ │
-                    │   │ • stop_loss: $96,530          │ │
-                    │   │ • reasoning: "..."            │ │
-                    │   └───────────────────────────────┘ │
-                    └─────────────────┬───────────────────┘
-                                      │
-                    ┌─────────────────┴───────────────────┐
-                    │                                     │
-                    ▼                                     ▼
-        ┌───────────────────────┐           ┌───────────────────────┐
-        │  Direction != "hold"  │           │  Direction == "hold"  │
-        │  ┌─────────────────┐  │           │  ┌─────────────────┐  │
-        │  │ Execute trade   │  │           │  │ No trade action │  │
-        │  │ via OKX/Paper   │  │           │  │                 │  │
-        │  │ trader          │  │           │  │                 │  │
-        │  └─────────────────┘  │           │  └─────────────────┘  │
-        └───────────┬───────────┘           └───────────┬───────────┘
-                    │                                     │
-                    ▼                                     │
-        ┌───────────────────────┐                        │
-        │  7. RECORD PREDICTIONS│                        │
-        │  ┌─────────────────┐  │                        │
-        │  │ For each agent: │  │                        │
-        │  │ • direction     │  │                        │
-        │  │ • confidence    │  │                        │
-        │  │ • reasoning     │  │                        │
-        │  │ • market_price  │  │                        │
-        │  │ → PredictionStore│ │                        │
-        │  └─────────────────┘  │                        │
-        └───────────┬───────────┘                        │
-                    │                                     │
-                    └─────────────────┬───────────────────┘
-                                      │
-                                      ▼
-                    ┌─────────────────────────────────────┐
-                    │   8. POSITION MONITORING            │
-                    │   ┌───────────────────────────────┐ │
-                    │   │ PositionMonitor runs every    │ │
-                    │   │ 60 seconds:                   │ │
-                    │   │ • Check current price         │ │
-                    │   │ • Calculate unrealized P&L    │ │
-                    │   │ • Check TP/SL distance        │ │
-                    │   │ • Detect position closed      │ │
-                    │   └───────────────────────────────┘ │
-                    └─────────────────┬───────────────────┘
-                                      │
-                                      │ When position closes
-                                      ▼
-                    ┌─────────────────────────────────────┐
-                    │   9. REFLECTION GENERATION          │
-                    │   ┌───────────────────────────────┐ │
-                    │   │ For each agent:               │ │
-                    │   │ 1. Retrieve prediction        │ │
-                    │   │ 2. Compare with result        │ │
-                    │   │ 3. Generate reflection (LLM)  │ │
-                    │   │    • what_went_well           │ │
-                    │   │    • what_went_wrong          │ │
-                    │   │    • lessons_learned          │ │
-                    │   │ 4. Update AgentMemory         │ │
-                    │   └───────────────────────────────┘ │
-                    └─────────────────┬───────────────────┘
-                                      │
-                                      ▼
-                    ┌─────────────────────────────────────┐
-                    │   10. MEMORY UPDATED                │
-                    │   ┌───────────────────────────────┐ │
-                    │   │ Each agent's memory now has:  │ │
-                    │   │ • Updated win_rate            │ │
-                    │   │ • Updated total_pnl           │ │
-                    │   │ • New lessons_learned         │ │
-                    │   │ • last_trade_summary          │ │
-                    │   │ • current_focus               │ │
-                    │   │                               │ │
-                    │   │ This memory will be injected  │ │
-                    │   │ into next meeting's prompts!  │ │
-                    │   └───────────────────────────────┘ │
-                    └─────────────────┬───────────────────┘
-                                      │
-                                      ▼
-                                    END
-                              (Wait for next cycle)
-```
-
----
-
-## 4. Phase-by-Phase Breakdown
-
-### 4.1 Phase 1: Market Analysis
-
-#### Input
 ```python
-# System message
-agent_id: "system"
-agent_name: "System"
-content: "## Phase 1: Market Analysis\n\nAnalysts, please analyze current market conditions."
-
-# For each analyst (TechnicalAnalyst, MacroEconomist, SentimentAnalyst, QuantStrategist)
-prompt = f"""
-{agent.system_prompt}
-
----
-{memory_context}  # Injected from AgentMemory.get_context_for_prompt()
----
-
-Please reference your historical performance and lessons learned...
-
-{position_context.to_summary()}  # Current position status
-
-{neutral_position_analysis_prompt}  # Anti-bias prompt
-
-Please analyze the current BTC market...
-"""
+def create_technical_analyst(language: str = "en") -> Agent
+def create_macro_economist(language: str = "en") -> Agent
+def create_sentiment_analyst(language: str = "en") -> Agent
+def create_quant_strategist(language: str = "en") -> Agent
+def create_risk_assessor(language: str = "en") -> Agent
+def create_leader(language: str = "en") -> Agent
 ```
 
-#### Tool Usage
-```
-┌──────────────────┬─────────────────────────────────────────────────────┐
-│ Agent            │ Typical Tools Called                                │
-├──────────────────┼─────────────────────────────────────────────────────┤
-│ TechnicalAnalyst │ get_btc_price(), get_technical_indicators(),        │
-│                  │ get_funding_rate()                                  │
-├──────────────────┼─────────────────────────────────────────────────────┤
-│ MacroEconomist   │ web_search("Fed policy"), get_market_news()         │
-├──────────────────┼─────────────────────────────────────────────────────┤
-│ SentimentAnalyst │ get_fear_greed_index(), get_social_sentiment()      │
-├──────────────────┼─────────────────────────────────────────────────────┤
-│ QuantStrategist  │ get_technical_indicators(), get_historical_data()   │
-└──────────────────┴─────────────────────────────────────────────────────┘
-```
+#### Agent Roster
 
-#### Output
-Each analyst produces a market analysis text (stored in message_bus)
+| Agent | Expertise | Key Tools | Vote Weight |
+|-------|-----------|-----------|-------------|
+| **TechnicalAnalyst** | K-line patterns, RSI, MACD, Bollinger | `get_btc_price`, `get_technical_indicators` | 1x |
+| **MacroEconomist** | Fed policy, CPI, unemployment, geopolitics | `tavily_search`, `get_market_news` | 1x |
+| **SentimentAnalyst** | Fear & Greed, funding rate, social sentiment | `get_fear_greed_index`, `get_funding_rate` | 1x |
+| **QuantStrategist** | Statistical analysis, volatility, momentum | `get_historical_data`, `get_volatility` | 1x |
+| **RiskAssessor** | Position risk, leverage evaluation | None (advisory) | 0x (review only) |
+| **Leader** | Synthesis, consensus building | None (summary) | 0x (moderator) |
+| **TradeExecutor** | Order execution | `open_long`, `open_short`, `close_position`, `hold` | N/A |
 
----
+### 4.3 Position Context System (position_context.py)
 
-### 4.2 Phase 2: Signal Generation
+Injects current position state into all agent prompts to prevent bias.
 
-#### Input
 ```python
-vote_prompt = f"""Based on the above analysis and real-time data...
-
-{position_context.to_summary()}
-
-{decision_options}  # From _get_decision_options_for_analysts()
-
-⚠️ **IMPORTANT - Do NOT call decision tools**:
-- You are in the "Signal Generation Phase" - only provide **text recommendations**
-
-## 📋 Output Requirements
-
-```json
-{{
-  "direction": "long",
-  "confidence": 75,
-  "leverage": 6,
-  "take_profit_percent": 5.0,
-  "stop_loss_percent": 2.0,
-  "reasoning": "Brief reasoning with specific data references"
-}}
-```
-"""
-```
-
-#### Vote Parsing Flow
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        VOTE PARSING FLOW                                 │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  Agent Response                                                          │
-│       │                                                                  │
-│       ▼                                                                  │
-│  ┌─────────────────────┐                                                │
-│  │ _parse_vote_json()  │◀──── Primary method (JSON parsing)             │
-│  └──────────┬──────────┘                                                │
-│             │                                                            │
-│             ├───── Success ────▶ AgentVote created                      │
-│             │                                                            │
-│             ▼ Failure                                                    │
-│  ┌─────────────────────┐                                                │
-│  │_parse_vote_fallback │◀──── Fallback (text pattern matching)          │
-│  └──────────┬──────────┘                                                │
-│             │                                                            │
-│             ├───── Success ────▶ AgentVote created                      │
-│             │                                                            │
-│             ▼ Failure                                                    │
-│       Vote not recorded                                                  │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-
-JSON Extraction Strategies (in _extract_json_from_response):
-1. ```json ... ``` code blocks
-2. ``` ... ``` code blocks (without json tag)
-3. Direct {"direction": ...} objects
-4. Looser brace matching
-```
-
-#### Direction Normalization
-```python
-direction_map = {
-    "long": "long", "做多": "long", "开多": "long", "buy": "long", "bullish": "long",
-    "short": "short", "做空": "short", "开空": "short", "sell": "short", "bearish": "short",
-    "hold": "hold", "观望": "hold", "wait": "hold", "neutral": "hold",
-    "close": "close", "平仓": "close",
-    "add_long": "add_long", "add_short": "add_short",
-    "reverse": "reverse"
-}
+class PositionContext:
+    """
+    Captures and serializes current trading position state.
+    Injected into every agent prompt to ensure awareness.
+    """
+    
+    def __init__(self, trader):
+        self.has_position: bool
+        self.direction: str           # "long" or "short"
+        self.entry_price: float
+        self.current_price: float
+        self.unrealized_pnl: float
+        self.unrealized_pnl_percent: float
+        self.leverage: int
+        self.position_size: float
+        self.liquidation_price: float
+        self.tp_price: float
+        self.sl_price: float
+        
+    def to_summary(self) -> str:
+        """
+        Returns formatted string for prompt injection.
+        
+        Example output:
+        ═══════════════════════════════════════
+        📊 CURRENT POSITION STATUS
+        ═══════════════════════════════════════
+        ✅ Has Active Position: Yes
+        📈 Direction: LONG
+        💰 Entry Price: $98,500.00
+        📍 Current Price: $99,200.00
+        💵 Unrealized P&L: +$350.00 (+3.55%)
+        ⚡ Leverage: 6x
+        🎚️ Position Size: 20.0%
+        🚫 Liquidation: $82,083.33 (16.7% away)
+        🎯 Take Profit: $103,425.00 (5.0%)
+        🛑 Stop Loss: $96,530.00 (-2.0%)
+        ═══════════════════════════════════════
+        """
 ```
 
 ---
 
-### 4.3 Phase 3: Risk Assessment
+## 5. Agent System Architecture
 
-#### Input
+### 5.1 Base Agent Class (agent.py)
+
 ```python
-prompt = f"""Here are the expert voting results:
-
-{votes_summary}
-# Example:
-# - TechnicalAnalyst: long (confidence 75%, leverage 6x)
-# - MacroEconomist: long (confidence 70%, leverage 5x)
-# - SentimentAnalyst: hold (confidence 55%, leverage 3x)
-# - QuantStrategist: long (confidence 80%, leverage 8x)
-#
-# Summary: Long 3, Short 0, Hold 1
-
-{position_context.to_summary()}
-
-{risk_context}  # From _generate_risk_context()
-
-Please evaluate the risk of this trade...
-
-⚠️ **IMPORTANT**:
-- You only need to provide **text recommendations** for risk assessment
-- **Do NOT** call any decision tools
-"""
+class Agent:
+    """
+    Base agent with LLM integration and tool execution.
+    
+    Key capabilities:
+    - System prompt injection
+    - Multi-turn conversation
+    - Tool calling (native or legacy format)
+    - Memory context injection
+    """
+    
+    def __init__(
+        self,
+        id: str,
+        name: str,
+        role: str,
+        system_prompt: str,
+        tools: List[Tool] = None,
+        temperature: float = 0.7
+    ):
+        pass
+        
+    async def think_and_act(
+        self,
+        prompt: str,
+        context: Dict = None
+    ) -> AgentResponse:
+        """
+        1. Build messages with system prompt + context
+        2. Call LLM
+        3. Parse tool calls (if any)
+        4. Execute tools
+        5. Continue conversation if needed
+        6. Return final response
+        """
 ```
 
-#### Risk Context Generation
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                       RISK CONTEXT STRUCTURE                             │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  No Position:                                                            │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │ ## 🛡️ Risk Assessment Focus (No Position)                         │ │
-│  │                                                                     │ │
-│  │ **Key Evaluation Points**:                                          │ │
-│  │ 1. Is the entry direction well-justified?                           │ │
-│  │ 2. Does the leverage match the confidence level?                    │ │
-│  │ 3. Are TP/SL settings reasonable?                                   │ │
-│  │ 4. Does the position size comply with risk management principles?   │ │
-│  │ 5. Is current market volatility suitable for opening a position?    │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│                                                                          │
-│  Has Position:                                                           │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │ ## 🛡️ Risk Assessment Focus (Has LONG Position)                   │ │
-│  │                                                                     │ │
-│  │ **Current Position Risk**:                                          │ │
-│  │ - Risk Level: 🟢 Safe / 🟡 Warning / 🔴 Danger                      │ │
-│  │ - Distance to Liquidation: XX.X%                                    │ │
-│  │ - Unrealized P&L: $XXX.XX (+X.XX%)                                  │ │
-│  │ - Position Ratio: XX.X%                                             │ │
-│  │                                                                     │ │
-│  │ **Risk Warnings**:                                                  │ │
-│  │ ⚠️ Near Take Profit (only X.X%)                                     │ │
-│  │ 🚨 Near Stop Loss (only X.X%)                                       │ │
-│  │                                                                     │ │
-│  │ **Evaluation Points** (based on expert recommendation type):        │ │
-│  │ ### If experts recommend "Continue long/Add"                        │ │
-│  │ ### If experts recommend "Close Position"                           │ │
-│  │ ### If experts recommend "Reverse"                                  │ │
-│  │ ### If experts recommend "Hold"                                     │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+### 5.2 Vote Structure
 
----
-
-### 4.4 Phase 4: Consensus Building
-
-#### Input
-```python
-prompt = f"""As the roundtable moderator, please comprehensively summarize...
-
-{position_context.to_summary()}
-
-{decision_guidance}  # From _generate_decision_guidance()
-
-## Expert Opinion Summary
-You have heard analysis from the following experts:
-- Technical Analyst (TechnicalAnalyst): Candlestick patterns, technical indicators
-- Macro Economist (MacroEconomist): Macro economy, monetary policy
-- Sentiment Analyst (SentimentAnalyst): Market sentiment, capital flow
-- Quant Strategist (QuantStrategist): Quantitative indicators, statistics
-- Risk Assessor (RiskAssessor): Risk assessment and recommendations
-
-## Your Task
-As moderator, please:
-1. **Summarize Expert Consensus**: How many bullish/bearish/neutral?
-2. **Comprehensive Market Judgment**: Overall view
-3. **Risk and Opportunity Assessment**: Main risks and opportunities
-4. **Provide Meeting Conclusions**: Recommended strategy
-
-## 📋 Output Format
-Please express your summary and recommendations freely...
-"""
-```
-
-#### Decision Guidance Matrix
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    DECISION GUIDANCE (Has LONG Position)                 │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  **Current Position Status**: 📈 profit $XXX.XX (+X.XX%)                │
-│                                                                          │
-│  | Expert Consensus | Relation to Current long | Recommended Action |   │
-│  |-----------------|--------------------------|-------------------|     │
-│  | Majority short  | 🔴 Opposite              | **Close or Reverse** |  │
-│  | Majority long   | 🟢 Same                  | Maintain or Add    |   │
-│  | Split opinions  | ⚪ Unclear               | Consider closing   |   │
-│  | Unanimous hold  | ⚪ Neutral               | Hold, tighter SL   |   │
-│                                                                          │
-│  ⚠️ **Special Reminders**:                                               │
-│  - If consensus opposite to position, **MUST consider closing**          │
-│  - Do not avoid changes due to current P&L status                        │
-│  - Holding duration should NOT be "sunk cost"                            │
-│                                                                          │
-│  **Prohibited Behaviors**:                                               │
-│  - ❌ Do not force-find reasons to hold                                  │
-│  - ❌ Do not ignore reversal recommendations                             │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-### 4.5 Phase 5: Trade Execution
-
-#### TradeExecutor Creation
-```python
-trade_executor = Agent(
-    id="trade_executor",
-    name="TradeExecutor",
-    role="Trade Execution Specialist",
-    system_prompt="""You are the Trade Executor...
-
-You must call a tool to execute decisions. Available tools:
-- open_long: Open long position (buy BTC)
-- open_short: Open short position (sell BTC)
-- close_position: Close current position
-- hold: Hold/wait, no action
-
-Decision Rules:
-1. Experts 3-4 votes unanimous bullish → Call open_long
-2. Experts 3-4 votes unanimous bearish → Call open_short
-3. Experts split or unclear → Call hold
-4. Has opposite position to close → Call close_position
-
-You MUST call a tool based on meeting results!""",
-    temperature=0.3
-)
-```
-
-#### Execution Prompt
-```python
-prompt = f"""## Trade Execution Task
-
-### 1. Expert Voting Results
-**Summary**: {long_count} Long / {short_count} Short / {hold_count} Hold
-
-  🟢 TechnicalAnalyst: Long
-  🟢 MacroEconomist: Long
-  ⚪ SentimentAnalyst: Hold
-  🟢 QuantStrategist: Long
-
-### 2. Current Position Status
-{position_status}
-
-### 3. Leader's Meeting Summary
-{leader_summary}
-
----
-
-### Your Task
-Based on the above information, you **MUST call a tool** to execute the trading decision.
-
-**Decision Rules (based on voting consensus level)**:
-- High consensus (4-5 unanimous votes) → Call open_long/open_short
-- Moderate consensus (3 votes) → Call open_long/open_short
-- Weak consensus (2 votes) → Call open_long/open_short
-- Split opinions or unclear → Call hold(reason="...")
-- Has opposite position to handle → First call close_position()
-
-**Output Format (must follow)**:
-[USE_TOOL: tool_name(param=value, ...)]
-"""
-```
-
-#### Tool Execution Flow
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                     TRADE EXECUTOR TOOL FLOW                             │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  LLM Response                                                            │
-│       │                                                                  │
-│       ▼                                                                  │
-│  ┌──────────────────────────────────────┐                               │
-│  │ Check for native tool_calls (OpenAI) │                               │
-│  └──────────────┬───────────────────────┘                               │
-│                 │                                                        │
-│       ┌─────────┴─────────┐                                             │
-│       │                   │                                             │
-│       ▼                   ▼                                             │
-│  Has tool_calls      No tool_calls                                      │
-│       │                   │                                             │
-│       │                   ▼                                             │
-│       │           ┌──────────────────────────────┐                      │
-│       │           │ Check for Legacy format:     │                      │
-│       │           │ [USE_TOOL: xxx(...)]         │                      │
-│       │           └──────────────┬───────────────┘                      │
-│       │                          │                                       │
-│       │              ┌───────────┴───────────┐                          │
-│       │              │                       │                          │
-│       │              ▼                       ▼                          │
-│       │         Has pattern            No pattern                       │
-│       │              │                       │                          │
-│       ▼              ▼                       ▼                          │
-│  ┌────────────────────────┐          Return hold signal                 │
-│  │ Execute tool function  │          (no tool called)                   │
-│  └───────────┬────────────┘                                             │
-│              │                                                           │
-│              ▼                                                           │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │ Tool functions (open_long, open_short, close_position, hold):      │ │
-│  │                                                                     │ │
-│  │ 1. Calculate parameters from agent votes:                          │ │
-│  │    - confidence = weighted_average(votes)                          │ │
-│  │    - leverage = calculate_leverage(consensus_strength)             │ │
-│  │    - amount_percent = calculate_amount(confidence, risk_limits)    │ │
-│  │                                                                     │ │
-│  │ 2. Get current market price                                        │ │
-│  │                                                                     │ │
-│  │ 3. Calculate TP/SL prices:                                         │ │
-│  │    tp_price = entry_price * (1 + tp_percent)  # for long           │ │
-│  │    sl_price = entry_price * (1 - sl_percent)  # for long           │ │
-│  │                                                                     │ │
-│  │ 4. Execute via paper_trader.open_position() or okx_client          │ │
-│  │                                                                     │ │
-│  │ 5. Create TradingSignal and store in execution_result              │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│              │                                                           │
-│              ▼                                                           │
-│      Return TradingSignal                                                │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-#### Parameter Calculation
-```python
-# Leverage calculation based on consensus
-def calculate_leverage(votes, max_leverage):
-    consensus_count = max(long_count, short_count)
-
-    if consensus_count >= 4:  # High consensus
-        base_leverage = max_leverage * 0.6
-    elif consensus_count == 3:  # Moderate consensus
-        base_leverage = max_leverage * 0.4
-    else:  # Weak consensus
-        base_leverage = max_leverage * 0.25
-
-    # Adjust by average confidence
-    avg_confidence = mean([v.confidence for v in matching_votes])
-    confidence_factor = avg_confidence / 100
-
-    final_leverage = max(1, min(max_leverage, int(base_leverage * confidence_factor)))
-    return final_leverage
-
-# Amount calculation
-def calculate_amount_percent(confidence, leverage, risk_limits):
-    base_percent = risk_limits.min_position_percent
-
-    # Scale by confidence
-    if confidence >= 80:
-        base_percent = risk_limits.max_position_percent
-    elif confidence >= 60:
-        base_percent = (risk_limits.min_position_percent + risk_limits.max_position_percent) / 2
-
-    # Reduce for high leverage
-    if leverage > 10:
-        base_percent *= 0.7
-
-    return min(base_percent, risk_limits.max_position_percent)
-```
-
----
-
-## 5. Data Structures
-
-### 5.1 TradingSignal
-```python
-@dataclass
-class TradingSignal:
-    direction: Literal["long", "short", "hold"]
-    symbol: str = "BTC-USDT-SWAP"
-    leverage: int  # 1-20
-    amount_percent: float  # 0.0-1.0
-    entry_price: float
-    take_profit_price: float
-    stop_loss_price: float
-    confidence: int  # 0-100
-    reasoning: str
-    agents_consensus: Dict[str, str]  # {agent_name: direction}
-    timestamp: datetime
-
-    @property
-    def risk_reward_ratio(self) -> float:
-        """Calculate R:R ratio"""
-        if self.direction == "long":
-            risk = abs(self.entry_price - self.stop_loss_price)
-            reward = abs(self.take_profit_price - self.entry_price)
-        else:  # short
-            risk = abs(self.stop_loss_price - self.entry_price)
-            reward = abs(self.entry_price - self.take_profit_price)
-        return reward / risk if risk > 0 else 0.0
-```
-
-### 5.2 AgentVote
 ```python
 @dataclass
 class AgentVote:
     agent_id: str
     agent_name: str
-    direction: Literal["long", "short", "hold"]
+    direction: Literal["long", "short", "hold", "close", "add_long", "add_short"]
     confidence: int  # 0-100
+    leverage: int    # 1-20
+    take_profit_percent: float
+    stop_loss_percent: float
     reasoning: str
-    suggested_leverage: int
-    suggested_tp_percent: float
-    suggested_sl_percent: float
+    raw_response: str
+    timestamp: datetime
 ```
 
-### 5.3 PositionContext
+### 5.3 Direction Normalization
+
+Handles various input formats to standardized directions:
+
+```python
+DIRECTION_MAP = {
+    # English
+    "long": "long", "buy": "long", "bullish": "long",
+    "short": "short", "sell": "short", "bearish": "short", 
+    "hold": "hold", "wait": "hold", "neutral": "hold",
+    "close": "close",
+    
+    # Chinese (supported but keywords translated in search)
+    "做多": "long", "开多": "long",
+    "做空": "short", "开空": "short",
+    "观望": "hold", "平仓": "close"
+}
+```
+
+---
+
+## 6. Information Flow
+
+### 6.1 Complete Meeting Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                              COMPLETE MEETING FLOW                                   │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+                                      START
+                                        │
+                                        ▼
+                      ┌────────────────────────────────────┐
+                      │  1. CONTEXT GATHERING              │
+                      │  ┌──────────────────────────────┐  │
+                      │  │ • Get current position       │  │
+                      │  │ • Get account balance        │  │
+                      │  │ • Get market price           │  │
+                      │  │ • Build PositionContext      │  │
+                      │  │ • Load agent memories        │  │
+                      │  └──────────────────────────────┘  │
+                      └───────────────┬────────────────────┘
+                                      │
+          ╔═══════════════════════════╧═══════════════════════════╗
+          ║              PHASE 1: MARKET ANALYSIS                  ║
+          ║  ┌──────────────────────────────────────────────────┐ ║
+          ║  │  4 Analysts run in parallel, each:               │ ║
+          ║  │  • Receives: system prompt + memory + position   │ ║
+          ║  │  • Calls tools to gather market data             │ ║
+          ║  │  • Produces: market analysis text                │ ║
+          ║  └──────────────────────────────────────────────────┘ ║
+          ╚═══════════════════════════╤═══════════════════════════╝
+                                      │
+          ╔═══════════════════════════╧═══════════════════════════╗
+          ║              PHASE 2: SIGNAL GENERATION                ║
+          ║  ┌──────────────────────────────────────────────────┐ ║
+          ║  │  Each analyst votes (sequential):                │ ║
+          ║  │  • Receives: analysis context + decision options │ ║
+          ║  │  • Outputs: JSON vote with direction/confidence  │ ║
+          ║  └──────────────────────────────────────────────────┘ ║
+          ║                                                       ║
+          ║  Vote Collection:                                     ║
+          ║  ┌─────────┬─────────┬─────────┬─────────┐           ║
+          ║  │Technical│  Macro  │Sentiment│  Quant  │           ║
+          ║  │  LONG   │  LONG   │  HOLD   │  LONG   │           ║
+          ║  │  75%    │  70%    │  55%    │  80%    │           ║
+          ║  │  6x     │  5x     │  3x     │  8x     │           ║
+          ║  └─────────┴─────────┴─────────┴─────────┘           ║
+          ╚═══════════════════════════╤═══════════════════════════╝
+                                      │
+          ╔═══════════════════════════╧═══════════════════════════╗
+          ║              PHASE 3: RISK ASSESSMENT                  ║
+          ║  ┌──────────────────────────────────────────────────┐ ║
+          ║  │  RiskAssessor receives:                          │ ║
+          ║  │  • Vote summary (3 Long, 1 Hold)                 │ ║
+          ║  │  • Position context with risk metrics            │ ║
+          ║  │  • Risk context (liquidation distance)           │ ║
+          ║  │                                                  │ ║
+          ║  │  Evaluates:                                      │ ║
+          ║  │  • Is leverage appropriate for confidence?       │ ║
+          ║  │  • Are TP/SL settings reasonable?                │ ║
+          ║  │  • Does position size fit risk limits?           │ ║
+          ║  └──────────────────────────────────────────────────┘ ║
+          ╚═══════════════════════════╤═══════════════════════════╝
+                                      │
+          ╔═══════════════════════════╧═══════════════════════════╗
+          ║             PHASE 4: CONSENSUS BUILDING                ║
+          ║  ┌──────────────────────────────────────────────────┐ ║
+          ║  │  Leader (Moderator) receives:                    │ ║
+          ║  │  • Full conversation history                     │ ║
+          ║  │  • Decision guidance matrix                      │ ║
+          ║  │                                                  │ ║
+          ║  │  Summarizes:                                     │ ║
+          ║  │  • Expert consensus (3/4 bullish)                │ ║
+          ║  │  • Key reasons from each expert                  │ ║
+          ║  │  • Risk assessment conclusions                   │ ║
+          ║  │  • Recommended strategy                          │ ║
+          ║  └──────────────────────────────────────────────────┘ ║
+          ╚═══════════════════════════╤═══════════════════════════╝
+                                      │
+          ╔═══════════════════════════╧═══════════════════════════╗
+          ║              PHASE 5: TRADE EXECUTION                  ║
+          ║  ┌──────────────────────────────────────────────────┐ ║
+          ║  │  TradeExecutor receives:                         │ ║
+          ║  │  • Vote results (3 Long / 0 Short / 1 Hold)      │ ║
+          ║  │  • Position status                               │ ║
+          ║  │  • Leader's meeting summary                      │ ║
+          ║  │                                                  │ ║
+          ║  │  Calls tool based on consensus:                  │ ║
+          ║  │  • High consensus → open_long() or open_short()  │ ║
+          ║  │  • Split opinions → hold()                       │ ║
+          ║  │  • Opposite position → close_position() first    │ ║
+          ║  └──────────────────────────────────────────────────┘ ║
+          ╚═══════════════════════════╤═══════════════════════════╝
+                                      │
+                                      ▼
+                      ┌────────────────────────────────────┐
+                      │  6. TRADE RESULT                   │
+                      │  ┌──────────────────────────────┐  │
+                      │  │ TradingSignal:               │  │
+                      │  │ • direction: "long"          │  │
+                      │  │ • leverage: 6x               │  │
+                      │  │ • amount_percent: 0.2        │  │
+                      │  │ • entry_price: $98,500       │  │
+                      │  │ • take_profit: $103,425      │  │
+                      │  │ • stop_loss: $96,530         │  │
+                      │  │ • confidence: 75%            │  │
+                      │  └──────────────────────────────┘  │
+                      └───────────────┬────────────────────┘
+                                      │
+                                      ▼
+                      ┌────────────────────────────────────┐
+                      │  7. POSITION MONITORING            │
+                      │  (Every 60 seconds)                │
+                      │  • Check current price             │
+                      │  • Calculate unrealized P&L        │
+                      │  • Check TP/SL distance            │
+                      │  • Detect position closed          │
+                      └───────────────┬────────────────────┘
+                                      │
+                                      │ When position closes
+                                      ▼
+                      ┌────────────────────────────────────┐
+                      │  8. REFLECTION & LEARNING          │
+                      │  ┌──────────────────────────────┐  │
+                      │  │ For each agent:              │  │
+                      │  │ 1. Retrieve prediction       │  │
+                      │  │ 2. Compare with result       │  │
+                      │  │ 3. Generate reflection       │  │
+                      │  │ 4. Update AgentMemory        │  │
+                      │  │    • win_rate                │  │
+                      │  │    • total_pnl               │  │
+                      │  │    • lessons_learned         │  │
+                      │  └──────────────────────────────┘  │
+                      └────────────────────────────────────┘
+                                      │
+                                      ▼
+                                     END
+```
+
+---
+
+## 7. Tool System
+
+### 7.1 Tool Categories
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              TOOL ECOSYSTEM                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  📊 MARKET DATA TOOLS (trading_tools.py)                                    │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ get_btc_price()           - Current BTC price from OKX                 │ │
+│  │ get_technical_indicators() - RSI, MACD, Bollinger Bands, etc.          │ │
+│  │ get_funding_rate()         - Perpetual funding rate                    │ │
+│  │ get_fear_greed_index()     - Crypto Fear & Greed Index                 │ │
+│  │ get_historical_data()      - OHLCV historical data                     │ │
+│  │ get_market_news()          - Latest crypto news                        │ │
+│  │ get_volatility()           - Price volatility metrics                  │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│  🔍 SEARCH TOOLS (mcp_tools.py)                                             │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ tavily_search()            - Web search via Tavily API                 │ │
+│  │ perplexity_search()        - AI-powered search                         │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│  💹 TRADING TOOLS (trading_meeting.py - Phase 5 only)                       │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ open_long()                - Open long position                        │ │
+│  │ open_short()               - Open short position                       │ │
+│  │ close_position()           - Close current position                    │ │
+│  │ hold()                     - No action, wait                           │ │
+│  │ analyze_execution_conditions() - Pre-trade analysis                    │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│  📈 TECHNICAL ANALYSIS TOOLS (technical_tools.py)                           │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ calculate_rsi()            - Relative Strength Index                   │ │
+│  │ calculate_macd()           - MACD indicator                            │ │
+│  │ calculate_bollinger()      - Bollinger Bands                           │ │
+│  │ calculate_ema()            - Exponential Moving Average                │ │
+│  │ identify_patterns()        - Candlestick pattern recognition           │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 7.2 Tool Execution Flow
+
+```
+LLM Response
+     │
+     ▼
+┌─────────────────────────────────┐
+│ Check for native tool_calls    │
+│ (OpenAI function calling)      │
+└──────────────┬──────────────────┘
+               │
+     ┌─────────┴─────────┐
+     │                   │
+     ▼                   ▼
+Has tool_calls      No tool_calls
+     │                   │
+     │                   ▼
+     │          ┌──────────────────────────┐
+     │          │ Check for Legacy format: │
+     │          │ [USE_TOOL: xxx(...)]     │
+     │          └──────────────┬───────────┘
+     │                         │
+     │             ┌───────────┴───────────┐
+     │             │                       │
+     │             ▼                       ▼
+     │        Has pattern            No pattern
+     │             │                       │
+     ▼             ▼                       ▼
+┌────────────────────────┐         Return text response
+│ Execute tool function  │         (no tool called)
+└───────────┬────────────┘
+            │
+            ▼
+   Return tool result
+```
+
+---
+
+## 8. Data Structures
+
+### 8.1 TradingSignal
+
 ```python
 @dataclass
-class PositionContext:
-    # Basic Info
-    has_position: bool
-    current_position: Optional[dict]
-
-    # Position Details
-    direction: Optional[str]  # "long" or "short"
+class TradingSignal:
+    """Final output of a trading meeting."""
+    
+    direction: Literal["long", "short", "hold"]
+    symbol: str = "BTC-USDT-SWAP"
+    leverage: int                    # 1-20
+    amount_percent: float            # 0.0-1.0 (portion of available margin)
     entry_price: float
-    current_price: float
-    size: float
-    leverage: int
-    margin_used: float
-
-    # P&L
-    unrealized_pnl: float
-    unrealized_pnl_percent: float
-
-    # Risk Metrics
-    liquidation_price: Optional[float]
-    distance_to_liquidation_percent: float
-
-    # TP/SL
-    take_profit_price: Optional[float]
-    stop_loss_price: Optional[float]
-    distance_to_tp_percent: float
-    distance_to_sl_percent: float
-
-    # Account Status
-    available_balance: float
-    total_equity: float
-    used_margin: float
-
-    # Position Limits
-    max_position_percent: float
-    current_position_percent: float
-    can_add_position: bool
-    max_additional_amount: float
-
-    # Holding Duration
-    opened_at: Optional[datetime]
-    holding_duration_hours: float
-
-    def to_summary(self) -> str:
-        """Generate human-readable summary for prompt injection"""
-        # Returns formatted markdown string
+    take_profit_price: float
+    stop_loss_price: float
+    confidence: int                  # 0-100
+    reasoning: str
+    leader_summary: str              # Meeting summary from Leader
+    agents_consensus: Dict[str, str] # {agent_name: direction}
+    votes: List[AgentVote]          # All collected votes
+    timestamp: datetime
+    
+    @property
+    def risk_reward_ratio(self) -> float:
+        """Calculate R:R ratio."""
+        if self.direction == "long":
+            risk = abs(self.entry_price - self.stop_loss_price)
+            reward = abs(self.take_profit_price - self.entry_price)
+        else:
+            risk = abs(self.stop_loss_price - self.entry_price)
+            reward = abs(self.entry_price - self.take_profit_price)
+        return reward / risk if risk > 0 else 0
 ```
 
-### 5.4 AgentMemory
+### 8.2 Position
+
+```python
+@dataclass
+class Position:
+    """Current trading position state."""
+    
+    id: str
+    symbol: str
+    direction: Literal["long", "short"]
+    size: float                    # BTC amount
+    entry_price: float
+    current_price: float
+    leverage: int
+    margin: float                  # USDT collateral
+    unrealized_pnl: float
+    unrealized_pnl_percent: float
+    take_profit_price: Optional[float]
+    stop_loss_price: Optional[float]
+    liquidation_price: Optional[float]
+    opened_at: datetime
+```
+
+### 8.3 Account Balance
+
+```python
+@dataclass
+class AccountBalance:
+    """Account state from OKX."""
+    
+    total_equity: float            # Total account value
+    available_balance: float       # Available for new positions
+    used_margin: float             # Currently used as collateral
+    unrealized_pnl: float         # Floating P&L
+    max_avail_size: float         # OKX-calculated max position size
+```
+
+---
+
+## 9. Memory & Learning System
+
+### 9.1 Agent Memory Structure (agent_memory.py)
+
 ```python
 @dataclass
 class AgentMemory:
+    """
+    Stores and retrieves agent learning data.
+    Persisted in Redis for durability.
+    """
+    
     agent_id: str
-    agent_name: str
-
-    # Statistics
-    total_trades: int
-    winning_trades: int
-    losing_trades: int
-    total_pnl: float
-    win_rate: float
-    average_pnl: float
-    best_trade_pnl: float
-    worst_trade_pnl: float
-
-    # Streaks
-    consecutive_wins: int
-    consecutive_losses: int
-    max_consecutive_wins: int
-    max_consecutive_losses: int
-
-    # Learning
-    lessons_learned: List[str]
-    recent_experiences: List[Dict]
-    prediction_accuracy: Dict[str, float]
-    strengths: List[str]
-    weaknesses: List[str]
-
-    # Reflection System
-    recent_reflections: List[Dict]
-    last_trade_summary: str
-    current_focus: str
-    common_mistakes: List[str]
-
-    last_updated: datetime
-
+    
+    # Performance metrics
+    total_trades: int = 0
+    winning_trades: int = 0
+    losing_trades: int = 0
+    total_pnl: float = 0.0
+    win_rate: float = 0.0
+    
+    # Learning accumulation
+    lessons_learned: List[str] = []      # Key lessons from reflections
+    current_focus: str = ""              # Current improvement area
+    last_trade_summary: str = ""         # Most recent trade outcome
+    
+    # Prediction tracking
+    recent_predictions: List[Prediction] = []
+    
     def get_context_for_prompt(self) -> str:
-        """Generate memory context for system prompt injection"""
-        # Returns formatted markdown string
+        """
+        Returns formatted context for agent prompt injection.
+        
+        Example output:
+        ══════════════════════════════════════════
+        📊 YOUR HISTORICAL PERFORMANCE
+        ══════════════════════════════════════════
+        Total Trades: 47
+        Win Rate: 63.8% (30W / 17L)
+        Total P&L: +$1,234.56
+        
+        📚 LESSONS LEARNED:
+        1. RSI divergence signals are more reliable when confirmed by volume
+        2. Avoid entries during low-volume weekend periods
+        3. Macro news often causes 2-3% moves within 4 hours
+        
+        🎯 CURRENT FOCUS:
+        Improve entry timing using confluence of multiple indicators
+        
+        📝 LAST TRADE:
+        Long @ $97,500 → Closed @ $98,200 (+0.72%)
+        Reason: Technical breakout confirmed
+        ══════════════════════════════════════════
+        """
 ```
 
----
-
-## 6. Memory System
-
-### 6.1 Memory Flow Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                          MEMORY SYSTEM FLOW                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  ╔════════════════════════════════════════════════════════════════════╗ │
-│  ║                    DURING TRADING MEETING                          ║ │
-│  ╠════════════════════════════════════════════════════════════════════╣ │
-│  ║                                                                     ║ │
-│  ║  1. Load Agent Memory                                              ║ │
-│  ║     │                                                              ║ │
-│  ║     ▼                                                              ║ │
-│  ║  ┌─────────────────────────────────────────────────────────────┐  ║ │
-│  ║  │ memory = await memory_store.get_memory(agent_id, agent_name)│  ║ │
-│  ║  │ memory_context = memory.get_context_for_prompt()             │  ║ │
-│  ║  └─────────────────────────────────────────────────────────────┘  ║ │
-│  ║     │                                                              ║ │
-│  ║     ▼                                                              ║ │
-│  ║  2. Inject into System Prompt                                      ║ │
-│  ║     │                                                              ║ │
-│  ║     ▼                                                              ║ │
-│  ║  ┌─────────────────────────────────────────────────────────────┐  ║ │
-│  ║  │ enhanced_system_prompt = f"""                                │  ║ │
-│  ║  │ {base_system_prompt}                                         │  ║ │
-│  ║  │                                                              │  ║ │
-│  ║  │ ---                                                          │  ║ │
-│  ║  │ {memory_context}                                             │  ║ │
-│  ║  │ ---                                                          │  ║ │
-│  ║  │                                                              │  ║ │
-│  ║  │ Please reference your historical performance...              │  ║ │
-│  ║  │ """                                                          │  ║ │
-│  ║  └─────────────────────────────────────────────────────────────┘  ║ │
-│  ║                                                                     ║ │
-│  ╚════════════════════════════════════════════════════════════════════╝ │
-│                                                                          │
-│  ╔════════════════════════════════════════════════════════════════════╗ │
-│  ║                    AFTER TRADE OPENED                              ║ │
-│  ╠════════════════════════════════════════════════════════════════════╣ │
-│  ║                                                                     ║ │
-│  ║  3. Record Agent Predictions                                       ║ │
-│  ║     │                                                              ║ │
-│  ║     ▼                                                              ║ │
-│  ║  ┌─────────────────────────────────────────────────────────────┐  ║ │
-│  ║  │ for agent_vote in self._agent_votes:                         │  ║ │
-│  ║  │     prediction = AgentPrediction(                            │  ║ │
-│  ║  │         agent_id=agent_vote.agent_id,                        │  ║ │
-│  ║  │         agent_name=agent_vote.agent_name,                    │  ║ │
-│  ║  │         trade_id=position_id,                                │  ║ │
-│  ║  │         direction=agent_vote.direction,                      │  ║ │
-│  ║  │         confidence=agent_vote.confidence,                    │  ║ │
-│  ║  │         reasoning=agent_vote.reasoning,                      │  ║ │
-│  ║  │         market_price=entry_price                             │  ║ │
-│  ║  │     )                                                        │  ║ │
-│  ║  │     await prediction_store.save_prediction(prediction)       │  ║ │
-│  ║  └─────────────────────────────────────────────────────────────┘  ║ │
-│  ║                                                                     ║ │
-│  ╚════════════════════════════════════════════════════════════════════╝ │
-│                                                                          │
-│  ╔════════════════════════════════════════════════════════════════════╗ │
-│  ║                    AFTER POSITION CLOSED                           ║ │
-│  ╠════════════════════════════════════════════════════════════════════╣ │
-│  ║                                                                     ║ │
-│  ║  4. Generate Reflections                                           ║ │
-│  ║     │                                                              ║ │
-│  ║     ▼                                                              ║ │
-│  ║  ┌─────────────────────────────────────────────────────────────┐  ║ │
-│  ║  │ predictions = await prediction_store.get_predictions(trade_id)│ ║ │
-│  ║  │                                                              │  ║ │
-│  ║  │ for prediction in predictions:                               │  ║ │
-│  ║  │     reflection = await generator.generate_reflection(        │  ║ │
-│  ║  │         prediction, trade_result                             │  ║ │
-│  ║  │     )                                                        │  ║ │
-│  ║  │     # reflection contains:                                   │  ║ │
-│  ║  │     # - summary                                              │  ║ │
-│  ║  │     # - what_went_well                                       │  ║ │
-│  ║  │     # - what_went_wrong                                      │  ║ │
-│  ║  │     # - lessons_learned                                      │  ║ │
-│  ║  │     # - next_time_action                                     │  ║ │
-│  ║  └─────────────────────────────────────────────────────────────┘  ║ │
-│  ║     │                                                              ║ │
-│  ║     ▼                                                              ║ │
-│  ║  5. Update Agent Memory                                            ║ │
-│  ║     │                                                              ║ │
-│  ║     ▼                                                              ║ │
-│  ║  ┌─────────────────────────────────────────────────────────────┐  ║ │
-│  ║  │ memory = await memory_store.get_memory(agent_id)             │  ║ │
-│  ║  │ memory.add_reflection(reflection)                            │  ║ │
-│  ║  │ # Updates:                                                   │  ║ │
-│  ║  │ # - total_trades, winning_trades, losing_trades              │  ║ │
-│  ║  │ # - total_pnl, win_rate, average_pnl                         │  ║ │
-│  ║  │ # - best_trade_pnl, worst_trade_pnl                          │  ║ │
-│  ║  │ # - consecutive_wins/losses                                  │  ║ │
-│  ║  │ # - lessons_learned                                          │  ║ │
-│  ║  │ # - last_trade_summary                                       │  ║ │
-│  ║  │ # - current_focus                                            │  ║ │
-│  ║  │ # - common_mistakes                                          │  ║ │
-│  ║  │ await memory_store.save_memory(memory)                       │  ║ │
-│  ║  └─────────────────────────────────────────────────────────────┘  ║ │
-│  ║                                                                     ║ │
-│  ╚════════════════════════════════════════════════════════════════════╝ │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### 6.2 Memory Context Structure (Injected into Prompts)
-
-```markdown
-## 📊 Last Trade Review
-✅ Last trade: Long BTC, Profit $245.50 (+3.2%)
-Lesson: Wait for confirmation before entry
-
-## ⚠️ Current Focus
-Be more cautious with high leverage in volatile markets
-
-## 📝 Lessons You've Learned
-- High confidence predictions can also be wrong
-- Wait for clearer signals before committing
-- Reduce position size in uncertain conditions
-
-## 📈 Your Trading Performance
-- Total Trades: 15
-- Win Rate: 60.0%
-- Total P&L: $1,234.56
-- Average P&L: $82.30
-- Current Win Streak: 2
-
-## 🚫 Mistakes to Avoid
-- Over-leveraging in sideways markets
-- Ignoring macro economic data
-
-## ✅ Your Strengths
-- High overall win rate
-- Positive average P&L per trade
-
-## 🔧 Areas for Improvement
-- Need better risk control for consecutive losses
-```
-
-### 6.3 Reflection Generation
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      REFLECTION GENERATION FLOW                          │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  Input:                                                                  │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │ AgentPrediction:                  │  TradeResult:                   │ │
-│  │ - direction: "long"               │  - entry_price: $98,000         │ │
-│  │ - confidence: 75%                 │  - exit_price: $101,000         │ │
-│  │ - reasoning: "RSI oversold..."    │  - pnl: +$600                   │ │
-│  │ - market_price: $98,500           │  - close_reason: "tp"           │ │
-│  │ - key_factors: ["RSI", "MACD"]    │  - holding_hours: 18.5          │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│                                                                          │
-│  LLM Prompt:                                                             │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │ You are {agent_name}, please reflect on this trade:                │ │
-│  │                                                                     │ │
-│  │ ## Your Prediction at the Time                                      │ │
-│  │ - Direction: Long                                                   │ │
-│  │ - Confidence: 75%                                                   │ │
-│  │ - Reasoning: RSI oversold...                                        │ │
-│  │                                                                     │ │
-│  │ ## Actual Result                                                    │ │
-│  │ - Entry Price: $98,000                                              │ │
-│  │ - Exit Price: $101,000                                              │ │
-│  │ - P&L: +$600                                                        │ │
-│  │                                                                     │ │
-│  │ ## Please Answer:                                                   │ │
-│  │ 1. Your prediction was correct - Why?                               │ │
-│  │ 2. What judgments were correct?                                     │ │
-│  │ 3. What judgments were wrong?                                       │ │
-│  │ 4. What lessons did you learn?                                      │ │
-│  │ 5. What would you do differently next time?                         │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│                                                                          │
-│  Output (TradeReflection):                                               │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │ {                                                                   │ │
-│  │   "summary": "Prediction correct, RSI signal was reliable",        │ │
-│  │   "what_went_well": ["Entry timing based on RSI", "TP hit"],       │ │
-│  │   "what_went_wrong": ["Could have held longer"],                   │ │
-│  │   "lessons_learned": ["Trust RSI oversold signals"],               │ │
-│  │   "next_time_action": "Consider trailing stop for bigger gains"    │ │
-│  │ }                                                                   │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 7. Tool Calling Flow
-
-### 7.1 Native Tool Calling (OpenAI Format)
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    NATIVE TOOL CALLING FLOW                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  1. Agent._call_llm() with tools defined                                │
-│     │                                                                    │
-│     ▼                                                                    │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │ LLM Response (OpenAI Format):                                       │ │
-│  │ {                                                                   │ │
-│  │   "choices": [{                                                     │ │
-│  │     "message": {                                                    │ │
-│  │       "content": "Let me analyze...",                               │ │
-│  │       "tool_calls": [{                                              │ │
-│  │         "id": "call_abc123",                                        │ │
-│  │         "type": "function",                                         │ │
-│  │         "function": {                                               │ │
-│  │           "name": "get_btc_price",                                  │ │
-│  │           "arguments": "{}"                                         │ │
-│  │         }                                                           │ │
-│  │       }]                                                            │ │
-│  │     }                                                               │ │
-│  │   }]                                                                │ │
-│  │ }                                                                   │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│     │                                                                    │
-│     ▼                                                                    │
-│  2. Detect tool_calls in response                                       │
-│     │                                                                    │
-│     ▼                                                                    │
-│  3. Execute each tool:                                                  │
-│     │                                                                    │
-│     ▼                                                                    │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │ tool_result = await agent.tools[tool_name].execute(**tool_args)    │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│     │                                                                    │
-│     ▼                                                                    │
-│  4. Collect results                                                     │
-│     │                                                                    │
-│     ▼                                                                    │
-│  5. Follow-up LLM call with tool results:                              │
-│     │                                                                    │
-│     ▼                                                                    │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │ follow_up_messages = [                                              │ │
-│  │   {"role": "system", "content": system_prompt},                     │ │
-│  │   {"role": "user", "content": original_prompt},                     │ │
-│  │   {"role": "assistant", "content": initial_response},               │ │
-│  │   {"role": "user", "content": f"Tool results:\n{results}\n\n..."}   │ │
-│  │ ]                                                                   │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│     │                                                                    │
-│     ▼                                                                    │
-│  6. Final response with analysis based on real data                    │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### 7.2 Legacy Tool Calling (Text Pattern)
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    LEGACY TOOL CALLING FLOW                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  Pattern: [USE_TOOL: tool_name(param1=value1, param2=value2)]           │
-│                                                                          │
-│  Example:                                                                │
-│  [USE_TOOL: open_long(leverage=6, amount_percent=0.2, confidence=75)]   │
-│                                                                          │
-│  Regex Pattern:                                                          │
-│  r'\[USE_TOOL:\s*(\w+)\s*\(([^)]*)\)\]'                                 │
-│                                                                          │
-│  Execution:                                                              │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │ match = re.search(pattern, content)                                 │ │
-│  │ if match:                                                           │ │
-│  │     tool_name = match.group(1)  # "open_long"                       │ │
-│  │     params_str = match.group(2) # "leverage=6, amount_percent=0.2"  │ │
-│  │     params = parse_params(params_str)                               │ │
-│  │     result = await tools[tool_name](**params)                       │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### 7.3 Available Tools
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         TOOL REGISTRY                                    │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  Market Data Tools (TradingToolkit):                                    │
-│  ┌────────────────────┬─────────────────────────────────────────────┐  │
-│  │ Tool Name          │ Description                                  │  │
-│  ├────────────────────┼─────────────────────────────────────────────┤  │
-│  │ get_btc_price      │ Get current BTC price                        │  │
-│  │ get_market_data    │ Get detailed market data (24h change, vol)   │  │
-│  │ get_technical_     │ Get RSI, MACD, Bollinger Bands, EMAs         │  │
-│  │   indicators       │                                              │  │
-│  │ get_funding_rate   │ Get perpetual funding rate                   │  │
-│  │ get_fear_greed_    │ Get market fear/greed index                  │  │
-│  │   index            │                                              │  │
-│  │ web_search         │ Search web for news/analysis                 │  │
-│  │ get_market_news    │ Get latest crypto news                       │  │
-│  │ get_social_        │ Get social media sentiment                   │  │
-│  │   sentiment        │                                              │  │
-│  │ get_historical_    │ Get historical price data                    │  │
-│  │   data             │                                              │  │
-│  └────────────────────┴─────────────────────────────────────────────┘  │
-│                                                                          │
-│  Trading Execution Tools (TradeExecutor):                               │
-│  ┌────────────────────┬─────────────────────────────────────────────┐  │
-│  │ Tool Name          │ Description                                  │  │
-│  ├────────────────────┼─────────────────────────────────────────────┤  │
-│  │ open_long          │ Open long position                           │  │
-│  │                    │ Params: leverage, amount_percent, confidence │  │
-│  ├────────────────────┼─────────────────────────────────────────────┤  │
-│  │ open_short         │ Open short position                          │  │
-│  │                    │ Params: leverage, amount_percent, confidence │  │
-│  ├────────────────────┼─────────────────────────────────────────────┤  │
-│  │ close_position     │ Close current position                       │  │
-│  │                    │ Params: reasoning                            │  │
-│  ├────────────────────┼─────────────────────────────────────────────┤  │
-│  │ hold               │ Hold/wait, no action                         │  │
-│  │                    │ Params: reason                               │  │
-│  └────────────────────┴─────────────────────────────────────────────┘  │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 8. Position Context System
-
-### 8.1 Position Context Generation
+### 9.2 Reflection Generation
 
 ```python
-async def _get_position_context(self) -> PositionContext:
-    """Build complete position context for prompt injection"""
-
-    # 1. Get current position from trader
-    position = await self.toolkit.paper_trader.get_position()
-
-    # 2. Get account balance
-    balance = await self.toolkit.paper_trader.get_account()
-
-    if not position:
-        # No position
-        return PositionContext(
-            has_position=False,
-            available_balance=balance.available_balance,
-            total_equity=balance.total_equity,
-            max_position_percent=self.config.risk_limits.max_position_percent
-        )
-
-    # 3. Calculate derived metrics
-    current_price = await self.toolkit._get_market_price()
-
-    # Distance to liquidation
-    if position.direction == "long":
-        distance_to_liq = ((current_price - position.liquidation_price)
-                          / current_price * 100)
-    else:
-        distance_to_liq = ((position.liquidation_price - current_price)
-                          / current_price * 100)
-
-    # Distance to TP/SL
-    if position.take_profit_price:
-        if position.direction == "long":
-            dist_to_tp = ((position.take_profit_price - current_price)
-                         / current_price * 100)
-        else:
-            dist_to_tp = ((current_price - position.take_profit_price)
-                         / current_price * 100)
-
-    # 4. Calculate position capacity
-    position_value = position.size * current_price
-    max_position_value = balance.total_equity * self.config.risk_limits.max_position_percent
-    current_position_percent = position_value / balance.total_equity
-    can_add = current_position_percent < self.config.risk_limits.max_position_percent
-    max_additional = max_position_value - position_value if can_add else 0
-
-    # 5. Build PositionContext
-    return PositionContext(
-        has_position=True,
-        direction=position.direction,
-        entry_price=position.entry_price,
-        current_price=current_price,
-        size=position.size,
-        leverage=position.leverage,
-        margin_used=position.margin,
-        unrealized_pnl=position.unrealized_pnl,
-        unrealized_pnl_percent=position.unrealized_pnl_percent,
-        liquidation_price=position.liquidation_price,
-        distance_to_liquidation_percent=distance_to_liq,
-        take_profit_price=position.take_profit_price,
-        stop_loss_price=position.stop_loss_price,
-        distance_to_tp_percent=dist_to_tp,
-        distance_to_sl_percent=dist_to_sl,
-        available_balance=balance.available_balance,
-        total_equity=balance.total_equity,
-        used_margin=balance.used_margin,
-        max_position_percent=self.config.risk_limits.max_position_percent,
-        current_position_percent=current_position_percent,
-        can_add_position=can_add,
-        max_additional_amount=max_additional,
-        opened_at=position.opened_at,
-        holding_duration_hours=(datetime.now() - position.opened_at).total_seconds() / 3600
-    )
+async def generate_reflection(
+    agent_id: str,
+    prediction: Prediction,
+    trade_result: TradeResult
+) -> Reflection:
+    """
+    Generate post-trade reflection using LLM.
+    
+    Prompts agent to analyze:
+    1. What went well in the analysis?
+    2. What went wrong?
+    3. What lessons should be remembered?
+    4. What to focus on next?
+    """
+    
+    reflection_prompt = f"""
+    Your prediction:
+    - Direction: {prediction.direction}
+    - Confidence: {prediction.confidence}%
+    - Reasoning: {prediction.reasoning}
+    
+    Actual result:
+    - Entry: ${trade_result.entry_price}
+    - Exit: ${trade_result.exit_price}
+    - P&L: {trade_result.pnl_percent:+.2f}%
+    - Duration: {trade_result.duration}
+    
+    Reflect on this trade:
+    1. What aspects of your analysis were correct?
+    2. What did you miss or misjudge?
+    3. What lesson should you remember for future trades?
+    """
 ```
 
-### 8.2 Position Summary Output (to_summary)
+### 9.3 Memory Flow
 
-```markdown
-# When has_position = False:
-
-📊 **Current Position Status**: No Position
-- Available Balance: $10,000.00 USDT
-- Total Equity: $10,000.00 USDT
-- Status: ✅ Free to open new position
-
-
-# When has_position = True (LONG example):
-
-📊 **Current Position Status**: Has Position (LONG)
-
-### Position Details
-- Direction: **LONG** (5x leverage)
-- Entry Price: $98,000.00
-- Current Price: $99,500.00
-- Position Size: 0.051020 BTC
-- Margin Used: $1,000.00 USDT
-
-### Profit & Loss
-- 📈 Unrealized P&L: $76.53 USDT (+1.53%)
-
-### Take Profit / Stop Loss
-- Take Profit: $103,000.00 (distance: +3.52%)
-- Stop Loss: $95,500.00 (distance: -4.02%)
-
-### Risk Metrics
-- Liquidation Price: $82,000.00
-- Distance to Liquidation: 17.6% (🟡 Warning)
-
-### Account Status
-- Available Balance: $8,500.00 USDT
-- Total Equity: $10,076.53 USDT
-- Used Margin: $1,000.00 USDT
-
-### Position Management
-- Current Position: 10.0% / 30.0%
-- Status: ✅ Can add more
-- Can Add: $2,022.96 USDT
-
-### Holding Duration
-- Opened At: 2024-12-07 10:30:45
-- Duration: 5.5 hours
+```
+Trade Opens
+     │
+     ├─► Store predictions for each agent
+     │
+     ▼
+Position Monitored
+     │
+     │ Position Closes (TP/SL hit or manual)
+     ▼
+┌─────────────────────────────────┐
+│ Trigger Reflection Generation   │
+│                                 │
+│ For each agent:                 │
+│ 1. Retrieve stored prediction   │
+│ 2. Compare with actual result   │
+│ 3. Call LLM for reflection      │
+│ 4. Extract lessons learned      │
+│ 5. Update AgentMemory in Redis  │
+└─────────────────────────────────┘
+     │
+     ▼
+Next Trading Meeting
+     │
+     ├─► Agent memories loaded
+     ├─► Context injected into prompts
+     └─► Agents reference past lessons
 ```
 
 ---
 
-## 9. Prompt Injection Points
+## 10. Position Management
 
-### 9.1 Complete Prompt Assembly
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    PROMPT INJECTION POINTS                               │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  SYSTEM PROMPT LAYER:                                                    │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │ 1. base_system_prompt (from Agent definition)                       │ │
-│  │    ↓                                                                │ │
-│  │ 2. memory_context (from AgentMemory.get_context_for_prompt())       │ │
-│  │    - Last trade review                                              │ │
-│  │    - Current focus                                                  │ │
-│  │    - Lessons learned                                                │ │
-│  │    - Trading performance                                            │ │
-│  │    - Mistakes to avoid                                              │ │
-│  │    - Strengths/weaknesses                                           │ │
-│  │    ↓                                                                │ │
-│  │ 3. memory_instruction                                               │ │
-│  │    "Please reference your historical performance..."                │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│                                                                          │
-│  USER PROMPT LAYER:                                                      │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │ 4. conversation_history (previous messages in meeting)              │ │
-│  │    ↓                                                                │ │
-│  │ 5. position_context.to_summary()                                    │ │
-│  │    - Current position status                                        │ │
-│  │    - P&L information                                                │ │
-│  │    - Risk metrics                                                   │ │
-│  │    - Account status                                                 │ │
-│  │    ↓                                                                │ │
-│  │ 6. phase_specific_prompt                                            │ │
-│  │    - Phase 1: Analysis request                                      │ │
-│  │    - Phase 2: Vote prompt + decision options                        │ │
-│  │    - Phase 3: Vote summary + risk context                           │ │
-│  │    - Phase 4: Decision guidance                                     │ │
-│  │    - Phase 5: Execution prompt                                      │ │
-│  │    ↓                                                                │ │
-│  │ 7. anti_bias_prompts (conditional)                                  │ │
-│  │    - neutral_position_analysis_prompt                               │ │
-│  │    - decision_options_for_analysts                                  │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### 9.2 Injection Point File Locations
-
-| Injection Point | File | Method |
-|-----------------|------|--------|
-| Base System Prompt | `trading_agents.py` | Agent definition |
-| Memory Context | `agent_memory.py` | `AgentMemory.get_context_for_prompt()` |
-| Position Summary | `position_context.py` | `PositionContext.to_summary()` |
-| Phase 1 Analysis | `trading_meeting.py` | `_run_market_analysis_phase()` |
-| Phase 2 Vote | `trading_meeting.py` | `_run_signal_generation_phase()` |
-| Phase 3 Risk | `trading_meeting.py` | `_run_risk_assessment_phase()` |
-| Phase 4 Consensus | `trading_meeting.py` | `_run_consensus_phase()` |
-| Phase 5 Execution | `trading_meeting.py` | `_build_execution_prompt()` |
-| Decision Options | `trading_meeting.py` | `_get_decision_options_for_analysts()` |
-| Risk Context | `trading_meeting.py` | `_generate_risk_context()` |
-| Decision Guidance | `trading_meeting.py` | `_generate_decision_guidance()` |
-| Anti-bias Prompt | `trading_meeting.py` | `_get_neutral_position_analysis_prompt()` |
-
----
-
-## 10. File Reference
-
-### 10.1 Core Trading Files
+### 10.1 OKX Integration (okx_trader.py, okx_client.py)
 
 ```
-backend/services/report_orchestrator/app/core/trading/
-├── trading_meeting.py      # Main orchestrator (5 phases)
-├── trading_agents.py       # Agent definitions and prompts
-├── trading_tools.py        # Market data tools (TradingToolkit)
-├── position_context.py     # Position state for prompt injection
-├── position_monitor.py     # Real-time position tracking
-├── agent_memory.py         # Memory system (predictions, reflections)
-├── trade_executor.py       # Trade execution logic
-├── trade_executor_agent.py # TradeExecutor agent implementation
-├── paper_trader.py         # Paper trading implementation
-├── okx_client.py           # OKX API client
-└── okx_trader.py           # OKX trading implementation
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           OKX INTEGRATION                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  OKXClient (Low-level API wrapper)                                          │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ • get_account_balance()      - Fetch account equity                    │ │
+│  │ • get_current_position()     - Current position details                │ │
+│  │ • get_ticker()               - Real-time price                         │ │
+│  │ • place_order()              - Place market/limit order                │ │
+│  │ • close_position()           - Close existing position                 │ │
+│  │ • set_leverage()             - Configure leverage                      │ │
+│  │ • get_positions_history()    - Closed positions for P&L                │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│  OKXTrader (High-level trading interface)                                   │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ • open_long(symbol, leverage, amount, tp, sl)                          │ │
+│  │ • open_short(symbol, leverage, amount, tp, sl)                         │ │
+│  │ • close_position(symbol)                                               │ │
+│  │ • get_account()              - Formatted account info                  │ │
+│  │ • get_position()             - Formatted position info                 │ │
+│  │ • get_trade_history()        - Historical trades with PnL              │ │
+│  │                                                                        │ │
+│  │ Features:                                                              │ │
+│  │ • Trade lock (prevents concurrent operations)                          │ │
+│  │ • Daily loss circuit breaker (10% limit)                               │ │
+│  │ • Position adding support (same direction)                             │ │
+│  │ • Local cache with API sync                                            │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 10.2 Supporting Files
-
-```
-backend/services/report_orchestrator/app/
-├── models/
-│   └── trading_models.py   # TradingSignal, Position, etc.
-├── core/
-│   └── roundtable/
-│       ├── agent.py        # Base Agent class
-│       ├── tool.py         # FunctionTool class
-│       └── meeting.py      # Base meeting class
-└── api/
-    └── trading_routes.py   # API endpoints
-```
-
-### 10.3 Configuration
-
-```
-backend/services/report_orchestrator/
-├── config/
-│   └── trading_config.yaml # Trading configuration
-└── .env                    # Environment variables
-    # MAX_LEVERAGE=20
-    # MAX_POSITION_PERCENT=30
-    # MIN_POSITION_PERCENT=10
-    # MIN_CONFIDENCE=60
-    # SCHEDULER_INTERVAL_HOURS=4
-```
-
----
-
-## Appendix A: Message Flow Example
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    SAMPLE MEETING MESSAGE FLOW                           │
-├─────────────────────────────────────────────────────────────────────────┤
-
-[System] ## Phase 1: Market Analysis
-         Analysts, please analyze current market conditions.
-
-[TechnicalAnalyst] Based on my analysis using get_btc_price() and
-                  get_technical_indicators():
-                  - Current price: $98,500
-                  - RSI(14): 45 (neutral)
-                  - MACD: Bullish crossover forming
-                  - Support at $97,000, resistance at $100,000
-
-                  Technical outlook: Cautiously bullish with momentum
-                  building for a breakout above $100,000.
-
-[MacroEconomist] Based on web_search("Fed policy crypto"):
-                - Fed maintaining rates, dovish stance expected
-                - Institutional inflows continue
-                - Bitcoin ETF seeing positive flows
-
-                Macro environment supportive for crypto growth.
-
-[SentimentAnalyst] Based on get_fear_greed_index():
-                  - Fear & Greed Index: 65 (Greed)
-                  - Social sentiment: Positive
-                  - Funding rates: Slightly positive
-
-                  Sentiment is bullish but not extreme.
-
-[QuantStrategist] Based on statistical analysis:
-                 - 30-day volatility: 2.5% (moderate)
-                 - Price above 50-day EMA
-                 - Volume increasing
-
-                 Quantitative signals favor long positions.
-
-[System] ## Phase 2: Signal Generation
-         Experts, please provide your trading recommendations.
-
-[TechnicalAnalyst] ```json
-                  {
-                    "direction": "long",
-                    "confidence": 72,
-                    "leverage": 5,
-                    "take_profit_percent": 5.0,
-                    "stop_loss_percent": 2.5,
-                    "reasoning": "MACD crossover with support holding"
-                  }
-                  ```
-
-[MacroEconomist] ```json
-                {
-                  "direction": "long",
-                  "confidence": 68,
-                  "leverage": 4,
-                  "take_profit_percent": 6.0,
-                  "stop_loss_percent": 3.0,
-                  "reasoning": "Favorable macro environment"
-                }
-                ```
-
-[SentimentAnalyst] ```json
-                  {
-                    "direction": "hold",
-                    "confidence": 55,
-                    "leverage": 2,
-                    "take_profit_percent": 4.0,
-                    "stop_loss_percent": 2.0,
-                    "reasoning": "Sentiment positive but greed high"
-                  }
-                  ```
-
-[QuantStrategist] ```json
-                 {
-                   "direction": "long",
-                   "confidence": 75,
-                   "leverage": 6,
-                   "take_profit_percent": 5.5,
-                   "stop_loss_percent": 2.0,
-                   "reasoning": "Strong quantitative signals"
-                 }
-                 ```
-
-[System] ## Phase 3: Risk Assessment
-         Risk Manager, please evaluate the trading risks.
-
-[RiskAssessor] Risk Assessment:
-
-              Vote Summary: 3 Long / 0 Short / 1 Hold
-
-              Risk Evaluation:
-              - Consensus is moderate (3/4 bullish)
-              - Average confidence: 67.5%
-              - Recommended leverage: 4-5x (moderate)
-
-              Recommendation: APPROVE with following adjustments:
-              - Leverage: 5x (conservative end)
-              - Position size: 20% of equity
-              - TP: $103,425 (5%)
-              - SL: $96,530 (2%)
-
-              Risk/Reward ratio: 2.5:1 (acceptable)
-
-[System] ## Phase 4: Consensus Building
-         Moderator, please summarize and provide conclusions.
-
-[Leader] Meeting Summary:
-
-        Expert Consensus: 3 of 4 experts are bullish (75%)
-        - TechnicalAnalyst: Long (MACD crossover)
-        - MacroEconomist: Long (favorable macro)
-        - SentimentAnalyst: Hold (greed concern)
-        - QuantStrategist: Long (strong quant signals)
-
-        Key Agreement Points:
-        - Technical setup is favorable
-        - Macro environment supportive
-        - Price momentum building
-
-        Key Concern:
-        - SentimentAnalyst notes greed index is elevated
-
-        Comprehensive Assessment:
-        The market shows moderate bullish signals across
-        technical, macro, and quantitative dimensions.
-
-        Recommendation:
-        Open a conservative LONG position with 5x leverage
-        and 20% position size. Set TP at 5% and SL at 2%.
-
-        Confidence: ~70%
-
-[System] ## Phase 5: Trade Execution
-         Trade Executor is analyzing and making decisions...
-
-[TradeExecutor] Based on the meeting:
-               - 3/4 experts bullish
-               - Risk assessment approved
-               - Leader recommends LONG
-
-               [USE_TOOL: open_long(leverage=5, amount_percent=0.2)]
-
-[TradeExecutor] ## TradeExecutor Final Decision
-
-               **Decision**: LONG
-               **Leverage**: 5x
-               **Position**: 20%
-               **Confidence**: 70%
-
-               **Take Profit**: $103,425.00
-               **Stop Loss**: $96,530.00
-
-               **Reasoning**: Moderate bullish consensus with
-               favorable technical and macro conditions.
-
-[TradeExecutor] ✅ Trade Executed
-
-               Decision: LONG
-               Leverage: 5x
-               Position: 20%
-
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Appendix B: Configuration Reference
-
-### B.1 Risk Limits
+### 10.2 Position Monitor (position_monitor.py)
 
 ```python
-class RiskLimits:
-    max_leverage: int = 20          # MAX_LEVERAGE env var
-    max_position_percent: float = 0.30   # 30% max position
-    min_position_percent: float = 0.10   # 10% min position
-    max_daily_loss_percent: float = 0.10 # 10% daily loss limit
-    consecutive_loss_limit: int = 3      # Max consecutive losses
-    cooldown_hours: int = 24             # Cooldown after losses
-    min_confidence: int = 60             # Min confidence to trade
+class PositionMonitor:
+    """
+    Real-time position monitoring.
+    Runs every 60 seconds while position is open.
+    """
+    
+    async def _check_position(self):
+        """
+        Each check:
+        1. Fetch current position from OKX
+        2. Calculate unrealized P&L
+        3. Check TP/SL distance
+        4. Detect if position was closed
+        5. Record equity snapshot
+        6. Trigger callbacks if needed
+        """
+        
+    # Callbacks
+    on_position_closed: Callable    # Triggered when position closes
+    on_tp_hit: Callable            # Triggered at take profit
+    on_sl_hit: Callable            # Triggered at stop loss
+    on_pnl_update: Callable        # Periodic P&L updates
 ```
 
-### B.2 Trading Config
+### 10.3 Paper Trading (paper_trader.py)
 
 ```python
-class TradingConfig:
-    analysis_interval_hours: int = 4   # SCHEDULER_INTERVAL_HOURS
-    symbol: str = "BTC-USDT-SWAP"     # TRADING_SYMBOL
-    initial_capital: float = 10000.0
-    risk_limits: RiskLimits
-    enabled: bool = True
-    demo_mode: bool = False           # OKX_DEMO_MODE
-
-    # Dynamic parameters
-    default_tp_percent: float = 5.0
-    default_sl_percent: float = 2.0
+class PaperTrader:
+    """
+    Simulated trading for testing.
+    Mirrors OKXTrader interface but uses local state.
+    
+    Supports:
+    • Virtual balance management
+    • Position simulation
+    • P&L calculation
+    • TP/SL simulation
+    """
 ```
 
 ---
 
-*Document Version: 1.0*
-*Last Updated: 2024-12-07*
-*Author: Magellan Trading System*
+## 11. Configuration & Deployment
+
+### 11.1 Environment Variables (.env)
+
+```bash
+# Exchange Configuration
+OKX_API_KEY=your_api_key
+OKX_SECRET_KEY=your_secret
+OKX_PASSPHRASE=your_passphrase
+OKX_DEMO_MODE=true              # true = demo, false = live
+
+# LLM Configuration  
+GEMINI_API_KEY=your_gemini_key
+LLM_MODEL=gemini-1.5-pro
+
+# Search Tools
+TAVILY_API_KEY=your_tavily_key
+
+# MCP Servers
+MCP_WEB_SEARCH_ENDPOINT=http://mcp-web-search:3001
+MCP_DOCUMENT_ENDPOINT=http://mcp-document:3002
+
+# Trading Parameters
+ANALYSIS_INTERVAL_HOURS=4
+MAX_LEVERAGE=10
+MAX_POSITION_PERCENT=0.3
+```
+
+### 11.2 Config.yaml Structure
+
+```yaml
+trading:
+  symbol: "BTC-USDT-SWAP"
+  leverage: 10
+  position_size: 100              # USDT per trade
+  take_profit_percent: 5.0
+  stop_loss_percent: 3.0
+  demo_mode: true
+
+scheduler:
+  interval_hours: 4
+  enabled: true
+
+risk:
+  max_leverage: 20
+  max_position_percent: 0.3
+  daily_loss_limit_percent: 10.0
+
+llm:
+  provider: "gemini"
+  model: "gemini-1.5-pro"
+  temperature: 0.7
+
+email:
+  enabled: true
+  notify_on:
+    - decision
+    - execution
+    - tp_hit
+    - sl_hit
+    - error
+```
+
+### 11.3 Docker Services
+
+```yaml
+services:
+  redis:
+    image: redis:alpine
+    mem_limit: 256m
+    
+  llm-gateway:
+    image: magellan/llm-gateway
+    mem_limit: 512m
+    
+  trading:
+    image: magellan/report-orchestrator
+    mem_limit: 768m
+    depends_on:
+      - redis
+      - llm-gateway
+```
+
+---
+
+## 12. Future Optimization Points
+
+### 12.1 Performance Optimizations
+
+| Area | Current State | Optimization Opportunity |
+|------|---------------|--------------------------|
+| **LLM Calls** | Sequential agent execution | Parallelize Phase 1 analysis |
+| **Tool Caching** | No caching | Cache market data for 1-5 minutes |
+| **Vote Parsing** | Multiple regex fallbacks | Pre-validate JSON schema |
+| **Memory Loading** | Load all on each meeting | Lazy load, LRU cache |
+
+### 12.2 Architecture Improvements
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      POTENTIAL ARCHITECTURE IMPROVEMENTS                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. ASYNC AGENT EXECUTION                                                   │
+│     Current: Agents run sequentially in analysis phase                      │
+│     Proposed: Run 4 analysts in parallel, aggregate results                 │
+│     Benefit: ~3x faster Phase 1 execution                                   │
+│                                                                              │
+│  2. STREAMING LLM RESPONSES                                                 │
+│     Current: Wait for full response before parsing                          │
+│     Proposed: Stream responses, parse JSON as it arrives                    │
+│     Benefit: Faster apparent response, earlier error detection              │
+│                                                                              │
+│  3. TOOL RESULT CACHING                                                     │
+│     Current: Every tool call hits external API                              │
+│     Proposed: Redis cache with TTL (price: 30s, indicators: 5min)           │
+│     Benefit: Reduce API costs, faster execution                             │
+│                                                                              │
+│  4. MODULAR AGENT WEIGHTS                                                   │
+│     Current: Equal weight for all voting agents                             │
+│     Proposed: Configurable weights based on historical accuracy             │
+│     Benefit: Better consensus from more accurate agents                     │
+│                                                                              │
+│  5. MULTI-ASSET SUPPORT                                                     │
+│     Current: Hardcoded BTC-USDT-SWAP                                        │
+│     Proposed: Configurable asset list, parallel analysis                    │
+│     Benefit: Diversified trading opportunities                              │
+│                                                                              │
+│  6. BACKTESTING FRAMEWORK                                                   │
+│     Current: No backtesting capability                                      │
+│     Proposed: Historical data replay with agent simulation                  │
+│     Benefit: Strategy validation before live deployment                     │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 12.3 Code Quality Improvements
+
+| File | Lines | Complexity | Suggested Refactoring |
+|------|-------|------------|----------------------|
+| `trading_meeting.py` | ~4000 | Very High | Split into phase modules |
+| `investment_agents.py` | ~3000 | High | Extract prompt templates |
+| `trading_tools.py` | ~1300 | Medium | Group by data source |
+| `agent_memory.py` | ~900 | Medium | Separate storage layer |
+
+### 12.4 Monitoring & Observability
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        MONITORING IMPROVEMENTS                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Current:                                                                   │
+│  • Basic logging to stdout                                                  │
+│  • status.html manual refresh                                               │
+│                                                                              │
+│  Proposed:                                                                  │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ • Structured JSON logging with correlation IDs                         │ │
+│  │ • Prometheus metrics for:                                              │ │
+│  │   - LLM call latency and token usage                                   │ │
+│  │   - Tool execution time                                                │ │
+│  │   - Vote distribution per meeting                                      │ │
+│  │   - Trade outcomes (win/loss/amount)                                   │ │
+│  │ • Grafana dashboards for:                                              │ │
+│  │   - Real-time position P&L                                             │ │
+│  │   - Agent accuracy trends                                              │ │
+│  │   - System health metrics                                              │ │
+│  │ • Alerting via Slack/Telegram for:                                     │ │
+│  │   - Trade executions                                                   │ │
+│  │   - Circuit breaker triggers                                           │ │
+│  │   - System errors                                                      │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Appendix A: File Size Reference
+
+| File | Size | Lines | Last Updated |
+|------|------|-------|--------------|
+| trading_meeting.py | 187 KB | ~4000 | Dec 2024 |
+| investment_agents.py | 146 KB | ~3000 | Dec 2024 |
+| trading_tools.py | 60 KB | ~1300 | Dec 2024 |
+| enhanced_tools.py | 49 KB | ~1100 | Dec 2024 |
+| okx_client.py | 41 KB | ~900 | Dec 2024 |
+| okx_trader.py | 37 KB | ~900 | Dec 2024 |
+| agent_memory.py | 35 KB | ~900 | Dec 2024 |
+| agent.py | 29 KB | ~700 | Dec 2024 |
+| paper_trader.py | 29 KB | ~700 | Dec 2024 |
+| rewoo_agent.py | 23 KB | ~550 | Dec 2024 |
+
+---
+
+## Appendix B: Quick Reference
+
+### Agent Prompt Injection Points
+
+1. **System Prompt** - Agent role definition
+2. **Memory Context** - Historical performance & lessons
+3. **Position Context** - Current position state
+4. **Analysis Context** - Previous phases' output
+5. **Decision Options** - Available actions matrix
+6. **Vote Prompt** - JSON output requirements
+
+### Key Decision Logic
+
+```python
+# Vote consensus determination
+if long_count >= 3 and short_count == 0:
+    decision = "strong_long"
+elif short_count >= 3 and long_count == 0:
+    decision = "strong_short"
+elif long_count > short_count:
+    decision = "weak_long"
+elif short_count > long_count:
+    decision = "weak_short"
+else:
+    decision = "hold"
+
+# Leverage calculation
+consensus_strength = max(long_count, short_count) / total_voters
+base_leverage = max_leverage * consensus_strength * avg_confidence / 100
+```
+
+---
+
+*Document Version: 2.0*  
+*Last Updated: December 2024*  
+*Maintainer: Magellan Team*
