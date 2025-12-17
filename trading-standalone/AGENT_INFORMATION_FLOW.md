@@ -28,7 +28,7 @@
 
 ### 1.2 Project Goals
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           PROJECT OBJECTIVES                                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -66,7 +66,50 @@
 | **Position Monitoring** | Real-time P&L tracking, TP/SL distance monitoring |
 | **Learning & Memory** | Post-trade reflection, performance tracking, lesson accumulation |
 
----
+### 1.4 Magellan Ecosystem Context
+
+This trading system is part of the larger **Magellan AI Investment Platform**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           MAGELLAN ECOSYSTEM                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                    MAIN MAGELLAN PLATFORM                              │  │
+│  │  - DD (Due Diligence) Analysis for investment research                │  │
+│  │  - 5 investment scenarios: Early Stage, Growth, Public Market,        │  │
+│  │    Alternative, Industry Research                                     │  │
+│  │  - Vue 3 frontend with WebSocket real-time updates                    │  │
+│  │  - Full PostgreSQL + Kafka infrastructure                             │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                      │                                       │
+│                                      │ Shares                                │
+│                                      ▼                                       │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                 TRADING-STANDALONE (This System)                       │  │
+│  │  - Lightweight deployment (Redis + LLM Gateway + Trading Service)     │  │
+│  │  - Uses same report_orchestrator codebase                             │  │
+│  │  - Only trading APIs activated, DD features dormant                   │  │
+│  │  - Designed for 24/7 server deployment                                │  │
+│  │  - ~1.5GB memory footprint                                            │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1.5 Anti-Bias Mechanisms
+
+The system includes multiple safeguards to prevent directional bias (e.g., "always go long"):
+
+| Mechanism | Location | Description |
+|-----------|----------|-------------|
+| **Neutral Vote Prompt** | `trading_meeting.py` | Uses placeholder `"direction": "<your_vote>"` instead of example direction |
+| **Ordering Balance** | `trading_meeting.py` | Short options listed before long in prompts (counters primacy effect) |
+| **Text Inference Scoring** | `_infer_from_text()` | Counts both bullish and bearish keywords, defaults to `hold` on tie |
+| **No Default Direction** | `analyze_execution_conditions()` | `direction` is required parameter, no fallback to "long" |
+| **Position Context Injection** | `position_context.py` | All agents see current position to make aware decisions |
+| **Vote Calculator Symmetry** | `vote_calculator.py` | Identical logic for long and short vote aggregation |
 
 ## 2. Repository Structure
 
@@ -1003,6 +1046,43 @@ class PaperTrader:
     • P&L calculation
     • TP/SL simulation
     """
+```
+
+### 10.4 SmartExecutor (smart_executor.py)
+
+Provides execution safety and retry mechanisms:
+
+```python
+class SmartExecutor:
+    """
+    Wraps trading execution with intelligent retry logic.
+    
+    Features:
+    • Exponential backoff on failures
+    • Pre-execution validation
+    • Circuit breaker integration
+    • Execution audit logging
+    """
+    
+    async def execute_with_retry(
+        self,
+        action: str,                    # "open_long", "open_short", "close"
+        params: Dict,
+        max_retries: int = 3
+    ) -> ExecutionResult:
+        """
+        Attempts execution with automatic retry on transient failures.
+        
+        Retry Strategy:
+        1. First attempt: immediate
+        2. Second attempt: wait 2 seconds
+        3. Third attempt: wait 4 seconds
+        
+        Non-retryable errors (fail immediately):
+        • Insufficient margin
+        • Invalid parameters
+        • Circuit breaker triggered
+        """
 ```
 
 ---
