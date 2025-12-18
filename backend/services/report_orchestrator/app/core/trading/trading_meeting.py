@@ -644,12 +644,24 @@ First explain your analysis reasoning, then output a JSON trading signal at the 
                 vote = self._parse_vote_json(agent_id, agent.name, response)
                 if vote:
                     self._agent_votes.append(vote)
+                    print(f"[VOTE_DEBUG] ✅ {agent.name} vote recorded: {vote.direction} (confidence: {vote.confidence}%)")
                 else:
                     # Fallback when JSON parsing fails
                     logger.warning(f"[{agent.name}] JSON parsing failed, attempting text parsing fallback")
                     vote = self._parse_vote_fallback(agent_id, agent.name, response)
                     if vote:
                         self._agent_votes.append(vote)
+                        print(f"[VOTE_DEBUG] ⚠️ {agent.name} vote recorded via fallback: {vote.direction}")
+                    else:
+                        # Both parsing methods failed
+                        print(f"[VOTE_DEBUG] ❌ {agent.name} vote FAILED - both JSON and fallback parsing failed")
+                        logger.error(f"[{agent.name}] Failed to parse vote from response (length: {len(response)} chars)")
+            else:
+                print(f"[VOTE_DEBUG] ❌ {agent_id} agent not found in self.agents")
+        
+        # Summary of collected votes
+        print(f"[VOTE_DEBUG] Total votes collected: {len(self._agent_votes)} from {len(vote_agents)} agents")
+        print(f"[VOTE_DEBUG] Voting agents: {[v.agent_name for v in self._agent_votes]}")
 
     async def _run_risk_assessment_phase(self, position_context: PositionContext):
         """Phase 3: Risk Assessment"""
