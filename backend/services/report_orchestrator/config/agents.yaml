@@ -487,6 +487,51 @@ agents:
       comprehensive: 380
     tags: [ma, merger, acquisition, synergy, integration]
 
+  - agent_id: onchain_analyst
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 链上分析师
+      en: Onchain Analyst
+    description:
+      zh: 分析区块链链上数据，包括巨鲸地址动向、交易所资金流向、DeFi协议TVL变化和智能货币流动
+      en: Analyze blockchain on-chain data including whale wallet movements, exchange fund flows, DeFi TVL changes and smart money flows
+    class_path: app.core.roundtable.investment_agents.create_onchain_analyst
+    capabilities:
+      - 巨鲸地址监控 (大额转账追踪)
+      - 交易所资金流向分析 (流入/流出)
+      - DeFi协议TVL监控
+      - 智能货币流向追踪
+      - MVRV/SOPR等链上指标
+      - 持币地址分布分析
+    inputs:
+      - symbol: 加密货币代码 (BTC, ETH等)
+      - timeframe: 时间周期 (1d, 7d, 30d)
+      - target_data: 目标数据 (可选)
+    outputs:
+      onchain_score: 链上评分 (0-100)
+      whale_activity: 巨鲸活动 (bullish/neutral/bearish)
+      exchange_flow: 交易所流向 (inflow/outflow/neutral)
+      defi_tvl_trend: DeFi TVL趋势
+      smart_money_signal: 智能货币信号
+      key_transactions: 关键交易
+      onchain_risks: 链上风险因素
+    quick_mode_support: true
+    estimated_duration:
+      quick: 25
+      standard: 80
+      comprehensive: 180
+    tags: [onchain, blockchain, whale, defi, crypto]
+    notes: |
+      此Agent主要用于:
+      - 加密货币链上分析
+      - DeFi协议分析
+      - 巨鲸行为监控
+      
+      数据来源:
+      - Glassnode (需API key)
+      - DefiLlama (免费API)
+
   # ============================================
   # 特殊Agent层 (Special Agents)
   # 特定场景专用 - 不可复用到其他场景

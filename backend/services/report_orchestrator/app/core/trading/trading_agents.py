@@ -49,6 +49,7 @@ def create_trading_agents(toolkit=None) -> List[Any]:
         "technical_analyst",    # K-line, technical indicators
         "macro_economist",      # Macro economic analysis
         "sentiment_analyst",    # Market sentiment, fear/greed index
+        "onchain_analyst",      # On-chain data, whale monitoring
         "risk_assessor",        # Risk assessment (analysis only)
         "quant_strategist",     # Quantitative analysis
     ]
@@ -170,6 +171,18 @@ def get_trading_agent_config() -> List[Dict[str, Any]]:
             "icon": "analytics",
             "description": "Statistical analysis, probability calculation, historical backtesting",
             "capabilities": ["Statistical Analysis", "Probability Assessment", "Volatility Analysis"]
+        })
+
+    # Onchain Analyst (Phase 3)
+    onchain_config = registry.get_agent_info("onchain_analyst")
+    if onchain_config:
+        agent_configs.append({
+            "id": "onchain_analyst",
+            "name": onchain_config['name'].get('en', 'Onchain Analyst'),
+            "role": "On-Chain Analysis",
+            "icon": "link",
+            "description": "Whale monitoring, exchange flows, DeFi TVL, on-chain metrics",
+            "capabilities": ["Whale Tracking", "Exchange Flow Analysis", "DeFi TVL Monitoring", "MVRV/SOPR Indicators"]
         })
 
     return agent_configs
