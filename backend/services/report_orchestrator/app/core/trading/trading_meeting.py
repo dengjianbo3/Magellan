@@ -422,7 +422,8 @@ Experts, please begin your analysis.
         )
 
         # Run analysis agents (using agent names from ReWOO agents)
-        analysis_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst"]
+        # Phase 3: Added OnchainAnalyst for on-chain data analysis
+        analysis_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "OnchainAnalyst"]
 
         # Position context for all analysts
         position_hint = position_context.to_summary()
@@ -494,6 +495,28 @@ Based on real data, provide **objective analysis**:
 - Sentiment support for **LONG** position (strong/medium/weak/against)
 - Sentiment support for **SHORT** position (strong/medium/weak/against)
 - Your sentiment score and **independent** directional judgment (unbiased by current position)""",
+
+            "OnchainAnalyst": f"""Analyze on-chain data and whale activity for {self.config.symbol}.
+
+{position_hint}
+
+{position_analysis_prompt}
+
+**IMPORTANT**: Use your tools to get real-time on-chain data. The system will automatically execute tool calls for you.
+
+**Required Analysis Steps**:
+1. Get whale wallet movements and large transaction data
+2. Check exchange inflow/outflow metrics
+3. Analyze DeFi TVL changes and smart money flows
+
+Based on real on-chain data, provide **objective analysis**:
+- Whale activity signals (accumulation/distribution)
+- Exchange flow trends (net inflow/outflow)
+- DeFi ecosystem health (TVL changes, protocol metrics)
+- MVRV, SOPR and other on-chain indicators
+- On-chain support for **LONG** position (strong/medium/weak/against)
+- On-chain support for **SHORT** position (strong/medium/weak/against)
+- Your on-chain score and **independent** directional judgment (unbiased by current position)""",
 
             "QuantStrategist": f"""Analyze quantitative data and statistical signals for {self.config.symbol}.
 
@@ -607,7 +630,8 @@ First explain your analysis reasoning, then output a JSON trading signal at the 
 **Important**: JSON must be at the END of your response and properly formatted!
 """
 
-        vote_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "QuantStrategist"]
+        # Phase 3: Added OnchainAnalyst to voting agents
+        vote_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "OnchainAnalyst", "QuantStrategist"]
         for agent_id in vote_agents:
             agent = self._get_agent_by_id(agent_id)
             if agent:
@@ -774,6 +798,7 @@ You have heard analysis from the following experts:
 - Technical Analyst (TechnicalAnalyst): Candlestick patterns, technical indicators analysis
 - Macro Economist (MacroEconomist): Macro economy, monetary policy analysis
 - Sentiment Analyst (SentimentAnalyst): Market sentiment, capital flow analysis
+- Onchain Analyst (OnchainAnalyst): Whale activity, exchange flows, on-chain metrics
 - Quant Strategist (QuantStrategist): Quantitative indicators, statistical analysis
 - Risk Assessor (RiskAssessor): Risk assessment and recommendations
 
