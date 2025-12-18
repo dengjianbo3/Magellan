@@ -121,7 +121,7 @@ class TradingMeeting(Meeting):
             await self._memory_store.connect()
         
         # Calculate weight for each voting agent
-        for agent in self.agents:
+        for agent in self.agents.values():
             # Skip non-voting agents (Leader, RiskAssessor, TradeExecutor)
             if agent.id in ['Leader', 'RiskAssessor', 'TradeExecutor']:
                 continue
@@ -425,8 +425,8 @@ Experts, please begin your analysis.
         # Phase 3: Added OnchainAnalyst for on-chain data analysis
         analysis_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "OnchainAnalyst"]
         
-        # Debug: Log available agents
-        available_agent_ids = [a.id for a in self.agents.values()]
+        # Debug: Log available agents (safely handle both Agent objects and strings)
+        available_agent_ids = [getattr(a, 'id', str(a)) for a in self.agents.values()]
         print(f"[TradingMeeting] Available agents in self.agents: {available_agent_ids}")
         print(f"[TradingMeeting] Looking for analysis agents: {analysis_agents}")
 
