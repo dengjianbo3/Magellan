@@ -86,6 +86,23 @@ class TradeReflection:
     lessons_learned: List[str] = field(default_factory=list)
     next_time_action: str = ""  # Suggested action for similar situations
 
+    # === NEW: Enhanced structured fields ===
+    # Market condition at trade time
+    market_condition: str = ""  # "trending_up" / "trending_down" / "ranging" / "volatile" / "calm"
+    volatility_level: str = ""  # "high" / "normal" / "low"
+    
+    # Trade quality evaluation
+    entry_timing: str = ""      # "excellent" / "good" / "neutral" / "poor" / "terrible"
+    exit_timing: str = ""       # "excellent" / "good" / "neutral" / "poor" / "terrible"
+    risk_taken: str = ""        # "appropriate" / "aggressive" / "conservative"
+    
+    # Pattern tags for future matching
+    pattern_tags: List[str] = field(default_factory=list)  # e.g., ["breakout", "reversal", "trend_follow"]
+    key_indicators_used: List[str] = field(default_factory=list)  # e.g., ["RSI_oversold", "MACD_cross"]
+    
+    # Similarity matching score (for finding similar past trades)
+    market_snapshot_hash: str = ""  # Hash of market conditions for similarity matching
+
     def to_dict(self) -> Dict:
         data = asdict(self)
         data['timestamp'] = self.timestamp.isoformat()
@@ -98,7 +115,7 @@ class TradeReflection:
         return cls(**data)
 
     def get_summary_for_prompt(self) -> str:
-        """Generate short summary for prompt injection"""
+        """Generate enhanced summary for prompt injection with market context"""
         emoji = "✅" if self.pnl > 0 else "❌"
         direction_text = "Long" if self.direction == "long" else "Short" if self.direction == "short" else "Hold"
 
@@ -108,6 +125,20 @@ class TradeReflection:
         else:
             summary += f"Loss ${abs(self.pnl):.2f} ({self.pnl_percent:.1f}%)"
 
+        # Add market condition context
+        if self.market_condition:
+            condition_emoji = {
+                "trending_up": "📈", "trending_down": "📉", 
+                "ranging": "↔️", "volatile": "⚡", "calm": "😌"
+            }.get(self.market_condition, "")
+            summary += f"\nMarket: {condition_emoji} {self.market_condition}"
+        
+        # Add timing evaluation
+        if self.entry_timing:
+            timing_emoji = {"excellent": "🎯", "good": "👍", "neutral": "➖", "poor": "👎", "terrible": "💀"}.get(self.entry_timing, "")
+            summary += f" | Entry: {timing_emoji} {self.entry_timing}"
+
+        # Add lesson
         if self.lessons_learned:
             summary += f"\nLesson: {self.lessons_learned[0]}"
 
@@ -676,7 +707,7 @@ class ReflectionGenerator:
             prediction, trade_result, prediction_correct
         )
 
-        # Create reflection record
+        # Create reflection record with enhanced structured fields
         return TradeReflection(
             trade_id=prediction.trade_id,
             agent_id=prediction.agent_id,
@@ -691,11 +722,20 @@ class ReflectionGenerator:
             close_reason=close_reason,
             original_prediction=prediction.direction,
             prediction_was_correct=prediction_correct,
+            # Original reflection fields
             reflection_summary=reflection_data.get('summary', ''),
             what_went_well=reflection_data.get('what_went_well', []),
             what_went_wrong=reflection_data.get('what_went_wrong', []),
             lessons_learned=reflection_data.get('lessons_learned', []),
-            next_time_action=reflection_data.get('next_time_action', '')
+            next_time_action=reflection_data.get('next_time_action', ''),
+            # NEW: Enhanced structured fields
+            market_condition=reflection_data.get('market_condition', ''),
+            volatility_level=reflection_data.get('volatility_level', ''),
+            entry_timing=reflection_data.get('entry_timing', ''),
+            exit_timing=reflection_data.get('exit_timing', ''),
+            risk_taken=reflection_data.get('risk_taken', ''),
+            pattern_tags=reflection_data.get('pattern_tags', []),
+            key_indicators_used=reflection_data.get('key_indicators_used', []),
         )
 
     async def _generate_llm_reflection(
@@ -736,25 +776,37 @@ class ReflectionGenerator:
 - Close Reason: {trade_result.get('reason', 'manual')}
 - Holding Duration: {trade_result.get('holding_hours', 0):.1f} hours
 
-## Please Answer the Following Questions
+## Analysis Tasks
 
-1. **Your prediction was {'correct' if prediction_correct else 'incorrect'}** - Why?
+1. **Market Condition Assessment**: What was the market doing during this trade?
+   - Market type: trending_up / trending_down / ranging / volatile / calm
+   - Volatility: high / normal / low
 
-2. **What judgments were correct?** List 1-2 points
+2. **Trade Quality Evaluation**:
+   - Entry timing: excellent / good / neutral / poor / terrible
+   - Exit timing: excellent / good / neutral / poor / terrible
+   - Risk level: appropriate / aggressive / conservative
 
-3. **What judgments were wrong?** List 1-2 points
+3. **Pattern Recognition**: What patterns or setups were involved?
 
-4. **What lessons did you learn?** List 1-2 specific actionable lessons
+4. **Your prediction was {'correct' if prediction_correct else 'incorrect'}** - Why?
 
-5. **What would you do differently next time?** One sentence summary
+5. **What lessons did you learn?** List 1-2 specific actionable lessons
 
-Please respond in JSON format, without markdown code block markers:
+Please respond in JSON format without markdown code block markers:
 {{
-    "summary": "One or two sentences summarizing the reflection",
-    "what_went_well": ["thing done right 1", "thing done right 2"],
-    "what_went_wrong": ["thing done wrong 1", "thing done wrong 2"],
+    "summary": "One sentence summarizing this trade outcome",
+    "market_condition": "trending_up|trending_down|ranging|volatile|calm",
+    "volatility_level": "high|normal|low",
+    "entry_timing": "excellent|good|neutral|poor|terrible",
+    "exit_timing": "excellent|good|neutral|poor|terrible",
+    "risk_taken": "appropriate|aggressive|conservative",
+    "pattern_tags": ["pattern1", "pattern2"],
+    "key_indicators_used": ["indicator1", "indicator2"],
+    "what_went_well": ["thing done right 1"],
+    "what_went_wrong": ["thing done wrong 1"],
     "lessons_learned": ["lesson 1", "lesson 2"],
-    "next_time_action": "One sentence action recommendation for similar situations"
+    "next_time_action": "One sentence action for similar situations"
 }}"""
 
             # Call LLM
@@ -836,7 +888,15 @@ Please respond in JSON format, without markdown code block markers:
             "what_went_well": what_went_well,
             "what_went_wrong": what_went_wrong,
             "lessons_learned": lessons,
-            "next_time_action": next_action
+            "next_time_action": next_action,
+            # NEW: Default structured fields for rule-based fallback
+            "market_condition": "unknown",
+            "volatility_level": "normal",
+            "entry_timing": "neutral" if pnl > 0 else "poor",
+            "exit_timing": "neutral",
+            "risk_taken": "appropriate" if abs(pnl) < 100 else ("aggressive" if pnl < 0 else "appropriate"),
+            "pattern_tags": [],
+            "key_indicators_used": [],
         }
 
 
