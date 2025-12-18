@@ -61,8 +61,11 @@ def create_trading_agents(toolkit=None) -> List[Any]:
             # Pass language='en' for English output (better for LLM understanding)
             agent = registry.create_agent(agent_id, language='en')
             agents.append(agent)
+            logger.info(f"✅ Loaded agent '{agent_id}' -> name='{agent.name}', id='{agent.id}'")
         except Exception as e:
             logger.error(f"Failed to load agent '{agent_id}' from registry: {e}")
+            import traceback
+            traceback.print_exc()
             continue
 
     # Create Leader agent for final decision and execution

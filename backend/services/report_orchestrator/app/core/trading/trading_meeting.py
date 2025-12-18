@@ -424,6 +424,11 @@ Experts, please begin your analysis.
         # Run analysis agents (using agent names from ReWOO agents)
         # Phase 3: Added OnchainAnalyst for on-chain data analysis
         analysis_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "OnchainAnalyst"]
+        
+        # Debug: Log available agents
+        available_agent_ids = [a.id for a in self.agents.values()]
+        print(f"[TradingMeeting] Available agents in self.agents: {available_agent_ids}")
+        print(f"[TradingMeeting] Looking for analysis agents: {analysis_agents}")
 
         # Position context for all analysts
         position_hint = position_context.to_summary()
