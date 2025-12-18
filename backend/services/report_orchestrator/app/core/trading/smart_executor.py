@@ -169,12 +169,84 @@ class SlippageAnalyzer:
 class SlicedExecutor:
     """
     Execute large orders in slices to minimize market impact.
+    
+    Features:
+    - Adaptive slicing based on order size
+    - Real-time volatility monitoring
+    - Automatic pause on volatility spikes
+    - Slippage tracking per slice
     """
     
     def __init__(self, paper_trader=None):
         self.paper_trader = paper_trader
         self.config = get_execution_config()
         self.slippage_analyzer = SlippageAnalyzer()
+        self._last_known_price: Optional[float] = None
+        self._execution_start_price: Optional[float] = None
+    
+    async def _check_volatility_spike(self) -> Dict[str, Any]:
+        """
+        Check for volatility spike during sliced execution.
+        
+        Compares current price to execution start price and last known price
+        to detect sudden market movements.
+        
+        Returns:
+            Dict with volatility analysis and recommended actions
+        """
+        try:
+            from app.core.trading.price_service import get_current_btc_price
+            current_price = await get_current_btc_price()
+        except Exception as e:
+            logger.warning(f"[SmartExecutor] Could not get price for volatility check: {e}")
+            return {"should_pause": False, "should_abort": False}
+        
+        # Initialize reference prices if not set
+        if self._execution_start_price is None:
+            self._execution_start_price = current_price
+        
+        if self._last_known_price is None:
+            self._last_known_price = current_price
+            return {"should_pause": False, "should_abort": False, "volatility_percent": 0}
+        
+        # Calculate price changes
+        change_from_last = abs((current_price - self._last_known_price) / self._last_known_price * 100)
+        change_from_start = abs((current_price - self._execution_start_price) / self._execution_start_price * 100)
+        
+        # Update last known price
+        self._last_known_price = current_price
+        
+        # Determine action based on volatility thresholds
+        volatility_threshold = self.config.volatility_threshold_percent
+        
+        result = {
+            "current_price": current_price,
+            "change_from_last_percent": round(change_from_last, 2),
+            "change_from_start_percent": round(change_from_start, 2),
+            "volatility_percent": round(max(change_from_last, change_from_start / 2), 2),
+            "threshold": volatility_threshold,
+            "should_pause": False,
+            "should_abort": False,
+            "recommended_pause_seconds": 0
+        }
+        
+        # Check if we should pause (moderate volatility)
+        if change_from_last > volatility_threshold * 0.5:
+            result["should_pause"] = True
+            result["recommended_pause_seconds"] = 30 + int(change_from_last * 10)
+            logger.info(
+                f"[SmartExecutor] Volatility warning: {change_from_last:.2f}% change from last check"
+            )
+        
+        # Check if we should abort (severe volatility)
+        if change_from_last > volatility_threshold or change_from_start > volatility_threshold * 2:
+            result["should_abort"] = True
+            logger.warning(
+                f"[SmartExecutor] High volatility: {change_from_last:.2f}% from last, "
+                f"{change_from_start:.2f}% from start"
+            )
+        
+        return result
     
     def generate_slice_amounts(
         self,
@@ -352,8 +424,22 @@ class SlicedExecutor:
                     
                     # Check for volatility spike before continuing
                     if plan.abort_on_volatility:
-                        # TODO: Implement volatility check
-                        pass
+                        volatility_check = await self._check_volatility_spike()
+                        if volatility_check.get("should_pause"):
+                            pause_duration = volatility_check.get("recommended_pause_seconds", 60)
+                            logger.warning(
+                                f"[SmartExecutor] ⚠️ Volatility spike detected! "
+                                f"Pausing {pause_duration}s before continuing"
+                            )
+                            await asyncio.sleep(pause_duration)
+                            
+                            # Re-check after pause
+                            volatility_recheck = await self._check_volatility_spike()
+                            if volatility_recheck.get("should_abort"):
+                                result.status = "aborted"
+                                result.abort_reason = f"Volatility too high: {volatility_recheck.get('volatility_percent', 0):.2f}%"
+                                logger.error(f"[SmartExecutor] ❌ Aborting due to sustained volatility")
+                                break
             
             # Calculate final metrics
             result.total_filled_usdt = total_filled

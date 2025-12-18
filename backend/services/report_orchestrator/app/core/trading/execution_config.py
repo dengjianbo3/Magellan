@@ -88,6 +88,10 @@ class ExecutionConfig:
     max_retry_per_slice: int = field(default_factory=lambda: _get_env_int("EXEC_MAX_RETRY_PER_SLICE", 3))
     retry_delay_seconds: int = field(default_factory=lambda: _get_env_int("EXEC_RETRY_DELAY_SECONDS", 5))
     
+    # Adaptive pause settings (for volatility response)
+    adaptive_pause_min_seconds: int = field(default_factory=lambda: _get_env_int("EXEC_ADAPTIVE_PAUSE_MIN", 30))
+    adaptive_pause_max_seconds: int = field(default_factory=lambda: _get_env_int("EXEC_ADAPTIVE_PAUSE_MAX", 300))
+    
     def get_capital_tier(self, amount_usdt: float) -> CapitalTier:
         """
         Determine capital tier based on order amount.
