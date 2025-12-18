@@ -1,5 +1,6 @@
 # backend/services/web_search_service/app/main.py
 import os
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -44,20 +45,30 @@ app.add_middleware(
 
 # --- Tavily Client ---
 tavily_client = None
+serper_api_key = None  # Serper.dev fallback
 
 @app.on_event("startup")
 def startup_event():
-    global tavily_client
+    global tavily_client, serper_api_key
+    
+    # Initialize Tavily (primary)
     try:
-        # It's recommended to set the API key as an environment variable
         tavily_api_key = os.getenv("TAVILY_API_KEY")
-        if not tavily_api_key:
-            raise ValueError("TAVILY_API_KEY environment variable not set.")
-        tavily_client = TavilyClient(api_key=tavily_api_key)
-        print("Successfully initialized Tavily client.")
+        if tavily_api_key:
+            tavily_client = TavilyClient(api_key=tavily_api_key)
+            print("✅ Successfully initialized Tavily client (primary).")
+        else:
+            print("⚠️ TAVILY_API_KEY not set, will use Serper as primary.")
     except Exception as e:
-        print(f"Failed to initialize Tavily client: {e}")
+        print(f"❌ Failed to initialize Tavily client: {e}")
         tavily_client = None
+    
+    # Initialize Serper (fallback)
+    serper_api_key = os.getenv("SERPER_API_KEY")
+    if serper_api_key:
+        print("✅ Serper.dev API key configured (fallback).")
+    else:
+        print("⚠️ SERPER_API_KEY not set, no fallback search available.")
 
 # --- Helper Functions ---
 def fix_encoding(text: str) -> str:
@@ -75,66 +86,119 @@ def fix_encoding(text: str) -> str:
         # If it fails (e.g. characters not in Latin-1, or not valid UTF-8 bytes), return original
         return text
 
+async def search_with_serper(query: str, max_results: int = 5, topic: str = "general") -> List[Dict[str, Any]]:
+    """
+    Search using Serper.dev API as fallback.
+    """
+    if not serper_api_key:
+        raise ValueError("SERPER_API_KEY not configured")
+    
+    url = "https://google.serper.dev/news" if topic == "news" else "https://google.serper.dev/search"
+    
+    headers = {"X-API-KEY": serper_api_key, "Content-Type": "application/json"}
+    payload = {"q": query, "num": max_results}
+    
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        data = response.json()
+    
+    results = []
+    for item in data.get("organic", [])[:max_results] + data.get("news", [])[:max_results]:
+        results.append({
+            "title": item.get("title", ""),
+            "url": item.get("link", ""),
+            "content": item.get("snippet", ""),
+            "score": 1.0,
+            "published_date": item.get("date")
+        })
+    
+    print(f"[Serper] Found {len(results)} results for: {query}")
+    return results[:max_results]
+
 # --- API Endpoints ---
 @app.post("/search", response_model=SearchResponse, tags=["Search"])
 async def search_endpoint(request: SearchRequest):
-    if not tavily_client:
-        raise HTTPException(status_code=503, detail="Tavily client is not available.")
+    """Search endpoint with automatic Tavily -> Serper fallback."""
+    
+    tavily_error = None
+    
+    # Try Tavily first (primary)
+    if tavily_client:
+        try:
+            search_params = {
+                "query": request.query,
+                "search_depth": "advanced",
+                "max_results": request.max_results,
+                "include_answer": False,
+            }
 
-    try:
-        # Build search parameters
-        search_params = {
-            "query": request.query,
-            "search_depth": "advanced",  # Use advanced for more thorough results
-            "max_results": request.max_results,
-            "include_answer": False,
-        }
+            if request.topic in ["general", "news"]:
+                search_params["topic"] = request.topic
 
-        # Add topic parameter (general or news)
-        if request.topic in ["general", "news"]:
-            search_params["topic"] = request.topic
+            if request.time_range and request.time_range in ["day", "week", "month", "year", "d", "w", "m", "y"]:
+                search_params["time_range"] = request.time_range
 
-        # Add time_range parameter if provided
-        if request.time_range and request.time_range in ["day", "week", "month", "year", "d", "w", "m", "y"]:
-            search_params["time_range"] = request.time_range
+            if request.days and request.topic == "news":
+                search_params["days"] = request.days
 
-        # Add days parameter (only works with topic="news")
-        if request.days and request.topic == "news":
-            search_params["days"] = request.days
+            print(f"[Tavily] Searching: {request.query}", flush=True)
+            response = tavily_client.search(**search_params)
 
-        print(f"[WebSearch] Searching with params: {search_params}", flush=True)
+            results = []
+            for res in response.get("results", []):
+                published_date = res.get("published_date", None)
+                results.append(SearchResult(
+                    title=fix_encoding(res.get("title", "")),
+                    url=res.get("url", ""),
+                    content=fix_encoding(res.get("content", "")),
+                    score=res.get("score", 0.0),
+                    published_date=published_date
+                ))
 
-        # Perform the search
-        response = tavily_client.search(**search_params)
+            # Sort by date
+            results_with_date = [r for r in results if r.published_date]
+            results_without_date = [r for r in results if not r.published_date]
+            results_with_date.sort(key=lambda x: x.published_date or "", reverse=True)
+            sorted_results = results_with_date + results_without_date
 
-        # Format the response with published_date
-        results = []
-        for res in response.get("results", []):
-            # Try to get published_date from the result
-            published_date = res.get("published_date", None)
-
-            results.append(SearchResult(
-                title=fix_encoding(res.get("title", "")),
-                url=res.get("url", ""),
-                content=fix_encoding(res.get("content", "")),
-                score=res.get("score", 0.0),
-                published_date=published_date
-            ))
-
-        # Sort results by date if available (newest first)
-        results_with_date = [r for r in results if r.published_date]
-        results_without_date = [r for r in results if not r.published_date]
-
-        # Sort by date descending
-        results_with_date.sort(key=lambda x: x.published_date or "", reverse=True)
-
-        # Put dated results first, then undated
-        sorted_results = results_with_date + results_without_date
-
-        return SearchResponse(results=sorted_results)
-    except Exception as e:
-        print(f"[WebSearch] Error: {str(e)}", flush=True)
-        raise HTTPException(status_code=500, detail=f"An error occurred during the search: {str(e)}")
+            print(f"[Tavily] ✅ Found {len(sorted_results)} results", flush=True)
+            return SearchResponse(results=sorted_results)
+            
+        except Exception as e:
+            tavily_error = str(e)
+            print(f"[Tavily] ❌ Error: {tavily_error}, falling back to Serper...", flush=True)
+    
+    # Fallback to Serper
+    if serper_api_key:
+        try:
+            print(f"[Serper] Fallback search: {request.query}", flush=True)
+            serper_results = await search_with_serper(
+                query=request.query,
+                max_results=request.max_results,
+                topic=request.topic
+            )
+            
+            results = [
+                SearchResult(
+                    title=r.get("title", ""),
+                    url=r.get("url", ""),
+                    content=r.get("content", ""),
+                    score=r.get("score", 1.0),
+                    published_date=r.get("published_date")
+                )
+                for r in serper_results
+            ]
+            
+            print(f"[Serper] ✅ Found {len(results)} results", flush=True)
+            return SearchResponse(results=results)
+            
+        except Exception as e:
+            print(f"[Serper] ❌ Error: {e}", flush=True)
+            raise HTTPException(status_code=500, detail=f"Both Tavily and Serper failed. Tavily: {tavily_error}, Serper: {e}")
+    
+    # No search providers available
+    raise HTTPException(status_code=503, detail=f"No search providers available. Tavily error: {tavily_error}")
 
 @app.get("/", tags=["Health Check"])
 def read_root():
@@ -308,8 +372,20 @@ async def list_mcp_tools():
 @app.get("/health", tags=["Health Check"])
 def health_check():
     """MCP标准健康检查"""
+    tavily_ok = tavily_client is not None
+    serper_ok = serper_api_key is not None
+    
+    if tavily_ok or serper_ok:
+        status = "ok"
+    else:
+        status = "degraded"
+    
     return {
-        "status": "ok" if tavily_client else "degraded",
+        "status": status,
         "service": "web-search-mcp",
-        "version": "1.0.0"
+        "version": "2.0.0",
+        "providers": {
+            "tavily": "available" if tavily_ok else "unavailable",
+            "serper": "available (fallback)" if serper_ok else "unavailable"
+        }
     }
