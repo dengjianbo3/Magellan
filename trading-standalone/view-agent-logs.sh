@@ -123,7 +123,7 @@ for line in sys.stdin:
             output = f'{YELLOW}{BOLD}{line.strip()}{NC}'
         
         # AGENT names - Blue
-        elif re.search(r'\[(TechnicalAnalyst|MacroEconomist|SentimentAnalyst|QuantStrategist|RiskAssessor|Leader|TradeExecutor)\]', line):
+        elif re.search(r'\[(TechnicalAnalyst|MacroEconomist|SentimentAnalyst|OnchainAnalyst|QuantStrategist|RiskAssessor|Leader|TradeExecutor)\]', line):
             output = f'{BLUE}{line.strip()}{NC}'
         
         # REWOO - Magenta
