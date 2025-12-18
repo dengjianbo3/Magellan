@@ -157,6 +157,36 @@ class AgentMemory:
     current_focus: str = ""       # Current focus points to pay attention to
     common_mistakes: List[str] = field(default_factory=list)  # Common mistakes made
 
+    def get_recent_win_rate(self, n: int = 10) -> float:
+        """
+        Calculate win rate for the most recent N trades.
+        
+        Args:
+            n: Number of recent trades to consider
+            
+        Returns:
+            Win rate between 0.0 and 1.0
+        """
+        if not self.recent_reflections and not self.recent_experiences:
+            return 0.5  # Default to 50% if no history
+        
+        # Get recent trades from reflections (preferred) or experiences
+        recent_trades = []
+        
+        if self.recent_reflections:
+            for ref in self.recent_reflections[-n:]:
+                pnl = ref.get('pnl', 0)
+                recent_trades.append(pnl > 0)
+        elif self.recent_experiences:
+            for exp in self.recent_experiences[-n:]:
+                pnl = exp.get('pnl', 0)
+                recent_trades.append(pnl > 0)
+        
+        if not recent_trades:
+            return 0.5
+        
+        return sum(recent_trades) / len(recent_trades)
+
     def add_trade_result(self, experience: TradeExperience):
         """Add a new trade result and update statistics"""
         self.total_trades += 1

@@ -34,7 +34,8 @@ from app.core.trading.trading_config import TradingMeetingConfig
 from app.core.trading.vote_calculator import (
     calculate_confidence_from_votes,
     calculate_leverage_from_confidence,
-    calculate_amount_from_confidence
+    calculate_amount_from_confidence,
+    DynamicWeightCalculator,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,12 +91,61 @@ class TradingMeeting(Meeting):
         # Track executed tool calls (tool_name, params, result)
         self._last_executed_tools: List[Dict[str, Any]] = []
 
+        # Dynamic agent weight calculator
+        self._weight_calculator = DynamicWeightCalculator()
+        self._agent_weights: Dict[str, float] = {}  # Cache for agent weights
+
         # Record Agent predictions (for reflection after closing position)
         self._current_predictions: Dict[str, Dict[str, Any]] = {}
         self._current_trade_id: Optional[str] = None
 
         # Register position closed callback (for triggering Agent reflection)
         self._register_position_closed_callback()
+
+    async def _calculate_agent_weights(self) -> Dict[str, float]:
+        """
+        Calculate dynamic weights for all voting agents based on their historical performance.
+        
+        Returns:
+            Dict mapping agent_id to weight multiplier
+        """
+        if not self._weight_calculator.config.enabled:
+            logger.info("[Weights] Dynamic weights disabled, using equal weights")
+            return {}
+        
+        weights = {}
+        
+        # Ensure memory store is connected
+        if self._memory_store is None:
+            self._memory_store = AgentMemoryStore()
+            await self._memory_store.connect()
+        
+        # Calculate weight for each voting agent
+        for agent in self.agents:
+            # Skip non-voting agents (Leader, RiskAssessor, TradeExecutor)
+            if agent.id in ['Leader', 'RiskAssessor', 'TradeExecutor']:
+                continue
+            
+            try:
+                memory = await self._memory_store.get_memory(agent.id, agent.name)
+                
+                weight = self._weight_calculator.calculate_weight(
+                    agent_id=agent.id,
+                    overall_win_rate=memory.win_rate,
+                    recent_win_rate=memory.get_recent_win_rate(n=10),
+                    total_trades=memory.total_trades
+                )
+                
+                weights[agent.id] = weight
+                weights[agent.name] = weight  # Also map by name for flexibility
+                
+            except Exception as e:
+                logger.warning(f"[Weights] Error calculating weight for {agent.id}: {e}")
+                weights[agent.id] = 1.0
+        
+        self._agent_weights = weights
+        logger.info(f"[Weights] Calculated weights: {weights}")
+        return weights
 
     def _register_position_closed_callback(self):
         """Register position closed callback for triggering Agent reflection generation"""
@@ -265,6 +315,9 @@ class TradingMeeting(Meeting):
         try:
             # Phase 1: Market Analysis (with position context)
             await self._run_market_analysis_phase(position_context)
+
+            # Calculate dynamic agent weights before voting
+            await self._calculate_agent_weights()
 
             # Phase 2: Signal Generation (collect votes, with position context)
             await self._run_signal_generation_phase(position_context)
@@ -1789,7 +1842,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             if confidence is None:
                 # Use _get_agents_consensus() to get vote dict
                 votes_dict = self._get_agents_consensus() if hasattr(self, '_get_agents_consensus') else {}
-                confidence = calculate_confidence_from_votes(votes_dict, direction='long')
+                confidence = calculate_confidence_from_votes(votes_dict, direction='long', weights=self._agent_weights)
                 logger.info(f"[open_long] confidence not provided, calculated from votes: {confidence}%")
 
             # If leverage not provided, calculate based on confidence
@@ -2079,7 +2132,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             if confidence is None:
                 # Use _get_agents_consensus() to get votes dict
                 votes_dict = self._get_agents_consensus() if hasattr(self, '_get_agents_consensus') else {}
-                confidence = calculate_confidence_from_votes(votes_dict, direction='short')
+                confidence = calculate_confidence_from_votes(votes_dict, direction='short', weights=self._agent_weights)
                 logger.info(f"[open_short] confidence not provided, calculated from votes: {confidence}%")
 
             # If leverage not provided, calculate based on confidence
