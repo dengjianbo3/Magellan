@@ -100,6 +100,10 @@ class OKXTrader:
         self._max_daily_loss_percent: float = 10.0  # 10% daily loss limit
         self._is_trading_halted: bool = False
 
+        # 🆕 Saved TP/SL from Redis for recovery after restart
+        self._saved_tp_price: Optional[float] = None
+        self._saved_sl_price: Optional[float] = None
+
         # Callbacks (compatible with PaperTrader)
         self.on_position_closed: Optional[Callable] = None
         self.on_tp_hit: Optional[Callable] = None
@@ -156,10 +160,18 @@ class OKXTrader:
         logger.info(f"OKX Trader initialized (demo={self.demo_mode})")
 
     async def _sync_position(self):
-        """Sync position from OKX"""
+        """Sync position from OKX, preserving local TP/SL values"""
         try:
+            # Priority for TP/SL: existing position > saved from Redis > OKX API
+            existing_tp = self._position.take_profit_price if self._position else self._saved_tp_price
+            existing_sl = self._position.stop_loss_price if self._position else self._saved_sl_price
+            
             pos = await self._okx_client.get_current_position()
             if pos:
+                # Use OKX TP/SL if available, otherwise keep local/saved values
+                tp_price = pos.take_profit_price if pos.take_profit_price else existing_tp
+                sl_price = pos.stop_loss_price if pos.stop_loss_price else existing_sl
+                
                 self._position = OKXPosition(
                     id=f"okx-{datetime.now().timestamp()}",
                     symbol=pos.symbol,
@@ -168,10 +180,12 @@ class OKXTrader:
                     entry_price=pos.entry_price,
                     leverage=pos.leverage,
                     margin=pos.margin or 0,
+                    take_profit_price=tp_price,  # 🆕 Preserve TP
+                    stop_loss_price=sl_price,   # 🆕 Preserve SL
                     current_price=pos.current_price,
                     unrealized_pnl=pos.unrealized_pnl
                 )
-                logger.info(f"Synced position: {pos.direction} {pos.size} BTC @ ${pos.entry_price}")
+                logger.info(f"Synced position: {pos.direction} {pos.size} BTC @ ${pos.entry_price}, TP=${tp_price}, SL=${sl_price}")
             else:
                 self._position = None
         except Exception as e:
@@ -206,6 +220,19 @@ class OKXTrader:
                 f"{self._key_prefix}equity_history",
                 json.dumps(self._equity_history[-1000:])
             )
+
+            # 🆕 Save position TP/SL for recovery
+            if self._position:
+                position_tp_sl = {
+                    'take_profit_price': self._position.take_profit_price,
+                    'stop_loss_price': self._position.stop_loss_price,
+                    'entry_price': self._position.entry_price,
+                    'direction': self._position.direction
+                }
+                await self._redis.set(
+                    f"{self._key_prefix}position_tp_sl",
+                    json.dumps(position_tp_sl)
+                )
 
             logger.debug("[Redis] State saved successfully")
 
@@ -246,6 +273,14 @@ class OKXTrader:
             if equity_data:
                 self._equity_history = json.loads(equity_data)
                 logger.info(f"[Redis] Loaded {len(self._equity_history)} equity snapshots")
+
+            # 🆕 Load position TP/SL for recovery
+            tp_sl_data = await self._redis.get(f"{self._key_prefix}position_tp_sl")
+            if tp_sl_data:
+                tp_sl_state = json.loads(tp_sl_data)
+                self._saved_tp_price = tp_sl_state.get('take_profit_price')
+                self._saved_sl_price = tp_sl_state.get('stop_loss_price')
+                logger.info(f"[Redis] Loaded saved TP=${self._saved_tp_price}, SL=${self._saved_sl_price}")
 
         except Exception as e:
             logger.error(f"[Redis] Error loading state: {e}")
@@ -405,17 +440,26 @@ class OKXTrader:
         """
         Get current position (PaperTrader compatible)
         
-        Get all data directly from OKX, including liquidation price
+        Get all data directly from OKX, including liquidation price.
+        Preserves local TP/SL values since OKX algo orders may not be set.
         """
         # Get latest position data directly from OKX API
         try:
+            # Save existing TP/SL before updating
+            existing_tp = self._position.take_profit_price if self._position else None
+            existing_sl = self._position.stop_loss_price if self._position else None
+            
             pos = await self._okx_client.get_current_position(symbol)
             
             if not pos:
                 self._position = None
                 return {'has_position': False}
             
-            # Update local cache
+            # Use OKX TP/SL if available, otherwise keep local values
+            tp_price = pos.take_profit_price if pos.take_profit_price else existing_tp
+            sl_price = pos.stop_loss_price if pos.stop_loss_price else existing_sl
+            
+            # Update local cache with preserved TP/SL
             self._position = OKXPosition(
                 id=f"okx-{datetime.now().timestamp()}",
                 symbol=pos.symbol,
@@ -424,6 +468,8 @@ class OKXTrader:
                 entry_price=pos.entry_price,
                 leverage=pos.leverage,
                 margin=pos.margin or 0,
+                take_profit_price=tp_price,  # 🆕 Preserve TP
+                stop_loss_price=sl_price,    # 🆕 Preserve SL
                 current_price=pos.current_price,
                 unrealized_pnl=pos.unrealized_pnl
             )
@@ -443,8 +489,8 @@ class OKXTrader:
                 'position_percent': position_percent,  # Consistent with PaperTrader
                 'unrealized_pnl': pos.unrealized_pnl,
                 'unrealized_pnl_percent': pos.unrealized_pnl_percent,
-                'take_profit_price': pos.take_profit_price,
-                'stop_loss_price': pos.stop_loss_price,
+                'take_profit_price': tp_price,   # 🆕 Return preserved TP
+                'stop_loss_price': sl_price,     # 🆕 Return preserved SL
                 'liquidation_price': pos.liquidation_price,  # Exchange directly returns liquidation price
                 'opened_at': pos.opened_at.isoformat() if pos.opened_at else None
             }
