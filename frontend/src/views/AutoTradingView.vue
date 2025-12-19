@@ -273,7 +273,7 @@
                 <span class="text-primary font-medium text-sm">{{ msg.agentName }}</span>
                 <span class="text-text-secondary text-xs">{{ formatTime(msg.timestamp) }}</span>
               </div>
-              <p class="text-text-secondary text-sm whitespace-pre-wrap">{{ msg.content }}</p>
+              <div class="text-text-secondary text-sm prose prose-sm prose-invert max-w-none" v-html="renderMarkdown(msg.content)"></div>
             </div>
 
             <div v-if="discussionMessages.length === 0" class="text-center py-12 text-text-secondary">
@@ -301,7 +301,7 @@
         </button>
       </div>
 
-      <div class="overflow-x-auto">
+      <div class="max-h-80 overflow-y-auto overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
             <tr class="text-text-secondary border-b border-white/10">
@@ -611,6 +611,13 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useLanguage } from '@/composables/useLanguage.js';
 import Chart from 'chart.js/auto';
+import { marked } from 'marked';
+
+// Configure marked for safe rendering
+marked.setOptions({
+  breaks: true,
+  gfm: true
+});
 
 const { t } = useLanguage();
 
@@ -710,6 +717,17 @@ const intervalText = computed(() => {
 function formatNumber(num) {
   if (num === undefined || num === null) return '0.00';
   return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Render markdown content to HTML
+function renderMarkdown(content) {
+  if (!content) return '';
+  try {
+    return marked(content);
+  } catch (e) {
+    console.error('Error rendering markdown:', e);
+    return content;
+  }
 }
 
 function formatDate(timestamp) {
