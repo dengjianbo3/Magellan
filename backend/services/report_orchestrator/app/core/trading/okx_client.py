@@ -382,8 +382,9 @@ class OKXClient:
                     # Get OKX calculated real max available size
                     max_avail_size = await self.get_max_avail_size()
 
-                    # 🆕 Calculate equity manually: available + used_margin + unrealized_pnl
-                    # This is more reliable than OKX demo mode's totalEq
+                    # 🆕 Calculate equity manually for debugging: available + used_margin + unrealized_pnl
+                    # Note: In OKX demo mode, totalEq includes all assets (BTC, ETH, etc.), 
+                    # while our calculation only captures USDT balance
                     calculated_equity = usdt_balance + frozen_balance + unrealized_pnl
                     
                     # Log: record account status with both values for comparison
@@ -394,12 +395,12 @@ class OKXClient:
                         f"calculatedEq=${calculated_equity:.2f}"
                     )
                     
-                    # Use calculated_equity if totalEq seems off (e.g. doesn't include positions)
-                    # totalEq should roughly equal calculated_equity when account is stable
-                    effective_equity = calculated_equity if calculated_equity > 0 else total_equity
+                    # Use totalEq from OKX as it includes all assets (not just USDT)
+                    # calculated_equity is kept for debugging but not used as primary
+                    # OKX demo accounts may have BTC/ETH that aren't captured in USDT calculations
 
                     return AccountBalance(
-                        total_equity=effective_equity,  # Use the more reliable value
+                        total_equity=total_equity,  # Use OKX's totalEq which includes all assets
                         available_balance=usdt_balance,
                         used_margin=frozen_balance,  # Use frozen balance as used margin
                         unrealized_pnl=unrealized_pnl,
