@@ -474,6 +474,15 @@ class OKXClient:
 
                             # Get TP/SL prices
                             tp_price, sl_price = await self._get_tp_sl_prices(symbol, side)
+                            
+                            # Fix: Calculate margin from position value / leverage
+                            # OKX returns margin=0 for cross margin mode
+                            position_value = abs(pos_amt) * entry_price
+                            calculated_margin = position_value / leverage if leverage > 0 else position_value
+                            actual_margin = margin if margin > 0 else calculated_margin
+                            
+                            # Calculate PnL percent using actual margin
+                            pnl_percent = (upl / actual_margin * 100) if actual_margin > 0 else 0
 
                             return Position(
                                 symbol=symbol,
@@ -483,8 +492,8 @@ class OKXClient:
                                 current_price=mark_price,
                                 leverage=leverage,
                                 unrealized_pnl=upl,
-                                unrealized_pnl_percent=(upl / margin * 100) if margin > 0 else 0,
-                                margin=margin,
+                                unrealized_pnl_percent=pnl_percent,
+                                margin=actual_margin,  # Use calculated margin
                                 liquidation_price=liq_price,
                                 take_profit_price=tp_price,
                                 stop_loss_price=sl_price,
