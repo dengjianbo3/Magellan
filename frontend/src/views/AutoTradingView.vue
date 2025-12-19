@@ -652,6 +652,7 @@ const agents = ref([
   { id: 'technical-analyst', name: '技术分析师', role: '技术面', icon: 'candlestick_chart', winRate: 0.65 },
   { id: 'macro-economist', name: '宏观分析师', role: '宏观面', icon: 'public', winRate: 0.58 },
   { id: 'sentiment-analyst', name: '情绪分析师', role: '情绪面', icon: 'psychology', winRate: 0.62 },
+  { id: 'onchain-analyst', name: '链上分析师', role: '链上数据', icon: 'link', winRate: 0.60 },
   { id: 'risk-manager', name: '风险管理', role: '风控', icon: 'shield', winRate: 0.70 },
   { id: 'quant-strategist', name: '量化策略', role: '量化', icon: 'analytics', winRate: 0.55 },
   { id: 'trading-executor', name: '交易执行', role: '执行', icon: 'play_arrow', winRate: 0 },
