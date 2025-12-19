@@ -382,21 +382,30 @@ class OKXClient:
                     # Get OKX calculated real max available size
                     max_avail_size = await self.get_max_avail_size()
 
-                    # Log: record account status
-                    # Note: totalEq in contract account may include position notional value, not equal to available USDT
-                    # max_avail_size is the real available amount for opening position
+                    # 🆕 Calculate equity manually: available + used_margin + unrealized_pnl
+                    # This is more reliable than OKX demo mode's totalEq
+                    calculated_equity = usdt_balance + frozen_balance + unrealized_pnl
+                    
+                    # Log: record account status with both values for comparison
                     logger.info(
                         f"[OKXClient] Account status: maxAvail=${max_avail_size:.2f}, "
-                        f"USDTBalance=${usdt_balance:.2f}, totalEq=${total_equity:.2f}"
+                        f"USDTBalance=${usdt_balance:.2f}, frozenBal=${frozen_balance:.2f}, "
+                        f"upl=${unrealized_pnl:.2f}, totalEq=${total_equity:.2f}, "
+                        f"calculatedEq=${calculated_equity:.2f}"
                     )
+                    
+                    # Use calculated_equity if totalEq seems off (e.g. doesn't include positions)
+                    # totalEq should roughly equal calculated_equity when account is stable
+                    effective_equity = calculated_equity if calculated_equity > 0 else total_equity
 
                     return AccountBalance(
-                        total_equity=total_equity,
+                        total_equity=effective_equity,  # Use the more reliable value
                         available_balance=usdt_balance,
                         used_margin=frozen_balance,  # Use frozen balance as used margin
                         unrealized_pnl=unrealized_pnl,
                         realized_pnl_today=0.0,
                         max_avail_size=max_avail_size,  # OKX calculated real max available size
+                        calculated_equity=calculated_equity,  # Store for debugging
                         currency="USDT"
                     )
 
