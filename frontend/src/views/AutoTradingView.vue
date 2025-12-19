@@ -117,11 +117,11 @@
                 </div>
                 <div>
                   <span class="text-text-secondary block">{{ t('trading.takeProfit') || 'Take Profit' }}</span>
-                  <span class="text-emerald-400">${{ formatNumber(position.takeProfitPrice) }}</span>
+                  <span class="text-emerald-400">{{ position.takeProfitPrice > 0 ? '$' + formatNumber(position.takeProfitPrice) : (t('trading.notSet') || '未设置') }}</span>
                 </div>
                 <div>
                   <span class="text-text-secondary block">{{ t('trading.stopLoss') || 'Stop Loss' }}</span>
-                  <span class="text-red-400">${{ formatNumber(position.stopLossPrice) }}</span>
+                  <span class="text-red-400">{{ position.stopLossPrice > 0 ? '$' + formatNumber(position.stopLossPrice) : (t('trading.notSet') || '未设置') }}</span>
                 </div>
               </div>
 
