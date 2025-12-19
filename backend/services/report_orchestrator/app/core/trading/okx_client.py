@@ -382,31 +382,32 @@ class OKXClient:
                     # Get OKX calculated real max available size
                     max_avail_size = await self.get_max_avail_size()
 
-                    # 🆕 Calculate equity manually for debugging: available + used_margin + unrealized_pnl
-                    # Note: In OKX demo mode, totalEq includes all assets (BTC, ETH, etc.), 
-                    # while our calculation only captures USDT balance
-                    calculated_equity = usdt_balance + frozen_balance + unrealized_pnl
+                    # 🆕 Calculate trading-specific equity: USDT balance + position value
+                    # This is what we WANT for tracking BTC-USDT trading performance:
+                    # - usdt_balance: Available USDT for trading
+                    # - frozen_balance: USDT used as margin in positions
+                    # - unrealized_pnl: Current profit/loss of open positions
+                    # 
+                    # OKX's totalEq includes ALL assets (BTC, ETH, etc.) which doesn't 
+                    # reflect our trading performance - only this pair matters
+                    trading_equity = usdt_balance + frozen_balance + unrealized_pnl
                     
                     # Log: record account status with both values for comparison
                     logger.info(
                         f"[OKXClient] Account status: maxAvail=${max_avail_size:.2f}, "
                         f"USDTBalance=${usdt_balance:.2f}, frozenBal=${frozen_balance:.2f}, "
-                        f"upl=${unrealized_pnl:.2f}, totalEq=${total_equity:.2f}, "
-                        f"calculatedEq=${calculated_equity:.2f}"
+                        f"upl=${unrealized_pnl:.2f}, totalEq(全资产)=${total_equity:.2f}, "
+                        f"tradingEq(交易权益)=${trading_equity:.2f}"
                     )
-                    
-                    # Use totalEq from OKX as it includes all assets (not just USDT)
-                    # calculated_equity is kept for debugging but not used as primary
-                    # OKX demo accounts may have BTC/ETH that aren't captured in USDT calculations
 
                     return AccountBalance(
-                        total_equity=total_equity,  # Use OKX's totalEq which includes all assets
+                        total_equity=trading_equity,  # 🔑 Use trading-specific equity
                         available_balance=usdt_balance,
-                        used_margin=frozen_balance,  # Use frozen balance as used margin
+                        used_margin=frozen_balance,  # USDT margin in positions
                         unrealized_pnl=unrealized_pnl,
                         realized_pnl_today=0.0,
                         max_avail_size=max_avail_size,  # OKX calculated real max available size
-                        calculated_equity=calculated_equity,  # Store for debugging
+                        calculated_equity=trading_equity,  # Same as total_equity now
                         currency="USDT"
                     )
 
