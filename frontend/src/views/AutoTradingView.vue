@@ -135,7 +135,7 @@
                     ]"
                   >
                     {{ position.unrealizedPnl >= 0 ? '+' : '' }}${{ formatNumber(position.unrealizedPnl) }}
-                    <span class="text-sm">({{ position.unrealizedPnlPercent.toFixed(2) }}%)</span>
+                    <span class="text-sm">({{ calculatePnlPercent(position.unrealizedPnl).toFixed(2) }}%)</span>
                   </span>
                 </div>
               </div>
@@ -700,6 +700,15 @@ const intervalText = computed(() => {
 function formatNumber(num) {
   if (num === undefined || num === null) return '0.00';
   return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Calculate PnL percent based on total equity (return on capital)
+// PnL% = unrealizedPnl / (totalEquity - unrealizedPnl) * 100
+function calculatePnlPercent(unrealizedPnl) {
+  const totalEquity = account.value.totalEquity || 0;
+  const initialEquity = totalEquity - (unrealizedPnl || 0);
+  if (initialEquity <= 0) return 0;
+  return (unrealizedPnl / initialEquity) * 100;
 }
 
 // Render markdown content to HTML
