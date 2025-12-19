@@ -80,23 +80,6 @@
                 {{ account.unrealizedPnl >= 0 ? '+' : '' }}${{ formatNumber(account.unrealizedPnl) }}
               </span>
             </div>
-
-            <!-- PnL Progress -->
-            <div class="pt-2 border-t border-white/10">
-              <div class="flex justify-between text-sm mb-1">
-                <span class="text-text-secondary">{{ t('trading.totalPnl') || 'Total P&L' }}</span>
-                <span :class="totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'">
-                  {{ totalPnl >= 0 ? '+' : '' }}{{ totalPnlPercent.toFixed(2) }}%
-                </span>
-              </div>
-              <div class="h-2 bg-white/10 rounded-full overflow-hidden">
-                <div
-                  class="h-full transition-all duration-500"
-                  :class="totalPnl >= 0 ? 'bg-gradient-to-r from-emerald-500 to-teal-500' : 'bg-gradient-to-r from-red-500 to-orange-500'"
-                  :style="{ width: Math.min(Math.abs(totalPnlPercent), 100) + '%' }"
-                ></div>
-              </div>
-            </div>
           </div>
         </div>
 
