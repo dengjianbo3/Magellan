@@ -27,7 +27,9 @@ export default {
     starting: '启动中...',
     min: '分',
     sec: '秒',
-    optional: '可选'
+    optional: '可选',
+    refresh: '刷新',
+    triggerNow: '立即触发'
   },
 
   // Authentication
