@@ -63,13 +63,23 @@ services:
         condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     env_file:
-      - .env  # Load OKX and other credentials from .env
+      - .env # Load OKX and other credentials from .env
     environment:
       - PUBLIC_DATA_URL=http://external_data_service:8006
       - LLM_GATEWAY_URL=http://llm_gateway:8003
       - USER_SERVICE_URL=http://user_service:8008
       - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - PYTHONUNBUFFERED=1
+      # Trading system config (can be overridden in .env)
+      - SCHEDULER_INTERVAL_HOURS=${SCHEDULER_INTERVAL_HOURS:-4}
+      - TRADING_SYMBOL=${TRADING_SYMBOL:-BTC-USDT-SWAP}
+      - USE_OKX_TRADING=${USE_OKX_TRADING:-true}
+      - OKX_DEMO_MODE=${OKX_DEMO_MODE:-true}
+      - MAX_LEVERAGE=${MAX_LEVERAGE:-20}
+      - MAX_POSITION_PERCENT=${MAX_POSITION_PERCENT:-30}
+      - MIN_CONFIDENCE=${MIN_CONFIDENCE:-60}
 
   # Service for managing user personas
   user_service:
@@ -135,7 +145,7 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes --appendfsync everysec
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -154,8 +164,8 @@ services:
     image: qdrant/qdrant:latest
     container_name: magellan-qdrant
     ports:
-      - "6333:6333"  # HTTP API
-      - "6334:6334"  # gRPC API
+      - "6333:6333" # HTTP API
+      - "6334:6334" # gRPC API
     volumes:
       - qdrant_storage:/qdrant/storage
     environment:
@@ -180,7 +190,7 @@ services:
     networks:
       - default
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      test: [ "CMD", "nc", "-z", "localhost", "2181" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -206,14 +216,14 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_LOG_RETENTION_HOURS: 168  # 7 days
-      KAFKA_LOG_RETENTION_BYTES: 10737418240  # 10GB
+      KAFKA_LOG_RETENTION_HOURS: 168 # 7 days
+      KAFKA_LOG_RETENTION_BYTES: 10737418240 # 10GB
     volumes:
       - kafka_data:/var/lib/kafka/data
     networks:
       - default
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      test: [ "CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092" ]
       interval: 10s
       timeout: 10s
       retries: 10
@@ -250,7 +260,7 @@ services:
     networks:
       - default
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U magellan"]
+      test: [ "CMD-SHELL", "pg_isready -U magellan" ]
       interval: 10s
       timeout: 5s
       retries: 5
