@@ -734,9 +734,11 @@ class OKXClient:
 
     async def _set_tp_sl(self, symbol: str, pos_side: str, tp_price: Optional[float], sl_price: Optional[float]):
         """Set take-profit and stop-loss orders"""
+        logger.info(f"[OKXClient] Setting TP/SL for {pos_side}: TP=${tp_price}, SL=${sl_price}")
+        
         try:
             if tp_price:
-                await self._request('POST', '/api/v5/trade/order-algo', {
+                result = await self._request('POST', '/api/v5/trade/order-algo', {
                     'instId': symbol,
                     'tdMode': 'cross',
                     'side': 'sell' if pos_side == 'long' else 'buy',
@@ -746,9 +748,13 @@ class OKXClient:
                     'tpTriggerPx': str(tp_price),
                     'tpOrdPx': '-1'  # Market price
                 })
+                if result.get('code') == '0':
+                    logger.info(f"[OKXClient] ✅ Take Profit set at ${tp_price:.2f}")
+                else:
+                    logger.error(f"[OKXClient] ❌ Failed to set TP: {result.get('msg')}")
 
             if sl_price:
-                await self._request('POST', '/api/v5/trade/order-algo', {
+                result = await self._request('POST', '/api/v5/trade/order-algo', {
                     'instId': symbol,
                     'tdMode': 'cross',
                     'side': 'sell' if pos_side == 'long' else 'buy',
@@ -758,6 +764,10 @@ class OKXClient:
                     'slTriggerPx': str(sl_price),
                     'slOrdPx': '-1'
                 })
+                if result.get('code') == '0':
+                    logger.info(f"[OKXClient] ✅ Stop Loss set at ${sl_price:.2f}")
+                else:
+                    logger.error(f"[OKXClient] ❌ Failed to set SL: {result.get('msg')}")
 
         except Exception as e:
             logger.error(f"Error setting TP/SL: {e}")
