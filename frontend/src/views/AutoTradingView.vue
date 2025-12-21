@@ -162,6 +162,57 @@
           </template>
         </div>
 
+        <!-- Maximum Drawdown Card -->
+        <div class="glass-panel rounded-xl p-6">
+          <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
+            <span class="material-symbols-outlined mr-2 text-red-400">trending_down</span>
+            {{ t('trading.maxDrawdown') || 'Maximum Drawdown' }}
+          </h3>
+
+          <div class="space-y-3">
+            <div class="flex justify-between items-center">
+              <span class="text-text-secondary text-sm">{{ t('trading.startDate') || 'Start Date' }}</span>
+              <input
+                type="date"
+                v-model="drawdownStartDate"
+                @change="fetchDrawdown"
+                class="bg-white/10 border border-white/20 rounded px-2 py-1 text-white text-sm"
+              />
+            </div>
+
+            <div class="flex justify-between items-center">
+              <span class="text-text-secondary">{{ t('trading.maxDrawdownPct') || 'Max Drawdown' }}</span>
+              <span class="text-red-400 font-medium">
+                -{{ drawdown.maxDrawdownPct?.toFixed(2) || 0 }}% (${{ formatNumber(drawdown.maxDrawdownUsd || 0) }})
+              </span>
+            </div>
+
+            <div class="flex justify-between items-center">
+              <span class="text-text-secondary">{{ t('trading.currentDrawdown') || 'Current Drawdown' }}</span>
+              <span :class="drawdown.currentDrawdownPct > 0 ? 'text-red-400' : 'text-text-secondary'">
+                -{{ drawdown.currentDrawdownPct?.toFixed(2) || 0 }}%
+              </span>
+            </div>
+
+            <div class="flex justify-between items-center">
+              <span class="text-text-secondary">{{ t('trading.peakEquity') || 'Peak Equity' }}</span>
+              <span class="text-white">${{ formatNumber(drawdown.peakEquity || 0) }}</span>
+            </div>
+
+            <div class="flex justify-between items-center">
+              <span class="text-text-secondary">{{ t('trading.recovery') || 'Recovery' }}</span>
+              <span :class="drawdown.recoveryPct >= 100 ? 'text-emerald-400' : 'text-yellow-400'">
+                {{ drawdown.recoveryPct?.toFixed(1) || 0 }}%
+              </span>
+            </div>
+
+            <div class="flex justify-between items-center text-xs text-text-secondary pt-2 border-t border-white/10">
+              <span>Trades Analyzed</span>
+              <span>{{ drawdown.tradesAnalyzed || 0 }}</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Next Analysis Countdown -->
         <div class="glass-panel rounded-xl p-6">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
@@ -293,6 +344,8 @@
               <th class="text-left py-3 px-4">{{ t('trading.direction') || 'Direction' }}</th>
               <th class="text-right py-3 px-4">{{ t('trading.leverage') || 'Leverage' }}</th>
               <th class="text-right py-3 px-4">{{ t('trading.entry') || 'Entry' }}</th>
+              <th class="text-right py-3 px-4 text-emerald-400">TP</th>
+              <th class="text-right py-3 px-4 text-red-400">SL</th>
               <th class="text-right py-3 px-4">{{ t('trading.exit') || 'Exit' }}</th>
               <th class="text-right py-3 px-4">{{ t('trading.pnl') || 'P&L' }}</th>
             </tr>
@@ -330,6 +383,14 @@
               </td>
               <td class="py-3 px-4 text-right text-white">{{ trade.leverage }}x</td>
               <td class="py-3 px-4 text-right text-white">${{ formatNumber(trade.entryPrice) }}</td>
+              <td class="py-3 px-4 text-right text-emerald-400">
+                <template v-if="trade.takeProfit">${{ formatNumber(trade.takeProfit) }}</template>
+                <template v-else><span class="text-text-secondary">-</span></template>
+              </td>
+              <td class="py-3 px-4 text-right text-red-400">
+                <template v-if="trade.stopLoss">${{ formatNumber(trade.stopLoss) }}</template>
+                <template v-else><span class="text-text-secondary">-</span></template>
+              </td>
               <td class="py-3 px-4 text-right text-white">
                 <template v-if="trade.exitPrice !== null">
                   ${{ formatNumber(trade.exitPrice) }}
@@ -669,6 +730,19 @@ const settingsForm = ref({
 });
 const loadingConfig = ref(false);
 
+// Drawdown data
+const drawdownStartDate = ref('');
+const drawdown = ref({
+  maxDrawdownPct: 0,
+  maxDrawdownUsd: 0,
+  currentDrawdownPct: 0,
+  peakEquity: 0,
+  troughEquity: 0,
+  currentEquity: 0,
+  recoveryPct: 100,
+  tradesAnalyzed: 0
+});
+
 // WebSocket
 let ws = null;
 let countdownInterval = null;
@@ -796,6 +870,28 @@ async function fetchEquityHistory() {
   }
 }
 
+async function fetchDrawdown() {
+  try {
+    const endpoint = drawdownStartDate.value
+      ? `/api/trading/drawdown?start_date=${drawdownStartDate.value}`
+      : '/api/trading/drawdown';
+    const response = await fetch(endpoint);
+    const data = await response.json();
+    drawdown.value = {
+      maxDrawdownPct: data.max_drawdown_pct || 0,
+      maxDrawdownUsd: data.max_drawdown_usd || 0,
+      currentDrawdownPct: data.current_drawdown_pct || 0,
+      peakEquity: data.peak_equity || 0,
+      troughEquity: data.trough_equity || 0,
+      currentEquity: data.current_equity || 0,
+      recoveryPct: data.recovery_pct || 100,
+      tradesAnalyzed: data.trades_analyzed || 0
+    };
+  } catch (e) {
+    console.error('Error fetching drawdown:', e);
+  }
+}
+
 async function fetchTradeHistory() {
   try {
     const response = await fetch('/api/trading/history?limit=50');
@@ -813,6 +909,8 @@ async function fetchTradeHistory() {
           leverage: t.signal?.leverage || t.leverage || 1,
           entryPrice: t.signal?.entry_price || t.entry_price || 0,
           exitPrice: t.closed_price || t.exit_price || 0,
+          takeProfit: t.signal?.take_profit_price || t.take_profit_price || 0,
+          stopLoss: t.signal?.stop_loss_price || t.stop_loss_price || 0,
           pnl: t.pnl || 0,
           status: 'closed'
         });
@@ -829,6 +927,8 @@ async function fetchTradeHistory() {
             direction: s.signal?.direction || 'unknown',
             leverage: s.signal?.leverage || s.trade_result?.leverage || 1,
             entryPrice: s.trade_result?.executed_price || s.signal?.entry_price || 0,
+            takeProfit: s.trade_result?.take_profit || s.signal?.take_profit_price || 0,
+            stopLoss: s.trade_result?.stop_loss || s.signal?.stop_loss_price || 0,
             exitPrice: null,  // Not yet closed
             pnl: null,  // PnL not realized yet
             status: 'open'
@@ -1326,7 +1426,8 @@ onMounted(async () => {
     fetchEquityHistory(),
     fetchTradeHistory(),
     fetchAgentPerformance(),
-    fetchDiscussionMessages()  // Restore discussion messages on page load
+    fetchDiscussionMessages(),  // Restore discussion messages on page load
+    fetchDrawdown()  // Fetch drawdown data
   ]);
 
   initEquityChart();

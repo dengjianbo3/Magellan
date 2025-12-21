@@ -187,6 +187,20 @@ export const AGENTS_CONFIG = [
     avgResponse: '3.2s'
   },
   {
+    id: 'onchain-analyst',
+    name: 'Onchain Analyst',
+    name_zh: '链上分析师',
+    role: 'Onchain Analysis',
+    role_zh: '链上分析',
+    icon: 'link',
+    description: 'Analyzes blockchain on-chain data including whale wallet movements, exchange fund flows, DeFi TVL changes, and smart money flows.',
+    description_zh: '分析区块链链上数据，包括巨鲸地址动向、交易所资金流向、DeFi协议TVL变化和智能货币流动',
+    capabilities: ['Whale Tracking', 'Exchange Flows', 'DeFi TVL', 'Smart Money'],
+    status: 'active',
+    analysisCount: 0,
+    avgResponse: '2.5s'
+  },
+  {
     id: 'leader',
     name: 'Discussion Leader',
     name_zh: '讨论主持人',

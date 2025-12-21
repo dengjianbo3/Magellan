@@ -775,6 +775,94 @@ class PaperTrader(BaseTrader):
             "realized_pnl": self._account.realized_pnl
         }
 
+    def calculate_max_drawdown(self, start_date: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Calculate maximum drawdown from trade history.
+        
+        Args:
+            start_date: Optional start date in ISO format (YYYY-MM-DD).
+        
+        Returns:
+            Dict with drawdown metrics
+        """
+        # Use trade records
+        trades = [t.to_dict() for t in self._trades]
+        
+        if start_date:
+            try:
+                filter_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                trades = [
+                    t for t in trades 
+                    if datetime.fromisoformat(t.get('closed_at', '2000-01-01').replace('Z', '+00:00')) >= filter_date
+                ]
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid start_date format: {start_date}, using all trades. Error: {e}")
+        
+        if not trades:
+            return {
+                'max_drawdown_pct': 0.0,
+                'max_drawdown_usd': 0.0,
+                'peak_equity': self.initial_balance,
+                'trough_equity': self.initial_balance,
+                'current_equity': self._account.total_equity,
+                'current_drawdown_pct': 0.0,
+                'recovery_pct': 100.0,
+                'start_date': start_date,
+                'trades_analyzed': 0
+            }
+        
+        # Calculate cumulative equity curve
+        equity_curve = [self.initial_balance]
+        running_equity = self.initial_balance
+        
+        for trade in trades:
+            pnl = trade.get('pnl', 0)
+            running_equity += pnl
+            equity_curve.append(running_equity)
+        
+        # Calculate max drawdown
+        peak = equity_curve[0]
+        max_drawdown = 0.0
+        max_drawdown_pct = 0.0
+        peak_at_max_dd = peak
+        trough_at_max_dd = peak
+        
+        for equity in equity_curve:
+            if equity > peak:
+                peak = equity
+            
+            drawdown = peak - equity
+            drawdown_pct = (drawdown / peak * 100) if peak > 0 else 0
+            
+            if drawdown_pct > max_drawdown_pct:
+                max_drawdown_pct = drawdown_pct
+                max_drawdown = drawdown
+                peak_at_max_dd = peak
+                trough_at_max_dd = equity
+        
+        # Current state
+        current_equity = equity_curve[-1]
+        current_peak = max(equity_curve)
+        current_drawdown_pct = ((current_peak - current_equity) / current_peak * 100) if current_peak > 0 else 0
+        
+        # Recovery
+        if max_drawdown > 0:
+            recovery_pct = min(100.0, ((current_equity - trough_at_max_dd) / max_drawdown * 100))
+        else:
+            recovery_pct = 100.0
+        
+        return {
+            'max_drawdown_pct': round(max_drawdown_pct, 2),
+            'max_drawdown_usd': round(max_drawdown, 2),
+            'peak_equity': round(peak_at_max_dd, 2),
+            'trough_equity': round(trough_at_max_dd, 2),
+            'current_equity': round(current_equity, 2),
+            'current_drawdown_pct': round(current_drawdown_pct, 2),
+            'recovery_pct': round(max(0, min(100, recovery_pct)), 2),
+            'start_date': start_date,
+            'trades_analyzed': len(trades)
+        }
+
 
 # Singleton
 _paper_trader: Optional[PaperTrader] = None

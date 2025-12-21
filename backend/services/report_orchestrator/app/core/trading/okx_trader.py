@@ -928,6 +928,102 @@ class OKXTrader:
         
         logger.info("OKX trader reset complete")
 
+    def calculate_max_drawdown(self, start_date: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Calculate maximum drawdown from trade history.
+        
+        Args:
+            start_date: Optional start date in ISO format (YYYY-MM-DD). 
+                       If provided, only trades after this date are considered.
+        
+        Returns:
+            Dict with drawdown metrics:
+            - max_drawdown_pct: Maximum drawdown percentage
+            - max_drawdown_usd: Maximum drawdown in USD
+            - peak_equity: Peak equity value
+            - trough_equity: Trough equity value
+            - current_drawdown_pct: Current drawdown from peak
+            - recovery_pct: Recovery percentage from trough
+            - start_date: Start date used for calculation
+            - trades_analyzed: Number of trades analyzed
+        """
+        # Filter trades by date if provided
+        trades = self._trade_history
+        if start_date:
+            try:
+                filter_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                trades = [
+                    t for t in self._trade_history 
+                    if datetime.fromisoformat(t.get('closed_at', t.get('timestamp', '2000-01-01')).replace('Z', '+00:00')) >= filter_date
+                ]
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid start_date format: {start_date}, using all trades. Error: {e}")
+        
+        if not trades:
+            return {
+                'max_drawdown_pct': 0.0,
+                'max_drawdown_usd': 0.0,
+                'peak_equity': self.initial_balance,
+                'trough_equity': self.initial_balance,
+                'current_drawdown_pct': 0.0,
+                'recovery_pct': 100.0,
+                'start_date': start_date,
+                'trades_analyzed': 0
+            }
+        
+        # Calculate cumulative equity curve
+        equity_curve = [self.initial_balance]
+        running_equity = self.initial_balance
+        
+        for trade in trades:
+            pnl = trade.get('pnl', 0)
+            running_equity += pnl
+            equity_curve.append(running_equity)
+        
+        # Calculate max drawdown
+        peak = equity_curve[0]
+        max_drawdown = 0.0
+        max_drawdown_pct = 0.0
+        trough = peak
+        peak_at_max_dd = peak
+        trough_at_max_dd = peak
+        
+        for equity in equity_curve:
+            if equity > peak:
+                peak = equity
+            
+            drawdown = peak - equity
+            drawdown_pct = (drawdown / peak * 100) if peak > 0 else 0
+            
+            if drawdown_pct > max_drawdown_pct:
+                max_drawdown_pct = drawdown_pct
+                max_drawdown = drawdown
+                peak_at_max_dd = peak
+                trough_at_max_dd = equity
+        
+        # Current drawdown from current peak
+        current_equity = equity_curve[-1]
+        current_peak = max(equity_curve)
+        current_drawdown_pct = ((current_peak - current_equity) / current_peak * 100) if current_peak > 0 else 0
+        
+        # Recovery percentage (how much recovered from max trough)
+        if max_drawdown > 0:
+            recovery_pct = min(100.0, ((current_equity - trough_at_max_dd) / max_drawdown * 100)) if max_drawdown > 0 else 100.0
+        else:
+            recovery_pct = 100.0
+        
+        return {
+            'max_drawdown_pct': round(max_drawdown_pct, 2),
+            'max_drawdown_usd': round(max_drawdown, 2),
+            'peak_equity': round(peak_at_max_dd, 2),
+            'trough_equity': round(trough_at_max_dd, 2),
+            'current_equity': round(current_equity, 2),
+            'current_drawdown_pct': round(current_drawdown_pct, 2),
+            'recovery_pct': round(max(0, min(100, recovery_pct)), 2),
+            'start_date': start_date,
+            'trades_analyzed': len(trades)
+        }
+
 
 # Singleton
 _okx_trader: Optional[OKXTrader] = None

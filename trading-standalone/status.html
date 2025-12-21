@@ -629,11 +629,19 @@
             content.innerHTML = '<div class="loading">Loading...</div>';
 
             try {
-                const [status, account, position, history] = await Promise.all([
+                // Get drawdown start date from input (if exists)
+                const drawdownStartInput = document.getElementById('drawdownStartDate');
+                const drawdownStartDate = drawdownStartInput?.value || '';
+                const drawdownEndpoint = drawdownStartDate
+                    ? `drawdown?start_date=${drawdownStartDate}`
+                    : 'drawdown';
+
+                const [status, account, position, history, drawdown] = await Promise.all([
                     fetchData('status'),
                     fetchData('account'),
                     fetchData('position'),
-                    fetchData('history?limit=5')
+                    fetchData('history?limit=5'),
+                    fetchData(drawdownEndpoint)
                 ]);
 
                 if (!status) {
@@ -688,6 +696,50 @@
                             <div class="row">
                                 <span class="label">Equity</span>
                                 <span class="value">$${formatNumber(equity)}</span>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Maximum Drawdown
+                if (drawdown) {
+                    const maxDd = drawdown.max_drawdown_pct || 0;
+                    const maxDdUsd = drawdown.max_drawdown_usd || 0;
+                    const currentDd = drawdown.current_drawdown_pct || 0;
+                    const tradesAnalyzed = drawdown.trades_analyzed || 0;
+                    const currentStartDate = drawdown.start_date || '';
+
+                    html += `
+                        <div class="card">
+                            <div class="card-title">📉 Maximum Drawdown</div>
+                            <div class="row">
+                                <span class="label">Start Date</span>
+                                <span class="value">
+                                    <input type="date" id="drawdownStartDate" 
+                                           value="${currentStartDate}" 
+                                           onchange="refresh()"
+                                           style="background: #1e293b; border: 1px solid #334; color: #eee; padding: 4px 8px; border-radius: 4px;">
+                                </span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Max Drawdown</span>
+                                <span class="value negative">${maxDd.toFixed(2)}% ($${formatNumber(maxDdUsd)})</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Current Drawdown</span>
+                                <span class="value ${currentDd > 0 ? 'negative' : ''}">${currentDd.toFixed(2)}%</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Peak Equity</span>
+                                <span class="value">$${formatNumber(drawdown.peak_equity)}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Recovery</span>
+                                <span class="value ${drawdown.recovery_pct >= 100 ? 'positive' : 'neutral'}">${drawdown.recovery_pct?.toFixed(1) || 0}%</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Trades Analyzed</span>
+                                <span class="value">${tradesAnalyzed}</span>
                             </div>
                         </div>
                     `;

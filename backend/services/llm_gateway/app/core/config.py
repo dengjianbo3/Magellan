@@ -5,7 +5,7 @@ from typing import Optional
 class Settings(BaseSettings):
     # Gemini 配置
     GOOGLE_API_KEY: Optional[str] = None
-    GEMINI_MODEL_NAME: str = "gemini-2.5-flash"
+    GEMINI_MODEL_NAME: str = "gemini-3-flash-preview"
 
     # Kimi 配置 (Moonshot AI)
     KIMI_API_KEY: Optional[str] = None

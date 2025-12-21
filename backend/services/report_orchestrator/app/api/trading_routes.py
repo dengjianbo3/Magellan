@@ -743,6 +743,33 @@ async def get_equity_history(limit: int = Query(default=100, le=500)):
     return {"data": []}
 
 
+@router.get("/drawdown")
+async def get_max_drawdown(start_date: Optional[str] = Query(default=None, description="Start date in YYYY-MM-DD format")):
+    """
+    Get maximum drawdown statistics from trade history.
+    
+    Args:
+        start_date: Optional start date filter (YYYY-MM-DD format)
+        
+    Returns:
+        - max_drawdown_pct: Maximum drawdown percentage
+        - max_drawdown_usd: Maximum drawdown in USD
+        - peak_equity: Peak equity value
+        - trough_equity: Trough equity value  
+        - current_drawdown_pct: Current drawdown from peak
+        - trades_analyzed: Number of trades analyzed
+    """
+    system = await get_trading_system()
+    if system.paper_trader and hasattr(system.paper_trader, 'calculate_max_drawdown'):
+        return system.paper_trader.calculate_max_drawdown(start_date)
+    return {
+        "error": "Drawdown calculation not available",
+        "max_drawdown_pct": 0.0,
+        "max_drawdown_usd": 0.0,
+        "trades_analyzed": 0
+    }
+
+
 @router.post("/start")
 async def start_trading():
     """Start auto trading"""
