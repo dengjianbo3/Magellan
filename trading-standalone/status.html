@@ -701,17 +701,21 @@
                     `;
                 }
 
-                // Maximum Drawdown
-                if (drawdown) {
-                    const maxDd = drawdown.max_drawdown_pct || 0;
-                    const maxDdUsd = drawdown.max_drawdown_usd || 0;
-                    const currentDd = drawdown.current_drawdown_pct || 0;
-                    const tradesAnalyzed = drawdown.trades_analyzed || 0;
-                    const currentStartDate = drawdown.start_date || '';
+                // Maximum Drawdown - Always show this card
+                {
+                    const maxDd = drawdown?.max_drawdown_pct || 0;
+                    const maxDdUsd = drawdown?.max_drawdown_usd || 0;
+                    const currentDd = drawdown?.current_drawdown_pct || 0;
+                    const tradesAnalyzed = drawdown?.trades_analyzed || 0;
+                    const currentStartDate = drawdown?.start_date || '';
+                    const peakEquity = drawdown?.peak_equity || 0;
+                    const recoveryPct = drawdown?.recovery_pct || 100;
+                    const hasError = drawdown?.error;
 
                     html += `
                         <div class="card">
                             <div class="card-title">📉 Maximum Drawdown</div>
+                            ${hasError ? `<div class="row"><span class="label" style="color: #f87171;">⚠️ ${hasError}</span></div>` : ''}
                             <div class="row">
                                 <span class="label">Start Date</span>
                                 <span class="value">
@@ -731,11 +735,11 @@
                             </div>
                             <div class="row">
                                 <span class="label">Peak Equity</span>
-                                <span class="value">$${formatNumber(drawdown.peak_equity)}</span>
+                                <span class="value">$${formatNumber(peakEquity)}</span>
                             </div>
                             <div class="row">
                                 <span class="label">Recovery</span>
-                                <span class="value ${drawdown.recovery_pct >= 100 ? 'positive' : 'neutral'}">${drawdown.recovery_pct?.toFixed(1) || 0}%</span>
+                                <span class="value ${recoveryPct >= 100 ? 'positive' : 'neutral'}">${recoveryPct.toFixed(1)}%</span>
                             </div>
                             <div class="row">
                                 <span class="label">Trades Analyzed</span>
