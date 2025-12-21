@@ -211,6 +211,18 @@ class TradingSystem:
         """Handle analysis cycle"""
         logger.info(f"Starting analysis cycle #{cycle_number}, reason: {reason}")
 
+        # ⚠️ CRITICAL: Check Tavily/MCP health before any analysis
+        tavily_healthy = await self._check_tavily_health()
+        if not tavily_healthy:
+            logger.error("🚨 Tavily/MCP search service is DOWN! Halting analysis to prevent uninformed decisions.")
+            await self._broadcast({
+                "type": "analysis_halted",
+                "reason": "tavily_unavailable",
+                "message": "Search service unavailable - cannot make informed trading decisions",
+                "timestamp": timestamp.isoformat()
+            })
+            return
+
         # Check cooldown
         if not self.cooldown_manager.check_cooldown():
             logger.warning("In cooldown period, skipping analysis")
@@ -603,6 +615,51 @@ class TradingSystem:
             "pnl": pnl,
             "pnl_percent": pnl_percent
         })
+
+    async def _check_tavily_health(self) -> bool:
+        """
+        Check if Tavily/MCP search service is available.
+        Returns True if healthy, False if unavailable.
+        
+        CRITICAL: If search is down, we should NOT make trading decisions
+        as they would be based on incomplete/stale information.
+        """
+        import httpx
+        
+        web_search_url = os.getenv("WEB_SEARCH_URL", "http://web_search_service:8010")
+        
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # Try health endpoint first
+                try:
+                    response = await client.get(f"{web_search_url}/health")
+                    if response.status_code == 200:
+                        logger.info("✅ Tavily/MCP search service is healthy")
+                        return True
+                except Exception:
+                    pass
+                
+                # Fallback: try actual search endpoint
+                try:
+                    response = await client.post(
+                        f"{web_search_url}/mcp/tools/search",
+                        json={"query": "bitcoin price", "max_results": 1},
+                        timeout=15.0
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data.get("results") or data.get("content"):
+                            logger.info("✅ Tavily/MCP search service operational (search test passed)")
+                            return True
+                except Exception as e:
+                    logger.warning(f"Tavily search test failed: {e}")
+                
+                logger.error("❌ Tavily/MCP search service is unavailable")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to check Tavily health: {e}")
+            return False
 
     async def _broadcast(self, message: Dict):
         """Broadcast message to all WebSocket clients"""
