@@ -870,7 +870,7 @@
                             <div class="card-title">Closed Trades (${history.trades.length})</div>
                             <div class="scrollable-list">
                     `;
-                    for (const trade of history.trades.slice(-10).reverse()) {
+                    for (const trade of [...history.trades].reverse()) {
                         const dir = trade.direction || trade.side || 'N/A';
                         const pnl = trade.pnl || trade.realized_pnl || 0;
                         html += `
