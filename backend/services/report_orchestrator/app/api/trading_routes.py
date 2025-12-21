@@ -817,14 +817,113 @@ async def get_max_drawdown(start_date: Optional[str] = Query(default=None, descr
         - trades_analyzed: Number of trades analyzed
     """
     system = await get_trading_system()
-    if system.paper_trader and hasattr(system.paper_trader, 'calculate_max_drawdown'):
-        return system.paper_trader.calculate_max_drawdown(start_date)
-    return {
-        "error": "Drawdown calculation not available",
-        "max_drawdown_pct": 0.0,
-        "max_drawdown_usd": 0.0,
-        "trades_analyzed": 0
-    }
+    
+    if not system.paper_trader:
+        return {
+            "error": "Trader not initialized",
+            "max_drawdown_pct": 0.0,
+            "max_drawdown_usd": 0.0,
+            "trades_analyzed": 0
+        }
+    
+    try:
+        # Get trades from the actual source (OKX API for OKXTrader, local for PaperTrader)
+        trades = await system.paper_trader.get_trade_history(limit=100)
+        
+        # Filter by start_date if provided
+        if start_date and trades:
+            try:
+                from datetime import datetime
+                filter_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                trades = [
+                    t for t in trades 
+                    if datetime.fromisoformat(
+                        t.get('closed_at', t.get('timestamp', t.get('closeTime', '2000-01-01'))).replace('Z', '+00:00')
+                    ) >= filter_date
+                ]
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid start_date format: {start_date}, using all trades. Error: {e}")
+        
+        if not trades:
+            initial_balance = getattr(system.paper_trader, 'initial_balance', 10000)
+            return {
+                'max_drawdown_pct': 0.0,
+                'max_drawdown_usd': 0.0,
+                'peak_equity': initial_balance,
+                'trough_equity': initial_balance,
+                'current_drawdown_pct': 0.0,
+                'recovery_pct': 100.0,
+                'start_date': start_date,
+                'trades_analyzed': 0
+            }
+        
+        # Calculate drawdown from trades
+        initial_balance = getattr(system.paper_trader, 'initial_balance', 10000)
+        equity_curve = [initial_balance]
+        running_equity = initial_balance
+        
+        for trade in trades:
+            # Handle different PnL field names from OKX API vs local
+            pnl = trade.get('pnl') or trade.get('realizedPnl') or trade.get('pnl_usd') or 0
+            if isinstance(pnl, str):
+                try:
+                    pnl = float(pnl)
+                except:
+                    pnl = 0
+            running_equity += pnl
+            equity_curve.append(running_equity)
+        
+        # Calculate max drawdown
+        peak = equity_curve[0]
+        max_drawdown = 0.0
+        max_drawdown_pct = 0.0
+        peak_at_max_dd = peak
+        trough_at_max_dd = peak
+        
+        for equity in equity_curve:
+            if equity > peak:
+                peak = equity
+            
+            drawdown = peak - equity
+            drawdown_pct = (drawdown / peak * 100) if peak > 0 else 0
+            
+            if drawdown_pct > max_drawdown_pct:
+                max_drawdown_pct = drawdown_pct
+                max_drawdown = drawdown
+                peak_at_max_dd = peak
+                trough_at_max_dd = equity
+        
+        # Current drawdown
+        current_equity = equity_curve[-1]
+        current_peak = max(equity_curve)
+        current_drawdown_pct = ((current_peak - current_equity) / current_peak * 100) if current_peak > 0 else 0
+        
+        # Recovery percentage
+        if max_drawdown > 0:
+            recovery_pct = min(100.0, ((current_equity - trough_at_max_dd) / max_drawdown * 100))
+        else:
+            recovery_pct = 100.0
+        
+        return {
+            'max_drawdown_pct': round(max_drawdown_pct, 2),
+            'max_drawdown_usd': round(max_drawdown, 2),
+            'peak_equity': round(peak_at_max_dd, 2),
+            'trough_equity': round(trough_at_max_dd, 2),
+            'current_equity': round(current_equity, 2),
+            'current_drawdown_pct': round(current_drawdown_pct, 2),
+            'recovery_pct': round(recovery_pct, 1),
+            'start_date': start_date,
+            'trades_analyzed': len(trades)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating drawdown: {e}")
+        return {
+            "error": str(e),
+            "max_drawdown_pct": 0.0,
+            "max_drawdown_usd": 0.0,
+            "trades_analyzed": 0
+        }
 
 
 @router.post("/start")
