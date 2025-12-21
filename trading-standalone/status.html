@@ -640,7 +640,7 @@
                     fetchData('status'),
                     fetchData('account'),
                     fetchData('position'),
-                    fetchData('history?limit=5'),
+                    fetchData('history?limit=50'),
                     fetchData(drawdownEndpoint)
                 ]);
 
@@ -794,8 +794,8 @@
                 console.log('[DEBUG] History data:', history);
                 console.log('[DEBUG] Signals:', history?.signals);
                 if (history && history.signals && history.signals.length > 0) {
-                    // Cache signals for modal
-                    signalCache = history.signals.slice(-10).reverse();
+                    // Cache all signals for modal (reversed for newest first)
+                    signalCache = [...history.signals].reverse();
 
                     html += `
                         <div class="card">
