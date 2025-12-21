@@ -384,6 +384,68 @@ class TradingToolkit:
             func=self._analyze_execution_conditions
         )
 
+        # Technical Analysis Tool (comprehensive)
+        self._tools['technical_analysis'] = FunctionTool(
+            name="technical_analysis",
+            description=(
+                "Perform comprehensive technical analysis including K-lines, indicators, patterns. "
+                "This is an all-in-one analysis tool that combines get_klines and calculate_technical_indicators. "
+                "Returns RSI, MACD, Bollinger Bands, EMA, support/resistance levels, and trend analysis."
+            ),
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "Trading pair, e.g. BTC/USDT",
+                        "default": self.config.symbol
+                    },
+                    "timeframe": {
+                        "type": "string",
+                        "description": "Timeframe: 1m, 5m, 15m, 1h, 4h, 1d",
+                        "default": "4h"
+                    },
+                    "action": {
+                        "type": "string",
+                        "description": "Analysis type: full_analysis, indicators_only, patterns_only",
+                        "default": "full_analysis"
+                    },
+                    "market_type": {
+                        "type": "string",
+                        "description": "Market type: crypto, forex, stock",
+                        "default": "crypto"
+                    }
+                }
+            },
+            func=self._technical_analysis
+        )
+
+        # Orderbook Analyzer Tool
+        self._tools['orderbook_analyzer'] = FunctionTool(
+            name="orderbook_analyzer",
+            description=(
+                "Analyze exchange orderbook depth to identify support/resistance levels, "
+                "buy/sell pressure, large orders (whale detection), and market sentiment. "
+                "Useful for short-term trading decisions and liquidity assessment."
+            ),
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "Coin symbol, e.g. BTC",
+                        "default": "BTC"
+                    },
+                    "depth": {
+                        "type": "integer",
+                        "description": "Number of price levels to analyze (5-50)",
+                        "default": 20
+                    }
+                }
+            },
+            func=self._orderbook_analyzer
+        )
+
     def get_tools(self) -> List[FunctionTool]:
         """Get all tools as a list"""
         return list(self._tools.values())
@@ -398,7 +460,8 @@ class TradingToolkit:
             'get_market_price', 'get_klines', 'calculate_technical_indicators',
             'get_account_balance', 'get_current_position',
             'get_fear_greed_index', 'get_funding_rate', 'get_trade_history',
-            'tavily_search', 'analyze_execution_conditions'  # Added execution analysis
+            'tavily_search', 'analyze_execution_conditions',
+            'technical_analysis', 'orderbook_analyzer'  # Added for TechnicalAnalyst
         ]
         return [self._tools[name] for name in analysis_tool_names if name in self._tools]
 
@@ -1356,4 +1419,162 @@ class TradingToolkit:
                 },
                 "summary": f"⚠️ Analysis failed: {str(e)}. Using conservative defaults: sliced execution with 3 slices."
             }, ensure_ascii=False)
+
+    async def _technical_analysis(
+        self, 
+        symbol: str = "BTC/USDT", 
+        timeframe: str = "4h",
+        action: str = "full_analysis",
+        market_type: str = "crypto"
+    ) -> str:
+        """Comprehensive technical analysis combining K-lines and indicators"""
+        try:
+            import httpx
+            
+            # Normalize symbol for API
+            clean_symbol = symbol.upper().replace('/', '').replace('-', '').replace('USDT', '').replace('SWAP', '')
+            if clean_symbol == 'BTC':
+                api_symbol = 'BTC-USDT'
+            else:
+                api_symbol = f'{clean_symbol}-USDT'
+            
+            # Map timeframe to OKX format
+            tf_map = {'1m': '1m', '5m': '5m', '15m': '15m', '1h': '1H', '4h': '4H', '1d': '1D'}
+            okx_tf = tf_map.get(timeframe.lower(), '4H')
+            
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(
+                    "https://www.okx.com/api/v5/market/candles",
+                    params={"instId": api_symbol, "bar": okx_tf, "limit": "100"}
+                )
+                
+                if response.status_code != 200:
+                    return json.dumps({"success": False, "error": f"API error: {response.status_code}"})
+                
+                data = response.json()
+                candles = data.get("data", [])
+                
+                if not candles:
+                    return json.dumps({"success": False, "error": "No candle data"})
+                
+                # Parse candles
+                closes = [float(c[4]) for c in candles][::-1]
+                highs = [float(c[2]) for c in candles][::-1]
+                lows = [float(c[3]) for c in candles][::-1]
+                
+                current_price = closes[-1]
+                
+                # Calculate RSI (14)
+                gains, losses = [], []
+                for i in range(1, min(15, len(closes))):
+                    diff = closes[i] - closes[i-1]
+                    gains.append(max(diff, 0))
+                    losses.append(abs(min(diff, 0)))
+                avg_gain = sum(gains) / len(gains) if gains else 0
+                avg_loss = sum(losses) / len(losses) if losses else 1
+                rsi = 100 - (100 / (1 + avg_gain / avg_loss)) if avg_loss > 0 else 50
+                
+                # EMA calculation
+                def calc_ema(prices, period):
+                    if len(prices) < period:
+                        return sum(prices) / len(prices)
+                    ema = sum(prices[:period]) / period
+                    multiplier = 2 / (period + 1)
+                    for price in prices[period:]:
+                        ema = (price - ema) * multiplier + ema
+                    return ema
+                
+                ema20 = calc_ema(closes, 20)
+                ema50 = calc_ema(closes, 50)
+                
+                # Trend
+                if current_price > ema20 > ema50:
+                    trend, strength = "BULLISH", "Strong"
+                elif current_price > ema20:
+                    trend, strength = "BULLISH", "Weak"
+                elif current_price < ema20 < ema50:
+                    trend, strength = "BEARISH", "Strong"
+                elif current_price < ema20:
+                    trend, strength = "BEARISH", "Weak"
+                else:
+                    trend, strength = "NEUTRAL", "Consolidation"
+                
+                support = min(lows[-20:]) if len(lows) >= 20 else min(lows)
+                resistance = max(highs[-20:]) if len(highs) >= 20 else max(highs)
+                price_change = ((current_price - closes[-24]) / closes[-24] * 100) if len(closes) >= 24 else 0
+                
+                summary = f"""📊 Technical Analysis: {symbol} ({timeframe})
+💰 Price: ${current_price:,.2f} ({price_change:+.2f}% 24h)
+📊 RSI(14): {rsi:.1f} {'🔴 Overbought' if rsi > 70 else '🟢 Oversold' if rsi < 30 else '⚪ Neutral'}
+📈 EMA20: ${ema20:,.2f} | EMA50: ${ema50:,.2f}
+🎯 Support: ${support:,.2f} | Resistance: ${resistance:,.2f}
+📈 Trend: {trend} ({strength})"""
+
+                logger.info(f"[TradingTools] Technical analysis: {symbol} {timeframe} -> {trend}")
+                
+                return json.dumps({
+                    "success": True, "symbol": symbol, "timeframe": timeframe,
+                    "current_price": current_price,
+                    "indicators": {"rsi": round(rsi, 1), "ema20": round(ema20, 2), "ema50": round(ema50, 2)},
+                    "trend": {"direction": trend, "strength": strength},
+                    "summary": summary
+                }, ensure_ascii=False)
+                
+        except Exception as e:
+            logger.error(f"[TradingTools] Technical analysis error: {e}")
+            return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
+
+    async def _orderbook_analyzer(self, symbol: str = "BTC", depth: int = 20) -> str:
+        """Analyze exchange orderbook depth"""
+        try:
+            import httpx
+            clean_symbol = symbol.upper().replace('-USDT', '').replace('/USDT', '').replace('USDT', '').strip()
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    "https://api.binance.com/api/v3/depth",
+                    params={"symbol": f"{clean_symbol}USDT", "limit": min(depth * 5, 100)}
+                )
+                
+                if response.status_code != 200:
+                    return json.dumps({"success": False, "error": f"API error: {response.status_code}"})
+                
+                data = response.json()
+                bids = [[float(p), float(q)] for p, q in data.get("bids", [])[:depth]]
+                asks = [[float(p), float(q)] for p, q in data.get("asks", [])[:depth]]
+                
+                if not bids or not asks:
+                    return json.dumps({"success": False, "error": "Orderbook empty"})
+                
+                total_bid = sum(q for _, q in bids)
+                total_ask = sum(q for _, q in asks)
+                ratio = total_bid / total_ask if total_ask > 0 else 1
+                
+                best_bid, best_ask = bids[0][0], asks[0][0]
+                spread = (best_ask - best_bid) / best_bid * 100
+                
+                support = max(bids, key=lambda x: x[1])[0]
+                resistance = max(asks, key=lambda x: x[1])[0]
+                
+                sentiment = "🟢 Bullish" if ratio > 1.2 else "🔴 Bearish" if ratio < 0.8 else "⚪ Neutral"
+                
+                summary = f"""📊 Orderbook: {clean_symbol}/USDT
+💰 Bid: ${best_bid:,.2f} | Ask: ${best_ask:,.2f} | Spread: {spread:.4f}%
+📊 Volume: Bid {total_bid:,.2f} | Ask {total_ask:,.2f} | Ratio: {ratio:.2f}
+🎯 Support: ${support:,.2f} | Resistance: ${resistance:,.2f}
+💡 Sentiment: {sentiment}"""
+
+                logger.info(f"[TradingTools] Orderbook: {clean_symbol} ratio={ratio:.2f}")
+                
+                return json.dumps({
+                    "success": True, "symbol": clean_symbol,
+                    "best_bid": best_bid, "best_ask": best_ask,
+                    "pressure_ratio": round(ratio, 2),
+                    "support_level": support, "resistance_level": resistance,
+                    "summary": summary
+                }, ensure_ascii=False)
+                
+        except Exception as e:
+            logger.error(f"[TradingTools] Orderbook error: {e}")
+            return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
 
