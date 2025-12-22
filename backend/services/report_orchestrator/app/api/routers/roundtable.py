@@ -279,3 +279,110 @@ Please present in a professional and concise manner with clear logic.
     except Exception as e:
         logger.error(f"Failed to generate roundtable summary: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/generate_summary_stream", tags=["Roundtable"])
+async def generate_roundtable_summary_stream(request: dict):
+    """
+    流式生成会议纪要 - 使用 Server-Sent Events (SSE)
+    
+    实时逐字返回生成的内容，减少用户等待感
+    """
+    from fastapi.responses import StreamingResponse
+    import json
+    
+    topic = request.get("topic", "投资讨论")
+    messages = request.get("messages", [])
+    participants = request.get("participants", [])
+    rounds = request.get("rounds", 0)
+    language = request.get("language", "zh")
+    
+    # 构建对话历史
+    dialogue_text = "\n\n".join([
+        f"【{msg.get('speaker')}】\n{msg.get('content')}"
+        for msg in messages
+    ])
+    
+    # 构建prompt
+    if language == "en":
+        summary_prompt = f"""Based on the following roundtable discussion, generate a professional meeting minutes.
+
+Discussion Topic: {topic}
+Participants: {', '.join(participants)}
+Discussion Rounds: {rounds}
+
+Discussion Content:
+{dialogue_text}
+
+Please generate meeting minutes in the following format:
+
+## Meeting Minutes
+
+**Topic**: {topic}
+**Participants**: {', '.join(participants)}
+
+### 1. Key Viewpoints Summary
+### 2. Key Discussion Points  
+### 3. Consensus Reached
+### 4. Action Recommendations
+### 5. Risk Alerts
+"""
+    else:
+        summary_prompt = f"""基于以下圆桌讨论内容，生成一份专业的会议纪要。
+
+讨论主题：{topic}
+参与专家：{', '.join(participants)}
+讨论轮次：{rounds}
+
+讨论内容：
+{dialogue_text}
+
+请按以下格式生成会议纪要：
+
+## 会议纪要
+
+**会议主题**: {topic}
+**参与人员**: {', '.join(participants)}
+
+### 一、核心观点总结
+### 二、关键讨论点
+### 三、达成的共识
+### 四、行动建议
+### 五、风险提示
+"""
+
+    async def generate_stream():
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                # 调用LLM Gateway的流式端点
+                async with client.stream(
+                    "POST",
+                    f"{_llm_gateway_url}/chat/stream",
+                    json={
+                        "history": [
+                            {"role": "user", "parts": ["你是一位专业的会议记录员，擅长总结和提炼会议要点。"]},
+                            {"role": "model", "parts": ["好的，我会以专业、简洁的方式为您整理会议纪要。"]},
+                            {"role": "user", "parts": [summary_prompt]}
+                        ],
+                        "temperature": 0.3
+                    }
+                ) as response:
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            # 直接转发SSE事件
+                            yield f"{line}\n\n"
+                            
+        except Exception as e:
+            logger.error(f"Streaming summary error: {e}")
+            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+    
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+

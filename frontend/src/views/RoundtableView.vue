@@ -908,6 +908,16 @@ const generateMeetingSummary = async () => {
   if (isGeneratingSummary.value || messages.value.length === 0) return;
 
   isGeneratingSummary.value = true;
+  
+  // 创建一个流式消息，逐字显示内容
+  const streamingMessageId = Date.now();
+  messages.value.push({
+    id: streamingMessageId,
+    type: 'meeting_minutes',
+    content: '',
+    isStreaming: true
+  });
+  scrollToBottom();
 
   try {
     // 收集所有对话消息
@@ -919,9 +929,10 @@ const generateMeetingSummary = async () => {
         timestamp: m.timestamp
       }));
 
-    // 调用后端API生成会议纪要
-    const lang = locale.value.startsWith('zh') ? 'zh' : 'en'; // 转换为后端期望的格式
-    const response = await fetch('${API_BASE}/api/roundtable/generate_summary', {
+    const lang = locale.value.startsWith('zh') ? 'zh' : 'en';
+    
+    // 使用fetch的流式API
+    const response = await fetch(`${API_BASE}/api/roundtable/generate_summary_stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -931,30 +942,77 @@ const generateMeetingSummary = async () => {
         messages: dialogueMessages,
         participants: selectedExperts.value,
         rounds: currentRound.value,
-        language: lang // 添加语言偏好
+        language: lang
       })
     });
 
     if (!response.ok) {
-      throw new Error('Failed to generate meeting summary');
+      throw new Error('Failed to connect to streaming endpoint');
     }
 
-    const data = await response.json();
+    // 流式读取响应
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = '';
 
-    // 添加会议纪要到消息列表
-    messages.value.push({
-      id: Date.now(),
-      type: 'meeting_minutes',
-      content: data.summary
-    });
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      
+      // 解析SSE事件 (格式: data: {...}\n\n)
+      const lines = chunk.split('\n');
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            
+            if (data.error) {
+              throw new Error(data.error);
+            }
+            
+            if (data.content) {
+              fullContent += data.content;
+              
+              // 更新流式消息内容
+              const msgIndex = messages.value.findIndex(m => m.id === streamingMessageId);
+              if (msgIndex !== -1) {
+                messages.value[msgIndex].content = fullContent;
+              }
+              scrollToBottom();
+            }
+            
+            if (data.done) {
+              // 流式传输完成，移除streaming标记
+              const msgIndex = messages.value.findIndex(m => m.id === streamingMessageId);
+              if (msgIndex !== -1) {
+                messages.value[msgIndex].isStreaming = false;
+              }
+            }
+          } catch (e) {
+            if (!e.message.includes('Unexpected end of JSON')) {
+              console.warn('Error parsing SSE data:', e);
+            }
+          }
+        }
+      }
+    }
 
     scrollToBottom();
   } catch (error) {
     console.error('Error generating meeting summary:', error);
+    
+    // 移除流式消息并显示错误
+    const msgIndex = messages.value.findIndex(m => m.id === streamingMessageId);
+    if (msgIndex !== -1) {
+      messages.value.splice(msgIndex, 1);
+    }
+    
     messages.value.push({
       id: Date.now(),
       type: 'system',
-      content: '生成会议纪要失败，请重试'
+      content: '生成会议纪要失败，请重试: ' + error.message
     });
   } finally {
     isGeneratingSummary.value = false;

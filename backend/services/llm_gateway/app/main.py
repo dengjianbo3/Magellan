@@ -962,6 +962,72 @@ async def generate_from_file(
 def read_root():
     return {"status": "ok", "service": "LLM Gateway", "version": "5.0.0"}
 
+
+# --- Streaming Chat Endpoint (SSE) ---
+@app.post("/chat/stream", tags=["Streaming"])
+async def chat_stream(request: GenerateRequest):
+    """
+    流式聊天端点 - 使用 Server-Sent Events (SSE) 逐字返回响应
+    
+    用于圆桌会议等需要实时显示生成内容的场景
+    """
+    from fastapi.responses import StreamingResponse
+    from google import genai
+    from google.genai import types
+    
+    if not gemini_client:
+        raise HTTPException(status_code=503, detail="Gemini client not available")
+    
+    async def generate_stream():
+        try:
+            # 转换消息格式
+            contents = []
+            for msg in request.history:
+                contents.append(
+                    types.Content(
+                        role=msg.role,
+                        parts=[types.Part(text=part) for part in msg.parts]
+                    )
+                )
+            
+            # 构建配置
+            config_dict = {}
+            if request.temperature is not None:
+                config_dict["temperature"] = request.temperature
+            
+            config = types.GenerateContentConfig(**config_dict) if config_dict else None
+            
+            # 使用流式响应
+            response = gemini_client.models.generate_content_stream(
+                model=settings.GEMINI_MODEL_NAME,
+                contents=contents,
+                config=config
+            )
+            
+            # 逐块发送
+            for chunk in response:
+                if hasattr(chunk, 'text') and chunk.text:
+                    # SSE 格式: data: {json}\n\n
+                    yield f"data: {json.dumps({'content': chunk.text, 'done': False})}\n\n"
+            
+            # 发送完成信号
+            yield f"data: {json.dumps({'content': '', 'done': True})}\n\n"
+            
+        except Exception as e:
+            print(f"[LLM Gateway] Streaming error: {e}")
+            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+    
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # 禁用Nginx缓冲
+        }
+    )
+
+
 @app.get("/health", tags=["Health Check"])
 def health_check():
     return {
@@ -974,3 +1040,4 @@ def health_check():
         "kimi_model": settings.KIMI_MODEL_NAME,
         "deepseek_model": settings.DEEPSEEK_MODEL_NAME
     }
+
