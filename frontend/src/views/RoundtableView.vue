@@ -342,7 +342,7 @@
               </div>
             </div>
 
-            <!-- Thinking Indicator -->
+            <!-- Thinking Indicator with Progress -->
             <div v-else-if="message.type === 'thinking'" class="flex gap-5">
               <div class="w-12 h-12 rounded-xl bg-black/30 border border-white/10 flex items-center justify-center flex-shrink-0 shadow-lg self-start mt-1 opacity-70">
                 <span class="material-symbols-outlined text-primary text-2xl animate-pulse">psychology</span>
@@ -350,13 +350,22 @@
               <div class="flex-1">
                 <div class="flex items-center gap-2 mb-2">
                   <span class="font-bold text-text-secondary text-sm">{{ message.agent }}</span>
-                  <span class="text-xs text-text-secondary opacity-70">正在思考...</span>
+                  <span class="text-xs text-text-secondary opacity-70">{{ message.message || '正在思考...' }}</span>
                 </div>
-                <div class="inline-block px-5 py-4 rounded-2xl rounded-tl-none bg-white/5 border border-white/5">
-                  <div class="flex items-center gap-2">
+                <div class="inline-block px-5 py-4 rounded-2xl rounded-tl-none bg-white/5 border border-white/5 min-w-[200px]">
+                  <!-- Animated dots -->
+                  <div class="flex items-center gap-2 mb-2">
                     <div class="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
                     <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
                     <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+                  </div>
+                  <!-- Progress Steps List -->
+                  <div v-if="message.progressSteps && message.progressSteps.length > 0" class="mt-3 pt-3 border-t border-white/10">
+                    <div v-for="(step, idx) in message.progressSteps" :key="idx" 
+                         class="flex items-start gap-2 text-xs text-white/60 mb-1 animate-fade-in">
+                      <span class="text-primary">→</span>
+                      <span>{{ step.message }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -797,12 +806,45 @@ const handleWebSocketMessage = (data) => {
     const event = data.event;
 
     if (event.event_type === 'thinking') {
-      // Show thinking indicator
+      // Show thinking indicator with empty progress
       messages.value.push({
         id: Date.now() + Math.random(),
         type: 'thinking',
-        agent: event.agent_name
+        agent: event.agent_name,
+        message: event.message || `${event.agent_name}正在思考...`,
+        progressSteps: []
       });
+      scrollToBottom();
+    } else if (event.event_type === 'progress' || event.event_type === 'analyzing' || event.event_type === 'searching') {
+      // Update existing thinking card with progress info
+      const thinkingIndex = messages.value.findIndex(
+        m => m.type === 'thinking' && m.agent === event.agent_name
+      );
+      if (thinkingIndex !== -1) {
+        // Add progress step to the thinking card
+        if (!messages.value[thinkingIndex].progressSteps) {
+          messages.value[thinkingIndex].progressSteps = [];
+        }
+        messages.value[thinkingIndex].progressSteps.push({
+          message: event.message,
+          progress: event.progress,
+          timestamp: Date.now()
+        });
+        messages.value[thinkingIndex].message = event.message;
+      } else {
+        // No thinking card exists, create one with progress
+        messages.value.push({
+          id: Date.now() + Math.random(),
+          type: 'thinking',
+          agent: event.agent_name,
+          message: event.message,
+          progressSteps: [{
+            message: event.message,
+            progress: event.progress,
+            timestamp: Date.now()
+          }]
+        });
+      }
       scrollToBottom();
     } else if (event.event_type === 'result') {
       // Remove thinking indicator for this agent

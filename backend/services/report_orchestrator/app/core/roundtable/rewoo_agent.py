@@ -165,6 +165,13 @@ class ReWOOAgent(Agent):
         """
         print(f"[{self.name}] Phase 1: Planning...")
 
+        # Emit planning started event
+        if self.event_bus:
+            await self.event_bus.publish_thinking(
+                agent_name=self.name,
+                message="🧠 正在规划分析步骤..."
+            )
+
         # 构建规划Prompt
         planning_prompt = self._create_planning_prompt()
 
@@ -184,6 +191,16 @@ class ReWOOAgent(Agent):
             plan = self._parse_plan(response)
 
             print(f"[{self.name}] Generated plan with {len(plan)} steps")
+            
+            # Emit plan generated event with step details
+            if self.event_bus and plan:
+                step_details = [f"{s.get('tool', '?')}" for s in plan]
+                await self.event_bus.publish_progress(
+                    agent_name=self.name,
+                    message=f"📋 生成了 {len(plan)} 个分析步骤: {', '.join(step_details)}",
+                    progress=0.2
+                )
+
             for i, step in enumerate(plan, 1):
                 print(f"  Step {i}: {step.get('tool', 'unknown')}({step.get('params', {})})")
 
@@ -203,6 +220,14 @@ class ReWOOAgent(Agent):
         并行执行所有工具调用
         """
         logger.info(f"[{self.name}] Phase 2: Executing {len(plan)} tools in parallel...")
+
+        # Emit execution started event
+        if self.event_bus:
+            await self.event_bus.publish_progress(
+                agent_name=self.name,
+                message=f"⚡ 开始并行执行 {len(plan)} 个工具调用...",
+                progress=0.3
+            )
 
         # 创建异步任务列表
         tasks = []
@@ -312,6 +337,14 @@ class ReWOOAgent(Agent):
         基于所有观察结果生成最终分析
         """
         print(f"[{self.name}] Phase 3: Solving...")
+
+        # Emit solving started event
+        if self.event_bus:
+            await self.event_bus.publish_analyzing(
+                agent_name=self.name,
+                message="📊 综合分析所有数据中...",
+                progress=0.8
+            )
 
         # 构建综合Prompt
         solving_prompt = self._create_solving_prompt()

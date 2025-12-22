@@ -54,9 +54,10 @@ class Meeting:
         # Message list for TradingMeeting compatibility
         self.messages: List[Dict[str, Any]] = []
 
-        # 将MessageBus注入到每个Agent
+        # 将MessageBus和EventBus注入到每个Agent
         for agent in agents:
             agent.message_bus = self.message_bus
+            agent.event_bus = self.agent_event_bus  # Inject event_bus for real-time progress
             self.message_bus.register_agent(agent.name)
 
         # 讨论状态

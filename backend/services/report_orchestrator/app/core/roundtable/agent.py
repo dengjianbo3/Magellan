@@ -75,6 +75,9 @@ class Agent:
         # MessageBus reference (set by Meeting)
         self.message_bus: Optional[MessageBus] = None
 
+        # AgentEventBus reference (set by Meeting for real-time progress)
+        self.event_bus = None
+
         # Agent current state
         self.status = "idle"  # idle, thinking, tool_using, speaking
 
