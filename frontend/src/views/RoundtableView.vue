@@ -814,14 +814,23 @@ const handleWebSocketMessage = (data) => {
     const event = data.event;
 
     if (event.event_type === 'thinking') {
-      // Show thinking indicator with empty logs
-      messages.value.push({
-        id: Date.now() + Math.random(),
-        type: 'thinking',
-        agent: event.agent_name,
-        message: event.message || `${event.agent_name}正在思考...`,
-        logs: []
-      });
+      // Check if thinking card already exists for this agent
+      const existingIndex = messages.value.findIndex(
+        m => m.type === 'thinking' && m.agent === event.agent_name
+      );
+      if (existingIndex !== -1) {
+        // Update existing thinking card
+        messages.value[existingIndex].message = event.message || `${event.agent_name}正在思考...`;
+      } else {
+        // Create new thinking indicator with empty logs
+        messages.value.push({
+          id: Date.now() + Math.random(),
+          type: 'thinking',
+          agent: event.agent_name,
+          message: event.message || `${event.agent_name}正在思考...`,
+          logs: []
+        });
+      }
       scrollToBottom();
     } else if (event.event_type === 'log') {
       // Append log to existing thinking card
