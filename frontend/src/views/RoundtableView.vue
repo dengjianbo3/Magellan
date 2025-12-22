@@ -632,8 +632,8 @@ onUnmounted(() => {
 const loadHistoryList = async () => {
   loadingHistory.value = true;
   try {
-    // Use full URL since API runs on port 8002 (report_orchestrator)
-    const response = await fetch('http://localhost:8002/api/roundtable/history?limit=20');
+    // Use full URL since API runs on port 8000 (report_orchestrator)
+    const response = await fetch('http://localhost:8000/api/roundtable/history?limit=20');
     const data = await response.json();
     console.log('[Roundtable] Loaded history:', data);
     if (data.success) {
