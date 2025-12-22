@@ -461,7 +461,7 @@ def create_leader(language: str = "en", meeting=None) -> Agent:
 
     agent = Agent(
         name="Leader",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
