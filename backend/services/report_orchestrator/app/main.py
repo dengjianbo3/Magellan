@@ -1302,7 +1302,8 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                             "total_duration_seconds": result.get("total_duration_seconds", 0),
                             "participating_agents": result.get("participating_agents", []),
                             "agent_stats": result.get("agent_stats", {}),
-                            "message_type_stats": result.get("message_type_stats", {})
+                            "message_type_stats": result.get("message_type_stats", {}),
+                            "conversation_history": result.get("conversation_history", [])  # 添加消息历史
                         },
                         "message_count": result.get("total_messages", 0),
                         "total_turns": result.get("total_turns", 0),

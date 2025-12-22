@@ -540,8 +540,8 @@
           </div>
         </div>
 
-        <!-- Analysis Steps (Universal) -->
-        <div class="glass-panel rounded-2xl p-6">
+        <!-- Analysis Steps (Universal) - Hide for roundtable discussions -->
+        <div v-if="selectedReport.type !== 'roundtable' && selectedReport.steps" class="glass-panel rounded-2xl p-6">
           <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
              <span class="material-symbols-outlined text-primary">checklist</span> 执行步骤记录
           </h2>
@@ -571,8 +571,8 @@
           </div>
         </div>
 
-        <!-- Visual Analytics (Universal) -->
-        <div class="glass-panel rounded-2xl p-6">
+        <!-- Visual Analytics (Universal) - Hide for roundtable discussions -->
+        <div v-if="selectedReport.type !== 'roundtable'" class="glass-panel rounded-2xl p-6">
           <div class="flex items-center justify-between mb-6">
             <h2 class="text-lg font-bold text-white flex items-center gap-2">
                <span class="material-symbols-outlined text-accent-cyan">analytics</span> 数据可视化

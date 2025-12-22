@@ -370,11 +370,23 @@ class Meeting:
             print("[Meeting] No Leader found, skipping summary generation")
             return "讨论已结束。"
 
-        # 构建总结请求
+        # 临时禁用 end_meeting 工具，避免Leader在生成总结时又调用它
+        # 保存当前工具，生成完毕后恢复
+        saved_tools = leader.tools.copy()
+        if "end_meeting" in leader.tools:
+            del leader.tools["end_meeting"]
+            print("[Meeting] Temporarily disabled end_meeting tool for summary generation")
+
+        # 构建总结请求 - 明确告诉Leader会议已结束，不要调用任何工具
         summary_request = Message(
             sender="Meeting Orchestrator",
             recipient="Leader",
-            content="""请作为主持人，对本次圆桌讨论进行总结。
+            content="""会议已经结束。请作为主持人，对本次圆桌讨论进行**最终总结**。
+
+⚠️ 重要提示：
+- 会议已经结束，你无需调用任何工具
+- 直接用文字生成完整的会议纪要
+- 不要再次尝试结束会议
 
 总结要求：
 1. 回顾讨论的核心议题和各专家的主要观点
@@ -383,7 +395,7 @@ class Meeting:
 4. 提供最终投资建议或决策建议
 5. 使用Markdown格式，结构清晰
 
-请生成完整的会议纪要。""",
+请直接输出会议纪要内容：""",
             message_type=MessageType.QUESTION
         )
 
@@ -415,6 +427,9 @@ class Meeting:
                 return summary_content
             else:
                 print("[Meeting] Leader did not generate summary")
+                # 如果仍然失败，尝试使用conclusion_reason作为备选总结
+                if self.conclusion_reason:
+                    return f"## 会议总结\n\n{self.conclusion_reason}"
                 return "讨论已结束，但未能生成总结。"
 
         except Exception as e:
@@ -422,6 +437,11 @@ class Meeting:
             import traceback
             traceback.print_exc()
             return f"讨论已结束。（总结生成失败：{str(e)}）"
+        
+        finally:
+            # 恢复工具（虽然会议已结束，但保持代码完整性）
+            leader.tools = saved_tools
+            print("[Meeting] Restored Leader tools")
 
     def _generate_summary(self) -> Dict[str, Any]:
         """
