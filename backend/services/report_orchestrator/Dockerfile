@@ -27,6 +27,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN rm -rf /root/.cache/matplotlib /root/.matplotlib
 
 # Copy the rest of the application's code into the container
+COPY ./config ./config
 COPY ./app ./app
 
 # Run main.py when the container launches
