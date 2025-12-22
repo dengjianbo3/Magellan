@@ -14,7 +14,7 @@ import httpx
 
 # ==================== Agent Creators ====================
 
-def create_leader(language: str = "zh", meeting=None) -> Agent:
+def create_leader(language: str = "en", meeting=None) -> Agent:
     """
     创建领导者Agent
 
@@ -459,7 +459,7 @@ def create_leader(language: str = "zh", meeting=None) -> Agent:
     return agent
 
 
-def create_market_analyst(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_market_analyst(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建市场分析师Agent (使用ReWOO架构)
 
@@ -787,7 +787,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
     return agent
 
 
-def create_financial_expert(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_financial_expert(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建财务专家Agent (使用ReWOO架构)
 
@@ -1072,7 +1072,7 @@ Rapid financial health check focusing on KEY METRICS ONLY.
     return agent
 
 
-def create_team_evaluator(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_team_evaluator(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建团队评估专家Agent (使用ReWOO架构)
 
@@ -1419,7 +1419,7 @@ Provide a rapid team evaluation focusing on KEY FINDINGS ONLY.
     return agent
 
 
-def create_risk_assessor(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_risk_assessor(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建风险评估专家Agent (使用ReWOO架构)
 
@@ -1763,7 +1763,7 @@ Rapid risk identification focusing on CRITICAL RISKS ONLY.
     return agent
 
 
-def create_tech_specialist(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_tech_specialist(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建技术专家Agent (使用ReWOO架构)
 
@@ -2140,7 +2140,7 @@ Rapid technology assessment focusing on KEY STRENGTHS ONLY.
     return agent
 
 
-def create_legal_advisor(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_legal_advisor(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建法律顾问Agent (使用ReWOO架构)
 
@@ -2534,7 +2534,7 @@ Rapid legal check focusing on CRITICAL ISSUES ONLY.
     return agent
 
 
-def create_technical_analyst(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_technical_analyst(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建技术分析师Agent (使用ReWOO架构，K线/技术指标分析)
 
@@ -3056,7 +3056,7 @@ Parameters:
 
 # ==================== New Agents (Phase 2) ====================
 
-def create_macro_economist(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_macro_economist(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建宏观经济分析师Agent (使用ReWOO架构)
 
@@ -3305,7 +3305,7 @@ Rapid macroeconomic assessment focusing on KEY INDICATORS ONLY.
     return agent
 
 
-def create_esg_analyst(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_esg_analyst(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建ESG分析师Agent (使用ReWOO架构)
 
@@ -3564,7 +3564,7 @@ Rapid ESG assessment focusing on MATERIAL ISSUES ONLY.
     return agent
 
 
-def create_sentiment_analyst(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_sentiment_analyst(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建情绪分析师Agent (使用ReWOO架构)
 
@@ -3823,7 +3823,7 @@ Rapid sentiment assessment focusing on CURRENT MOOD ONLY.
     return agent
 
 
-def create_quant_strategist(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_quant_strategist(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建量化策略师Agent (使用ReWOO架构)
 
@@ -4076,7 +4076,7 @@ Rapid quantitative assessment focusing on KEY METRICS ONLY.
     return agent
 
 
-def create_deal_structurer(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_deal_structurer(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建交易结构师Agent (使用ReWOO架构)
 
@@ -4345,7 +4345,7 @@ Rapid deal structure assessment focusing on KEY TERMS ONLY.
     return agent
 
 
-def create_ma_advisor(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_ma_advisor(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建并购顾问Agent (使用ReWOO架构)
 
@@ -4628,7 +4628,7 @@ Rapid M&A assessment focusing on KEY FACTORS ONLY.
     return agent
 
 
-def create_onchain_analyst(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_onchain_analyst(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建链上分析师Agent (使用ReWOO架构)
 
