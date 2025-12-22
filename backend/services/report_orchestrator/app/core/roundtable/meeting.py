@@ -250,14 +250,9 @@ class Meeting:
             pending = self.message_bus.peek_messages("Leader")
             
             # Leader参与条件：
-            # 1. 有pending消息（其他专家@了Leader）
-            # 2. 或者当前轮次是3的倍数（定期主持）
-            # 3. 或者超过5轮没有Leader发言
-            should_leader_speak = (
-                len(pending) > 0 or 
-                self.current_turn % 3 == 2 or  # 第2, 5, 8, 11... 轮
-                self.current_turn >= self.max_turns - 2  # 接近结束时
-            )
+            # Leader每轮都应该参与，总结讨论并决定下一步
+            # 这确保了Leader能够持续引导会议进程
+            should_leader_speak = True  # Leader每轮都参与
             
             if should_leader_speak:
                 # 如果没有pending消息，创建一个汇总请求让Leader思考
