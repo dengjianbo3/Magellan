@@ -182,10 +182,24 @@ class ReWOOAgent(Agent):
 
         # 调用LLM生成计划
         try:
+            # Emit log: calling LLM
+            if self.event_bus:
+                await self.event_bus.publish_log(
+                    agent_name=self.name,
+                    log_text=f"[Plan] 调用LLM生成分析计划..."
+                )
+
             response = await self._call_llm(
                 messages,
                 temperature=self.planning_temperature
             )
+
+            # Emit log: LLM response received
+            if self.event_bus:
+                await self.event_bus.publish_log(
+                    agent_name=self.name,
+                    log_text=f"[Plan] LLM响应已收到，解析计划中..."
+                )
 
             # 解析计划
             plan = self._parse_plan(response)
@@ -202,7 +216,14 @@ class ReWOOAgent(Agent):
                 )
 
             for i, step in enumerate(plan, 1):
-                print(f"  Step {i}: {step.get('tool', 'unknown')}({step.get('params', {})})")
+                step_log = f"  • Step {i}: {step.get('tool', 'unknown')}({step.get('params', {})})"
+                print(step_log)
+                # Emit each step as log
+                if self.event_bus:
+                    await self.event_bus.publish_log(
+                        agent_name=self.name,
+                        log_text=f"[Plan] Step {i}: {step.get('tool')}({step.get('params', {})})"
+                    )
 
             return plan
 
@@ -251,6 +272,14 @@ class ReWOOAgent(Agent):
 
             # Create task with timeout
             try:
+                # Emit log for each tool
+                if self.event_bus:
+                    params_str = ', '.join([f"{k}={repr(v)[:30]}" for k,v in tool_params.items()])
+                    await self.event_bus.publish_log(
+                        agent_name=self.name,
+                        log_text=f"[Exec] 工具调用: {tool_name}({params_str})"
+                    )
+
                 # Use configured tool execution timeout
                 task = asyncio.wait_for(
                     tool.execute(**tool_params),
@@ -266,6 +295,7 @@ class ReWOOAgent(Agent):
                     "summary": f"Task creation failed: {str(e)}"
                 }
                 tasks.append(self._create_completed_future(error_result))
+
 
         # Execute all tasks in parallel
         observations = await asyncio.gather(*tasks, return_exceptions=True)
@@ -313,6 +343,13 @@ class ReWOOAgent(Agent):
         success_rate = success_count / len(plan) if plan else 0
 
         logger.info(f"[{self.name}] Execution complete: {success_count}/{len(plan)} successful ({success_rate:.1%})")
+
+        # Emit log for execution completion
+        if self.event_bus:
+            await self.event_bus.publish_log(
+                agent_name=self.name,
+                log_text=f"[Exec] 执行完成: {success_count}/{len(plan)} 成功 ({success_rate:.1%})"
+            )
 
         # If success rate is too low, log warning
         if success_rate < 0.3 and len(plan) > 0:
