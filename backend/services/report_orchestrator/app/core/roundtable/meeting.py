@@ -2,7 +2,7 @@
 Meeting: The orchestrator that manages the multi-agent discussion
 Meeting: 管理多智能体讨论的编排器
 """
-from typing import List, Optional, Dict, Any, Callable, Awaitable
+from typing import List, Optional, Dict, Any, Callable, Awaitable, TYPE_CHECKING
 from .agent import Agent
 from .message import Message, MessageType
 from .message_bus import MessageBus
@@ -28,7 +28,9 @@ class Meeting:
         agents: List[Agent],
         agent_event_bus: Optional[AgentEventBus] = None,
         max_turns: int = 20,
-        max_duration_seconds: int = 300
+        max_duration_seconds: int = 300,
+        llm_service: Any = None,
+        on_message: Optional[Callable] = None
     ):
         """
         初始化Meeting
@@ -38,16 +40,24 @@ class Meeting:
             agent_event_bus: 用于实时推送的事件总线
             max_turns: 最大轮次数
             max_duration_seconds: 最大持续时间（秒）
+            llm_service: LLM服务接口（可选）
+            on_message: 消息回调函数（可选）
         """
         self.agents = {agent.name: agent for agent in agents}
         self.message_bus = MessageBus()
         self.agent_event_bus = agent_event_bus
         self.max_turns = max_turns
         self.max_duration_seconds = max_duration_seconds
+        self.llm_service = llm_service
+        self.on_message_callback = on_message
 
-        # 将MessageBus注入到每个Agent
+        # Message list for TradingMeeting compatibility
+        self.messages: List[Dict[str, Any]] = []
+
+        # 将MessageBus和EventBus注入到每个Agent
         for agent in agents:
             agent.message_bus = self.message_bus
+            agent.event_bus = self.agent_event_bus  # Inject event_bus for real-time progress
             self.message_bus.register_agent(agent.name)
 
         # 讨论状态

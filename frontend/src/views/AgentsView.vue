@@ -6,14 +6,29 @@
         <h1 class="text-3xl font-display font-bold text-white mb-2 tracking-tight">{{ t('agents.title') }}</h1>
         <p class="text-text-secondary text-lg">{{ t('agents.subtitle') }}</p>
       </div>
-      <button class="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-dark text-white font-bold shadow-glow-sm hover:shadow-glow transition-all duration-300 group">
+      <button @click="showCreateAgentInfo" class="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-dark text-white font-bold shadow-glow-sm hover:shadow-glow transition-all duration-300 group">
         <span class="material-symbols-outlined group-hover:rotate-90 transition-transform">add</span>
         {{ t('agents.createCustomAgent') }}
       </button>
     </div>
 
+    <!-- Loading State -->
+    <div v-if="loading" class="flex items-center justify-center py-20">
+      <div class="flex flex-col items-center gap-4">
+        <span class="material-symbols-outlined text-4xl text-primary animate-spin">progress_activity</span>
+        <p class="text-text-secondary">Loading agents...</p>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div v-else-if="agents.length === 0" class="flex flex-col items-center justify-center py-20">
+      <span class="material-symbols-outlined text-6xl text-text-secondary mb-4">smart_toy</span>
+      <h3 class="text-xl font-bold text-white mb-2">No Agents Found</h3>
+      <p class="text-text-secondary">No AI agents are currently configured.</p>
+    </div>
+
     <!-- Agents Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <div
         v-for="agent in agents"
         :key="agent.id"
@@ -218,12 +233,24 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useLanguage } from '../composables/useLanguage';
+import { useToast } from '../composables/useToast';
+import { API_BASE } from '@/config/api';
 
-const { t } = useLanguage();
+const { t, locale } = useLanguage();
+const { success, error: showError, info } = useToast();
+
+// Show create custom agent modal (coming soon)
+const showCreateAgentInfo = () => {
+  info(t('agents.createComingSoon') || 'Custom agent creation coming soon. Use the configuration options for now.');
+};
 
 const showConfigModal = ref(false);
+const loading = ref(true);
+const agentsData = ref([]);
+const selectedAgentId = ref(null);
+
 const configForm = ref({
   name: '',
   model: 'gpt-4',
@@ -232,74 +259,62 @@ const configForm = ref({
   maxTokens: 2000
 });
 
-const agents = computed(() => [
-  {
-    id: 1,
-    name: t('analysis.step2.agents.marketAnalyst.name'),
-    role: t('analysis.step2.agents.marketAnalyst.role'),
-    icon: 'show_chart',
-    status: 'active',
-    description: t('analysis.step2.agents.marketAnalyst.description'),
-    analysisCount: 156,
-    avgResponse: '2.3s',
-    capabilities: ['Market Research', 'Competitor Analysis', 'Trend Forecasting']
-  },
-  {
-    id: 2,
-    name: t('analysis.step2.agents.financialExpert.name'),
-    role: t('analysis.step2.agents.financialExpert.role'),
-    icon: 'account_balance',
-    status: 'active',
-    description: t('analysis.step2.agents.financialExpert.description'),
-    analysisCount: 142,
-    avgResponse: '3.1s',
-    capabilities: ['Financial Modeling', 'Ratio Analysis', 'Valuation']
-  },
-  {
-    id: 3,
-    name: t('analysis.step2.agents.teamEvaluator.name'),
-    role: t('analysis.step2.agents.teamEvaluator.role'),
-    icon: 'groups',
-    status: 'active',
-    description: t('analysis.step2.agents.teamEvaluator.description'),
-    analysisCount: 98,
-    avgResponse: '2.8s',
-    capabilities: ['Leadership Analysis', 'Culture Assessment', 'HR Review']
-  },
-  {
-    id: 4,
-    name: t('analysis.step2.agents.riskAssessor.name'),
-    role: t('analysis.step2.agents.riskAssessor.role'),
-    icon: 'shield',
-    status: 'active',
-    description: t('analysis.step2.agents.riskAssessor.description'),
-    analysisCount: 134,
-    avgResponse: '2.5s',
-    capabilities: ['Risk Identification', 'Impact Analysis', 'Mitigation Planning']
-  },
-  {
-    id: 5,
-    name: t('analysis.step2.agents.techSpecialist.name'),
-    role: t('analysis.step2.agents.techSpecialist.role'),
-    icon: 'computer',
-    status: 'inactive',
-    description: t('analysis.step2.agents.techSpecialist.description'),
-    analysisCount: 67,
-    avgResponse: '4.2s',
-    capabilities: ['Tech Stack Review', 'Innovation Assessment', 'IP Analysis']
-  },
-  {
-    id: 6,
-    name: t('analysis.step2.agents.legalAdvisor.name'),
-    role: t('analysis.step2.agents.legalAdvisor.role'),
-    icon: 'gavel',
-    status: 'inactive',
-    description: t('analysis.step2.agents.legalAdvisor.description'),
-    analysisCount: 45,
-    avgResponse: '3.8s',
-    capabilities: ['Compliance Review', 'Contract Analysis', 'Regulatory Assessment']
+// Agent icon mapping
+const agentIcons = {
+  team_evaluator: 'groups',
+  market_analyst: 'show_chart',
+  financial_expert: 'account_balance',
+  risk_assessor: 'shield',
+  tech_specialist: 'computer',
+  legal_advisor: 'gavel',
+  technical_analyst: 'candlestick_chart',
+  leader: 'supervisor_account',
+  report_synthesizer: 'summarize',
+  // Phase 2 新增 Agent
+  macro_economist: 'trending_up',
+  esg_analyst: 'eco',
+  sentiment_analyst: 'mood',
+  quant_strategist: 'analytics',
+  deal_structurer: 'handshake',
+  ma_advisor: 'merge'
+};
+
+// Fetch agents from API
+const fetchAgents = async () => {
+  loading.value = true;
+  try {
+    const response = await fetch(`${API_BASE}/api/agents`);
+    if (response.ok) {
+      const data = await response.json();
+      agentsData.value = data.agents || [];
+    } else {
+      console.error('[Agents] Failed to fetch agents');
+    }
+  } catch (err) {
+    console.error('[Agents] Error fetching agents:', err);
+  } finally {
+    loading.value = false;
   }
-]);
+};
+
+// Transform API data to display format
+const agents = computed(() => {
+  const lang = locale.value === 'zh-CN' ? 'zh' : 'en';
+
+  return agentsData.value.map(agent => ({
+    id: agent.agent_id,
+    name: agent.name?.[lang] || agent.name?.zh || agent.agent_id,
+    role: agent.type === 'special' ? 'Special Agent' : 'Atomic Agent',
+    icon: agentIcons[agent.agent_id] || 'smart_toy',
+    status: agent.enabled ? 'active' : 'inactive',
+    description: agent.description?.[lang] || agent.description?.zh || '',
+    analysisCount: agent.usage_count || 0,
+    avgResponse: agent.estimated_duration?.quick ? `${agent.estimated_duration.quick}s` : 'N/A',
+    capabilities: agent.capabilities?.slice(0, 3) || [],
+    tags: agent.tags || [],
+    successRate: agent.success_rate || 100
+  }));
+});
 
 const toggleMenu = (agentId) => {
   console.log('Toggle menu for agent:', agentId);
@@ -308,32 +323,71 @@ const toggleMenu = (agentId) => {
 const configureAgent = (agentId) => {
   const agent = agents.value.find(a => a.id === agentId);
   if (agent) {
+    selectedAgentId.value = agentId;
     configForm.value = {
       name: agent.name,
       model: 'gpt-4',
       temperature: 0.7,
-      systemPrompt: `You are a ${agent.role} expert. ${agent.description}`,
+      systemPrompt: `You are a ${agent.role}. ${agent.description}`,
       maxTokens: 2000
     };
     showConfigModal.value = true;
   }
 };
 
-const toggleAgentStatus = (agentId) => {
-  // In a real app, we would update the state via an API
+const toggleAgentStatus = async (agentId) => {
   const agent = agents.value.find(a => a.id === agentId);
-  if (agent) {
-    // Since agents is computed, we can't mutate it directly in a clean way if it's purely derived.
-    // For this mockup, we assume agents data structure allows mutation or we'd use a local reactive copy.
-    // However, since we used 'computed' to get translations, we can't mutate it easily.
-    // Better pattern: fetch raw data, then format with computed.
-    // For this UI demo, we'll just log it.
-    console.log(`Toggle status for agent ${agentId}`);
+  if (!agent) return;
+
+  const newStatus = agent.status !== 'active';
+
+  try {
+    const response = await fetch(`${API_BASE}/api/agents/${agentId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: newStatus })
+    });
+
+    if (response.ok) {
+      success(`Agent ${newStatus ? 'activated' : 'paused'} successfully`);
+      await fetchAgents(); // Refresh the list
+    } else {
+      showError('Failed to update agent status');
+    }
+  } catch (err) {
+    console.error('[Agents] Error toggling status:', err);
+    showError('Failed to update agent status');
   }
 };
 
-const saveAgentConfig = () => {
-  console.log('Saving agent config:', configForm.value);
-  showConfigModal.value = false;
+const saveAgentConfig = async () => {
+  if (!selectedAgentId.value) return;
+
+  try {
+    const response = await fetch(`${API_BASE}/api/agents/${selectedAgentId.value}/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        temperature: configForm.value.temperature,
+        max_tokens: configForm.value.maxTokens,
+        custom_prompt: configForm.value.systemPrompt
+      })
+    });
+
+    if (response.ok) {
+      success('Agent configuration saved');
+      showConfigModal.value = false;
+      await fetchAgents();
+    } else {
+      showError('Failed to save configuration');
+    }
+  } catch (err) {
+    console.error('[Agents] Error saving config:', err);
+    showError('Failed to save configuration');
+  }
 };
+
+onMounted(() => {
+  fetchAgents();
+});
 </script>

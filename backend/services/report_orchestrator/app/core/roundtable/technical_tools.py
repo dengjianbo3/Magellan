@@ -1,9 +1,8 @@
 """
 Technical Analysis Tools
-技术分析工具集
 
-提供K线数据获取和技术指标计算功能
-支持加密货币(Binance)和股票(Yahoo Finance)市场
+Provides K-line data fetching and technical indicator calculation.
+Supports crypto (Binance) and stock (Yahoo Finance) markets.
 """
 
 import pandas as pd
@@ -26,25 +25,26 @@ from ...models.technical_models import (
 
 class TechnicalAnalysisTools:
     """
-    技术分析工具集
+    Technical Analysis Tools
 
-    功能:
-    - 获取K线数据 (加密货币/股票)
-    - 计算技术指标 (RSI, MACD, BB, EMA, KDJ, ADX等)
-    - 识别支撑阻力位
-    - K线形态识别
-    - 生成交易信号
+    Features:
+    - Fetch K-line data (crypto/stock)
+    - Calculate technical indicators (RSI, MACD, BB, EMA, KDJ, ADX, etc.)
+    - Identify support/resistance levels
+    - Candlestick pattern recognition
+    - Generate trading signals
     """
 
     def __init__(self):
-        # API端点
+        # API endpoints - OKX first (available in mainland China), then Binance, finally CoinGecko
+        self.okx_api = "https://www.okx.com/api/v5"
         self.binance_api = "https://api.binance.com/api/v3"
         self.coingecko_api = "https://api.coingecko.com/api/v3"
 
-        # 超时配置
+        # Timeout configuration
         self.timeout = 30.0
 
-    # ==================== 数据获取 ====================
+    # ==================== Data Fetching ====================
 
     async def get_ohlcv(
         self,
@@ -54,13 +54,13 @@ class TechnicalAnalysisTools:
         market_type: str = "crypto"
     ) -> pd.DataFrame:
         """
-        获取K线数据 (OHLCV)
+        Fetch K-line data (OHLCV)
 
         Args:
-            symbol: 交易对 (如: BTC/USDT, BTC, AAPL)
-            timeframe: 时间周期 (1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w)
-            limit: 获取数量
-            market_type: 市场类型 (crypto, stock)
+            symbol: Trading pair (e.g. BTC/USDT, BTC, AAPL)
+            timeframe: Time period (1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w)
+            limit: Number of candles to fetch
+            market_type: Market type (crypto, stock)
 
         Returns:
             DataFrame with columns: timestamp, open, high, low, close, volume
@@ -76,22 +76,90 @@ class TechnicalAnalysisTools:
         timeframe: str,
         limit: int
     ) -> pd.DataFrame:
-        """从Binance、CoinGecko或Yahoo Finance获取加密货币K线数据"""
+        """Fetch crypto K-line data from OKX, Binance, CoinGecko, or Yahoo Finance"""
 
-        # 首先尝试Binance API
+        # First try OKX API (available in mainland China)
+        try:
+            return await self._get_crypto_ohlcv_okx(symbol, timeframe, limit)
+        except Exception as e:
+            print(f"OKX API failed: {e}, trying Binance...")
+
+        # Then try Binance API
         try:
             return await self._get_crypto_ohlcv_binance(symbol, timeframe, limit)
         except Exception as e:
             print(f"Binance API failed: {e}, trying CoinGecko...")
 
-        # 尝试CoinGecko
+        # Try CoinGecko
         try:
             return await self._get_crypto_ohlcv_coingecko(symbol, timeframe, limit)
         except Exception as e:
             print(f"CoinGecko API failed: {e}, trying Yahoo Finance...")
 
-        # 最后尝试Yahoo Finance (BTC-USD, ETH-USD等)
+        # Finally try Yahoo Finance (BTC-USD, ETH-USD, etc.)
         return await self._get_crypto_ohlcv_yfinance(symbol, timeframe, limit)
+
+    async def _get_crypto_ohlcv_okx(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int
+    ) -> pd.DataFrame:
+        """Fetch crypto K-line data from OKX (preferred, available in mainland China)"""
+
+        # Normalize symbol to OKX format (BTC-USDT)
+        clean_symbol = symbol.replace("/", "").upper()
+        if clean_symbol.endswith("USDT"):
+            okx_symbol = clean_symbol.replace("USDT", "-USDT")
+        else:
+            okx_symbol = f"{clean_symbol}-USDT"
+
+        # Convert timeframe to OKX format
+        tf_map = {
+            "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
+            "1h": "1H", "4h": "4H", "1d": "1D", "1w": "1W", "1M": "1M"
+        }
+        bar = tf_map.get(timeframe, "1D")
+
+        url = f"{self.okx_api}/market/candles"
+        params = {
+            "instId": okx_symbol,
+            "bar": bar,
+            "limit": str(min(limit, 300))  # OKX最大300
+        }
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(url, params=params)
+
+            if response.status_code != 200:
+                raise Exception(f"OKX API error: {response.status_code} - {response.text}")
+
+            data = response.json()
+
+            if data.get("code") != "0":
+                raise Exception(f"OKX API error: {data.get('msg', 'Unknown error')}")
+
+            candles = data.get("data", [])
+            if not candles:
+                raise Exception(f"No data returned for {okx_symbol}")
+
+        # OKX returns: [timestamp, open, high, low, close, vol, volCcy, volCcyQuote, confirm]
+        # Note: OKX data is descending (newest first), needs to be reversed
+        df = pd.DataFrame(candles, columns=[
+            'timestamp', 'open', 'high', 'low', 'close', 'volume',
+            'vol_ccy', 'vol_ccy_quote', 'confirm'
+        ])
+
+        # Reverse order so oldest is first
+        df = df.iloc[::-1].reset_index(drop=True)
+
+        df['timestamp'] = pd.to_datetime(df['timestamp'].astype(int), unit='ms')
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            df[col] = df[col].astype(float)
+
+        print(f"[TechnicalTools] Fetched {len(df)} candles from OKX: {okx_symbol}, latest close: ${df['close'].iloc[-1]:,.2f}")
+
+        return df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
 
     async def _get_crypto_ohlcv_yfinance(
         self,
@@ -99,10 +167,10 @@ class TechnicalAnalysisTools:
         timeframe: str,
         limit: int
     ) -> pd.DataFrame:
-        """从Yahoo Finance获取加密货币K线数据"""
+        """Fetch crypto K-line data from Yahoo Finance"""
         import yfinance as yf
 
-        # 映射symbol到Yahoo Finance格式
+        # Map symbol to Yahoo Finance format
         symbol_map = {
             "BTC": "BTC-USD", "BTCUSDT": "BTC-USD",
             "ETH": "ETH-USD", "ETHUSDT": "ETH-USD",
@@ -119,21 +187,21 @@ class TechnicalAnalysisTools:
         clean_symbol = symbol.replace("/", "").upper()
         yf_symbol = symbol_map.get(clean_symbol, f"{clean_symbol.replace('USDT', '')}-USD")
 
-        # 转换timeframe到yfinance格式
+        # Convert timeframe to yfinance format
         tf_map = {
             "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
             "1h": "1h", "4h": "1h", "1d": "1d", "1w": "1wk", "1M": "1mo"
         }
         interval = tf_map.get(timeframe, "1d")
 
-        # 计算获取的时间范围
+        # Calculate time range to fetch
         period_map = {
             "1m": "1d", "5m": "5d", "15m": "5d", "30m": "5d",
             "1h": "60d", "4h": "60d", "1d": "1y", "1w": "2y", "1M": "5y"
         }
         period = period_map.get(timeframe, "1y")
 
-        # 在异步环境中运行同步yfinance代码
+        # Run synchronous yfinance code in async context
         loop = asyncio.get_event_loop()
         df = await loop.run_in_executor(
             None,
@@ -143,10 +211,10 @@ class TechnicalAnalysisTools:
         if df.empty:
             raise Exception(f"No data returned from Yahoo Finance for {yf_symbol}")
 
-        # 重置索引并重命名列
+        # Reset index and rename columns
         df = df.reset_index()
 
-        # 处理列名 - yfinance返回的列名可能是元组或字符串
+        # Handle column names - yfinance may return tuple or string column names
         if isinstance(df.columns[0], tuple):
             df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
 
@@ -160,10 +228,10 @@ class TechnicalAnalysisTools:
             'Volume': 'volume'
         })
 
-        # 确保列名小写
+        # Ensure column names are lowercase
         df.columns = df.columns.str.lower()
 
-        # 限制返回数量
+        # Limit returned count
         if len(df) > limit:
             df = df.tail(limit)
 
@@ -175,16 +243,16 @@ class TechnicalAnalysisTools:
         timeframe: str,
         limit: int
     ) -> pd.DataFrame:
-        """从Binance获取加密货币K线数据"""
+        """Fetch crypto K-line data from Binance"""
 
-        # 标准化symbol
+        # Normalize symbol
         if "/" in symbol:
             symbol = symbol.replace("/", "")
         elif not symbol.upper().endswith("USDT"):
             symbol = f"{symbol}USDT"
         symbol = symbol.upper()
 
-        # 转换timeframe
+        # Convert timeframe
         tf_map = {
             "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
             "1h": "1h", "4h": "4h", "1d": "1d", "1w": "1w", "1M": "1M"
@@ -206,7 +274,7 @@ class TechnicalAnalysisTools:
 
             data = response.json()
 
-        # 转换为DataFrame
+        # Convert to DataFrame
         df = pd.DataFrame(data, columns=[
             'timestamp', 'open', 'high', 'low', 'close', 'volume',
             'close_time', 'quote_volume', 'trades', 'taker_buy_base',
@@ -225,9 +293,9 @@ class TechnicalAnalysisTools:
         timeframe: str,
         limit: int
     ) -> pd.DataFrame:
-        """从CoinGecko获取加密货币K线数据（备用）"""
+        """Fetch crypto K-line data from CoinGecko (fallback)"""
 
-        # 映射常见symbol到CoinGecko ID
+        # Map common symbols to CoinGecko ID
         symbol_map = {
             "BTC": "bitcoin", "BTCUSDT": "bitcoin",
             "ETH": "ethereum", "ETHUSDT": "ethereum",
@@ -241,11 +309,11 @@ class TechnicalAnalysisTools:
             "LINK": "chainlink", "LINKUSDT": "chainlink",
         }
 
-        # 标准化symbol
+        # Normalize symbol
         clean_symbol = symbol.replace("/", "").replace("USDT", "").upper()
         coin_id = symbol_map.get(clean_symbol, symbol_map.get(symbol.upper().replace("/", ""), clean_symbol.lower()))
 
-        # 转换timeframe到days
+        # Convert timeframe to days
         tf_days_map = {
             "1m": 1, "5m": 1, "15m": 1, "30m": 1,
             "1h": 7, "4h": 30, "1d": 90, "1w": 365, "1M": 365
@@ -274,7 +342,7 @@ class TechnicalAnalysisTools:
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df['volume'] = 0.0  # CoinGecko OHLC不包含volume
 
-        # 限制返回数量
+        # Limit returned count
         if len(df) > limit:
             df = df.tail(limit)
 
@@ -286,18 +354,18 @@ class TechnicalAnalysisTools:
         timeframe: str,
         limit: int
     ) -> pd.DataFrame:
-        """获取股票K线数据 (使用yfinance库，如果可用)"""
+        """Fetch stock K-line data (using yfinance library if available)"""
         try:
             import yfinance as yf
 
-            # 转换timeframe为yfinance格式
+            # Convert timeframe to yfinance format
             tf_map = {
                 "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
                 "1h": "1h", "1d": "1d", "1w": "1wk", "1M": "1mo"
             }
             interval = tf_map.get(timeframe, "1d")
 
-            # 计算日期范围
+            # Calculate date range
             period_map = {
                 "1m": "7d", "5m": "60d", "15m": "60d", "30m": "60d",
                 "1h": "730d", "1d": "max", "1w": "max", "1M": "max"
@@ -324,11 +392,11 @@ class TechnicalAnalysisTools:
             raise Exception("yfinance not installed. Run: pip install yfinance")
 
     async def get_current_price(self, symbol: str, market_type: str = "crypto") -> float:
-        """获取当前价格"""
+        """Get current price"""
         df = await self.get_ohlcv(symbol, "1h", 1, market_type)
         return df['close'].iloc[-1]
 
-    # ==================== 技术指标计算 ====================
+    # ==================== Technical Indicator Calculation ====================
 
     def calculate_all_indicators(
         self,
@@ -336,14 +404,14 @@ class TechnicalAnalysisTools:
         indicators: List[str] = None
     ) -> Dict[str, Any]:
         """
-        计算所有技术指标
+        Calculate all technical indicators
 
         Args:
-            df: K线数据DataFrame
-            indicators: 需要计算的指标列表，默认全部
+            df: K-line data DataFrame
+            indicators: List of indicators to calculate, default all
 
         Returns:
-            指标计算结果字典
+            Dictionary of indicator calculation results
         """
         if indicators is None:
             indicators = ["RSI", "MACD", "BB", "EMA", "KDJ", "ADX"]
@@ -371,7 +439,7 @@ class TechnicalAnalysisTools:
             if "KDJ" in indicators and data_len >= 9:
                 results['kdj'] = self._calculate_kdj(high, low, close)
 
-            if "ADX" in indicators and data_len >= 28:  # ADX需要至少14*2个数据点
+            if "ADX" in indicators and data_len >= 28:  # ADX needs at least 14*2 data points
                 results['adx'] = self._calculate_adx(high, low, close)
 
         except Exception as e:
@@ -379,13 +447,13 @@ class TechnicalAnalysisTools:
             import traceback
             traceback.print_exc()
 
-        # 添加趋势分析
+        # Add trend analysis
         results['trend'] = self._analyze_trend(df)
 
         return results
 
     def _calculate_rsi(self, close: pd.Series, period: int = 14) -> RSIIndicator:
-        """计算RSI"""
+        """Calculate RSI"""
         delta = close.diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
@@ -394,22 +462,22 @@ class TechnicalAnalysisTools:
         rsi = 100 - (100 / (1 + rs))
         current_rsi = rsi.iloc[-1]
 
-        # 判断信号
+        # Determine signal
         if current_rsi < 30:
             signal = SignalStrength.STRONG_BUY
-            desc = f"RSI={current_rsi:.1f}，严重超卖区，可能反弹"
+            desc = f"RSI={current_rsi:.1f}, severely oversold, possible bounce"
         elif current_rsi < 40:
             signal = SignalStrength.BUY
-            desc = f"RSI={current_rsi:.1f}，偏弱，接近超卖"
+            desc = f"RSI={current_rsi:.1f}, weak, approaching oversold"
         elif current_rsi > 70:
             signal = SignalStrength.STRONG_SELL
-            desc = f"RSI={current_rsi:.1f}，严重超买区，注意回调风险"
+            desc = f"RSI={current_rsi:.1f}, severely overbought, watch for pullback"
         elif current_rsi > 60:
             signal = SignalStrength.SELL
-            desc = f"RSI={current_rsi:.1f}，偏强，接近超买"
+            desc = f"RSI={current_rsi:.1f}, strong, approaching overbought"
         else:
             signal = SignalStrength.NEUTRAL
-            desc = f"RSI={current_rsi:.1f}，中性区间"
+            desc = f"RSI={current_rsi:.1f}, neutral zone"
 
         return RSIIndicator(
             value=round(current_rsi, 2),
@@ -425,7 +493,7 @@ class TechnicalAnalysisTools:
         slow: int = 26,
         signal: int = 9
     ) -> MACDIndicator:
-        """计算MACD"""
+        """Calculate MACD"""
         exp1 = close.ewm(span=fast, adjust=False).mean()
         exp2 = close.ewm(span=slow, adjust=False).mean()
         macd_line = exp1 - exp2
@@ -437,30 +505,30 @@ class TechnicalAnalysisTools:
         current_hist = histogram.iloc[-1]
         prev_hist = histogram.iloc[-2] if len(histogram) > 1 else 0
 
-        # 判断信号
+        # Determine signal
         if current_hist > 0:
             if current_hist > prev_hist:
                 sig = SignalStrength.BUY
-                desc = "MACD柱状图在零轴上方且放大，多头动能增强"
+                desc = "MACD histogram above zero and expanding, bullish momentum strengthening"
             else:
                 sig = SignalStrength.NEUTRAL
-                desc = "MACD柱状图在零轴上方但缩小，多头动能减弱"
+                desc = "MACD histogram above zero but shrinking, bullish momentum weakening"
         else:
             if current_hist < prev_hist:
                 sig = SignalStrength.SELL
-                desc = "MACD柱状图在零轴下方且放大，空头动能增强"
+                desc = "MACD histogram below zero and expanding, bearish momentum strengthening"
             else:
                 sig = SignalStrength.NEUTRAL
-                desc = "MACD柱状图在零轴下方但缩小，空头动能减弱"
+                desc = "MACD histogram below zero but shrinking, bearish momentum weakening"
 
-        # 金叉死叉检测
+        # Golden cross / Death cross detection
         if len(histogram) >= 2:
             if histogram.iloc[-2] < 0 and histogram.iloc[-1] > 0:
                 sig = SignalStrength.STRONG_BUY
-                desc = "MACD金叉，买入信号"
+                desc = "MACD golden cross, buy signal"
             elif histogram.iloc[-2] > 0 and histogram.iloc[-1] < 0:
                 sig = SignalStrength.STRONG_SELL
-                desc = "MACD死叉，卖出信号"
+                desc = "MACD death cross, sell signal"
 
         return MACDIndicator(
             macd=round(current_macd, 6),
@@ -476,7 +544,7 @@ class TechnicalAnalysisTools:
         period: int = 20,
         std_dev: float = 2.0
     ) -> BollingerBandsIndicator:
-        """计算布林带"""
+        """Calculate Bollinger Bands"""
         middle = close.rolling(window=period).mean()
         std = close.rolling(window=period).std()
         upper = middle + (std * std_dev)
@@ -487,28 +555,28 @@ class TechnicalAnalysisTools:
         current_middle = middle.iloc[-1]
         current_lower = lower.iloc[-1]
 
-        # 计算带宽
+        # Calculate bandwidth
         width = (current_upper - current_lower) / current_middle * 100
 
-        # 判断位置
+        # Determine position
         if current_price > current_upper:
             position = "above_upper"
             signal = SignalStrength.SELL
-            desc = f"价格突破布林上轨({current_upper:.2f})，可能超买或突破走强"
+            desc = f"Price broke above upper band ({current_upper:.2f}), possibly overbought or breakout"
         elif current_price < current_lower:
             position = "below_lower"
             signal = SignalStrength.BUY
-            desc = f"价格跌破布林下轨({current_lower:.2f})，可能超卖或破位走弱"
+            desc = f"Price broke below lower band ({current_lower:.2f}), possibly oversold or breakdown"
         elif current_price > current_middle:
             position = "upper_half"
             signal = SignalStrength.NEUTRAL
-            desc = f"价格在布林带上半区运行，偏强"
+            desc = f"Price in upper half of Bollinger Bands, bullish bias"
         else:
             position = "lower_half"
             signal = SignalStrength.NEUTRAL
-            desc = f"价格在布林带下半区运行，偏弱"
+            desc = f"Price in lower half of Bollinger Bands, bearish bias"
 
-        desc += f"，波动率{width:.1f}%"
+        desc += f", volatility {width:.1f}%"
 
         return BollingerBandsIndicator(
             upper=round(current_upper, 2),
@@ -521,24 +589,24 @@ class TechnicalAnalysisTools:
         )
 
     def _calculate_ema(self, close: pd.Series) -> EMAIndicator:
-        """计算EMA均线 (7, 25, 99)"""
+        """Calculate EMA (7, 25, 99)"""
         ema7 = close.ewm(span=7, adjust=False).mean().iloc[-1]
         ema25 = close.ewm(span=25, adjust=False).mean().iloc[-1]
         ema99 = close.ewm(span=99, adjust=False).mean().iloc[-1]
 
-        # 判断排列
+        # Determine alignment
         if ema7 > ema25 > ema99:
             alignment = EMAAlignment.BULLISH_ALIGNMENT
             signal = SignalStrength.BUY
-            desc = f"EMA多头排列 (7>{ema7:.2f} > 25>{ema25:.2f} > 99>{ema99:.2f})，趋势向上"
+            desc = f"EMA bullish alignment (7>{ema7:.2f} > 25>{ema25:.2f} > 99>{ema99:.2f}), uptrend"
         elif ema7 < ema25 < ema99:
             alignment = EMAAlignment.BEARISH_ALIGNMENT
             signal = SignalStrength.SELL
-            desc = f"EMA空头排列 (7<{ema7:.2f} < 25<{ema25:.2f} < 99<{ema99:.2f})，趋势向下"
+            desc = f"EMA bearish alignment (7<{ema7:.2f} < 25<{ema25:.2f} < 99<{ema99:.2f}), downtrend"
         else:
             alignment = EMAAlignment.MIXED
             signal = SignalStrength.NEUTRAL
-            desc = "EMA均线纠缠，趋势不明"
+            desc = "EMA mixed, trend unclear"
 
         return EMAIndicator(
             ema_7=round(ema7, 2),
@@ -557,7 +625,7 @@ class TechnicalAnalysisTools:
         k_period: int = 9,
         d_period: int = 3
     ) -> KDJIndicator:
-        """计算KDJ指标"""
+        """Calculate KDJ indicator"""
         lowest_low = low.rolling(window=k_period).min()
         highest_high = high.rolling(window=k_period).max()
 
@@ -571,22 +639,22 @@ class TechnicalAnalysisTools:
         current_d = d.iloc[-1]
         current_j = j.iloc[-1]
 
-        # 判断信号
+        # Determine signal
         if current_j < 20 and current_k < 20:
             signal = SignalStrength.STRONG_BUY
-            desc = f"KDJ超卖区 (J={current_j:.1f}, K={current_k:.1f})，可能反弹"
+            desc = f"KDJ oversold zone (J={current_j:.1f}, K={current_k:.1f}), possible bounce"
         elif current_j > 80 and current_k > 80:
             signal = SignalStrength.STRONG_SELL
-            desc = f"KDJ超买区 (J={current_j:.1f}, K={current_k:.1f})，注意回调"
+            desc = f"KDJ overbought zone (J={current_j:.1f}, K={current_k:.1f}), watch for pullback"
         elif current_k > current_d:
             signal = SignalStrength.BUY
-            desc = f"K线({current_k:.1f})在D线({current_d:.1f})上方，短期多头"
+            desc = f"K line ({current_k:.1f}) above D line ({current_d:.1f}), short-term bullish"
         elif current_k < current_d:
             signal = SignalStrength.SELL
-            desc = f"K线({current_k:.1f})在D线({current_d:.1f})下方，短期空头"
+            desc = f"K line ({current_k:.1f}) below D line ({current_d:.1f}), short-term bearish"
         else:
             signal = SignalStrength.NEUTRAL
-            desc = "KDJ中性区间"
+            desc = "KDJ neutral zone"
 
         return KDJIndicator(
             k=round(current_k, 2),
@@ -603,7 +671,7 @@ class TechnicalAnalysisTools:
         close: pd.Series,
         period: int = 14
     ) -> ADXIndicator:
-        """计算ADX指标"""
+        """Calculate ADX indicator"""
         # True Range
         tr1 = high - low
         tr2 = abs(high - close.shift(1))
@@ -627,19 +695,19 @@ class TechnicalAnalysisTools:
 
         current_adx = adx.iloc[-1]
 
-        # 判断趋势强度
+        # Determine trend strength
         if current_adx > 50:
             strength = TrendStrength.VERY_STRONG
-            desc = f"ADX={current_adx:.1f}，非常强劲的趋势"
+            desc = f"ADX={current_adx:.1f}, very strong trend"
         elif current_adx > 25:
             strength = TrendStrength.STRONG
-            desc = f"ADX={current_adx:.1f}，明确的趋势市场"
+            desc = f"ADX={current_adx:.1f}, clear trending market"
         elif current_adx > 20:
             strength = TrendStrength.MODERATE
-            desc = f"ADX={current_adx:.1f}，趋势正在形成"
+            desc = f"ADX={current_adx:.1f}, trend forming"
         else:
             strength = TrendStrength.WEAK
-            desc = f"ADX={current_adx:.1f}，弱趋势或震荡市场"
+            desc = f"ADX={current_adx:.1f}, weak trend or ranging market"
 
         return ADXIndicator(
             value=round(current_adx, 2),
@@ -648,10 +716,10 @@ class TechnicalAnalysisTools:
         )
 
     def _analyze_trend(self, df: pd.DataFrame) -> TrendAnalysis:
-        """分析趋势"""
+        """Analyze trend"""
         close = df['close']
 
-        # 计算EMA用于判断均线排列
+        # Calculate EMA for alignment determination
         ema_alignment = EMAAlignment.MIXED
         if len(close) >= 99:
             ema7 = close.ewm(span=7, adjust=False).mean().iloc[-1]
@@ -669,7 +737,7 @@ class TechnicalAnalysisTools:
             elif ema7 < ema25:
                 ema_alignment = EMAAlignment.BEARISH_ALIGNMENT
 
-        # 使用简单移动平均判断趋势
+        # Use simple moving average to determine trend
         if len(close) >= 20:
             sma_short = close.rolling(window=5).mean().iloc[-1]
             sma_long = close.rolling(window=20).mean().iloc[-1]
@@ -678,43 +746,43 @@ class TechnicalAnalysisTools:
             if current_price > sma_short > sma_long:
                 direction = TrendDirection.BULLISH
                 strength = 0.8  # float 0-1
-                desc = "价格在均线上方，均线多头排列，上涨趋势明确"
+                desc = "Price above MA, bullish MA alignment, clear uptrend"
             elif current_price < sma_short < sma_long:
                 direction = TrendDirection.BEARISH
                 strength = 0.8
-                desc = "价格在均线下方，均线空头排列，下跌趋势明确"
+                desc = "Price below MA, bearish MA alignment, clear downtrend"
             elif current_price > sma_long:
                 direction = TrendDirection.BULLISH
                 strength = 0.6
-                desc = "价格在长期均线上方，中期看涨"
+                desc = "Price above long-term MA, medium-term bullish"
             elif current_price < sma_long:
                 direction = TrendDirection.BEARISH
                 strength = 0.6
-                desc = "价格在长期均线下方，中期看跌"
+                desc = "Price below long-term MA, medium-term bearish"
             else:
                 direction = TrendDirection.SIDEWAYS
                 strength = 0.3
-                desc = "趋势不明确，横盘整理"
+                desc = "Trend unclear, ranging"
         else:
-            # 数据不足时使用简单判断
+            # Simple judgment when insufficient data
             if len(close) >= 5:
                 change = (close.iloc[-1] - close.iloc[0]) / close.iloc[0] * 100
                 if change > 5:
                     direction = TrendDirection.BULLISH
                     strength = 0.5
-                    desc = f"近期上涨 {change:.1f}%"
+                    desc = f"Recent rise {change:.1f}%"
                 elif change < -5:
                     direction = TrendDirection.BEARISH
                     strength = 0.5
-                    desc = f"近期下跌 {abs(change):.1f}%"
+                    desc = f"Recent drop {abs(change):.1f}%"
                 else:
                     direction = TrendDirection.SIDEWAYS
                     strength = 0.3
-                    desc = f"近期变化 {change:.1f}%，横盘整理"
+                    desc = f"Recent change {change:.1f}%, ranging"
             else:
                 direction = TrendDirection.SIDEWAYS
                 strength = 0.2
-                desc = "数据不足，无法判断趋势"
+                desc = "Insufficient data to determine trend"
 
         return TrendAnalysis(
             direction=direction,
@@ -723,7 +791,7 @@ class TechnicalAnalysisTools:
             description=desc
         )
 
-    # ==================== 支撑阻力位 ====================
+    # ==================== Support/Resistance Levels ====================
 
     def calculate_support_resistance(
         self,
@@ -731,11 +799,11 @@ class TechnicalAnalysisTools:
         method: str = "fibonacci"
     ) -> SupportResistance:
         """
-        计算支撑阻力位
+        Calculate support/resistance levels
 
         Args:
-            df: K线数据
-            method: 计算方法 (fibonacci, pivot)
+            df: K-line data
+            method: Calculation method (fibonacci, pivot)
         """
         current = df['close'].iloc[-1]
         high = df['high'].max()
@@ -743,7 +811,7 @@ class TechnicalAnalysisTools:
         diff = high - low
 
         if method == "fibonacci":
-            # 斐波那契回撤位
+            # Fibonacci retracement levels
             resistance = [
                 round(low + diff * 0.618, 2),
                 round(low + diff * 0.786, 2),
@@ -767,7 +835,7 @@ class TechnicalAnalysisTools:
                 round(pivot - 2 * diff, 2),
             ]
 
-        # 找最近的支撑阻力
+        # Find nearest support/resistance
         nearest_res = min([r for r in resistance if r > current], default=resistance[0])
         nearest_sup = max([s for s in support if s < current], default=support[-1])
 
@@ -780,17 +848,17 @@ class TechnicalAnalysisTools:
             method=method
         )
 
-    # ==================== K线形态识别 ====================
+    # ==================== Candlestick Pattern Recognition ====================
 
     def detect_candlestick_patterns(self, df: pd.DataFrame) -> PatternRecognition:
         """
-        识别K线形态
+        Detect candlestick patterns
 
         Args:
-            df: K线数据
+            df: K-line data
 
         Returns:
-            PatternRecognition结果
+            PatternRecognition result
         """
         patterns = []
 
@@ -799,7 +867,7 @@ class TechnicalAnalysisTools:
         low = df['low']
         close = df['close']
 
-        # 最近3根K线
+        # Last 3 candles
         if len(df) < 3:
             return PatternRecognition(
                 patterns_found=[],
@@ -807,41 +875,41 @@ class TechnicalAnalysisTools:
                 pattern_signal=SignalStrength.NEUTRAL
             )
 
-        # 十字星 (Doji)
+        # Doji
         if self._is_doji(open_.iloc[-1], high.iloc[-1], low.iloc[-1], close.iloc[-1]):
             patterns.append(CandlestickPattern(
-                name="十字星",
+                name="Doji",
                 english_name="doji",
                 type="indecision",
                 direction="neutral",
                 strength="medium"
             ))
 
-        # 锤子线 (Hammer) - 下影线长，实体短，在下跌趋势末端
+        # Hammer - long lower shadow, short body, at end of downtrend
         if self._is_hammer(open_, high, low, close):
             patterns.append(CandlestickPattern(
-                name="锤子线",
+                name="Hammer",
                 english_name="hammer",
                 type="bullish_reversal",
                 direction="bullish",
                 strength="medium"
             ))
 
-        # 倒锤子 (Inverted Hammer)
+        # Inverted Hammer
         if self._is_inverted_hammer(open_, high, low, close):
             patterns.append(CandlestickPattern(
-                name="倒锤子",
+                name="Inverted Hammer",
                 english_name="inverted_hammer",
                 type="bullish_reversal",
                 direction="bullish",
                 strength="weak"
             ))
 
-        # 吞没形态 (Engulfing)
+        # Engulfing pattern
         engulfing = self._is_engulfing(open_, high, low, close)
         if engulfing == "bullish":
             patterns.append(CandlestickPattern(
-                name="看涨吞没",
+                name="Bullish Engulfing",
                 english_name="bullish_engulfing",
                 type="bullish_reversal",
                 direction="bullish",
@@ -849,39 +917,39 @@ class TechnicalAnalysisTools:
             ))
         elif engulfing == "bearish":
             patterns.append(CandlestickPattern(
-                name="看跌吞没",
+                name="Bearish Engulfing",
                 english_name="bearish_engulfing",
                 type="bearish_reversal",
                 direction="bearish",
                 strength="strong"
             ))
 
-        # 晨星 (Morning Star)
+        # Morning Star
         if self._is_morning_star(open_, high, low, close):
             patterns.append(CandlestickPattern(
-                name="启明星",
+                name="Morning Star",
                 english_name="morning_star",
                 type="bullish_reversal",
                 direction="bullish",
                 strength="strong"
             ))
 
-        # 黄昏星 (Evening Star)
+        # Evening Star
         if self._is_evening_star(open_, high, low, close):
             patterns.append(CandlestickPattern(
-                name="黄昏星",
+                name="Evening Star",
                 english_name="evening_star",
                 type="bearish_reversal",
                 direction="bearish",
                 strength="strong"
             ))
 
-        # 确定主导形态和信号
+        # Determine dominant pattern and signal
         dominant = None
         signal = SignalStrength.NEUTRAL
 
         if patterns:
-            # 优先选择强信号形态
+            # Prioritize strong signal patterns
             strong_patterns = [p for p in patterns if p.strength == "strong"]
             if strong_patterns:
                 dominant = strong_patterns[0].name
@@ -899,7 +967,7 @@ class TechnicalAnalysisTools:
         )
 
     def _is_doji(self, open_: float, high: float, low: float, close: float) -> bool:
-        """判断是否为十字星"""
+        """Check if doji pattern"""
         body = abs(close - open_)
         total_range = high - low
         if total_range == 0:
@@ -907,7 +975,7 @@ class TechnicalAnalysisTools:
         return body / total_range < 0.1
 
     def _is_hammer(self, open_: pd.Series, high: pd.Series, low: pd.Series, close: pd.Series) -> bool:
-        """判断是否为锤子线"""
+        """Check if hammer pattern"""
         body = abs(close.iloc[-1] - open_.iloc[-1])
         lower_shadow = min(open_.iloc[-1], close.iloc[-1]) - low.iloc[-1]
         upper_shadow = high.iloc[-1] - max(open_.iloc[-1], close.iloc[-1])
@@ -920,7 +988,7 @@ class TechnicalAnalysisTools:
                 close.iloc[-1] > open_.iloc[-1])
 
     def _is_inverted_hammer(self, open_: pd.Series, high: pd.Series, low: pd.Series, close: pd.Series) -> bool:
-        """判断是否为倒锤子"""
+        """Check if inverted hammer pattern"""
         body = abs(close.iloc[-1] - open_.iloc[-1])
         lower_shadow = min(open_.iloc[-1], close.iloc[-1]) - low.iloc[-1]
         upper_shadow = high.iloc[-1] - max(open_.iloc[-1], close.iloc[-1])
@@ -932,72 +1000,72 @@ class TechnicalAnalysisTools:
                 lower_shadow < body)
 
     def _is_engulfing(self, open_: pd.Series, high: pd.Series, low: pd.Series, close: pd.Series) -> Optional[str]:
-        """判断是否为吞没形态"""
+        """Check if engulfing pattern"""
         if len(open_) < 2:
             return None
 
         prev_body = close.iloc[-2] - open_.iloc[-2]
         curr_body = close.iloc[-1] - open_.iloc[-1]
 
-        # 看涨吞没
-        if (prev_body < 0 and  # 前一天阴线
-            curr_body > 0 and  # 今天阳线
-            open_.iloc[-1] < close.iloc[-2] and  # 今天开盘价低于昨天收盘价
-            close.iloc[-1] > open_.iloc[-2]):  # 今天收盘价高于昨天开盘价
+        # Bullish engulfing
+        if (prev_body < 0 and  # Previous day bearish
+            curr_body > 0 and  # Today bullish
+            open_.iloc[-1] < close.iloc[-2] and  # Today open below yesterday close
+            close.iloc[-1] > open_.iloc[-2]):  # Today close above yesterday open
             return "bullish"
 
-        # 看跌吞没
-        if (prev_body > 0 and  # 前一天阳线
-            curr_body < 0 and  # 今天阴线
-            open_.iloc[-1] > close.iloc[-2] and  # 今天开盘价高于昨天收盘价
-            close.iloc[-1] < open_.iloc[-2]):  # 今天收盘价低于昨天开盘价
+        # Bearish engulfing
+        if (prev_body > 0 and  # Previous day bullish
+            curr_body < 0 and  # Today bearish
+            open_.iloc[-1] > close.iloc[-2] and  # Today open above yesterday close
+            close.iloc[-1] < open_.iloc[-2]):  # Today close below yesterday open
             return "bearish"
 
         return None
 
     def _is_morning_star(self, open_: pd.Series, high: pd.Series, low: pd.Series, close: pd.Series) -> bool:
-        """判断是否为启明星"""
+        """Check if morning star pattern"""
         if len(open_) < 3:
             return False
 
-        # 第一天: 长阴线
+        # Day 1: Long bearish candle
         day1_body = close.iloc[-3] - open_.iloc[-3]
-        # 第二天: 小实体(星)
+        # Day 2: Small body (star)
         day2_body = abs(close.iloc[-2] - open_.iloc[-2])
         day2_range = high.iloc[-2] - low.iloc[-2]
-        # 第三天: 长阳线
+        # Day 3: Long bullish candle
         day3_body = close.iloc[-1] - open_.iloc[-1]
 
         if day2_range == 0:
             return False
 
-        return (day1_body < 0 and  # 第一天阴线
-                day2_body / day2_range < 0.3 and  # 第二天小实体
-                day3_body > 0 and  # 第三天阳线
-                close.iloc[-1] > (open_.iloc[-3] + close.iloc[-3]) / 2)  # 收盘价超过第一天实体中点
+        return (day1_body < 0 and  # Day 1 bearish
+                day2_body / day2_range < 0.3 and  # Day 2 small body
+                day3_body > 0 and  # Day 3 bullish
+                close.iloc[-1] > (open_.iloc[-3] + close.iloc[-3]) / 2)  # Close above day 1 body midpoint
 
     def _is_evening_star(self, open_: pd.Series, high: pd.Series, low: pd.Series, close: pd.Series) -> bool:
-        """判断是否为黄昏星"""
+        """Check if evening star pattern"""
         if len(open_) < 3:
             return False
 
-        # 第一天: 长阳线
+        # Day 1: Long bullish candle
         day1_body = close.iloc[-3] - open_.iloc[-3]
-        # 第二天: 小实体(星)
+        # Day 2: Small body (star)
         day2_body = abs(close.iloc[-2] - open_.iloc[-2])
         day2_range = high.iloc[-2] - low.iloc[-2]
-        # 第三天: 长阴线
+        # Day 3: Long bearish candle
         day3_body = close.iloc[-1] - open_.iloc[-1]
 
         if day2_range == 0:
             return False
 
-        return (day1_body > 0 and  # 第一天阳线
-                day2_body / day2_range < 0.3 and  # 第二天小实体
-                day3_body < 0 and  # 第三天阴线
-                close.iloc[-1] < (open_.iloc[-3] + close.iloc[-3]) / 2)  # 收盘价低于第一天实体中点
+        return (day1_body > 0 and  # Day 1 bullish
+                day2_body / day2_range < 0.3 and  # Day 2 small body
+                day3_body < 0 and  # Day 3 bearish
+                close.iloc[-1] < (open_.iloc[-3] + close.iloc[-3]) / 2)  # Close below day 1 body midpoint
 
-    # ==================== 综合分析 ====================
+    # ==================== Comprehensive Analysis ====================
 
     def analyze_trend(
         self,
@@ -1005,24 +1073,24 @@ class TechnicalAnalysisTools:
         indicators: Dict[str, Any]
     ) -> TrendAnalysis:
         """
-        综合趋势分析
+        Comprehensive trend analysis
 
         Args:
-            df: K线数据
-            indicators: 已计算的指标
+            df: K-line data
+            indicators: Already calculated indicators
         """
-        # 从EMA判断排列
+        # Determine alignment from EMA
         ema_data = indicators.get('EMA')
         if ema_data:
             alignment = ema_data.alignment
         else:
             alignment = EMAAlignment.MIXED
 
-        # 从ADX判断强度
+        # Determine strength from ADX
         adx_data = indicators.get('ADX')
         adx_value = adx_data.value if adx_data else None
 
-        # 综合判断趋势方向
+        # Determine overall trend direction
         bullish_signals = 0
         bearish_signals = 0
 
@@ -1033,7 +1101,7 @@ class TechnicalAnalysisTools:
                 elif ind.signal in [SignalStrength.SELL, SignalStrength.STRONG_SELL]:
                     bearish_signals += 1
 
-        # 确定趋势方向
+        # Determine trend direction
         if bullish_signals >= 4:
             direction = TrendDirection.STRONG_BULLISH
             strength = 0.9
@@ -1050,12 +1118,12 @@ class TechnicalAnalysisTools:
             direction = TrendDirection.NEUTRAL
             strength = 0.5
 
-        # 生成描述
-        desc = f"趋势方向: {direction.value}, 强度: {strength*100:.0f}%"
+        # Generate description
+        desc = f"Trend direction: {direction.value}, Strength: {strength*100:.0f}%"
         if alignment == EMAAlignment.BULLISH_ALIGNMENT:
-            desc += ", 均线多头排列"
+            desc += ", bullish MA alignment"
         elif alignment == EMAAlignment.BEARISH_ALIGNMENT:
-            desc += ", 均线空头排列"
+            desc += ", bearish MA alignment"
 
         return TrendAnalysis(
             direction=direction,

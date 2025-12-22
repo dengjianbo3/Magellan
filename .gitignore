@@ -18,8 +18,13 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Secrets
+# Secrets and environment files
 .env
+.env.local
+.env.*.local
+.env.production
+.env.development
+!.env.example
 
 # Uploads from file_service
 # Note: This directory is created inside the container via a volume.

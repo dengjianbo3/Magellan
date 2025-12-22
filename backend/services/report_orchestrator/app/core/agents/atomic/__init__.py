@@ -2,7 +2,7 @@
 Atomic Agents Module
 原子 Agent 模块
 
-定义7个原子 Agent - 系统的基本分析单元
+定义13个原子 Agent - 系统的基本分析单元
 所有场景（分析模块、圆桌会议）都通过组合这些原子 Agent 实现
 
 原子 Agent 列表:
@@ -13,6 +13,14 @@ Atomic Agents Module
 5. tech_specialist - 技术专家
 6. legal_advisor - 法律顾问
 7. technical_analyst - 技术分析师（量化/K线）
+
+Phase 2 新增:
+8. macro_economist - 宏观经济分析师
+9. esg_analyst - ESG分析师
+10. sentiment_analyst - 情绪分析师
+11. quant_strategist - 量化策略师
+12. deal_structurer - 交易结构师
+13. ma_advisor - 并购顾问
 """
 
 from .team_evaluator import create_team_evaluator, TeamEvaluatorAgent
@@ -23,6 +31,14 @@ from .tech_specialist import create_tech_specialist, TechSpecialistAgent
 from .legal_advisor import create_legal_advisor, LegalAdvisorAgent
 from .technical_analyst import create_technical_analyst, TechnicalAnalystAgent
 
+# Phase 2 新增 Agent
+from .macro_economist import create_macro_economist, MacroEconomistAgent
+from .esg_analyst import create_esg_analyst, ESGAnalystAgent
+from .sentiment_analyst import create_sentiment_analyst, SentimentAnalystAgent
+from .quant_strategist import create_quant_strategist, QuantStrategistAgent
+from .deal_structurer import create_deal_structurer, DealStructurerAgent
+from .ma_advisor import create_ma_advisor, MAAdvisorAgent
+
 __all__ = [
     # 工厂函数 (用于创建 Agent 实例)
     "create_team_evaluator",
@@ -32,6 +48,13 @@ __all__ = [
     "create_tech_specialist",
     "create_legal_advisor",
     "create_technical_analyst",
+    # Phase 2 新增
+    "create_macro_economist",
+    "create_esg_analyst",
+    "create_sentiment_analyst",
+    "create_quant_strategist",
+    "create_deal_structurer",
+    "create_ma_advisor",
 
     # Agent 类 (用于类型注解)
     "TeamEvaluatorAgent",
@@ -41,6 +64,13 @@ __all__ = [
     "TechSpecialistAgent",
     "LegalAdvisorAgent",
     "TechnicalAnalystAgent",
+    # Phase 2 新增
+    "MacroEconomistAgent",
+    "ESGAnalystAgent",
+    "SentimentAnalystAgent",
+    "QuantStrategistAgent",
+    "DealStructurerAgent",
+    "MAAdvisorAgent",
 ]
 
 
@@ -53,6 +83,13 @@ AGENT_FACTORY_MAP = {
     "tech_specialist": create_tech_specialist,
     "legal_advisor": create_legal_advisor,
     "technical_analyst": create_technical_analyst,
+    # Phase 2 新增
+    "macro_economist": create_macro_economist,
+    "esg_analyst": create_esg_analyst,
+    "sentiment_analyst": create_sentiment_analyst,
+    "quant_strategist": create_quant_strategist,
+    "deal_structurer": create_deal_structurer,
+    "ma_advisor": create_ma_advisor,
 }
 
 

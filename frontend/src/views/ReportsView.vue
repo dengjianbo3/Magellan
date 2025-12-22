@@ -6,7 +6,7 @@
         <h1 class="text-3xl font-display font-bold text-white mb-2 tracking-tight">{{ t('reports.title') }}</h1>
         <p class="text-text-secondary text-lg">{{ t('reports.subtitle') }}</p>
       </div>
-      <button class="group flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-dark text-white font-bold shadow-glow-sm hover:shadow-glow hover:-translate-y-0.5 transition-all duration-300">
+      <button @click="createNewReport" class="group flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-dark text-white font-bold shadow-glow-sm hover:shadow-glow hover:-translate-y-0.5 transition-all duration-300">
         <span class="material-symbols-outlined group-hover:rotate-90 transition-transform">add</span>
         {{ t('reports.newReport') }}
       </button>
@@ -130,10 +130,10 @@
             </div>
           </div>
 
-          <button class="flex items-center justify-center px-3 py-2 rounded-lg bg-white/5 text-text-secondary hover:bg-white/10 hover:text-white transition-colors border border-white/5">
+          <button @click.stop="shareReport(report.id)" class="flex items-center justify-center px-3 py-2 rounded-lg bg-white/5 text-text-secondary hover:bg-white/10 hover:text-white transition-colors border border-white/5" title="分享">
             <span class="material-symbols-outlined text-lg">share</span>
           </button>
-          
+
           <button
             @click.stop="confirmDelete(report.id)"
             class="flex items-center justify-center px-3 py-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white transition-colors border border-rose-500/20"
@@ -609,11 +609,11 @@
             <div v-if="activeChartTab === 'financial'" class="grid grid-cols-1 gap-6 animate-fade-in">
               <div class="bg-black/20 rounded-xl p-4 border border-white/5">
                 <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">收入趋势</h3>
-                <img :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/revenue?language=${currentLanguage}`" alt="Revenue Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
+                <img :src="`${apiBase}/api/reports/${selectedReport.id}/charts/revenue?language=${currentLanguage}`" alt="Revenue Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
               </div>
               <div class="bg-black/20 rounded-xl p-4 border border-white/5">
                 <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">利润率趋势</h3>
-                <img :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/profit?language=${currentLanguage}`" alt="Profit Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
+                <img :src="`${apiBase}/api/reports/${selectedReport.id}/charts/profit?language=${currentLanguage}`" alt="Profit Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
               </div>
             </div>
             
@@ -621,7 +621,7 @@
             <div v-if="activeChartTab === 'market'" class="grid grid-cols-1 gap-6 animate-fade-in">
               <div class="bg-black/20 rounded-xl p-4 border border-white/5">
                 <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">市场份额分布</h3>
-                <img :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/market_share?language=${currentLanguage}`" alt="Market Share Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
+                <img :src="`${apiBase}/api/reports/${selectedReport.id}/charts/market_share?language=${currentLanguage}`" alt="Market Share Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
               </div>
             </div>
             
@@ -629,7 +629,7 @@
              <div v-if="activeChartTab === 'team_risk'" class="grid grid-cols-1 gap-6 animate-fade-in">
                <div class="bg-black/20 rounded-xl p-4 border border-white/5">
                  <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">风险评估矩阵</h3>
-                 <img :src="`http://localhost:8000/api/reports/${selectedReport.id}/charts/risk_matrix?language=${currentLanguage}`" alt="Risk Matrix Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
+                 <img :src="`${apiBase}/api/reports/${selectedReport.id}/charts/risk_matrix?language=${currentLanguage}`" alt="Risk Matrix Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
                </div>
              </div>
           </div>
@@ -695,7 +695,7 @@
                 </button>
             </div>
 
-            <button class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-text-primary hover:bg-white/10 transition-colors flex items-center justify-center gap-2 font-semibold mt-2">
+            <button @click="shareReport(selectedReport.id)" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-text-primary hover:bg-white/10 transition-colors flex items-center justify-center gap-2 font-semibold mt-2">
               <span class="material-symbols-outlined">share</span> 分享报告
             </button>
             
@@ -756,9 +756,15 @@ import { useLanguage } from '../composables/useLanguage';
 import { useToast } from '@/composables/useToast';
 import { marked } from 'marked';
 
+// Environment variable for API base URL
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+
 const route = useRoute();
 const { t } = useLanguage();
-const { success, error: showError } = useToast();
+const { success, error: showError, info } = useToast();
+
+// Define emit for navigation events
+const emit = defineEmits(['navigate']);
 
 // Configure marked for safe rendering
 marked.setOptions({
@@ -960,6 +966,9 @@ const currentLanguage = computed(() => {
   return lang.startsWith('zh') ? 'zh' : 'en';
 });
 
+// Computed API base for use in template
+const apiBase = computed(() => API_BASE);
+
 const reports = computed(() => reportsData.value.map(report => {
   // Convert backend report format to display format
   const createdDate = new Date(report.created_at);
@@ -1012,7 +1021,7 @@ const fetchReports = async () => {
     loading.value = true;
     error.value = null;
 
-    const response = await fetch('http://localhost:8000/api/reports');
+    const response = await fetch(`${API_BASE}/api/reports`);
     if (!response.ok) {
       throw new Error(`Failed to fetch reports: ${response.statusText}`);
     }
@@ -1036,7 +1045,7 @@ const viewReport = async (reportId) => {
     // Reset states
     showDiscussionHistory.value = false;
 
-    const response = await fetch(`http://localhost:8000/api/reports/${reportId}`);
+    const response = await fetch(`${API_BASE}/api/reports/${reportId}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch report: ${response.statusText}`);
     }
@@ -1052,6 +1061,23 @@ const viewReport = async (reportId) => {
 
 const closeReportView = () => {
   selectedReport.value = null;
+};
+
+// Navigate to create new report (analysis page)
+const createNewReport = () => {
+  emit('navigate', 'analysis');
+};
+
+// Share report function - copy link to clipboard
+const shareReport = async (reportId) => {
+  try {
+    const shareUrl = `${window.location.origin}${window.location.pathname}?sessionId=${reportId}`;
+    await navigator.clipboard.writeText(shareUrl);
+    success('报告链接已复制到剪贴板');
+  } catch (err) {
+    console.error('[ReportsView] Failed to copy share link:', err);
+    showError('复制链接失败');
+  }
 };
 
 // Delete functions
@@ -1072,7 +1098,7 @@ const deleteReport = async () => {
   if (!reportToDelete.value) return;
 
   try {
-    const response = await fetch(`http://localhost:8000/api/reports/${reportToDelete.value.id}`, {
+    const response = await fetch(`${API_BASE}/api/reports/${reportToDelete.value.id}`, {
       method: 'DELETE'
     });
 
@@ -1123,7 +1149,7 @@ const exportReport = async (reportId, format) => {
     const langParam = language.startsWith('zh') ? 'zh' : 'en';
 
     // Call export API
-    const url = `http://localhost:8000/api/reports/${reportId}/export/${format}?language=${langParam}`;
+    const url = `${API_BASE}/api/reports/${reportId}/export/${format}?language=${langParam}`;
     console.log(`[ReportsView] Exporting report ${reportId} as ${format}, language=${langParam}`);
 
     const response = await fetch(url);

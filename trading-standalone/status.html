@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magellan Trading Status</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            padding: 10px;
+            min-height: 100vh;
+        }
+
+        .header {
+            text-align: center;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+
+        .header h1 {
+            font-size: 1.3em;
+        }
+
+        .header p {
+            font-size: 0.8em;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+
+        .card {
+            background: #16213e;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-title {
+            font-size: 0.9em;
+            color: #667eea;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #333;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 0.85em;
+        }
+
+        .label {
+            color: #888;
+        }
+
+        .value {
+            font-weight: 500;
+        }
+
+        .positive {
+            color: #4ade80;
+        }
+
+        .negative {
+            color: #f87171;
+        }
+
+        .neutral {
+            color: #fbbf24;
+        }
+
+        .position-card {
+            background: linear-gradient(135deg, #1e3a5f 0%, #16213e 100%);
+            border: 1px solid #334;
+        }
+
+        .position-direction {
+            font-size: 1.5em;
+            font-weight: bold;
+            text-align: center;
+            padding: 10px;
+        }
+
+        .position-direction.long {
+            color: #4ade80;
+        }
+
+        .position-direction.short {
+            color: #f87171;
+        }
+
+        .position-direction.none {
+            color: #888;
+        }
+
+        .pnl-display {
+            text-align: center;
+            font-size: 1.8em;
+            font-weight: bold;
+            padding: 15px;
+        }
+
+        .trade-item {
+            background: #1e293b;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 8px;
+            font-size: 0.8em;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        .trade-item:hover {
+            background: #2d3a52;
+            transform: translateX(3px);
+        }
+
+        .trade-item:active {
+            transform: scale(0.98);
+        }
+
+        .scrollable-list {
+            max-height: 300px;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+
+        .scrollable-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .scrollable-list::-webkit-scrollbar-track {
+            background: #1a1a2e;
+            border-radius: 3px;
+        }
+
+        .scrollable-list::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 3px;
+        }
+
+        .trade-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+
+        .trade-direction {
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .trade-direction.long {
+            background: #166534;
+            color: #4ade80;
+        }
+
+        .trade-direction.short {
+            background: #991b1b;
+            color: #f87171;
+        }
+
+        .trade-direction.neutral {
+            background: #854d0e;
+            color: #fbbf24;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #334155;
+            color: #eee;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #888;
+        }
+
+        .error {
+            background: #7f1d1d;
+            color: #fca5a5;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .last-update {
+            text-align: center;
+            font-size: 0.75em;
+            color: #666;
+            margin-top: 10px;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .status-dot.running {
+            background: #4ade80;
+        }
+
+        .status-dot.stopped {
+            background: #f87171;
+        }
+
+        /* Modal styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .modal-overlay.active {
+            display: block;
+        }
+
+        .modal-content {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 600px;
+            margin: 20px auto;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #333;
+        }
+
+        .modal-title {
+            font-size: 1.1em;
+            color: #667eea;
+        }
+
+        .modal-close {
+            background: #334155;
+            border: none;
+            color: #eee;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2em;
+        }
+
+        .modal-close:hover {
+            background: #475569;
+        }
+
+        .modal-body {
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+
+        .modal-body .row {
+            padding: 8px 0;
+            border-bottom: 1px solid #333;
+        }
+
+        .modal-body .reasoning {
+            margin-top: 15px;
+            padding: 12px;
+            background: #1e293b;
+            border-radius: 8px;
+            color: #ccc;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .click-hint {
+            font-size: 0.7em;
+            color: #666;
+            text-align: right;
+            margin-top: 5px;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+        }
+
+        .btn-danger:disabled {
+            background: #374151;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .button-row .btn {
+            flex: 1;
+            min-width: 120px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>Magellan Trading</h1>
+        <p>Auto Trading Status Monitor</p>
+    </div>
+
+    <div id="content">
+        <div class="loading">Loading...</div>
+    </div>
+
+    <div class="button-row">
+        <button class="btn btn-primary" onclick="refresh()">🔄 Refresh</button>
+        <button class="btn btn-secondary" onclick="toggleAutoRefresh()">
+            Auto: <span id="autoRefreshStatus">OFF</span>
+        </button>
+        <button class="btn btn-primary" id="forceAnalyzeBtn" onclick="forceAnalyze()"
+            style="background: linear-gradient(135deg, #059669 0%, #047857 100%);">
+            🚀 Analyze Now
+        </button>
+        <button class="btn btn-danger" id="closePositionBtn" onclick="emergencyClosePosition()">
+            ⚠️ Close Position
+        </button>
+    </div>
+
+    <div class="last-update" id="lastUpdate"></div>
+
+    <!-- Modal for full signal details -->
+    <div class="modal-overlay" id="signalModal" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <span class="modal-title" id="modalTitle">Signal Details</span>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <script>
+        const SERVER = 'http://45.76.159.149:8000';
+        let autoRefresh = false;
+        let refreshInterval = null;
+        let signalCache = []; // Cache signals for modal
+
+        async function fetchData(endpoint) {
+            try {
+                const response = await fetch(`${SERVER}/api/trading/${endpoint}`, {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (!response.ok) {
+                    console.error(`HTTP error ${response.status} for ${endpoint}`);
+                    return null;
+                }
+                const data = await response.json();
+                console.log(`[DEBUG] ${endpoint}:`, data);
+                return data;
+            } catch (e) {
+                console.error(`Error fetching ${endpoint}:`, e);
+                return null;
+            }
+        }
+
+        function formatNumber(num, decimals = 2) {
+            if (num === null || num === undefined) return 'N/A';
+            return Number(num).toLocaleString('en-US', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals
+            });
+        }
+
+        function formatPnL(pnl) {
+            const cls = pnl >= 0 ? 'positive' : 'negative';
+            const sign = pnl >= 0 ? '+' : '';
+            return `<span class="${cls}">${sign}$${formatNumber(pnl)}</span>`;
+        }
+
+        // Format timestamp to user's local timezone
+        function formatLocalTime(isoString) {
+            if (!isoString) return 'N/A';
+            try {
+                const date = new Date(isoString);
+                return date.toLocaleString(undefined, {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                });
+            } catch (e) {
+                return isoString;
+            }
+        }
+
+        // Get direction display text (English)
+        function getDirectionText(dir) {
+            switch (dir) {
+                case 'long': return 'LONG';
+                case 'short': return 'SHORT';
+                case 'hold': return 'HOLD';
+                case 'no_signal': return 'NO SIGNAL';
+                default: return 'UNKNOWN';
+            }
+        }
+
+        // Get direction CSS class
+        function getDirectionClass(dir) {
+            switch (dir) {
+                case 'long': return 'long';
+                case 'short': return 'short';
+                case 'hold': return 'neutral';
+                default: return 'none';
+            }
+        }
+
+        // Open modal with full signal details
+        function openSignalModal(index) {
+            const item = signalCache[index];
+            if (!item) return;
+
+            const signal = item.signal;
+            const status = item.status || 'N/A';
+            const timestamp = formatLocalTime(item.timestamp);
+            const dir = signal?.direction || 'hold';
+            const confidence = signal?.confidence || 0;
+            const leverage = signal?.leverage || 1;
+            const reason = signal?.reasoning || item.trade_result?.message || 'No reasoning provided';
+
+            let html = `
+                <div class="row">
+                    <span class="label">Direction</span>
+                    <span class="value"><span class="trade-direction ${getDirectionClass(dir)}">${getDirectionText(dir)}</span></span>
+                </div>
+                <div class="row">
+                    <span class="label">Time</span>
+                    <span class="value">${timestamp}</span>
+                </div>
+                <div class="row">
+                    <span class="label">Confidence</span>
+                    <span class="value">${confidence}%</span>
+                </div>
+                <div class="row">
+                    <span class="label">Leverage</span>
+                    <span class="value">${leverage}x</span>
+                </div>
+                <div class="row">
+                    <span class="label">Status</span>
+                    <span class="value">${status}</span>
+                </div>
+            `;
+
+            if (signal?.entry_price) {
+                html += `
+                    <div class="row">
+                        <span class="label">Entry Price</span>
+                        <span class="value">$${formatNumber(signal.entry_price)}</span>
+                    </div>
+                `;
+            }
+
+            if (signal?.take_profit_price && signal?.stop_loss_price) {
+                html += `
+                    <div class="row">
+                        <span class="label">TP / SL</span>
+                        <span class="value">
+                            <span class="positive">$${formatNumber(signal.take_profit_price)}</span> /
+                            <span class="negative">$${formatNumber(signal.stop_loss_price)}</span>
+                        </span>
+                    </div>
+                `;
+            }
+
+            html += `
+                <div style="margin-top: 15px;">
+                    <span class="label">Reasoning:</span>
+                    <div class="reasoning">${reason}</div>
+                </div>
+            `;
+
+            // Add Leader's meeting summary if available
+            const leaderSummary = signal?.leader_summary;
+            if (leaderSummary && leaderSummary.trim()) {
+                html += `
+                    <div style="margin-top: 15px;">
+                        <span class="label" style="color: #667eea;">📋 Leader's Meeting Summary:</span>
+                        <div class="reasoning" style="border-left: 3px solid #667eea; margin-top: 8px;">${leaderSummary}</div>
+                    </div>
+                `;
+            }
+
+            document.getElementById('modalTitle').textContent = `Signal Details - ${getDirectionText(dir)}`;
+            document.getElementById('modalBody').innerHTML = html;
+            document.getElementById('signalModal').classList.add('active');
+        }
+
+        function closeModal(event) {
+            if (!event || event.target === document.getElementById('signalModal')) {
+                document.getElementById('signalModal').classList.remove('active');
+            }
+        }
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        // Emergency close position
+        async function emergencyClosePosition() {
+            // Confirmation dialog
+            if (!confirm('⚠️ EMERGENCY CLOSE POSITION\n\nAre you sure you want to close the current position at market price?\n\nThis action cannot be undone.')) {
+                return;
+            }
+
+            const btn = document.getElementById('closePositionBtn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Closing...';
+
+            try {
+                const response = await fetch(`${SERVER}/api/trading/close`, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' }
+                });
+                const result = await response.json();
+
+                if (result.status === 'closed') {
+                    const pnlClass = result.pnl >= 0 ? 'positive' : 'negative';
+                    const pnlSign = result.pnl >= 0 ? '+' : '';
+                    alert(`✅ Position Closed Successfully!\n\nP&L: ${pnlSign}$${result.pnl?.toFixed(2) || '0.00'}`);
+                    refresh(); // Refresh to update display
+                } else if (result.error === 'No open position to close') {
+                    alert('ℹ️ No position to close.\n\nThere is no open position currently.');
+                } else {
+                    alert(`❌ Failed to close position:\n\n${result.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Close position error:', error);
+                alert(`❌ Error closing position:\n\n${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        // Force trigger analysis now (without waiting for interval)
+        async function forceAnalyze() {
+            const btn = document.getElementById('forceAnalyzeBtn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Starting...';
+
+            try {
+                const response = await fetch(`${SERVER}/api/trading/trigger?reason=manual_frontend`, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' }
+                });
+                const result = await response.json();
+
+                if (result.triggered) {
+                    alert('🚀 Analysis Started!\n\nThe analysis cycle has been triggered.\nRefresh the page in a few minutes to see results.');
+                } else if (result.error) {
+                    alert(`❌ Failed to trigger analysis:\n\n${result.error}`);
+                } else {
+                    alert('⚠️ Analysis could not be triggered.\n\nThe scheduler may not be running or is already analyzing.');
+                }
+            } catch (error) {
+                console.error('Force analyze error:', error);
+                alert(`❌ Error triggering analysis:\n\n${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        async function refresh() {
+            const content = document.getElementById('content');
+            content.innerHTML = '<div class="loading">Loading...</div>';
+
+            try {
+                // Get drawdown start date from input (if exists)
+                const drawdownStartInput = document.getElementById('drawdownStartDate');
+                const drawdownStartDate = drawdownStartInput?.value || '';
+                const drawdownEndpoint = drawdownStartDate
+                    ? `drawdown?start_date=${drawdownStartDate}`
+                    : 'drawdown';
+
+                const [status, account, position, history, drawdown] = await Promise.all([
+                    fetchData('status'),
+                    fetchData('account'),
+                    fetchData('position'),
+                    fetchData('history?limit=50'),
+                    fetchData(drawdownEndpoint)
+                ]);
+
+                if (!status) {
+                    content.innerHTML = '<div class="error">Cannot connect to server</div>';
+                    return;
+                }
+
+                console.log('[DEBUG] Position data:', position);
+                console.log('[DEBUG] has_position:', position?.has_position);
+
+                let html = '';
+
+                // System Status
+                const isRunning = status.enabled;
+                const nextRun = status.scheduler?.next_run;
+                html += `
+                    <div class="card">
+                        <div class="card-title">System Status</div>
+                        <div class="row">
+                            <span class="label">Status</span>
+                            <span class="value">
+                                <span class="status-dot ${isRunning ? 'running' : 'stopped'}"></span>
+                                ${isRunning ? 'Running' : 'Stopped'}
+                            </span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Mode</span>
+                            <span class="value">${status.demo_mode ? 'Demo' : 'Live'}</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Symbol</span>
+                            <span class="value">${status.symbol || 'N/A'}</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Next Analysis</span>
+                            <span class="value">${nextRun ? formatLocalTime(nextRun) : 'N/A'}</span>
+                        </div>
+                    </div>
+                `;
+
+                // Account
+                if (account) {
+                    const balance = account.available_balance || 0;
+                    const equity = account.total_equity || 0;
+                    html += `
+                        <div class="card">
+                            <div class="card-title">Account</div>
+                            <div class="row">
+                                <span class="label">Balance</span>
+                                <span class="value">$${formatNumber(balance)}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Equity</span>
+                                <span class="value">$${formatNumber(equity)}</span>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Maximum Drawdown - Always show this card
+                {
+                    const maxDd = drawdown?.max_drawdown_pct || 0;
+                    const maxDdUsd = drawdown?.max_drawdown_usd || 0;
+                    const currentDd = drawdown?.current_drawdown_pct || 0;
+                    const tradesAnalyzed = drawdown?.trades_analyzed || 0;
+                    const currentStartDate = drawdown?.start_date || '';
+                    const peakEquity = drawdown?.peak_equity || 0;
+                    const recoveryPct = drawdown?.recovery_pct || 100;
+                    const hasError = drawdown?.error;
+
+                    html += `
+                        <div class="card">
+                            <div class="card-title">📉 Maximum Drawdown</div>
+                            ${hasError ? `<div class="row"><span class="label" style="color: #f87171;">⚠️ ${hasError}</span></div>` : ''}
+                            <div class="row">
+                                <span class="label">Start Date</span>
+                                <span class="value">
+                                    <input type="date" id="drawdownStartDate" 
+                                           value="${currentStartDate}" 
+                                           onchange="refresh()"
+                                           style="background: #1e293b; border: 1px solid #334; color: #eee; padding: 4px 8px; border-radius: 4px;">
+                                </span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Max Drawdown</span>
+                                <span class="value negative">${maxDd.toFixed(2)}% ($${formatNumber(maxDdUsd)})</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Current Drawdown</span>
+                                <span class="value ${currentDd > 0 ? 'negative' : ''}">${currentDd.toFixed(2)}%</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Peak Equity</span>
+                                <span class="value">$${formatNumber(peakEquity)}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Recovery</span>
+                                <span class="value ${recoveryPct >= 100 ? 'positive' : 'neutral'}">${recoveryPct.toFixed(1)}%</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Trades Analyzed</span>
+                                <span class="value">${tradesAnalyzed}</span>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Position
+                if (position) {
+                    const hasPos = position.has_position;
+                    const direction = position.direction || position.side || 'none';
+                    const pnl = position.unrealized_pnl || 0;
+                    const pnlPct = position.unrealized_pnl_percent || position.pnl_percent || 0;
+
+                    html += `
+                        <div class="card position-card">
+                            <div class="card-title">Current Position</div>
+                            <div class="position-direction ${hasPos ? direction : 'none'}">
+                                ${hasPos ? direction.toUpperCase() : 'NO POSITION'}
+                            </div>
+                    `;
+
+                    if (hasPos) {
+                        html += `
+                            <div class="pnl-display ${pnl >= 0 ? 'positive' : 'negative'}">
+                                ${pnl >= 0 ? '+' : ''}$${formatNumber(pnl)}
+                                <div style="font-size: 0.5em;">(${pnl >= 0 ? '+' : ''}${formatNumber(pnlPct)}%)</div>
+                            </div>
+                            <div class="row">
+                                <span class="label">Entry</span>
+                                <span class="value">$${formatNumber(position.entry_price)}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Current</span>
+                                <span class="value">$${formatNumber(position.current_price || position.mark_price)}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Leverage</span>
+                                <span class="value">${position.leverage || 1}x</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">TP / SL</span>
+                                <span class="value">
+                                    <span class="positive">$${formatNumber(position.take_profit_price)}</span> /
+                                    <span class="negative">$${formatNumber(position.stop_loss_price)}</span>
+                                </span>
+                            </div>
+                        `;
+                    }
+                    html += `</div>`;
+                }
+
+                // Decision History (signals)
+                console.log('[DEBUG] History data:', history);
+                console.log('[DEBUG] Signals:', history?.signals);
+                if (history && history.signals && history.signals.length > 0) {
+                    // Cache all signals for modal (reversed for newest first)
+                    signalCache = [...history.signals].reverse();
+
+                    html += `
+                        <div class="card">
+                            <div class="card-title">Recent Signals (${history.signals.length})</div>
+                            <div class="scrollable-list">
+                    `;
+                    signalCache.forEach((item, index) => {
+                        const signal = item.signal;
+                        const status = item.status || 'N/A';
+                        const timestamp = formatLocalTime(item.timestamp);
+
+                        let dirClass = 'none';
+                        let dirText = 'UNKNOWN';
+                        let confidence = 0;
+                        let reason = item.trade_result?.message || '';
+
+                        if (signal) {
+                            const dir = signal.direction || 'hold';
+                            dirClass = getDirectionClass(dir);
+                            dirText = getDirectionText(dir);
+                            confidence = signal.confidence || 0;
+                            reason = signal.reasoning || reason;
+                        } else if (status === 'no_signal') {
+                            dirText = 'NO SIGNAL';
+                        }
+
+                        html += `
+                            <div class="trade-item" onclick="openSignalModal(${index})" title="Click for full details">
+                                <div class="trade-header">
+                                    <span class="trade-direction ${dirClass}">${dirText}</span>
+                                    <span style="font-size: 0.8em; color: #888;">${timestamp}</span>
+                                </div>
+                                <div class="row">
+                                    <span class="label">Confidence</span>
+                                    <span class="value">${confidence}%</span>
+                                </div>
+                                ${signal?.leverage ? `<div class="row">
+                                    <span class="label">Leverage</span>
+                                    <span class="value">${signal.leverage}x</span>
+                                </div>` : ''}
+                                <div class="row">
+                                    <span class="label">Status</span>
+                                    <span class="value">${status}</span>
+                                </div>
+                                ${reason ? `<div class="row" style="display: block;">
+                                    <span class="label">Reason</span>
+                                    <div style="font-size: 0.75em; color: #aaa; margin-top: 4px; line-height: 1.4;">${reason.substring(0, 100)}${reason.length > 100 ? '...' : ''}</div>
+                                </div>` : ''}
+                            </div>
+                        `;
+                    });
+                    html += `
+                            </div>
+                            <div class="click-hint">Tap card for full details</div>
+                        </div>
+                    `;
+                } else {
+                    html += `
+                        <div class="card">
+                            <div class="card-title">Recent Signals</div>
+                            <div style="text-align: center; color: #666; padding: 20px;">
+                                No signals recorded yet
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Trade History
+                if (history && history.trades && history.trades.length > 0) {
+                    html += `
+                        <div class="card">
+                            <div class="card-title">Closed Trades (${history.trades.length})</div>
+                            <div class="scrollable-list">
+                    `;
+                    for (const trade of [...history.trades].reverse()) {
+                        const dir = trade.direction || trade.side || 'N/A';
+                        const pnl = trade.pnl || trade.realized_pnl || 0;
+                        html += `
+                            <div class="trade-item">
+                                <div class="trade-header">
+                                    <span class="trade-direction ${dir}">${dir.toUpperCase()}</span>
+                                    ${formatPnL(pnl)}
+                                </div>
+                                <div class="row">
+                                    <span class="label">Entry → Exit</span>
+                                    <span class="value">$${formatNumber(trade.entry_price)} → $${formatNumber(trade.exit_price || trade.close_price)}</span>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    html += `</div></div>`;
+                }
+
+                content.innerHTML = html;
+                document.getElementById('lastUpdate').textContent =
+                    `Last updated: ${new Date().toLocaleString()}`;
+
+            } catch (e) {
+                content.innerHTML = `<div class="error">Error: ${e.message}</div>`;
+            }
+        }
+
+        function toggleAutoRefresh() {
+            autoRefresh = !autoRefresh;
+            document.getElementById('autoRefreshStatus').textContent = autoRefresh ? 'ON (30s)' : 'OFF';
+
+            if (autoRefresh) {
+                refreshInterval = setInterval(refresh, 30000);
+            } else {
+                clearInterval(refreshInterval);
+            }
+        }
+
+        // Initial load
+        refresh();
+    </script>
+</body>
+
+</html>

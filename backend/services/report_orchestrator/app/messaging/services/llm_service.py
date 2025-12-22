@@ -19,11 +19,15 @@ from ..messages import LLMRequest, LLMResponse, MessageType, AuditLogMessage
 from ..topics import MagellanTopics
 from ..kafka_client import get_kafka_client
 
+# Import timeout configurations
+from ...core.config_timeouts import HTTP_CLIENT_TIMEOUT
+
 logger = logging.getLogger(__name__)
 
 # 配置
 LLM_GATEWAY_URL = os.getenv("LLM_GATEWAY_URL", "http://llm_gateway:8003")
-LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "180"))
+# 使用统一的超时配置,但允许环境变量覆盖
+LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", str(HTTP_CLIENT_TIMEOUT)))
 
 
 class LLMMessageService:

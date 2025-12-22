@@ -113,8 +113,17 @@ const rawScenarios = ref([]);
 const selectedScenario = ref(null);
 const usingMockData = ref(false);
 
+// Icon mapping: backend icon names to emojis
+const iconMap = {
+  'rocket': '🚀',
+  'chart': '📈',
+  'building': '🏛️',
+  'bitcoin': '💎',
+  'search': '🔍'
+};
+
 const scenarios = computed(() => {
-  // Map raw IDs to translated content
+  // Map raw IDs to translated content and fix icons
   return rawScenarios.value.map(s => {
     let translationKey = '';
     if (s.id === 'early-stage-investment') translationKey = 'earlyStage';
@@ -123,14 +132,18 @@ const scenarios = computed(() => {
     else if (s.id === 'industry-research') translationKey = 'industryResearch';
     else if (s.id === 'alternative-investment') translationKey = 'alternative';
 
+    // Map backend icon name to emoji
+    const icon = iconMap[s.icon] || s.icon;
+
     if (translationKey) {
       return {
         ...s,
+        icon,
         name: t(`scenarios.${translationKey}.name`) || s.name,
         description: t(`scenarios.${translationKey}.description`) || s.description
       };
     }
-    return s;
+    return { ...s, icon };
   });
 });
 
@@ -144,11 +157,11 @@ onMounted(async () => {
         console.warn("Backend fetch failed, using mock data for demo visuals");
         usingMockData.value = true;
         rawScenarios.value = [
-            { id: 'early-stage-investment', name: 'Early Stage VC', description: 'Analyze pre-seed/seed startups focusing on team and market potential.', icon: '🚀', quick_mode_duration: '5m', standard_mode_duration: '15m', status: 'active' },
-            { id: 'growth-investment', name: 'Growth Equity', description: 'Evaluate scaling companies with established metrics and unit economics.', icon: '📈', quick_mode_duration: '10m', standard_mode_duration: '30m', status: 'active' },
-            { id: 'public-market-investment', name: 'Public Markets', description: 'Comprehensive analysis of publicly traded securities and reports.', icon: '🏛️', quick_mode_duration: '2m', standard_mode_duration: '10m', status: 'active' },
-             { id: 'industry-research', name: 'Industry Research', description: 'Deep dive into specific market sectors and competitive landscapes.', icon: '🔭', quick_mode_duration: '15m', standard_mode_duration: '1h', status: 'active' },
-             { id: 'alternative-investment', name: 'Alternative Assets', description: 'Real estate, crypto, and other non-traditional asset classes.', icon: '💎', quick_mode_duration: '10m', status: 'coming_soon' },
+            { id: 'early-stage-investment', name: 'Early Stage VC', description: 'Analyze pre-seed/seed startups focusing on team and market potential.', icon: '🚀', quick_mode_duration: '3-5分钟', standard_mode_duration: '30-45分钟', status: 'active' },
+            { id: 'growth-investment', name: 'Growth Equity', description: 'Evaluate scaling companies with established metrics and unit economics.', icon: '📈', quick_mode_duration: '3-5分钟', standard_mode_duration: '30-45分钟', status: 'coming_soon' },
+            { id: 'public-market-investment', name: 'Public Markets', description: 'Comprehensive analysis of publicly traded securities and reports.', icon: '🏛️', quick_mode_duration: '3-5分钟', standard_mode_duration: '20-30分钟', status: 'coming_soon' },
+             { id: 'alternative-investment', name: 'Alternative Assets', description: 'Real estate, crypto, and other non-traditional asset classes.', icon: '💎', quick_mode_duration: '3-5分钟', standard_mode_duration: '25-35分钟', status: 'coming_soon' },
+             { id: 'industry-research', name: 'Industry Research', description: 'Deep dive into specific market sectors and competitive landscapes.', icon: '🔍', quick_mode_duration: '5-8分钟', standard_mode_duration: '45-60分钟', status: 'coming_soon' },
         ];
     }
     loading.value = false;

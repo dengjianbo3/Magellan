@@ -131,6 +131,7 @@ const navItems = computed(() => [
   { id: 'reports', icon: 'article', label: t('sidebar.reports') },
   { id: 'analysis', icon: 'analytics', label: t('sidebar.analysis') },
   { id: 'roundtable', icon: 'group', label: t('sidebar.roundtable') },
+  { id: 'trading', icon: 'candlestick_chart', label: t('sidebar.trading') || 'Auto Trading' },
   { id: 'agents', icon: 'smart_toy', label: t('sidebar.agents') },
   { id: 'knowledge', icon: 'database', label: t('sidebar.knowledge') },
   { id: 'settings', icon: 'settings', label: t('sidebar.settings') },

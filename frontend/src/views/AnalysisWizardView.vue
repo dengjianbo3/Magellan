@@ -102,17 +102,69 @@
             :session-id="sessionId"
             :scenario="selectedScenario"
             :depth="analysisConfig.depth"
+            :project-name="targetConfig.company_name || targetConfig.target_name || targetConfig.industry_name"
+            :target-data="targetConfig"
             @analysis-complete="handleAnalysisComplete"
+            @upgrade="handleUpgradeToStandard"
             class="h-full"
           />
         </transition>
+      </div>
+    </div>
+
+    <!-- Session Recovery Dialog -->
+    <div
+      v-if="showRecoveryDialog && pendingSession"
+      class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50"
+    >
+      <div class="glass-panel border border-white/10 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
+        <div class="flex flex-col items-center text-center mb-6">
+          <div class="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-4 shadow-[0_0_20px_rgba(56,189,248,0.3)]">
+            <span class="material-symbols-outlined text-primary text-3xl">history</span>
+          </div>
+          <h3 class="text-xl font-bold text-white mb-2">{{ t('analysisWizard.sessionRecovery') || '检测到未完成的分析' }}</h3>
+          <p class="text-sm text-text-secondary">
+            {{ t('analysisWizard.sessionRecoveryDesc') || '您有一个进行中的分析任务，是否要继续？' }}
+          </p>
+        </div>
+
+        <!-- Session Info -->
+        <div class="mb-6 p-4 rounded-xl bg-white/5 border border-white/10">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-text-secondary text-sm">{{ t('analysisWizard.projectName') || '项目名称' }}</span>
+            <span class="text-white font-medium">{{ pendingSession.projectName }}</span>
+          </div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-text-secondary text-sm">{{ t('analysisWizard.scenario') || '分析场景' }}</span>
+            <span class="text-primary font-medium">{{ pendingSession.scenario?.name || pendingSession.scenario?.id }}</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-text-secondary text-sm">{{ t('analysisWizard.startedAt') || '开始时间' }}</span>
+            <span class="text-text-secondary text-sm">{{ new Date(pendingSession.startedAt).toLocaleString() }}</span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-4">
+          <button
+            @click="dismissRecovery"
+            class="flex-1 px-6 py-3 rounded-xl border border-white/10 text-white hover:bg-white/10 transition-colors font-bold"
+          >
+            {{ t('analysisWizard.startNew') || '开始新分析' }}
+          </button>
+          <button
+            @click="recoverSession"
+            class="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-primary-dark text-white hover:shadow-glow transition-all font-bold"
+          >
+            {{ t('analysisWizard.continueSession') || '继续分析' }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useLanguage } from '@/composables/useLanguage.js';
 import { useToast } from '@/composables/useToast';
@@ -153,6 +205,76 @@ const analysisConfig = ref({
 
 // Session ID
 const sessionId = ref(null);
+
+// Session Recovery State
+const showRecoveryDialog = ref(false);
+const pendingSession = ref(null);
+
+// Check for active sessions on mount
+onMounted(() => {
+  checkForActiveSessions();
+});
+
+function checkForActiveSessions() {
+  const activeSessions = sessionManager.getActiveSessions();
+  console.log('[Wizard] Active sessions:', activeSessions);
+
+  if (activeSessions.length > 0) {
+    // Filter out stale sessions (older than 24 hours)
+    const MAX_SESSION_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+    const now = Date.now();
+
+    const validSessions = activeSessions.filter(session => {
+      const sessionAge = now - (session.startedAt || 0);
+      if (sessionAge > MAX_SESSION_AGE_MS) {
+        // Mark stale session as failed and skip it
+        console.log('[Wizard] Cleaning stale session:', session.sessionId, 'age:', Math.round(sessionAge / 3600000), 'hours');
+        sessionManager.updateSession(session.sessionId, { status: 'failed' });
+        return false;
+      }
+      return true;
+    });
+
+    if (validSessions.length > 0) {
+      // Show recovery dialog for the most recent valid session
+      pendingSession.value = validSessions[0];
+      showRecoveryDialog.value = true;
+    }
+  }
+}
+
+// Recover session
+async function recoverSession() {
+  if (!pendingSession.value) return;
+
+  console.log('[Wizard] Recovering session:', pendingSession.value.sessionId);
+
+  // Restore state
+  selectedScenario.value = pendingSession.value.scenario;
+  targetConfig.value = pendingSession.value.targetData;
+  analysisConfig.value = pendingSession.value.configData;
+  sessionId.value = pendingSession.value.sessionId;
+
+  // Move to progress step
+  currentStep.value = 2;
+
+  // Close dialog
+  showRecoveryDialog.value = false;
+  pendingSession.value = null;
+}
+
+// Dismiss recovery and start fresh
+function dismissRecovery() {
+  if (pendingSession.value) {
+    // Mark session as completed/failed
+    sessionManager.updateSession(pendingSession.value.sessionId, {
+      status: 'failed'
+    });
+  }
+
+  showRecoveryDialog.value = false;
+  pendingSession.value = null;
+}
 
 // Handle Scenario Selection
 function handleScenarioSelected(scenario) {
@@ -216,7 +338,7 @@ async function handleAnalysisStart(data) {
 
   } catch (err) {
     console.error('[Wizard] Failed to start analysis:', err);
-    error('启动分析失败: ' + (err.message || '未知错误'));
+    error(t('analysisWizard.analysisError') + ': ' + (err.message || t('analysisWizard.unknownError')));
 
     // Go back to config step on error
     currentStep.value = 2;
@@ -246,6 +368,50 @@ function handleAnalysisComplete(result) {
     } else {
         error(t('analysisWizard.sessionNotFound'));
     }
+  }
+}
+
+// Handle Upgrade to Standard Analysis
+async function handleUpgradeToStandard(upgradeData) {
+  console.log('[Wizard] Upgrading to standard analysis:', upgradeData);
+
+  try {
+    // Reset session ID to prepare for new analysis
+    sessionId.value = null;
+
+    // Update config to standard depth
+    analysisConfig.value = {
+      ...analysisConfig.value,
+      depth: 'standard'
+    };
+
+    // Use the upgrade method from service
+    const result = await analysisServiceV2.upgradeToStandard({
+      projectName: upgradeData.projectName,
+      scenarioId: upgradeData.scenario?.id || selectedScenario.value?.id,
+      target: upgradeData.target || targetConfig.value,
+      originalConfig: analysisConfig.value
+    });
+
+    sessionId.value = result.sessionId;
+    console.log('[Wizard] Standard analysis started:', result);
+
+    // Update session manager
+    sessionManager.saveSession({
+      sessionId: sessionId.value,
+      projectName: upgradeData.projectName,
+      scenario: selectedScenario.value,
+      targetData: targetConfig.value,
+      configData: analysisConfig.value,
+      status: 'running',
+      progress: 0,
+      currentStep: 0,
+      startedAt: Date.now()
+    });
+
+  } catch (err) {
+    console.error('[Wizard] Failed to upgrade to standard analysis:', err);
+    error(t('analysisWizard.analysisError') + ': ' + (err.message || t('analysisWizard.unknownError')));
   }
 }
 </script>

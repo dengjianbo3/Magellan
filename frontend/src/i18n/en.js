@@ -20,7 +20,52 @@ export default {
     finish: 'Finish',
     close: 'Close',
     settings: 'Settings',
-    logout: 'Logout'
+    logout: 'Logout',
+    optional: 'Optional'
+  },
+
+  // Authentication
+  auth: {
+    // Login
+    loginTitle: 'Sign in to your account',
+    loginSubtitle: 'Welcome back to Magellan Investment Analysis Platform',
+    email: 'Email',
+    emailPlaceholder: 'Enter your email',
+    password: 'Password',
+    passwordPlaceholder: 'Enter your password',
+    rememberMe: 'Remember me',
+    forgotPassword: 'Forgot password?',
+    login: 'Sign in',
+    loggingIn: 'Signing in...',
+    noAccount: "Don't have an account?",
+    registerNow: 'Register now',
+
+    // Register
+    registerTitle: 'Create a new account',
+    registerSubtitle: 'Join Magellan and start intelligent investment analysis',
+    name: 'Name',
+    namePlaceholder: 'Enter your name',
+    organization: 'Organization',
+    organizationPlaceholder: 'Enter your organization name',
+    newPasswordPlaceholder: 'Enter new password',
+    confirmPassword: 'Confirm Password',
+    confirmPasswordPlaceholder: 'Re-enter your password',
+    passwordRequirements: 'Password must be at least 8 characters with uppercase, lowercase and numbers',
+    passwordMismatch: 'Passwords do not match',
+    acceptTerms: 'I have read and agree to the',
+    termsOfService: 'Terms of Service',
+    and: 'and',
+    privacyPolicy: 'Privacy Policy',
+    register: 'Register',
+    registering: 'Registering...',
+    hasAccount: 'Already have an account?',
+    loginNow: 'Sign in now',
+
+    // Errors
+    loginFailed: 'Login failed. Please check your email and password.',
+    registerFailed: 'Registration failed. Please try again later.',
+    sessionExpired: 'Session expired. Please sign in again.',
+    unauthorized: 'Unauthorized. Please sign in first.'
   },
 
   // Sidebar
@@ -29,6 +74,7 @@ export default {
     reports: 'Reports',
     analysis: 'Analysis',
     roundtable: 'Roundtable',
+    trading: 'Auto Trading',
     agents: 'AI Agents',
     knowledge: 'Knowledge Base',
     settings: 'Settings',
@@ -394,6 +440,67 @@ export default {
       completed: 'Completed',
       inProgress: 'In Progress',
       draft: 'Draft'
+    },
+
+    // Report detail view
+    detail: {
+      backToList: 'Back to List',
+      reportDetails: 'Report Details',
+      reportType: 'Report Type',
+      saveTime: 'Saved At',
+      sessionId: 'Session ID',
+
+      // Roundtable specific
+      meetingMinutes: 'Meeting Minutes',
+      roundtableDiscussion: 'Roundtable Discussion',
+      participatingExperts: 'Participating Experts',
+      discussionHistory: 'Discussion History',
+      clickToExpand: 'Click to expand full discussion',
+      messages: 'messages',
+      conclusionReason: 'Conclusion Reason',
+      discussionTopic: 'Discussion Topic',
+      discussionDuration: 'Discussion Duration',
+
+      // Analysis sections
+      detailedAnalysis: 'Detailed Analysis Report',
+      investmentRecommendation: 'Investment Recommendation',
+      overallScore: 'Overall Score',
+      executiveSummary: 'Executive Summary',
+      keyFindings: 'Key Findings',
+      highlights: 'Highlights',
+      concerns: 'Concerns',
+      score: 'Score',
+      swotAnalysis: 'SWOT Analysis',
+      strengths: 'Strengths',
+      weaknesses: 'Weaknesses',
+      opportunities: 'Opportunities',
+      threats: 'Threats',
+      nextSteps: 'Next Steps',
+      ddQuestions: 'DD Questions',
+      executionSteps: 'Execution Steps',
+      dataVisualization: 'Data Visualization',
+      refresh: 'Refresh',
+
+      // Chart tabs
+      financialAnalysis: 'Financial Analysis',
+      marketAnalysis: 'Market Analysis',
+      teamAndRisk: 'Team & Risk',
+      revenueTrend: 'Revenue Trend',
+      profitMarginTrend: 'Profit Margin Trend',
+      marketShareDistribution: 'Market Share Distribution',
+      riskAssessmentMatrix: 'Risk Assessment Matrix',
+
+      // Actions
+      actions: 'Actions',
+      exportPdf: 'Export PDF',
+      exporting: 'Exporting...',
+      shareReport: 'Share Report',
+      deleteReport: 'Delete Report',
+      confirmDelete: 'Confirm Delete?',
+      deleteWarning: 'You are about to delete report',
+      deleteIrreversible: 'This action cannot be undone.',
+      cancel: 'Cancel',
+      confirmDeleteBtn: 'Confirm Delete'
     }
   },
 
@@ -548,7 +655,8 @@ export default {
       llmProviderDesc: 'Select the LLM provider for AI analysis',
       providers: {
         gemini: 'Gemini (Google)',
-        kimi: 'Kimi (Moonshot AI)'
+        kimi: 'Kimi (Moonshot AI)',
+        deepseek: 'DeepSeek'
       },
       currentModel: 'Current Model',
       providerStatus: 'Status',
@@ -731,6 +839,14 @@ export default {
     connectingWebSocket: 'Connecting to real-time channel...',
     waitingForResults: 'Waiting for analysis results...',
 
+    // Connection Status
+    reconnecting: 'Reconnecting...',
+    connectionLost: 'Connection lost, please check your network',
+    connectionRestored: 'Connection restored',
+    unknownError: 'Unknown error',
+    analysisError: 'An error occurred during analysis',
+    analysisTimeout: 'Analysis timed out, please retry',
+
     // Wizard Steps
     inputTarget: 'Input Target',
 
@@ -771,6 +887,20 @@ export default {
     // Alerts
     upgradeFeatureInDevelopment: 'Upgrade to standard analysis feature is under development...',
     exportFeatureInDevelopment: 'Export report feature is under development...',
+
+    // Session Recovery
+    sessionRecovery: 'Incomplete Analysis Detected',
+    sessionRecoveryDesc: 'You have an in-progress analysis. Would you like to continue?',
+    projectName: 'Project Name',
+    scenario: 'Analysis Scenario',
+    startedAt: 'Started At',
+    startNew: 'Start New',
+    continueSession: 'Continue',
+    sessionNotFound: 'Session not found',
+
+    // Errors
+    analysisError: 'Analysis Error',
+    unknownError: 'Unknown error',
   },
 
   // Roundtable Discussion
@@ -852,6 +982,98 @@ export default {
       interventionSent: 'Your input has been sent. The Leader will re-plan the discussion.',
       interventionError: 'Failed to send input'
     }
+  },
+
+  // Auto Trading
+  trading: {
+    title: 'Auto Trading System',
+    subtitle: 'AI-powered automated cryptocurrency trading',
+    status: 'Status',
+    running: 'Running',
+    stopped: 'Stopped',
+    start: 'Start Trading',
+    stop: 'Stop Trading',
+
+    // Account
+    account: 'Account Overview',
+    equity: 'Total Equity',
+    available: 'Available',
+    unrealizedPnl: 'Unrealized PnL',
+    totalPnl: 'Total P&L',
+
+    // Position
+    position: 'Current Position',
+    entry: 'Entry',
+    current: 'Current',
+    takeProfit: 'Take Profit',
+    stopLoss: 'Stop Loss',
+    pnl: 'P&L',
+    noPosition: 'No open position',
+
+    // Next Analysis
+    nextAnalysis: 'Next Analysis',
+    interval: 'Analysis every 4 hours',
+    triggerNow: 'Trigger Now',
+
+    // Charts
+    equityCurve: 'Equity Curve',
+    startingCapital: 'Starting',
+
+    // Agent Team
+    agentTeam: 'Trading Expert Team',
+    winRate: 'Win Rate',
+
+    // Discussion
+    discussion: 'Live Discussion',
+    noMessages: 'Waiting for analysis...',
+
+    // Trade History
+    history: 'Trade History',
+    time: 'Time',
+    direction: 'Direction',
+    leverage: 'Leverage',
+    exit: 'Exit',
+    noTrades: 'No trades yet',
+
+    // Settings
+    settings: 'Trading Settings',
+    closePosition: 'Close Position',
+    tradingMode: 'Trading Mode',
+    analysisInterval: 'Analysis Interval (hours)',
+    maxLeverage: 'Max Leverage',
+    maxPositionPercent: 'Max Position (% of Balance)',
+
+    // Agent Performance
+    agentPerformance: 'Agent Performance',
+    noAgentData: 'No agent performance data yet',
+    teamSummary: 'Team Summary',
+    totalTrades: 'Total Trades',
+    wins: 'Wins',
+    totalPnlLabel: 'Total PnL',
+    avgPnl: 'Avg PnL',
+    latestLesson: 'Latest Lesson',
+    agent: 'Agent',
+
+    // Settings Modal
+    loadingConfig: 'Loading configuration...',
+    okxDemoTrading: 'OKX Demo Trading',
+    localPaperTrading: 'Local Paper Trading',
+    okxDemo: 'OKX Demo',
+    okxApiWarning: 'Requires OKX API credentials configured in the backend',
+    hour1: '1 hour',
+    hour2: '2 hours',
+    hour4: '4 hours',
+    hour6: '6 hours',
+    hour12: '12 hours',
+    hour24: '24 hours',
+    noLeverage: '(No Leverage)',
+    resetSystem: 'Reset System',
+    resetDescription: 'Stop trading, close positions, clear history and memories',
+    reset: 'Reset',
+    resetting: 'Resetting...',
+    saving: 'Saving...',
+    closing: 'Closing...',
+    holding: 'Holding'
   },
 
   // Early Stage Investment

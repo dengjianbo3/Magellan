@@ -2,13 +2,15 @@
 # 所有AI智能体的配置定义
 #
 # 架构设计:
-# - 6个原子Agent (atomic): 所有场景的基础能力单元
+# - 13个原子Agent (atomic): 所有场景的基础能力单元
+#   - 7个基础Agent: team/market/financial/risk/tech/legal/technical_analyst
+#   - 6个扩展Agent (Phase 2): macro/esg/sentiment/quant/deal/ma
 # - 2个特殊Agent (special): 特定场景专用
 #   - leader: 仅用于圆桌会议
 #   - report_synthesizer: 仅用于分析模块最后一步
 #
 # 原则:
-# 1. 所有场景 (分析模块/圆桌会议) 都应该基于这6个原子Agent
+# 1. 所有场景 (分析模块/圆桌会议) 都应该基于这13个原子Agent
 # 2. 原子Agent支持quick_mode参数来调整输出详细程度
 # 3. 通过workflow编排原子Agent的执行顺序和组合方式
 # 4. 避免创建新的专用Agent, 通过组合原子Agent实现新能力
@@ -269,6 +271,268 @@ agents:
       - 股票: Yahoo Finance (需安装yfinance)
 
   # ============================================
+  # Phase 2 新增原子Agent
+  # ============================================
+
+  - agent_id: macro_economist
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 宏观经济分析师
+      en: Macro Economist
+    description:
+      zh: 分析宏观经济周期、货币政策、通胀趋势和板块轮动
+      en: Analyze macroeconomic cycles, monetary policy, inflation trends and sector rotation
+    class_path: app.core.roundtable.investment_agents.create_macro_economist
+    capabilities:
+      - 经济周期定位 (复苏/过热/滞胀/衰退)
+      - 货币政策分析 (利率、QE/QT)
+      - 通胀趋势判断 (CPI/PPI/PCE)
+      - 利率敏感度分析
+      - 板块轮动建议
+    inputs:
+      - company_name: 公司/资产名称
+      - industry: 行业/赛道
+      - target_data: 目标数据 (可选)
+    outputs:
+      macro_score: 宏观环境评分 (0-100)
+      cycle_position: 经济周期位置
+      policy_impact: 政策影响分析
+      inflation_outlook: 通胀展望
+      sector_recommendation: 板块配置建议
+      risk_factors: 宏观风险因素
+    quick_mode_support: true
+    estimated_duration:
+      quick: 35
+      standard: 120
+      comprehensive: 280
+    tags: [macro, economics, policy, inflation, cycle]
+
+  - agent_id: esg_analyst
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: ESG分析师
+      en: ESG Analyst
+    description:
+      zh: 评估环境、社会、公司治理因素，识别ESG风险与机会
+      en: Evaluate Environmental, Social, and Governance factors, identify ESG risks and opportunities
+    class_path: app.core.roundtable.investment_agents.create_esg_analyst
+    capabilities:
+      - 碳排放分析与碳中和路径
+      - 环境合规性评估
+      - 社会责任评价 (员工/社区/供应链)
+      - 公司治理评分
+      - ESG投资机会识别
+    inputs:
+      - company_name: 公司名称
+      - industry: 行业
+      - target_data: 目标数据 (可选)
+    outputs:
+      esg_score: ESG综合评分 (0-100)
+      environmental_rating: 环境评级 (A-F)
+      social_rating: 社会评级 (A-F)
+      governance_rating: 治理评级 (A-F)
+      esg_risks: ESG风险点
+      esg_opportunities: ESG机会
+      recommendations: 改善建议
+    quick_mode_support: true
+    estimated_duration:
+      quick: 40
+      standard: 140
+      comprehensive: 320
+    tags: [esg, sustainability, governance, impact, carbon]
+
+  - agent_id: sentiment_analyst
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 情绪分析师
+      en: Sentiment Analyst
+    description:
+      zh: 分析市场情绪、新闻舆情、社交媒体信号和机构观点
+      en: Analyze market sentiment, news coverage, social media signals and institutional views
+    class_path: app.core.roundtable.investment_agents.create_sentiment_analyst
+    capabilities:
+      - 新闻情绪监测与评分
+      - 社交媒体信号分析
+      - 分析师共识追踪
+      - 资金流向监测
+      - 反向投资信号识别
+    inputs:
+      - company_name: 公司/资产名称
+      - symbol: 交易代码 (可选)
+      - target_data: 目标数据 (可选)
+    outputs:
+      sentiment_score: 情绪综合评分 (0-100)
+      news_sentiment: 新闻情绪 (bullish/neutral/bearish)
+      social_sentiment: 社交情绪
+      analyst_consensus: 分析师共识
+      fund_flow: 资金流向
+      contrarian_signal: 反向信号
+      key_events: 关键事件
+    quick_mode_support: true
+    estimated_duration:
+      quick: 30
+      standard: 100
+      comprehensive: 240
+    tags: [sentiment, news, social, consensus, flow]
+
+  - agent_id: quant_strategist
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 量化策略师
+      en: Quant Strategist
+    description:
+      zh: 因子分析、组合优化、风险量化和策略回测
+      en: Factor analysis, portfolio optimization, risk quantification and strategy backtesting
+    class_path: app.core.roundtable.investment_agents.create_quant_strategist
+    capabilities:
+      - 多因子分析 (价值/成长/动量/质量)
+      - 组合优化建议
+      - 风险指标计算 (VaR/CVaR/Sharpe)
+      - 策略回测分析
+      - 情景压力测试
+    inputs:
+      - company_name: 公司/资产名称
+      - symbol: 交易代码 (可选)
+      - portfolio: 投资组合信息 (可选)
+      - target_data: 目标数据 (可选)
+    outputs:
+      quant_score: 量化评分 (0-100)
+      factor_exposure: 因子暴露分析
+      risk_metrics: 风险指标 (VaR/Sharpe等)
+      portfolio_suggestion: 组合优化建议
+      backtest_results: 回测结果
+      stress_test: 压力测试结果
+    quick_mode_support: true
+    estimated_duration:
+      quick: 35
+      standard: 130
+      comprehensive: 300
+    tags: [quant, factor, portfolio, risk-metrics, backtest]
+    notes: |
+      此Agent使用较低temperature (0.5) 确保数值计算的稳定性
+
+  - agent_id: deal_structurer
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 交易结构师
+      en: Deal Structurer
+    description:
+      zh: 设计交易结构、估值谈判、条款设计和退出机制
+      en: Design deal structure, valuation negotiation, term sheet design and exit mechanisms
+    class_path: app.core.roundtable.investment_agents.create_deal_structurer
+    capabilities:
+      - 估值建模 (DCF/可比公司/可比交易)
+      - 条款设计 (优先清算/反稀释/董事会)
+      - 股权结构优化
+      - 退出机制分析 (IPO/并购/回购)
+      - 谈判策略建议
+    inputs:
+      - company_name: 公司名称
+      - deal_type: 交易类型 (Series A/B/C, buyout等)
+      - valuation_info: 估值信息 (可选)
+      - target_data: 目标数据 (可选)
+    outputs:
+      valuation_range: 估值区间
+      term_sheet: 条款建议
+      structure_options: 结构方案
+      exit_analysis: 退出分析
+      negotiation_points: 谈判要点
+      deal_risks: 交易风险
+    quick_mode_support: true
+    estimated_duration:
+      quick: 40
+      standard: 150
+      comprehensive: 350
+    tags: [deal, valuation, terms, exit, primary-market]
+    notes: |
+      此Agent主要用于一级市场 (VC/PE) 交易结构设计
+
+  - agent_id: ma_advisor
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 并购顾问
+      en: M&A Advisor
+    description:
+      zh: 并购标的筛选、战略契合度分析、协同效应量化和整合风险评估
+      en: M&A target screening, strategic fit analysis, synergy quantification and integration risk assessment
+    class_path: app.core.roundtable.investment_agents.create_ma_advisor
+    capabilities:
+      - 标的筛选评估
+      - 战略契合度分析
+      - 协同效应量化 (收入/成本)
+      - 整合风险识别
+      - 交易可行性评估
+    inputs:
+      - acquirer: 收购方信息
+      - target: 标的公司信息
+      - deal_rationale: 交易逻辑 (可选)
+      - target_data: 目标数据 (可选)
+    outputs:
+      strategic_fit_score: 战略契合度评分 (0-100)
+      synergy_estimate: 协同效应估算
+      integration_risks: 整合风险清单
+      deal_recommendation: 交易建议 (proceed/negotiate/pass)
+      valuation_impact: 估值影响
+      timeline: 建议时间表
+    quick_mode_support: true
+    estimated_duration:
+      quick: 45
+      standard: 160
+      comprehensive: 380
+    tags: [ma, merger, acquisition, synergy, integration]
+
+  - agent_id: onchain_analyst
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 链上分析师
+      en: Onchain Analyst
+    description:
+      zh: 分析区块链链上数据，包括巨鲸地址动向、交易所资金流向、DeFi协议TVL变化和智能货币流动
+      en: Analyze blockchain on-chain data including whale wallet movements, exchange fund flows, DeFi TVL changes and smart money flows
+    class_path: app.core.roundtable.investment_agents.create_onchain_analyst
+    capabilities:
+      - 巨鲸地址监控 (大额转账追踪)
+      - 交易所资金流向分析 (流入/流出)
+      - DeFi协议TVL监控
+      - 智能货币流向追踪
+      - MVRV/SOPR等链上指标
+      - 持币地址分布分析
+    inputs:
+      - symbol: 加密货币代码 (BTC, ETH等)
+      - timeframe: 时间周期 (1d, 7d, 30d)
+      - target_data: 目标数据 (可选)
+    outputs:
+      onchain_score: 链上评分 (0-100)
+      whale_activity: 巨鲸活动 (bullish/neutral/bearish)
+      exchange_flow: 交易所流向 (inflow/outflow/neutral)
+      defi_tvl_trend: DeFi TVL趋势
+      smart_money_signal: 智能货币信号
+      key_transactions: 关键交易
+      onchain_risks: 链上风险因素
+    quick_mode_support: true
+    estimated_duration:
+      quick: 25
+      standard: 80
+      comprehensive: 180
+    tags: [onchain, blockchain, whale, defi, crypto]
+    notes: |
+      此Agent主要用于:
+      - 加密货币链上分析
+      - DeFi协议分析
+      - 巨鲸行为监控
+      
+      数据来源:
+      - Glassnode (需API key)
+      - DefiLlama (免费API)
+
+  # ============================================
   # 特殊Agent层 (Special Agents)
   # 特定场景专用 - 不可复用到其他场景
   # ============================================
@@ -365,35 +629,46 @@ agents:
 # ============================================
 #
 # 早期投资分析 (Early Stage Investment):
-#   team_evaluator → market_analyst → financial_expert → risk_assessor → report_synthesizer
+#   team_evaluator → market_analyst → financial_expert → risk_assessor → deal_structurer → report_synthesizer
 #
 # 成长期投资分析 (Growth Investment):
 #   market_analyst → financial_expert → team_evaluator → tech_specialist → risk_assessor → report_synthesizer
 #
 # 公开市场投资分析 (Public Market Investment):
-#   financial_expert → market_analyst → risk_assessor → report_synthesizer
+#   macro_economist → financial_expert → technical_analyst → quant_strategist → sentiment_analyst → risk_assessor → report_synthesizer
 #
 # 另类投资分析 (Alternative Investment):
 #   market_analyst → financial_expert → legal_advisor → risk_assessor → report_synthesizer
 #
 # 行业研究分析 (Industry Research):
-#   market_analyst → tech_specialist → financial_expert → report_synthesizer
+#   macro_economist → market_analyst → tech_specialist → esg_analyst → report_synthesizer
+#
+# 并购分析 (M&A Analysis):
+#   ma_advisor → financial_expert → market_analyst → legal_advisor → risk_assessor → deal_structurer → report_synthesizer
+#
+# ESG投资分析 (ESG Investment):
+#   esg_analyst → market_analyst → financial_expert → risk_assessor → report_synthesizer
 #
 # 圆桌会议 (Roundtable Discussion):
-#   leader → [team_evaluator, market_analyst, financial_expert, risk_assessor, tech_specialist, legal_advisor] → leader
+#   leader → [team_evaluator, market_analyst, financial_expert, risk_assessor, tech_specialist, legal_advisor, macro_economist, esg_analyst] → leader
 #
 # ============================================
 
 # 配置元数据
 metadata:
-  version: "2.0.0"
-  last_updated: "2025-01-19"
+  version: "3.0.0"
+  last_updated: "2025-01-29"
   maintainer: "Magellan Product Team"
   description: |
     此配置文件定义了Magellan系统中所有AI Agent的能力边界和使用范围。
 
+    v3.0.0 更新 (Phase 2):
+    - 新增6个原子Agent: macro_economist, esg_analyst, sentiment_analyst, quant_strategist, deal_structurer, ma_advisor
+    - 原子Agent总数: 7 → 13
+    - 覆盖场景: 一级市场(VC/PE) + 二级市场(公开市场) + 并购
+
     核心原则:
-    1. 保持6个原子Agent的纯粹性，避免功能蔓延
+    1. 保持13个原子Agent的纯粹性，避免功能蔓延
     2. 新需求优先通过workflow编排现有Agent实现
     3. 只有在确实需要全新能力维度时才考虑新增原子Agent
     4. 特殊Agent仅用于特定场景，不可跨场景复用

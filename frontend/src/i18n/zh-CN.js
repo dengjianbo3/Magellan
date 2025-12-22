@@ -26,7 +26,54 @@ export default {
     submitting: '提交中...',
     starting: '启动中...',
     min: '分',
-    sec: '秒'
+    sec: '秒',
+    optional: '可选',
+    refresh: '刷新',
+    triggerNow: '立即触发'
+  },
+
+  // Authentication
+  auth: {
+    // Login
+    loginTitle: '登录您的账户',
+    loginSubtitle: '欢迎回到 Magellan 投资分析平台',
+    email: '邮箱',
+    emailPlaceholder: '请输入您的邮箱',
+    password: '密码',
+    passwordPlaceholder: '请输入密码',
+    rememberMe: '记住我',
+    forgotPassword: '忘记密码？',
+    login: '登录',
+    loggingIn: '登录中...',
+    noAccount: '还没有账户？',
+    registerNow: '立即注册',
+
+    // Register
+    registerTitle: '创建新账户',
+    registerSubtitle: '加入 Magellan，开启智能投资分析',
+    name: '姓名',
+    namePlaceholder: '请输入您的姓名',
+    organization: '所属机构',
+    organizationPlaceholder: '请输入您的机构名称',
+    newPasswordPlaceholder: '请输入新密码',
+    confirmPassword: '确认密码',
+    confirmPasswordPlaceholder: '请再次输入密码',
+    passwordRequirements: '密码至少8位，包含大小写字母和数字',
+    passwordMismatch: '两次输入的密码不一致',
+    acceptTerms: '我已阅读并同意',
+    termsOfService: '服务条款',
+    and: '和',
+    privacyPolicy: '隐私政策',
+    register: '注册',
+    registering: '注册中...',
+    hasAccount: '已有账户？',
+    loginNow: '立即登录',
+
+    // Errors
+    loginFailed: '登录失败，请检查邮箱和密码',
+    registerFailed: '注册失败，请稍后重试',
+    sessionExpired: '会话已过期，请重新登录',
+    unauthorized: '未授权访问，请先登录'
   },
 
   // Validation
@@ -45,6 +92,7 @@ export default {
     reports: '报告',
     analysis: '分析',
     roundtable: '圆桌讨论',
+    trading: '自动交易',
     agents: 'AI 智能体',
     knowledge: '知识库',
     settings: '设置',
@@ -410,6 +458,67 @@ export default {
       completed: '已完成',
       inProgress: '进行中',
       draft: '草稿'
+    },
+
+    // Report detail view
+    detail: {
+      backToList: '返回列表',
+      reportDetails: '报告详情',
+      reportType: '报告类型',
+      saveTime: '保存时间',
+      sessionId: 'Session ID',
+
+      // Roundtable specific
+      meetingMinutes: '会议纪要',
+      roundtableDiscussion: '圆桌讨论',
+      participatingExperts: '参与专家',
+      discussionHistory: '讨论历史记录',
+      clickToExpand: '点击展开查看完整讨论过程',
+      messages: '条消息',
+      conclusionReason: '会议结束原因',
+      discussionTopic: '讨论主题',
+      discussionDuration: '讨论时长',
+
+      // Analysis sections
+      detailedAnalysis: '详细分析报告',
+      investmentRecommendation: '投资建议',
+      overallScore: '综合评分',
+      executiveSummary: '执行摘要',
+      keyFindings: '关键发现',
+      highlights: '亮点',
+      concerns: '关注点',
+      score: '评分',
+      swotAnalysis: 'SWOT 分析',
+      strengths: '优势',
+      weaknesses: '劣势',
+      opportunities: '机会',
+      threats: '威胁',
+      nextSteps: '下一步行动建议',
+      ddQuestions: '尽调问题',
+      executionSteps: '执行步骤记录',
+      dataVisualization: '数据可视化',
+      refresh: '刷新',
+
+      // Chart tabs
+      financialAnalysis: '财务分析',
+      marketAnalysis: '市场分析',
+      teamAndRisk: '团队与风险',
+      revenueTrend: '收入趋势',
+      profitMarginTrend: '利润率趋势',
+      marketShareDistribution: '市场份额分布',
+      riskAssessmentMatrix: '风险评估矩阵',
+
+      // Actions
+      actions: '操作',
+      exportPdf: '导出 PDF',
+      exporting: '导出中...',
+      shareReport: '分享报告',
+      deleteReport: '删除报告',
+      confirmDelete: '确认删除?',
+      deleteWarning: '您即将删除报告',
+      deleteIrreversible: '此操作无法撤销。',
+      cancel: '取消',
+      confirmDeleteBtn: '确认删除'
     }
   },
 
@@ -564,7 +673,8 @@ export default {
       llmProviderDesc: '选择用于 AI 分析的大语言模型提供商',
       providers: {
         gemini: 'Gemini (Google)',
-        kimi: 'Kimi (Moonshot AI)'
+        kimi: 'Kimi (Moonshot AI)',
+        deepseek: 'DeepSeek (深度求索)'
       },
       currentModel: '当前模型',
       providerStatus: '状态',
@@ -747,6 +857,14 @@ export default {
     connectingWebSocket: '正在连接实时通道...',
     waitingForResults: '等待分析结果...',
 
+    // Connection Status
+    reconnecting: '正在重新连接...',
+    connectionLost: '连接已断开，请检查网络',
+    connectionRestored: '连接已恢复',
+    unknownError: '未知错误',
+    analysisError: '分析过程中发生错误',
+    analysisTimeout: '分析超时，请重试',
+
     // Wizard Steps
     inputTarget: '输入目标',
     targetInfo: '目标信息',
@@ -804,6 +922,20 @@ export default {
     // Alerts
     upgradeFeatureInDevelopment: '升级到标准分析功能开发中...',
     exportFeatureInDevelopment: '导出报告功能开发中...',
+
+    // Session Recovery
+    sessionRecovery: '检测到未完成的分析',
+    sessionRecoveryDesc: '您有一个进行中的分析任务，是否要继续？',
+    projectName: '项目名称',
+    scenario: '分析场景',
+    startedAt: '开始时间',
+    startNew: '开始新分析',
+    continueSession: '继续分析',
+    sessionNotFound: '会话不存在',
+
+    // Errors
+    analysisError: '分析错误',
+    unknownError: '未知错误',
   },
 
   // Roundtable Discussion
@@ -885,6 +1017,108 @@ export default {
       interventionSent: '补充信息已发送，Leader将根据您的信息重新规划讨论',
       interventionError: '发送补充信息失败'
     }
+  },
+
+  // Auto Trading
+  trading: {
+    title: '自动交易系统',
+    subtitle: 'AI 驱动的加密货币自动交易',
+    status: '状态',
+    running: '运行中',
+    stopped: '已停止',
+    start: '启动交易',
+    stop: '停止交易',
+
+    // Account
+    account: '账户概览',
+    equity: '总权益',
+    available: '可用余额',
+    unrealizedPnl: '未实现盈亏',
+    totalPnl: '总盈亏',
+
+    // Position
+    position: '当前持仓',
+    entry: '开仓价',
+    current: '当前价',
+    takeProfit: '止盈',
+    stopLoss: '止损',
+    pnl: '盈亏',
+    noPosition: '当前无持仓',
+
+    // Next Analysis
+    nextAnalysis: '下次分析',
+    interval: '每 4 小时分析一次',
+    triggerNow: '立即触发',
+
+    // Charts
+    equityCurve: '权益曲线',
+    startingCapital: '初始资金',
+
+    // Agent Team
+    agentTeam: '交易专家团队',
+    winRate: '胜率',
+
+    // Discussion
+    discussion: '实时讨论',
+    noMessages: '等待分析开始...',
+
+    // Trade History
+    history: '交易历史',
+    time: '时间',
+    direction: '方向',
+    leverage: '杠杆',
+    exit: '平仓价',
+    noTrades: '暂无交易记录',
+
+    // Settings
+    settings: '交易设置',
+    closePosition: '平仓',
+    tradingMode: '交易模式',
+    analysisInterval: '分析间隔（小时）',
+    maxLeverage: '最大杠杆',
+    maxPositionPercent: '最大仓位（占余额百分比）',
+
+    // Agent Performance
+    agentPerformance: 'Agent 表现',
+    noAgentData: '暂无 Agent 表现数据',
+    teamSummary: '团队汇总',
+    totalTrades: '总交易数',
+    wins: '盈利次数',
+    totalPnlLabel: '总盈亏',
+    avgPnl: '平均盈亏',
+    latestLesson: '最新经验',
+    agent: 'Agent',
+
+    // Settings Modal
+    loadingConfig: '加载配置中...',
+    okxDemoTrading: 'OKX 模拟交易',
+    localPaperTrading: '本地模拟交易',
+    okxDemo: 'OKX 模拟',
+    okxApiWarning: '需要在后端配置 OKX API 凭证',
+    hour1: '1 小时',
+    hour2: '2 小时',
+    hour4: '4 小时',
+    hour6: '6 小时',
+    hour12: '12 小时',
+    hour24: '24 小时',
+    noLeverage: '（无杠杆）',
+    resetSystem: '重置系统',
+    resetDescription: '停止交易、平仓、清除历史记录和记忆',
+    reset: '重置',
+    resetting: '重置中...',
+    saving: '保存中...',
+    closing: '平仓中...',
+    holding: '持仓中',
+
+    // Max Drawdown
+    maxDrawdown: '最大回撤',
+    startDate: '起始日期',
+    maxDrawdownPct: '最大回撤',
+    currentDrawdown: '当前回撤',
+    peakEquity: '峰值权益',
+    recovery: '恢复进度',
+    tradesAnalyzed: '分析交易数',
+    notSet: '未设置'
   },
 
   // Early Stage Investment

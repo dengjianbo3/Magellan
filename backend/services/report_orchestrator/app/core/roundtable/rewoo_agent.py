@@ -21,6 +21,15 @@ from .agent import Agent
 from .tool import Tool
 import httpx
 
+# Import timeout configurations
+from ..config_timeouts import (
+    AGENT_ACTION_TIMEOUT,
+    TOOL_EXECUTION_TIMEOUT,
+    MEETING_TOTAL_TIMEOUT,
+    HTTP_CLIENT_TIMEOUT,
+    log_timeout_warning
+)
+
 # 配置日志
 logger = logging.getLogger(__name__)
 
@@ -156,6 +165,13 @@ class ReWOOAgent(Agent):
         """
         print(f"[{self.name}] Phase 1: Planning...")
 
+        # Emit planning started event
+        if self.event_bus:
+            await self.event_bus.publish_thinking(
+                agent_name=self.name,
+                message="🧠 正在规划分析步骤..."
+            )
+
         # 构建规划Prompt
         planning_prompt = self._create_planning_prompt()
 
@@ -166,17 +182,48 @@ class ReWOOAgent(Agent):
 
         # 调用LLM生成计划
         try:
+            # Emit log: calling LLM
+            if self.event_bus:
+                await self.event_bus.publish_log(
+                    agent_name=self.name,
+                    log_text=f"[Plan] 调用LLM生成分析计划..."
+                )
+
             response = await self._call_llm(
                 messages,
                 temperature=self.planning_temperature
             )
 
+            # Emit log: LLM response received
+            if self.event_bus:
+                await self.event_bus.publish_log(
+                    agent_name=self.name,
+                    log_text=f"[Plan] LLM响应已收到，解析计划中..."
+                )
+
             # 解析计划
             plan = self._parse_plan(response)
 
             print(f"[{self.name}] Generated plan with {len(plan)} steps")
+            
+            # Emit plan generated event with step details
+            if self.event_bus and plan:
+                step_details = [f"{s.get('tool', '?')}" for s in plan]
+                await self.event_bus.publish_progress(
+                    agent_name=self.name,
+                    message=f"📋 生成了 {len(plan)} 个分析步骤: {', '.join(step_details)}",
+                    progress=0.2
+                )
+
             for i, step in enumerate(plan, 1):
-                print(f"  Step {i}: {step.get('tool', 'unknown')}({step.get('params', {})})")
+                step_log = f"  • Step {i}: {step.get('tool', 'unknown')}({step.get('params', {})})"
+                print(step_log)
+                # Emit each step as log
+                if self.event_bus:
+                    await self.event_bus.publish_log(
+                        agent_name=self.name,
+                        log_text=f"[Plan] Step {i}: {step.get('tool')}({step.get('params', {})})"
+                    )
 
             return plan
 
@@ -195,6 +242,14 @@ class ReWOOAgent(Agent):
         """
         logger.info(f"[{self.name}] Phase 2: Executing {len(plan)} tools in parallel...")
 
+        # Emit execution started event
+        if self.event_bus:
+            await self.event_bus.publish_progress(
+                agent_name=self.name,
+                message=f"⚡ 开始并行执行 {len(plan)} 个工具调用...",
+                progress=0.3
+            )
+
         # 创建异步任务列表
         tasks = []
         for i, step in enumerate(plan):
@@ -205,64 +260,98 @@ class ReWOOAgent(Agent):
             # 查找工具
             tool = self.tools.get(tool_name)
             if not tool:
-                # 工具不存在，添加错误结果
+                # Tool not found, add error result
                 logger.warning(f"[{self.name}] Tool '{tool_name}' not found for step {i+1}")
                 error_result = {
                     "success": False,
                     "error": f"Tool '{tool_name}' not found",
-                    "summary": f"工具'{tool_name}'未找到"
+                    "summary": f"Tool '{tool_name}' not found"
                 }
                 tasks.append(self._create_completed_future(error_result))
                 continue
 
-            # 创建带超时的任务
+            # Create task with timeout
             try:
-                # 每个工具30秒超时
+                # Emit log for each tool
+                if self.event_bus:
+                    params_str = ', '.join([f"{k}={repr(v)[:30]}" for k,v in tool_params.items()])
+                    await self.event_bus.publish_log(
+                        agent_name=self.name,
+                        log_text=f"[Exec] 工具调用: {tool_name}({params_str})"
+                    )
+
+                # Use configured tool execution timeout
                 task = asyncio.wait_for(
                     tool.execute(**tool_params),
-                    timeout=30.0
+                    timeout=TOOL_EXECUTION_TIMEOUT
                 )
                 tasks.append(task)
-                logger.debug(f"[{self.name}] Step {i+1}: {tool_name}({tool_params}) - {purpose}")
+                logger.debug(f"[{self.name}] Step {i+1}: {tool_name}({tool_params}) - {purpose} (timeout: {TOOL_EXECUTION_TIMEOUT}s)")
             except Exception as e:
                 logger.error(f"[{self.name}] Failed to create task for {tool_name}: {e}")
                 error_result = {
                     "success": False,
                     "error": str(e),
-                    "summary": f"任务创建失败: {str(e)}"
+                    "summary": f"Task creation failed: {str(e)}"
                 }
                 tasks.append(self._create_completed_future(error_result))
 
-        # 并行执行所有任务
+
+        # Execute all tasks in parallel
         observations = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 处理结果和异常
+        # Process results and exceptions
         processed_observations = []
         for i, obs in enumerate(observations):
             if isinstance(obs, asyncio.TimeoutError):
-                logger.error(f"[{self.name}] Step {i+1} timed out after 30s")
+                logger.error(f"[{self.name}] Step {i+1} timed out after {TOOL_EXECUTION_TIMEOUT}s")
                 processed_observations.append({
                     "success": False,
                     "error": "Tool execution timeout",
-                    "summary": f"工具执行超时(30s)"
+                    "summary": f"Tool execution timeout ({TOOL_EXECUTION_TIMEOUT}s)"
                 })
             elif isinstance(obs, Exception):
                 logger.error(f"[{self.name}] Step {i+1} failed with exception: {obs}")
                 processed_observations.append({
                     "success": False,
                     "error": str(obs),
-                    "summary": f"工具执行异常: {str(obs)}"
+                    "summary": f"Tool execution error: {str(obs)}"
                 })
-            else:
+            elif isinstance(obs, str):
+                # Tool returned a string instead of dict - wrap it
+                processed_observations.append({
+                    "success": True,
+                    "summary": obs[:2000] if len(obs) > 2000 else obs,
+                    "raw_result": obs
+                })
+            elif isinstance(obs, dict):
+                # Normal dict result
                 processed_observations.append(obs)
+            else:
+                # Unknown type - convert to string
+                processed_observations.append({
+                    "success": True,
+                    "summary": str(obs)[:2000],
+                    "raw_result": str(obs)
+                })
 
-        # 统计成功率
-        success_count = sum(1 for o in processed_observations if o.get('success', False))
+        # Count successes - handle both dict and other types safely
+        success_count = 0
+        for o in processed_observations:
+            if isinstance(o, dict) and o.get('success', False):
+                success_count += 1
         success_rate = success_count / len(plan) if plan else 0
 
         logger.info(f"[{self.name}] Execution complete: {success_count}/{len(plan)} successful ({success_rate:.1%})")
 
-        # 如果成功率太低，记录警告
+        # Emit log for execution completion
+        if self.event_bus:
+            await self.event_bus.publish_log(
+                agent_name=self.name,
+                log_text=f"[Exec] 执行完成: {success_count}/{len(plan)} 成功 ({success_rate:.1%})"
+            )
+
+        # If success rate is too low, log warning
         if success_rate < 0.3 and len(plan) > 0:
             logger.warning(f"[{self.name}] Low success rate ({success_rate:.1%}), analysis quality may be affected")
 
@@ -285,6 +374,14 @@ class ReWOOAgent(Agent):
         基于所有观察结果生成最终分析
         """
         print(f"[{self.name}] Phase 3: Solving...")
+
+        # Emit solving started event
+        if self.event_bus:
+            await self.event_bus.publish_analyzing(
+                agent_name=self.name,
+                message="📊 综合分析所有数据中...",
+                progress=0.8
+            )
 
         # 构建综合Prompt
         solving_prompt = self._create_solving_prompt()
@@ -355,34 +452,34 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
 """
 
     def _create_solving_prompt(self) -> str:
-        """创建综合阶段的Prompt"""
-        return f"""你是 {self.name}，需要基于工具调用结果生成最终分析。
+        """Create the solving phase prompt"""
+        return f"""You are {self.name}, generating the final analysis based on tool execution results.
 
 {self.role_prompt}
 
-## 综合任务:
-你已经执行了一系列工具调用并获得了观察结果。现在需要:
-1. 整合所有观察结果
-2. 进行深入分析
-3. 得出结论和建议
-4. 生成结构化的分析报告
+## Synthesis Task:
+You have executed a series of tool calls and obtained observation results. Now you need to:
+1. Integrate all observation results
+2. Conduct in-depth analysis
+3. Draw conclusions and recommendations
+4. Generate a structured analysis report
 
-## 输出要求:
-- **结构化**: 使用Markdown格式，包含标题、列表、数据表格
-- **数据支撑**: 引用具体数据来源和数值
-- **深度分析**: 不只是数据罗列，要有洞察和判断
-- **客观准确**: 明确区分事实和推断
-- **中文输出**: 使用简洁专业的中文
-- **直接输出**: 不要添加"TO: ALL"、"CC:"等邮件格式前缀，直接输出分析内容
+## Output Requirements:
+- **Structured**: Use Markdown format with headings, lists, and data tables
+- **Data-Driven**: Reference specific data sources and values
+- **In-Depth**: Not just data listing, include insights and judgments
+- **Objective**: Clearly distinguish between facts and inferences
+- **English Output**: Use concise, professional English
+- **Direct Output**: Do not add "TO: ALL", "CC:" or other email format prefixes
 
-## 分析框架:
-根据你的角色特点，采用相应的分析框架（如财务分析的杜邦分析、市场分析的SWOT等）
+## Analysis Framework:
+Apply the appropriate analysis framework based on your role (e.g., DuPont analysis for finance, SWOT for market analysis)
 """
 
     def _format_tools_description(self) -> str:
-        """格式化工具描述"""
+        """Format tool descriptions"""
         if not self.tools:
-            return "无可用工具"
+            return "No tools available"
 
         descriptions = []
         for tool in self.tools.values():
@@ -392,8 +489,8 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
 
             descriptions.append(
                 f"\n**{schema['name']}**:\n"
-                f"  描述: {schema['description']}\n"
-                f"  参数: {params_desc}"
+                f"  Description: {schema['description']}\n"
+                f"  Parameters: {params_desc}"
             )
 
         return "\n".join(descriptions)
@@ -406,13 +503,13 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
         """格式化规划查询"""
         context_str = self._format_context(context)
 
-        return f"""# 分析任务
+        return f"""# Analysis Task
 {query}
 
-# 上下文信息
+# Context Information
 {context_str}
 
-请为此任务制定工具调用计划（JSON格式）。
+Please create a tool call plan for this task (JSON format).
 """
 
     def _format_solving_query(
@@ -425,7 +522,7 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
         """格式化综合查询"""
         context_str = self._format_context(context)
 
-        # 格式化执行结果
+        # Format execution results
         results_text = ""
         for i, (step, obs) in enumerate(zip(plan, observations), 1):
             tool_name = step.get("tool", "unknown")
@@ -433,30 +530,37 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
             purpose = step.get("purpose", "")
 
             results_text += f"\n## Step {i}: {tool_name}\n"
-            results_text += f"**目的**: {purpose}\n"
-            results_text += f"**参数**: {json.dumps(params, ensure_ascii=False)}\n"
+            results_text += f"**Purpose**: {purpose}\n"
+            results_text += f"**Params**: {json.dumps(params, ensure_ascii=False)}\n"
 
-            if obs.get("success"):
-                results_text += f"**结果**: {obs.get('summary', 'N/A')}\n"
+            # Handle both dict and string observations
+            if isinstance(obs, dict):
+                if obs.get("success"):
+                    results_text += f"**Result**: {obs.get('summary', 'N/A')}\n"
+                else:
+                    results_text += f"**Error**: {obs.get('error', 'Unknown error')}\n"
+            elif isinstance(obs, str):
+                # Tool returned raw string
+                results_text += f"**Result**: {obs[:2000]}\n"
             else:
-                results_text += f"**错误**: {obs.get('error', 'Unknown error')}\n"
+                results_text += f"**Result**: {str(obs)[:2000]}\n"
 
-        return f"""# 原始任务
+        return f"""# Original Task
 {query}
 
-# 上下文信息
+# Context Information
 {context_str}
 
-# 执行计划与结果
+# Execution Plan and Results
 {results_text}
 
-请基于以上所有信息进行综合分析，生成结构化报告。
+Please synthesize all the above information and generate a structured analysis report.
 """
 
     def _format_context(self, context: Dict[str, Any]) -> str:
-        """格式化上下文"""
+        """Format context information"""
         if not context:
-            return "无"
+            return "None"
 
         parts = []
         for key, value in context.items():
@@ -522,7 +626,7 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
 
         for attempt in range(max_retries):
             try:
-                async with httpx.AsyncClient(timeout=120.0) as client:
+                async with httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT) as client:
                     # 转换消息格式为LLM Gateway期待的格式
                     # Gemini只支持 "user" 和 "model" role,不支持 "system"
                     history = []

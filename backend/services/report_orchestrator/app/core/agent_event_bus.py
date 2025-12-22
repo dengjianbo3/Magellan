@@ -20,6 +20,7 @@ class AgentEventType(str, Enum):
     SEARCHING = "searching"       # 正在搜索
     ANALYZING = "analyzing"       # 正在分析
     PROGRESS = "progress"         # 进度更新
+    LOG = "log"                   # 详细执行日志
     RESULT = "result"             # 中间结果
     COMPLETED = "completed"       # 完成
     ERROR = "error"               # 错误
@@ -183,6 +184,15 @@ class AgentEventBus:
             agent_name=agent_name,
             event_type=AgentEventType.ERROR,
             message=error_message
+        ))
+
+    async def publish_log(self, agent_name: str, log_text: str, progress: Optional[float] = None):
+        """快捷方法：发布详细执行日志"""
+        await self.publish(AgentEvent(
+            agent_name=agent_name,
+            event_type=AgentEventType.LOG,
+            message=log_text,
+            progress=progress
         ))
 
     def get_history(self, agent_name: Optional[str] = None) -> List[AgentEvent]:

@@ -8,7 +8,7 @@
  * - industry-research
  */
 
-const API_BASE = 'http://localhost:8000';
+import { API_BASE, WS_BASE } from '@/config/api';
 
 class AnalysisServiceV2 {
   constructor() {
@@ -35,6 +35,14 @@ class AnalysisServiceV2 {
   }
 
   /**
+   * 获取认证头
+   */
+  _getAuthHeaders() {
+    const token = localStorage.getItem('access_token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  }
+
+  /**
    * 准备新分析 - 重置服务状态
    * 必须在启动新分析前调用
    */
@@ -53,7 +61,11 @@ class AnalysisServiceV2 {
    */
   async getScenarios() {
     try {
-      const response = await fetch(`${API_BASE}/api/v2/analysis/scenarios`);
+      const response = await fetch(`${API_BASE}/api/v2/analysis/scenarios`, {
+        headers: {
+          ...this._getAuthHeaders()
+        }
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch scenarios');
       }
@@ -83,6 +95,7 @@ class AnalysisServiceV2 {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...this._getAuthHeaders()
         },
         body: JSON.stringify(request)
       });
@@ -117,7 +130,11 @@ class AnalysisServiceV2 {
    */
   async _connectWebSocket(request) {
     return new Promise((resolve, reject) => {
-      const wsUrl = `ws://localhost:8000/ws/v2/analysis/${this.sessionId}`;
+      // 添加认证token作为查询参数
+      const token = localStorage.getItem('access_token');
+      const wsUrl = token
+        ? `${WS_BASE}/ws/v2/analysis/${this.sessionId}?token=${encodeURIComponent(token)}`
+        : `${WS_BASE}/ws/v2/analysis/${this.sessionId}`;
       console.log('[AnalysisV2] Connecting to WebSocket:', wsUrl);
 
       // Stage 2: 设置连接状态
@@ -408,7 +425,11 @@ class AnalysisServiceV2 {
    */
   async getStatus(sessionId) {
     try {
-      const response = await fetch(`${API_BASE}/api/v2/analysis/${sessionId}/status`);
+      const response = await fetch(`${API_BASE}/api/v2/analysis/${sessionId}/status`, {
+        headers: {
+          ...this._getAuthHeaders()
+        }
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch status');
       }
@@ -417,6 +438,34 @@ class AnalysisServiceV2 {
       console.error('[AnalysisV2] Error fetching status:', error);
       throw error;
     }
+  }
+
+  /**
+   * 升级到标准分析
+   * 重新启动分析，使用standard深度
+   * @param {Object} params - 升级参数
+   * @param {string} params.projectName - 项目名称
+   * @param {string} params.scenarioId - 场景ID
+   * @param {Object} params.target - 分析目标
+   * @param {Object} params.originalConfig - 原始配置
+   */
+  async upgradeToStandard({ projectName, scenarioId, target, originalConfig }) {
+    console.log('[AnalysisV2] Upgrading to standard analysis...');
+
+    // 准备新的分析请求
+    this.prepare();
+
+    const request = {
+      project_name: projectName,
+      scenario: scenarioId,
+      target: target,
+      config: {
+        ...originalConfig,
+        depth: 'standard' // 升级到标准深度
+      }
+    };
+
+    return await this.startAnalysis(request);
   }
 
   /**

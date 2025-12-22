@@ -1,13 +1,12 @@
 """
 Enhanced Tools for Roundtable Discussion Agents - Phase 1
-增强版工具集 - 第一阶段
 
-包含:
-1. ChinaMarketDataTool - 中国市场数据（A股/港股）
-2. QichaChaTool - 企查查企业信息查询
-3. GitHubAnalyzerTool - GitHub项目分析
-4. PatentSearchTool - 专利检索
-5. SentimentMonitorTool - 舆情监控
+Contains:
+1. ChinaMarketDataTool - China market data (A-shares/HK stocks)
+2. QichaChaTool - Company info lookup
+3. GitHubAnalyzerTool - GitHub project analysis
+4. PatentSearchTool - Patent search
+5. SentimentMonitorTool - Sentiment monitoring
 """
 import os
 import httpx
@@ -17,59 +16,59 @@ from datetime import datetime, timedelta
 from .tool import Tool
 
 
-# ==================== 1. 中国市场数据工具 ====================
+# ==================== 1. China Market Data Tool ====================
 
 class ChinaMarketDataTool(Tool):
     """
-    中国市场数据工具
+    China Market Data Tool
 
-    支持A股、港股数据查询，通过多种数据源获取:
-    - 东方财富 (eastmoney)
-    - 新浪财经 (sina)
-    - 同花顺 (10jqka) - 备用
+    Supports A-share and HK stock data queries through multiple data sources:
+    - Eastmoney
+    - Sina Finance
+    - 10jqka (backup)
 
-    功能:
-    - 实时行情
-    - 历史K线
-    - 财务报表
-    - 公司资料
+    Features:
+    - Real-time quotes
+    - Historical K-lines
+    - Financial statements
+    - Company info
     """
 
     def __init__(self):
         super().__init__(
             name="china_market_data",
-            description="""获取中国A股和港股市场数据。
+            description="""Get China A-share and Hong Kong stock market data.
 
-功能:
-- 实时股价和行情数据
-- 历史K线数据
-- 财务报表（资产负债表、利润表、现金流量表）
-- 公司基本资料
+Features:
+- Real-time stock prices and quotes
+- Historical K-line data
+- Financial statements (balance sheet, income statement, cash flow)
+- Company basic info
 
-支持的市场:
-- A股 (上海: SH, 深圳: SZ, 如 600519.SH, 000001.SZ)
-- 港股 (HK, 如 00700.HK, 09988.HK)
+Supported markets:
+- A-shares (Shanghai: SH, Shenzhen: SZ, e.g., 600519.SH, 000001.SZ)
+- HK stocks (HK, e.g., 00700.HK, 09988.HK)
 
-示例:
-- 查询贵州茅台: symbol="600519" 或 "600519.SH"
-- 查询腾讯: symbol="00700" 或 "00700.HK"
+Examples:
+- Query Kweichow Moutai: symbol="600519" or "600519.SH"
+- Query Tencent: symbol="00700" or "00700.HK"
 """
         )
-        # 东方财富API配置
+        # Eastmoney API configuration
         self.eastmoney_quote_url = "http://push2.eastmoney.com/api/qt/stock/get"
         self.eastmoney_kline_url = "http://push2his.eastmoney.com/api/qt/stock/kline/get"
         self.eastmoney_finance_url = "http://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis"
 
     def _detect_market(self, symbol: str) -> tuple:
         """
-        自动检测市场类型
+        Auto-detect market type
 
         Returns:
             (secid, market_name)
         """
         symbol = symbol.upper().replace(" ", "")
 
-        # 已经带后缀的情况
+        # Already has suffix
         if ".SH" in symbol:
             code = symbol.replace(".SH", "")
             return f"1.{code}", "A股(上海)"
@@ -80,7 +79,7 @@ class ChinaMarketDataTool(Tool):
             code = symbol.replace(".HK", "")
             return f"116.{code}", "港股"
 
-        # 纯数字，自动判断
+        # Pure digits, auto-detect
         code = symbol.split(".")[0]
         if code.startswith("6"):
             return f"1.{code}", "A股(上海)"
@@ -89,7 +88,7 @@ class ChinaMarketDataTool(Tool):
         elif len(code) == 5:
             return f"116.{code}", "港股"
         else:
-            # 默认尝试上海
+            # Default try Shanghai
             return f"1.{code}", "A股(上海)"
 
     async def execute(
@@ -99,22 +98,22 @@ class ChinaMarketDataTool(Tool):
         **kwargs
     ) -> Dict[str, Any]:
         """
-        获取中国市场数据
+        Get China market data
 
         Args:
-            symbol: 股票代码 (如 600519, 00700.HK)
-            action: 操作类型
-                - "quote": 实时行情
-                - "kline": 历史K线
-                - "finance": 财务数据
-                - "info": 公司资料
+            symbol: Stock code (e.g., 600519, 00700.HK)
+            action: Operation type
+                - "quote": Real-time quote
+                - "kline": Historical K-line
+                - "finance": Financial data
+                - "info": Company info
             **kwargs:
-                - period: K线周期 (daily/weekly/monthly)
-                - limit: K线数量限制
-                - report_type: 财务报表类型 (income/balance/cashflow)
+                - period: K-line period (daily/weekly/monthly)
+                - limit: K-line data limit
+                - report_type: Financial report type (income/balance/cashflow)
 
         Returns:
-            市场数据
+            Market data
         """
         secid, market_name = self._detect_market(symbol)
 
@@ -132,8 +131,8 @@ class ChinaMarketDataTool(Tool):
             else:
                 return {
                     "success": False,
-                    "error": f"不支持的操作类型: {action}",
-                    "summary": f"请使用 quote/kline/finance/info 之一"
+                    "error": f"Unsupported action type: {action}",
+                    "summary": f"Please use one of: quote/kline/finance/info"
                 }
 
         except Exception as e:
@@ -141,11 +140,11 @@ class ChinaMarketDataTool(Tool):
             return {
                 "success": False,
                 "error": str(e),
-                "summary": f"获取{symbol}数据时出错: {str(e)}"
+                "summary": f"Error fetching {symbol} data: {str(e)}"
             }
 
     async def _get_quote(self, secid: str, symbol: str, market_name: str) -> Dict[str, Any]:
-        """获取实时行情"""
+        """Get real-time quote"""
         params = {
             "secid": secid,
             "fields": "f43,f44,f45,f46,f47,f48,f50,f51,f52,f55,f57,f58,f60,f71,f116,f117,f162,f167,f168,f169,f170"
@@ -159,12 +158,12 @@ class ChinaMarketDataTool(Tool):
             if data.get("data") is None:
                 return {
                     "success": False,
-                    "summary": f"未找到股票 {symbol} 的行情数据，请检查代码是否正确"
+                    "summary": f"Stock {symbol} quote data not found, please check if the code is correct"
                 }
 
             d = data["data"]
 
-            # 解析数据 (东方财富返回的是整数，需要除以相应倍数)
+            # Parse data (Eastmoney returns integers, need to divide by corresponding multiplier)
             current_price = d.get("f43", 0) / 100 if d.get("f43") else 0
             change = d.get("f169", 0) / 100 if d.get("f169") else 0
             change_pct = d.get("f170", 0) / 100 if d.get("f170") else 0
@@ -172,15 +171,15 @@ class ChinaMarketDataTool(Tool):
             low = d.get("f45", 0) / 100 if d.get("f45") else 0
             open_price = d.get("f46", 0) / 100 if d.get("f46") else 0
             prev_close = d.get("f60", 0) / 100 if d.get("f60") else 0
-            volume = d.get("f47", 0)  # 成交量（手）
-            amount = d.get("f48", 0)  # 成交额
-            market_cap = d.get("f116", 0)  # 总市值
-            float_cap = d.get("f117", 0)  # 流通市值
-            pe_ratio = d.get("f162", 0) / 100 if d.get("f162") else 0  # 市盈率
-            pb_ratio = d.get("f167", 0) / 100 if d.get("f167") else 0  # 市净率
+            volume = d.get("f47", 0)  # Volume (lots)
+            amount = d.get("f48", 0)  # Turnover
+            market_cap = d.get("f116", 0)  # Total market cap
+            float_cap = d.get("f117", 0)  # Float market cap
+            pe_ratio = d.get("f162", 0) / 100 if d.get("f162") else 0  # P/E ratio
+            pb_ratio = d.get("f167", 0) / 100 if d.get("f167") else 0  # P/B ratio
             name = d.get("f58", symbol)
 
-            # 格式化市值
+            # Format market cap
             def format_cap(cap):
                 if cap >= 100000000:
                     return f"{cap / 100000000:.2f}亿"
@@ -238,8 +237,8 @@ PB(市净率): {pb_ratio:.2f}
         period: str = "daily",
         limit: int = 60
     ) -> Dict[str, Any]:
-        """获取K线数据"""
-        # 映射周期
+        """Get K-line data"""
+        # Map period
         klt_map = {"daily": 101, "weekly": 102, "monthly": 103}
         klt = klt_map.get(period, 101)
 
@@ -248,7 +247,7 @@ PB(市净率): {pb_ratio:.2f}
             "fields1": "f1,f2,f3,f4,f5,f6",
             "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
             "klt": klt,
-            "fqt": 1,  # 前复权
+            "fqt": 1,  # Forward adjustment
             "lmt": limit
         }
 
@@ -260,13 +259,13 @@ PB(市净率): {pb_ratio:.2f}
             if data.get("data") is None or not data["data"].get("klines"):
                 return {
                     "success": False,
-                    "summary": f"未找到 {symbol} 的K线数据"
+                    "summary": f"K-line data not found for {symbol}"
                 }
 
             klines = data["data"]["klines"]
             name = data["data"].get("name", symbol)
 
-            # 解析K线数据
+            # Parse K-line data
             parsed_klines = []
             for kline in klines[-limit:]:
                 parts = kline.split(",")
@@ -282,7 +281,7 @@ PB(市净率): {pb_ratio:.2f}
                         "change_pct": float(parts[8]) if len(parts) > 8 else 0
                     })
 
-            # 计算简单统计
+            # Calculate simple statistics
             if parsed_klines:
                 closes = [k["close"] for k in parsed_klines]
                 latest = parsed_klines[-1]
@@ -304,7 +303,7 @@ PB(市净率): {pb_ratio:.2f}
                 for k in parsed_klines[-5:]:
                     summary += f"  {k['date']}: 开{k['open']:.2f} 收{k['close']:.2f} 涨跌{k['change_pct']:+.2f}%\n"
             else:
-                summary = f"未找到 {symbol} 的有效K线数据"
+                summary = f"No valid K-line data found for {symbol}"
 
             return {
                 "success": True,
@@ -319,11 +318,11 @@ PB(市净率): {pb_ratio:.2f}
             }
 
     async def _get_finance(self, symbol: str, market_name: str) -> Dict[str, Any]:
-        """获取财务数据 - 使用新浪财经作为备选"""
-        # 简化版：使用东方财富网页接口获取基本财务数据
+        """Get financial data - using Sina Finance as backup"""
+        # Simplified: use Eastmoney web interface for basic financial data
         code = symbol.replace(".SH", "").replace(".SZ", "").replace(".HK", "")
 
-        # 构建新浪财经接口
+        # Build Sina Finance API request
         if "港" in market_name:
             sina_url = f"http://hq.sinajs.cn/list=hk{code}"
         else:
@@ -338,7 +337,7 @@ PB(市净率): {pb_ratio:.2f}
                 )
                 response.raise_for_status()
 
-                # 解析新浪返回的数据
+                # Parse Sina response data
                 content = response.text
                 if "=" in content:
                     data_str = content.split("=")[1].strip().strip('"').strip(";")
@@ -367,7 +366,7 @@ PB(市净率): {pb_ratio:.2f}
 
                 return {
                     "success": False,
-                    "summary": f"无法获取 {symbol} 的财务数据，建议使用搜索工具查询"
+                    "summary": f"Unable to get financial data for {symbol}, suggest using search tool"
                 }
 
         except Exception as e:
@@ -459,23 +458,23 @@ PB(市净率): {pb_ratio:.2f}
                 "properties": {
                     "symbol": {
                         "type": "string",
-                        "description": "股票代码，如 600519 (贵州茅台), 00700.HK (腾讯)"
+                        "description": "Stock code, e.g., 600519 (Kweichow Moutai), 00700.HK (Tencent)"
                     },
                     "action": {
                         "type": "string",
-                        "description": "操作类型: quote(实时行情), kline(K线), finance(财务), info(公司资料)",
+                        "description": "Action type: quote(real-time quotes), kline(K-line), finance(financials), info(company info)",
                         "enum": ["quote", "kline", "finance", "info"],
                         "default": "quote"
                     },
                     "period": {
                         "type": "string",
-                        "description": "K线周期 (仅action=kline时使用)",
+                        "description": "K-line period (only for action=kline)",
                         "enum": ["daily", "weekly", "monthly"],
                         "default": "daily"
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "K线数量限制",
+                        "description": "K-line count limit",
                         "default": 60
                     }
                 },
@@ -488,25 +487,25 @@ PB(市净率): {pb_ratio:.2f}
 
 class CompanyRegistryTool(Tool):
     """
-    企业工商信息查询工具
+    Company Registry Information Tool
 
-    通过公开API获取企业注册信息、股权结构、经营状况等
-    注: 由于企查查/天眼查API需要付费，这里使用免费公开数据源
+    Get company registration info, equity structure, and business status via public APIs
+    Note: Uses free public data sources as Qichacha/Tianyancha APIs require payment
     """
 
     def __init__(self):
         super().__init__(
             name="company_registry",
-            description="""查询企业工商注册信息和背景。
+            description="""Query company business registration information and background.
 
-功能:
-- 企业基本信息（注册资本、成立日期、经营范围等）
-- 股东信息和股权结构
-- 高管信息
-- 经营异常和法律诉讼
-- 关联企业
+Features:
+- Company basic info (registered capital, founding date, business scope, etc.)
+- Shareholder information and equity structure
+- Executive information
+- Business abnormalities and legal litigation
+- Related companies
 
-注意: 目前使用公开数据源，如需更详细信息建议配合 tavily_search 使用。
+Note: Currently uses public data sources. For more detailed info, recommend using with tavily_search.
 """
         )
         # 使用国家企业信用信息公示系统的公开接口
@@ -584,11 +583,11 @@ class CompanyRegistryTool(Tool):
                 "properties": {
                     "company_name": {
                         "type": "string",
-                        "description": "公司名称"
+                        "description": "Company name"
                     },
                     "query_type": {
                         "type": "string",
-                        "description": "查询类型",
+                        "description": "Query type",
                         "enum": ["basic", "shareholders", "executives", "legal", "related"],
                         "default": "basic"
                     }
@@ -602,27 +601,27 @@ class CompanyRegistryTool(Tool):
 
 class GitHubAnalyzerTool(Tool):
     """
-    GitHub项目分析工具
+    GitHub Project Analysis Tool
 
-    分析GitHub仓库的活跃度、代码质量、贡献者等信息
+    Analyze GitHub repository activity, code quality, contributors, etc.
     """
 
     def __init__(self):
         super().__init__(
             name="github_analyzer",
-            description="""分析GitHub项目和组织。
+            description="""Analyze GitHub projects and organizations.
 
-功能:
-- 仓库基本信息 (stars, forks, issues)
-- 提交活跃度分析
-- 主要贡献者
-- 代码语言分布
-- 最近更新情况
+Features:
+- Repository basic info (stars, forks, issues)
+- Commit activity analysis
+- Major contributors
+- Code language distribution
+- Recent update status
 
-使用场景:
-- 评估开源项目活跃度
-- 分析技术团队实力
-- 验证技术声称
+Use cases:
+- Evaluate open source project activity
+- Analyze technical team capabilities
+- Verify technology claims
 """
         )
         self.api_base = "https://api.github.com"
@@ -980,28 +979,28 @@ class GitHubAnalyzerTool(Tool):
 
 class PatentSearchTool(Tool):
     """
-    专利检索工具
+    Patent Search Tool
 
-    通过公开API搜索专利信息
-    支持: Google Patents, USPTO, CNIPA(中国)
+    Search patent information via public APIs
+    Supports: Google Patents, USPTO, CNIPA (China)
     """
 
     def __init__(self):
         super().__init__(
             name="patent_search",
-            description="""搜索和分析专利信息。
+            description="""Search and analyze patent information.
 
-功能:
-- 按公司/发明人搜索专利
-- 按关键词搜索技术专利
-- 专利详情查看
-- 专利引用分析
+Features:
+- Search patents by company/inventor
+- Search technical patents by keywords
+- View patent details
+- Patent citation analysis
 
-支持的专利局:
-- USPTO (美国)
-- EPO (欧洲)
-- CNIPA (中国)
-- WIPO (世界知识产权组织)
+Supported patent offices:
+- USPTO (United States)
+- EPO (Europe)
+- CNIPA (China)
+- WIPO (World Intellectual Property Organization)
 """
         )
 
@@ -1136,26 +1135,26 @@ class PatentSearchTool(Tool):
 
 class SentimentMonitorTool(Tool):
     """
-    舆情监控工具
+    Sentiment Monitoring Tool
 
-    监控公司/项目的网络舆情，识别负面新闻和风险信号
+    Monitor online sentiment for companies/projects, identify negative news and risk signals
     """
 
     def __init__(self):
         super().__init__(
             name="sentiment_monitor",
-            description="""监控目标公司或项目的网络舆情。
+            description="""Monitor target company or project's online sentiment.
 
-功能:
-- 负面新闻追踪
-- 社交媒体情绪分析
-- 风险信号识别
-- 热度趋势分析
+Features:
+- Negative news tracking
+- Social media sentiment analysis
+- Risk signal identification
+- Popularity trend analysis
 
-适用场景:
-- 投资尽调时的舆情检查
-- 持仓公司的风险监控
-- 行业负面事件追踪
+Use cases:
+- Sentiment check during investment due diligence
+- Risk monitoring for portfolio companies
+- Industry negative event tracking
 """
         )
 
@@ -1168,17 +1167,17 @@ class SentimentMonitorTool(Tool):
         **kwargs
     ) -> Dict[str, Any]:
         """
-        监控舆情
+        Monitor sentiment for a target
 
         Args:
-            target: 监控目标（公司名/项目名/人名）
-            monitor_type: 监控类型
-                - comprehensive: 综合舆情
-                - negative: 负面新闻
-                - social: 社交媒体
-                - regulatory: 监管动态
-            time_range: 时间范围 (day/week/month)
-            focus_areas: 重点关注领域 (如 ["财务造假", "高管离职", "诉讼"])
+            target: Monitoring target (company name/project name/person name)
+            monitor_type: Monitoring type
+                - comprehensive: Comprehensive sentiment
+                - negative: Negative news
+                - social: Social media
+                - regulatory: Regulatory updates
+            time_range: Time range (day/week/month)
+            focus_areas: Focus areas (e.g. ["financial fraud", "executive departure", "litigation"])
         """
         try:
             results = {
@@ -1188,14 +1187,14 @@ class SentimentMonitorTool(Tool):
                 "risk_signals": []
             }
 
-            # 构建搜索查询
+            # Build search query
             from .mcp_tools import TavilySearchTool
             tavily = TavilySearchTool()
 
-            # 1. 负面新闻搜索
+            # 1. Negative news search
             negative_keywords = [
-                "负面", "问题", "风险", "调查", "处罚", "诉讼", "裁员",
-                "亏损", "下跌", "暴雷", "违规", "造假", "丑闻"
+                "negative", "problem", "risk", "investigation", "penalty", "lawsuit", "layoff",
+                "loss", "decline", "scandal", "violation", "fraud", "controversy"
             ]
 
             if monitor_type in ["comprehensive", "negative"]:
@@ -1209,9 +1208,9 @@ class SentimentMonitorTool(Tool):
                 if neg_result.get("success"):
                     results["negative_news"] = neg_result.get("results", [])
 
-            # 2. 监管动态搜索
+            # 2. Regulatory updates search
             if monitor_type in ["comprehensive", "regulatory"]:
-                reg_query = f"{target} (监管 OR 处罚 OR 调查 OR 整改 OR 通报)"
+                reg_query = f"{target} (regulatory OR penalty OR investigation OR compliance OR notice)"
                 reg_result = await tavily.execute(
                     query=reg_query,
                     topic="news",
@@ -1221,7 +1220,7 @@ class SentimentMonitorTool(Tool):
                 if reg_result.get("success"):
                     results["regulatory_news"] = reg_result.get("results", [])
 
-            # 3. 特定关注领域
+            # 3. Specific focus areas
             if focus_areas:
                 for area in focus_areas[:3]:
                     area_result = await tavily.execute(
@@ -1236,53 +1235,53 @@ class SentimentMonitorTool(Tool):
                             "news": area_result.get("results", [])
                         })
 
-            # 生成舆情报告
-            time_range_label = {"day": "24小时", "week": "一周", "month": "一个月"}.get(time_range, time_range)
-            summary = f"""【舆情监控报告】{target}
+            # Generate sentiment report
+            time_range_label = {"day": "24 hours", "week": "1 week", "month": "1 month"}.get(time_range, time_range)
+            summary = f"""【Sentiment Monitoring Report】{target}
 
-📅 监控时间范围: 最近{time_range_label}
-📊 监控类型: {monitor_type}
+📅 Monitoring Period: Last {time_range_label}
+📊 Monitoring Type: {monitor_type}
 
 """
 
-            # 负面新闻摘要
+            # Negative news summary
             neg_count = len(results["negative_news"])
-            summary += f"🔴 负面新闻: 发现 {neg_count} 条\n"
+            summary += f"🔴 Negative News: Found {neg_count} items\n"
             if results["negative_news"]:
                 for i, news in enumerate(results["negative_news"][:3], 1):
                     summary += f"   {i}. {news.get('title', 'N/A')}\n"
-                    summary += f"      来源: {news.get('url', 'N/A')}\n"
+                    summary += f"      Source: {news.get('url', 'N/A')}\n"
             else:
-                summary += "   暂未发现明显负面新闻 ✅\n"
+                summary += "   No significant negative news found ✅\n"
 
-            # 监管动态摘要
+            # Regulatory updates summary
             reg_count = len(results["regulatory_news"])
-            summary += f"\n⚖️ 监管动态: 发现 {reg_count} 条\n"
+            summary += f"\n⚖️ Regulatory Updates: Found {reg_count} items\n"
             if results["regulatory_news"]:
                 for i, news in enumerate(results["regulatory_news"][:3], 1):
                     summary += f"   {i}. {news.get('title', 'N/A')}\n"
             else:
-                summary += "   暂未发现监管相关新闻 ✅\n"
+                summary += "   No regulatory-related news found ✅\n"
 
-            # 风险信号
+            # Risk signals
             if results["risk_signals"]:
-                summary += f"\n⚠️ 重点关注领域:\n"
+                summary += f"\n⚠️ Focus Areas:\n"
                 for signal in results["risk_signals"]:
-                    summary += f"   【{signal['area']}】: {len(signal['news'])} 条相关新闻\n"
+                    summary += f"   【{signal['area']}】: {len(signal['news'])} related news items\n"
 
-            # 风险评估
+            # Risk assessment
             total_negative = neg_count + reg_count + sum(len(s["news"]) for s in results["risk_signals"])
             if total_negative == 0:
-                risk_level = "🟢 低风险 - 未发现明显负面舆情"
+                risk_level = "🟢 Low Risk - No significant negative sentiment found"
             elif total_negative <= 3:
-                risk_level = "🟡 中低风险 - 存在少量负面信息"
+                risk_level = "🟡 Low-Medium Risk - Some negative information exists"
             elif total_negative <= 7:
-                risk_level = "🟠 中等风险 - 负面舆情较多，需关注"
+                risk_level = "🟠 Medium Risk - Multiple negative items, requires attention"
             else:
-                risk_level = "🔴 高风险 - 负面舆情密集，建议深入调查"
+                risk_level = "🔴 High Risk - Dense negative sentiment, recommend in-depth investigation"
 
-            summary += f"\n📈 舆情风险评估: {risk_level}\n"
-            summary += f"   负面信息总数: {total_negative} 条\n"
+            summary += f"\n📈 Sentiment Risk Assessment: {risk_level}\n"
+            summary += f"   Total Negative Items: {total_negative}\n"
 
             return {
                 "success": True,
@@ -1301,7 +1300,7 @@ class SentimentMonitorTool(Tool):
             return {
                 "success": False,
                 "error": str(e),
-                "summary": f"舆情监控出错: {str(e)}"
+                "summary": f"Sentiment monitoring error: {str(e)}"
             }
 
     def to_schema(self) -> Dict[str, Any]:
@@ -1313,24 +1312,24 @@ class SentimentMonitorTool(Tool):
                 "properties": {
                     "target": {
                         "type": "string",
-                        "description": "监控目标（公司名/项目名/人名）"
+                        "description": "Monitoring target (company name/project name/person name)"
                     },
                     "monitor_type": {
                         "type": "string",
-                        "description": "监控类型",
+                        "description": "Monitoring type",
                         "enum": ["comprehensive", "negative", "social", "regulatory"],
                         "default": "comprehensive"
                     },
                     "time_range": {
                         "type": "string",
-                        "description": "时间范围",
+                        "description": "Time range",
                         "enum": ["day", "week", "month"],
                         "default": "week"
                     },
                     "focus_areas": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "重点关注领域，如 ['财务造假', '高管离职']"
+                        "description": "Focus areas, e.g. ['financial fraud', 'executive departure']"
                     }
                 },
                 "required": ["target"]
@@ -1338,7 +1337,7 @@ class SentimentMonitorTool(Tool):
         }
 
 
-# ==================== 导出工具列表 ====================
+# ==================== Export Tool List ====================
 
 __all__ = [
     "ChinaMarketDataTool",

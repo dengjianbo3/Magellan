@@ -1,5 +1,15 @@
 <template>
   <div class="analysis-progress">
+    <!-- Connection Status Banner -->
+    <div v-if="connectionState === 'reconnecting'" class="connection-banner warning">
+      <span class="material-symbols-outlined">sync</span>
+      <span>{{ t('analysisWizard.reconnecting') }}</span>
+    </div>
+    <div v-if="connectionState === 'error'" class="connection-banner error">
+      <span class="material-symbols-outlined">wifi_off</span>
+      <span>{{ t('analysisWizard.connectionLost') }}</span>
+    </div>
+
     <!-- Header -->
     <div class="header">
       <div class="header-left">
@@ -212,7 +222,11 @@ import analysisServiceV2 from '@/services/analysisServiceV2.js';
 import StepResultCard from './StepResultCard.vue';
 
 const { t, locale: currentLang } = useLanguage();
-const { info } = useToast();
+const { info, success, error: showError } = useToast();
+
+// API base for export requests
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+const exportLoading = ref(false);
 
 const props = defineProps({
   sessionId: {
@@ -238,7 +252,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['analysis-complete', 'cancel']);
+const emit = defineEmits(['analysis-complete', 'cancel', 'upgrade']);
 
 const analysisStatus = ref('running');
 const workflow = ref([]);
@@ -247,6 +261,7 @@ const overallProgress = ref(0); // Initialize to 0, will be updated by workflow 
 const currentAgentMessage = ref('');
 const quickJudgment = ref(null);
 const elapsedTime = ref('0m0s');
+const connectionState = ref('connected'); // connected, reconnecting, error, disconnected
 
 let elapsedTimer = null;
 let startTime = Date.now();
@@ -481,6 +496,9 @@ onMounted(() => {
   analysisServiceV2.on('analysis_complete', handleAnalysisComplete);
   analysisServiceV2.on('error', handleError);
 
+  // 监听连接状态变化
+  analysisServiceV2.onStateChange(handleConnectionStateChange);
+
   // Stage 3: 刷新消息缓冲区，重放之前收到的消息
   console.log('[AnalysisProgress] Flushing message buffer...');
   analysisServiceV2.flushMessageBuffer();
@@ -498,6 +516,7 @@ onUnmounted(() => {
   analysisServiceV2.off('quick_judgment_complete', handleQuickJudgmentComplete);
   analysisServiceV2.off('analysis_complete', handleAnalysisComplete);
   analysisServiceV2.off('error', handleError);
+  analysisServiceV2.offStateChange(handleConnectionStateChange);
 
   if (elapsedTimer) {
     clearInterval(elapsedTimer);
@@ -620,23 +639,52 @@ function handleQuickJudgmentComplete(message) {
   console.log('[Progress] Quick judgment complete:', message);
   quickJudgment.value = message.data;
   analysisStatus.value = 'completed';
+  overallProgress.value = 100; // Analysis complete, show 100%
 }
 
 function handleAnalysisComplete(message) {
   console.log('[Progress] Analysis complete:', message);
   analysisStatus.value = 'completed';
+  overallProgress.value = 100; // Analysis complete, show 100%
   emit('analysis-complete', message.data);
 }
 
 function handleError(message) {
   console.error('[Progress] Error:', message);
   analysisStatus.value = 'error';
+  // 显示用户友好的错误提示
+  const errorMsg = message.data?.error || message.message || t('analysisWizard.unknownError');
+  info(`${t('analysisWizard.analysisError')}: ${errorMsg}`);
+}
+
+function handleConnectionStateChange(newState, oldState) {
+  console.log('[Progress] Connection state changed:', oldState, '→', newState);
+  connectionState.value = newState;
+
+  // 根据连接状态显示不同的提示
+  if (newState === 'reconnecting') {
+    info(t('analysisWizard.reconnecting'));
+  } else if (newState === 'error') {
+    info(t('analysisWizard.connectionLost'));
+  } else if (newState === 'connected' && oldState === 'reconnecting') {
+    info(t('analysisWizard.connectionRestored'));
+  }
 }
 
 function updateOverallProgress() {
-  const completedSteps = workflow.value.filter(s => s.status === 'success').length;
   const totalSteps = workflow.value.length;
-  overallProgress.value = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+  if (totalSteps === 0) {
+    overallProgress.value = 0;
+    return;
+  }
+
+  // Calculate progress: completed steps = 100%, running step = 50%
+  const completedSteps = workflow.value.filter(s => s.status === 'success').length;
+  const runningSteps = workflow.value.filter(s => s.status === 'running').length;
+
+  // Each completed step contributes full weight, each running step contributes half
+  const progress = ((completedSteps + runningSteps * 0.5) / totalSteps) * 100;
+  overallProgress.value = Math.min(Math.round(progress), 99); // Cap at 99% until fully complete
 }
 
 function updateElapsedTime() {
@@ -668,14 +716,81 @@ function getRecommendationText(recommendation) {
 
 function upgradeToStandard() {
   console.log('[Progress] Upgrade to standard analysis');
-  // TODO: 实现升级到标准分析
-  info(t('analysisWizard.upgradeFeatureInDevelopment'));
+  console.log('[Progress] Props for upgrade:', {
+    scenario: props.scenario,
+    projectName: props.projectName,
+    targetData: props.targetData,
+    depth: props.depth
+  });
+
+  // Emit upgrade event with all necessary data
+  emit('upgrade', {
+    scenario: props.scenario,
+    projectName: props.projectName || targetName.value,
+    target: props.targetData,
+    originalConfig: {
+      depth: props.depth,
+      // Preserve other config options if needed
+    }
+  });
 }
 
-function exportReport() {
-  console.log('[Progress] Export report');
-  // TODO: 导出报告
-  info(t('analysisWizard.exportFeatureInDevelopment'));
+async function exportReport(format = 'pdf') {
+  console.log('[Progress] Export report as', format, 'for session:', props.sessionId);
+
+  if (!props.sessionId) {
+    showError(t('analysisWizard.noSessionId') || 'No session ID available');
+    return;
+  }
+
+  exportLoading.value = true;
+
+  try {
+    // Get language setting
+    const language = currentLang?.value || 'zh';
+    const langParam = language.startsWith('zh') ? 'zh' : 'en';
+
+    // Call export API
+    const url = `${API_BASE}/api/reports/${props.sessionId}/export/${format}?language=${langParam}`;
+    console.log(`[Progress] Exporting report as ${format}, language=${langParam}`);
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Failed to export report: ${response.statusText}`);
+    }
+
+    // Get filename from Content-Disposition header
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = `report_${props.sessionId}.${format === 'word' ? 'docx' : format === 'excel' ? 'xlsx' : 'pdf'}`;
+
+    if (contentDisposition) {
+      const matches = /filename="([^"]+)"/.exec(contentDisposition);
+      if (matches && matches[1]) {
+        filename = matches[1];
+      }
+    }
+
+    // Download file
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(downloadUrl);
+    document.body.removeChild(a);
+
+    console.log(`[Progress] Successfully exported report as ${format}: ${filename}`);
+    success(t('analysisWizard.exportSuccess') || `Report exported as ${format.toUpperCase()}`);
+
+  } catch (err) {
+    console.error('[Progress] Failed to export report:', err);
+    showError(`${t('analysisWizard.exportFailed') || 'Export failed'}: ${err.message}`);
+  } finally {
+    exportLoading.value = false;
+  }
 }
 
 function viewReport() {
@@ -695,6 +810,34 @@ function handleCancel() {
   margin: 0 auto;
   /* padding: 2rem; Removed to avoid double padding with parent */
   color: #e5e7eb;
+}
+
+/* Connection Status Banner */
+.connection-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.connection-banner.warning {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+}
+
+.connection-banner.warning .material-symbols-outlined {
+  animation: spin 1s linear infinite;
+}
+
+.connection-banner.error {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
 }
 
 /* Header */

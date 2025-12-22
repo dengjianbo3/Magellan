@@ -32,12 +32,16 @@ from .core.session_store import SessionStore
 
 # Phase 4: Import API routers
 from .api.routers import health_router, reports_router, dashboard_router
+from .api.routers.agents import router as agents_router
 from .api.routers.knowledge import router as knowledge_router, set_vector_store, set_rag_service
 from .api.routers.roundtable import router as roundtable_router, set_active_meetings, set_llm_gateway_url
 from .api.routers.files import router as files_router
 from .api.routers.analysis import router as analysis_router
 from .api.routers.export import router as export_router, set_get_report_func
 from .api.routers.dd_workflow import router as dd_workflow_router, set_session_funcs
+from .api.routers.monitoring import router as monitoring_router
+from .api.trading_routes import router as trading_router
+from .middleware import RequestLoggingMiddleware, CachingMiddleware, response_cache
 
 # Phase 4: Import storage services
 from .services.storage import init_report_storage, get_report_storage
@@ -66,32 +70,58 @@ EXTERNAL_DATA_URL = "http://external_data_service:8006"
 LLM_GATEWAY_URL = "http://llm_gateway:8003"
 FILE_SERVICE_URL = "http://file_service:8001"
 
+# --- Check Standalone Mode ---
+STANDALONE_MODE = os.getenv("STANDALONE_MODE", "false").lower() == "true"
+
 # --- Lifespan Handler for Kafka ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler for startup/shutdown events."""
-    # Startup: Initialize Kafka messaging
-    try:
-        from .messaging import init_kafka, get_session_publisher, get_agent_service, get_llm_service
-        await init_kafka()
-        # Initialize session event publisher for WebSocket integration
-        await get_session_publisher()
-        # Phase 7: Initialize Agent and LLM message services
-        agent_service = await get_agent_service()
-        llm_service = await get_llm_service()
-        logger.info("Kafka messaging initialized successfully (Agent + LLM services ready)")
-    except Exception as e:
-        logger.warning(f"Kafka initialization failed (will use HTTP fallback): {e}")
+    # Startup: Initialize Kafka messaging (skip in standalone mode)
+    if not STANDALONE_MODE:
+        try:
+            from .messaging import init_kafka, get_session_publisher, get_agent_service, get_llm_service
+            await init_kafka()
+            # Initialize session event publisher for WebSocket integration
+            await get_session_publisher()
+            # Phase 7: Initialize Agent and LLM message services
+            agent_service = await get_agent_service()
+            llm_service = await get_llm_service()
+            logger.info("Kafka messaging initialized successfully (Agent + LLM services ready)")
+        except Exception as e:
+            logger.warning(f"Kafka initialization failed (will use HTTP fallback): {e}")
+    else:
+        logger.info("[STANDALONE] Skipping Kafka initialization")
+
+    # Auto-start trading in standalone mode
+    if STANDALONE_MODE:
+        logger.info("STANDALONE_MODE detected, auto-starting trading system...")
+        asyncio.create_task(_auto_start_trading())
 
     yield
 
-    # Shutdown: Close Kafka connections
+    # Shutdown: Close Kafka connections (skip in standalone mode)
+    if not STANDALONE_MODE:
+        try:
+            from .messaging import close_kafka
+            await close_kafka()
+            logger.info("Kafka messaging closed")
+        except Exception as e:
+            logger.warning(f"Error closing Kafka: {e}")
+
+
+async def _auto_start_trading():
+    """Auto-start trading system after a short delay to ensure all services are ready."""
+    await asyncio.sleep(10)  # Wait for services to be ready
     try:
-        from .messaging import close_kafka
-        await close_kafka()
-        logger.info("Kafka messaging closed")
+        from .api.trading_routes import get_trading_system
+        logger.info("Auto-starting trading system...")
+        system = await get_trading_system()
+        await system.start()
+        logger.info("Trading system auto-started successfully")
     except Exception as e:
-        logger.warning(f"Error closing Kafka: {e}")
+        logger.error(f"Failed to auto-start trading system: {e}")
+
 
 app = FastAPI(
     title="Orchestrator Agent Service",
@@ -109,6 +139,12 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+# Request logging middleware
+app.add_middleware(RequestLoggingMiddleware)
+
+# Response caching middleware (added after logging so cache hits are logged)
+app.add_middleware(CachingMiddleware)
+
 # Global storage for active meeting instances (for Human-in-the-Loop support)
 active_meetings: Dict[str, Any] = {}
 
@@ -124,12 +160,15 @@ Instrumentator().instrument(app).expose(app, endpoint="/metrics", tags=["System 
 app.include_router(health_router, tags=["Health"])
 app.include_router(reports_router, prefix="/api/reports", tags=["Reports"])
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["Dashboard"])
+app.include_router(agents_router, prefix="/api/agents", tags=["Agents"])
 app.include_router(knowledge_router, prefix="/api/knowledge", tags=["Knowledge Base"])
 app.include_router(roundtable_router, prefix="/api/roundtable", tags=["Roundtable"])
 app.include_router(files_router, prefix="/api", tags=["File Upload"])
 app.include_router(analysis_router, prefix="/api/v2/analysis", tags=["Analysis V2"])
 app.include_router(export_router, prefix="/api/reports", tags=["Report Export"])
 app.include_router(dd_workflow_router, prefix="/api/dd", tags=["DD Workflow"])
+app.include_router(monitoring_router, prefix="/api/errors", tags=["Monitoring"])
+app.include_router(trading_router, tags=["Auto Trading"])
 
 # --- Pydantic Models ---
 class AnalysisRequest(BaseModel):
@@ -393,31 +432,6 @@ async def websocket_analysis_endpoint(websocket: WebSocket):
 # - /start_analysis, /continue_analysis (use /ws/start_analysis instead)
 
 
-@app.post("/generate_full_report", response_model=FullReportResponse, tags=["Agent Workflow"])
-async def generate_full_report(
-    ticker: str = Form(...),
-    files: List[UploadFile] = File(...)
-):
-    """
-    **V2 Sprint 4 Workflow:**
-    1. Receives uploaded files and a ticker.
-    2. Simulates a multi-step analysis process.
-    3. Returns a final, structured report.
-    """
-    file_names = [file.filename for file in files]
-    await asyncio.sleep(2) # Simulate document parsing
-    await asyncio.sleep(3) # Simulate LLM generating sections
-
-    mock_sections = [
-        ReportSection(section_title="Executive Summary", content=f"This is a comprehensive analysis of {ticker}, incorporating insights from {len(file_names)} uploaded documents and public market data. The company shows strong potential in its core market..."),
-        ReportSection(section_title="Financial Analysis", content="The company's revenue has grown steadily over the past three years. Key metrics indicate a healthy financial position... (Data would be here)"),
-        ReportSection(section_title="Market Position", content="The company is a major player in its industry, though it faces competition from several key rivals..."),
-        ReportSection(section_title="Risk Assessment", content="Potential risks include market volatility, regulatory changes, and supply chain disruptions..."),
-        ReportSection(section_title="Investment Recommendation", content="Based on the analysis, our recommendation is a 'BUY' with a target price of... This is a mock recommendation.")
-    ]
-    
-    
-
 @app.post("/get_instant_feedback", response_model=InstantFeedbackResponse, tags=["Agent Workflow"])
 async def get_instant_feedback(request: InstantFeedbackRequest):
     """
@@ -479,38 +493,44 @@ dashboard_analytics = {
     "agent_usage": {}   # Agent usage statistics
 }
 
-# Phase 2: Initialize Vector Store for Knowledge Base
-try:
-    QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
-    vector_store = VectorStoreService(qdrant_url=QDRANT_URL)
-    print("[main.py] ✅ VectorStore initialized successfully")
-except Exception as e:
-    print(f"[main.py] ❌ Failed to initialize VectorStore: {e}")
-    print("[main.py] ⚠️  Knowledge base features will be disabled")
-    vector_store = None
+# Phase 2: Initialize Vector Store for Knowledge Base (skip in standalone mode)
+vector_store = None
+rag_service = None
 
-# Phase 2: Initialize RAG Service for Advanced Search
-try:
-    if vector_store:
-        rag_service = RAGService(vector_store_service=vector_store)
-        # Build BM25 index on startup
-        rag_service.refresh_bm25_index()
-        print("[main.py] ✅ RAG Service initialized successfully")
-    else:
+if not STANDALONE_MODE:
+    try:
+        QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
+        vector_store = VectorStoreService(qdrant_url=QDRANT_URL)
+        print("[main.py] ✅ VectorStore initialized successfully")
+    except Exception as e:
+        print(f"[main.py] ❌ Failed to initialize VectorStore: {e}")
+        print("[main.py] ⚠️  Knowledge base features will be disabled")
+        vector_store = None
+
+    # Phase 2: Initialize RAG Service for Advanced Search
+    try:
+        if vector_store:
+            rag_service = RAGService(vector_store_service=vector_store)
+            # Build BM25 index on startup
+            rag_service.refresh_bm25_index()
+            print("[main.py] ✅ RAG Service initialized successfully")
+        else:
+            rag_service = None
+            print("[main.py] ⚠️  RAG Service disabled (VectorStore not available)")
+    except Exception as e:
+        print(f"[main.py] ❌ Failed to initialize RAG Service: {e}")
+        print("[main.py] ⚠️  Advanced search features will be disabled")
         rag_service = None
-        print("[main.py] ⚠️  RAG Service disabled (VectorStore not available)")
-except Exception as e:
-    print(f"[main.py] ❌ Failed to initialize RAG Service: {e}")
-    print("[main.py] ⚠️  Advanced search features will be disabled")
-    rag_service = None
 
-# Phase 4: Initialize Knowledge Router dependencies
-if vector_store:
-    set_vector_store(vector_store)
-    print("[main.py] ✅ Knowledge Router vector_store set")
-if rag_service:
-    set_rag_service(rag_service)
-    print("[main.py] ✅ Knowledge Router rag_service set")
+    # Phase 4: Initialize Knowledge Router dependencies
+    if vector_store:
+        set_vector_store(vector_store)
+        print("[main.py] ✅ Knowledge Router vector_store set")
+    if rag_service:
+        set_rag_service(rag_service)
+        print("[main.py] ✅ Knowledge Router rag_service set")
+else:
+    print("[main.py] [STANDALONE] Skipping VectorStore/RAG initialization")
 
 # ============================================================================
 # V5: Storage Helper Functions (Redis with Fallback)
@@ -966,7 +986,14 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
         create_team_evaluator,
         create_tech_specialist,
         create_legal_advisor,
-        create_technical_analyst  # 技术分析师 (K线/指标分析)
+        create_technical_analyst,  # 技术分析师 (K线/指标分析)
+        # Phase 2 新增 agents
+        create_macro_economist,
+        create_esg_analyst,
+        create_sentiment_analyst,
+        create_quant_strategist,
+        create_deal_structurer,
+        create_ma_advisor
     )
     from .core.agent_event_bus import AgentEventBus
 
@@ -979,7 +1006,14 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
         'risk-assessor': create_risk_assessor,
         'tech-specialist': create_tech_specialist,
         'legal-advisor': create_legal_advisor,
-        'technical-analyst': create_technical_analyst  # 技术分析师 (K线/指标)
+        'technical-analyst': create_technical_analyst,  # 技术分析师 (K线/指标)
+        # Phase 2 新增 agents
+        'macro-economist': create_macro_economist,
+        'esg-analyst': create_esg_analyst,
+        'sentiment-analyst': create_sentiment_analyst,
+        'quant-strategist': create_quant_strategist,
+        'deal-structurer': create_deal_structurer,
+        'ma-advisor': create_ma_advisor
     }
 
     session_id = None

@@ -29,33 +29,66 @@
             <label class="block text-sm font-bold text-text-secondary mb-3 uppercase tracking-wider">
               {{ t('roundtable.startPanel.expertsLabel') }} ({{ selectedExperts.length }} {{ t('roundtable.startPanel.expertsSelected') }})
             </label>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div
-                v-for="expert in availableExperts"
-                :key="expert.id"
-                @click="toggleExpert(expert.id)"
-                :class="[
-                  'p-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 group',
-                  selectedExperts.includes(expert.id)
-                    ? 'border-primary bg-primary/10 shadow-[0_0_15px_rgba(56,189,248,0.15)]'
-                    : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
-                ]"
+            <!-- Selected experts tags -->
+            <div class="flex flex-wrap gap-2 mb-3">
+              <span
+                v-for="expertId in selectedExperts"
+                :key="expertId"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/30 text-primary text-sm"
               >
-                <div :class="[
-                    'w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors',
-                    selectedExperts.includes(expert.id) ? 'bg-primary text-background-dark' : 'bg-white/10 text-text-secondary group-hover:text-white'
-                ]">
-                  <span class="material-symbols-outlined text-2xl">{{ expert.icon }}</span>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <h4 :class="['font-bold text-sm mb-1', selectedExperts.includes(expert.id) ? 'text-white' : 'text-text-primary']">{{ expert.name }}</h4>
-                  <p class="text-xs text-text-secondary line-clamp-1">{{ expert.description }}</p>
-                </div>
-                <div v-if="selectedExperts.includes(expert.id)" class="text-primary animate-fade-in">
-                    <span class="material-symbols-outlined">check_circle</span>
+                <span class="material-symbols-outlined text-base">{{ getExpertById(expertId)?.icon }}</span>
+                {{ getExpertById(expertId)?.name }}
+                <button @click="toggleExpert(expertId)" class="hover:text-white ml-1">
+                  <span class="material-symbols-outlined text-base">close</span>
+                </button>
+              </span>
+              <span v-if="selectedExperts.length === 0" class="text-text-secondary text-sm italic">
+                请选择参与讨论的专家
+              </span>
+            </div>
+            <!-- Dropdown multi-select -->
+            <div class="relative" ref="expertDropdownRef">
+              <button
+                @click="showExpertDropdown = !showExpertDropdown"
+                class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white text-left flex items-center justify-between hover:border-primary/50 transition-all"
+              >
+                <span class="text-text-secondary">点击添加或移除专家...</span>
+                <span class="material-symbols-outlined text-text-secondary transition-transform" :class="showExpertDropdown ? 'rotate-180' : ''">
+                  expand_more
+                </span>
+              </button>
+              <!-- Dropdown list -->
+              <div
+                v-if="showExpertDropdown"
+                class="absolute top-full left-0 right-0 mt-2 bg-gray-900/95 border border-white/10 rounded-xl shadow-2xl z-50 max-h-64 overflow-y-auto backdrop-blur-sm"
+              >
+                <div
+                  v-for="expert in availableExperts"
+                  :key="expert.id"
+                  @click="toggleExpert(expert.id)"
+                  :class="[
+                    'flex items-center gap-3 px-4 py-3 cursor-pointer transition-all border-b border-white/5 last:border-b-0',
+                    selectedExperts.includes(expert.id)
+                      ? 'bg-primary/10 text-primary'
+                      : 'hover:bg-white/5 text-white'
+                  ]"
+                >
+                  <span class="material-symbols-outlined text-xl">{{ expert.icon }}</span>
+                  <div class="flex-1 min-w-0">
+                    <div class="font-medium text-sm">{{ expert.name }}</div>
+                    <div class="text-xs text-text-secondary line-clamp-1">{{ expert.description }}</div>
+                  </div>
+                  <span v-if="selectedExperts.includes(expert.id)" class="material-symbols-outlined text-primary">
+                    check_circle
+                  </span>
                 </div>
               </div>
             </div>
+            <!-- Note about Leader -->
+            <p class="text-xs text-text-secondary mt-2 flex items-center gap-1">
+              <span class="material-symbols-outlined text-sm text-primary">info</span>
+              讨论主持人将自动参与，无需手动选择
+            </p>
           </div>
 
           <!-- Discussion Settings -->
@@ -342,21 +375,38 @@
               </div>
             </div>
 
-            <!-- Thinking Indicator -->
+            <!-- Thinking Indicator with Scrollable Log -->
             <div v-else-if="message.type === 'thinking'" class="flex gap-5">
               <div class="w-12 h-12 rounded-xl bg-black/30 border border-white/10 flex items-center justify-center flex-shrink-0 shadow-lg self-start mt-1 opacity-70">
                 <span class="material-symbols-outlined text-primary text-2xl animate-pulse">psychology</span>
               </div>
-              <div class="flex-1">
+              <div class="flex-1 max-w-[600px]">
                 <div class="flex items-center gap-2 mb-2">
                   <span class="font-bold text-text-secondary text-sm">{{ message.agent }}</span>
-                  <span class="text-xs text-text-secondary opacity-70">正在思考...</span>
+                  <span class="text-xs text-primary animate-pulse">思考中...</span>
                 </div>
-                <div class="inline-block px-5 py-4 rounded-2xl rounded-tl-none bg-white/5 border border-white/5">
-                  <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
-                    <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
-                    <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+                <!-- Terminal-like log box -->
+                <div class="rounded-xl bg-gray-900/80 border border-white/10 overflow-hidden">
+                  <!-- Header bar -->
+                  <div class="flex items-center gap-2 px-3 py-2 bg-gray-800/50 border-b border-white/10">
+                    <div class="w-2 h-2 rounded-full bg-red-500"></div>
+                    <div class="w-2 h-2 rounded-full bg-yellow-500"></div>
+                    <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                    <span class="text-xs text-white/40 ml-2">{{ message.agent }} - 执行日志</span>
+                  </div>
+                  <!-- Scrollable log content -->
+                  <div class="p-3 max-h-[200px] overflow-y-auto font-mono text-xs leading-relaxed custom-scrollbar"
+                       :ref="el => scrollLogToBottom(el)">
+                    <div v-for="(log, idx) in message.logs" :key="idx" 
+                         class="text-gray-300 mb-1 animate-fade-in whitespace-pre-wrap">
+                      <span class="text-gray-500">{{ formatLogTime(log.timestamp) }}</span>
+                      <span class="text-white/80 ml-2">{{ log.text }}</span>
+                    </div>
+                    <!-- Current status indicator -->
+                    <div class="flex items-center gap-2 text-primary mt-2">
+                      <span class="inline-block w-2 h-2 bg-primary rounded-full animate-pulse"></span>
+                      <span>{{ message.message || '处理中...' }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -490,6 +540,7 @@
 import { ref, computed, nextTick, onUnmounted, onMounted } from 'vue';
 import { useLanguage } from '../composables/useLanguage';
 import { getRoundtableAgents } from '../config/agents';
+import { API_BASE } from '@/config/api';
 import { marked } from 'marked';
 
 const { t, locale } = useLanguage();
@@ -516,18 +567,37 @@ const interventionContent = ref(''); // User's intervention content
 const selectedMessageIndex = ref(null); // Index of message being responded to
 const isSubmittingIntervention = ref(false); // Submitting state
 
-// Available experts - computed to be reactive to language changes
+// Dropdown state for expert selection
+const showExpertDropdown = ref(false);
+const expertDropdownRef = ref(null);
+
+// Close dropdown when clicking outside
+const handleClickOutside = (event) => {
+  if (expertDropdownRef.value && !expertDropdownRef.value.contains(event.target)) {
+    showExpertDropdown.value = false;
+  }
+};
+
+// Available experts - computed to be reactive to language changes (excludes Leader)
 const availableExperts = computed(() => {
   const agents = getRoundtableAgents();
   const isZh = locale.value.startsWith('zh'); // 'zh-CN' or 'zh'
-  return agents.map(agent => ({
-    id: agent.id,
-    name: isZh ? agent.name_zh : agent.name,
-    role: isZh ? agent.role_zh : agent.role,
-    description: isZh ? agent.description_zh : agent.description,
-    icon: agent.icon
-  }));
+  // Exclude leader - it's always included automatically
+  return agents
+    .filter(agent => agent.id !== 'leader')
+    .map(agent => ({
+      id: agent.id,
+      name: isZh ? agent.name_zh : agent.name,
+      role: isZh ? agent.role_zh : agent.role,
+      description: isZh ? agent.description_zh : agent.description,
+      icon: agent.icon
+    }));
 });
+
+// Get expert by ID (for rendering selected tags)
+const getExpertById = (id) => {
+  return availableExperts.value.find(e => e.id === id);
+};
 
 const selectedExperts = ref([]);
 
@@ -537,18 +607,33 @@ const historyList = ref([]);
 const loadingHistory = ref(false);
 const selectedHistoryRef = ref(null);
 
-// Initialize selected experts on mount
+// Default core experts (5 most important for investment analysis)
+const DEFAULT_EXPERTS = [
+  'market-analyst',    // 市场分析师
+  'financial-expert',  // 财务专家
+  'tech-specialist',   // 技术专家
+  'legal-advisor',     // 法律顾问
+  'risk-assessor'      // 风险评估师
+];
+
+// Initialize selected experts on mount with defaults only
 onMounted(() => {
-  const agents = getRoundtableAgents();
-  selectedExperts.value = agents.map(a => a.id);
+  selectedExperts.value = [...DEFAULT_EXPERTS];
+  // Add click outside listener for dropdown
+  document.addEventListener('click', handleClickOutside);
+});
+
+// Cleanup on unmount
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside);
 });
 
 // History Reference Methods
 const loadHistoryList = async () => {
   loadingHistory.value = true;
   try {
-    // Use full URL since API runs on port 8002 (report_orchestrator)
-    const response = await fetch('http://localhost:8002/api/roundtable/history?limit=20');
+    // Use full URL since API runs on port 8000 (report_orchestrator)
+    const response = await fetch('http://localhost:8000/api/roundtable/history?limit=20');
     const data = await response.json();
     console.log('[Roundtable] Loaded history:', data);
     if (data.success) {
@@ -796,19 +881,72 @@ const handleWebSocketMessage = (data) => {
     const event = data.event;
 
     if (event.event_type === 'thinking') {
-      // Show thinking indicator
-      messages.value.push({
-        id: Date.now() + Math.random(),
-        type: 'thinking',
-        agent: event.agent_name
-      });
+      // Check if thinking card already exists for this agent
+      const existingIndex = messages.value.findIndex(
+        m => m.type === 'thinking' && m.agent === event.agent_name
+      );
+      if (existingIndex !== -1) {
+        // Update existing thinking card
+        messages.value[existingIndex].message = event.message || `${event.agent_name}正在思考...`;
+      } else {
+        // Create new thinking indicator with empty logs
+        messages.value.push({
+          id: Date.now() + Math.random(),
+          type: 'thinking',
+          agent: event.agent_name,
+          message: event.message || `${event.agent_name}正在思考...`,
+          logs: []
+        });
+      }
       scrollToBottom();
-    } else if (event.event_type === 'result') {
-      // Remove thinking indicator for this agent
+    } else if (event.event_type === 'log') {
+      // Append log to existing thinking card
       const thinkingIndex = messages.value.findIndex(
         m => m.type === 'thinking' && m.agent === event.agent_name
       );
       if (thinkingIndex !== -1) {
+        if (!messages.value[thinkingIndex].logs) {
+          messages.value[thinkingIndex].logs = [];
+        }
+        messages.value[thinkingIndex].logs.push({
+          text: event.message,
+          timestamp: Date.now()
+        });
+      }
+      scrollToBottom();
+    } else if (event.event_type === 'progress' || event.event_type === 'analyzing' || event.event_type === 'searching') {
+      // Update status message and add to logs
+      const thinkingIndex = messages.value.findIndex(
+        m => m.type === 'thinking' && m.agent === event.agent_name
+      );
+      if (thinkingIndex !== -1) {
+        messages.value[thinkingIndex].message = event.message;
+        if (!messages.value[thinkingIndex].logs) {
+          messages.value[thinkingIndex].logs = [];
+        }
+        messages.value[thinkingIndex].logs.push({
+          text: event.message,
+          timestamp: Date.now()
+        });
+      } else {
+        // No thinking card exists, create one
+        messages.value.push({
+          id: Date.now() + Math.random(),
+          type: 'thinking',
+          agent: event.agent_name,
+          message: event.message,
+          logs: [{ text: event.message, timestamp: Date.now() }]
+        });
+      }
+      scrollToBottom();
+    } else if (event.event_type === 'result') {
+      // Convert thinking card to collapsed state, keep logs for reference
+      const thinkingIndex = messages.value.findIndex(
+        m => m.type === 'thinking' && m.agent === event.agent_name
+      );
+      if (thinkingIndex !== -1) {
+        // Store logs before removing
+        const savedLogs = messages.value[thinkingIndex].logs || [];
         messages.value.splice(thinkingIndex, 1);
       }
 
@@ -907,6 +1045,16 @@ const generateMeetingSummary = async () => {
   if (isGeneratingSummary.value || messages.value.length === 0) return;
 
   isGeneratingSummary.value = true;
+  
+  // 创建一个流式消息，逐字显示内容
+  const streamingMessageId = Date.now();
+  messages.value.push({
+    id: streamingMessageId,
+    type: 'meeting_minutes',
+    content: '',
+    isStreaming: true
+  });
+  scrollToBottom();
 
   try {
     // 收集所有对话消息
@@ -918,9 +1066,10 @@ const generateMeetingSummary = async () => {
         timestamp: m.timestamp
       }));
 
-    // 调用后端API生成会议纪要
-    const lang = locale.value.startsWith('zh') ? 'zh' : 'en'; // 转换为后端期望的格式
-    const response = await fetch('http://localhost:8000/api/roundtable/generate_summary', {
+    const lang = locale.value.startsWith('zh') ? 'zh' : 'en';
+    
+    // 使用fetch的流式API
+    const response = await fetch(`${API_BASE}/api/roundtable/generate_summary_stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -930,30 +1079,77 @@ const generateMeetingSummary = async () => {
         messages: dialogueMessages,
         participants: selectedExperts.value,
         rounds: currentRound.value,
-        language: lang // 添加语言偏好
+        language: lang
       })
     });
 
     if (!response.ok) {
-      throw new Error('Failed to generate meeting summary');
+      throw new Error('Failed to connect to streaming endpoint');
     }
 
-    const data = await response.json();
+    // 流式读取响应
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = '';
 
-    // 添加会议纪要到消息列表
-    messages.value.push({
-      id: Date.now(),
-      type: 'meeting_minutes',
-      content: data.summary
-    });
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      
+      // 解析SSE事件 (格式: data: {...}\n\n)
+      const lines = chunk.split('\n');
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            
+            if (data.error) {
+              throw new Error(data.error);
+            }
+            
+            if (data.content) {
+              fullContent += data.content;
+              
+              // 更新流式消息内容
+              const msgIndex = messages.value.findIndex(m => m.id === streamingMessageId);
+              if (msgIndex !== -1) {
+                messages.value[msgIndex].content = fullContent;
+              }
+              scrollToBottom();
+            }
+            
+            if (data.done) {
+              // 流式传输完成，移除streaming标记
+              const msgIndex = messages.value.findIndex(m => m.id === streamingMessageId);
+              if (msgIndex !== -1) {
+                messages.value[msgIndex].isStreaming = false;
+              }
+            }
+          } catch (e) {
+            if (!e.message.includes('Unexpected end of JSON')) {
+              console.warn('Error parsing SSE data:', e);
+            }
+          }
+        }
+      }
+    }
 
     scrollToBottom();
   } catch (error) {
     console.error('Error generating meeting summary:', error);
+    
+    // 移除流式消息并显示错误
+    const msgIndex = messages.value.findIndex(m => m.id === streamingMessageId);
+    if (msgIndex !== -1) {
+      messages.value.splice(msgIndex, 1);
+    }
+    
     messages.value.push({
       id: Date.now(),
       type: 'system',
-      content: '生成会议纪要失败，请重试'
+      content: '生成会议纪要失败，请重试: ' + error.message
     });
   } finally {
     isGeneratingSummary.value = false;
@@ -1164,6 +1360,22 @@ const forceScrollToBottom = () => {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
     }
   });
+};
+
+// Format timestamp for log display
+const formatLogTime = (timestamp) => {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+};
+
+// Auto-scroll log container to bottom
+const scrollLogToBottom = (el) => {
+  if (el) {
+    nextTick(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  }
 };
 
 const getExpertIcon = (senderName) => {

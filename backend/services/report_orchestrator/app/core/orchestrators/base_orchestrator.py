@@ -207,10 +207,18 @@ class BaseOrchestrator(ABC):
         # 发送快速判断完成消息
         await self._send_quick_judgment_complete(quick_result)
 
+        # Convert Pydantic model to dict if needed
+        if hasattr(quick_result, 'model_dump'):
+            result_dict = quick_result.model_dump()
+        elif hasattr(quick_result, 'dict'):
+            result_dict = quick_result.dict()
+        else:
+            result_dict = quick_result
+
         return {
             "mode": "quick_judgment",
             "session_id": self.session_id,
-            **quick_result
+            **result_dict
         }
 
     async def _synthesize_quick_judgment(self) -> Dict[str, Any]:
