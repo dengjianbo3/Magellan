@@ -1108,7 +1108,17 @@ export default {
     resetting: '重置中...',
     saving: '保存中...',
     closing: '平仓中...',
-    holding: '持仓中'
+    holding: '持仓中',
+
+    // Max Drawdown
+    maxDrawdown: '最大回撤',
+    startDate: '起始日期',
+    maxDrawdownPct: '最大回撤',
+    currentDrawdown: '当前回撤',
+    peakEquity: '峰值权益',
+    recovery: '恢复进度',
+    tradesAnalyzed: '分析交易数',
+    notSet: '未设置'
   },
 
   // Early Stage Investment

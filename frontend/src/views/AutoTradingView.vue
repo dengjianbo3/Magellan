@@ -207,7 +207,7 @@
             </div>
 
             <div class="flex justify-between items-center text-xs text-text-secondary pt-2 border-t border-white/10">
-              <span>Trades Analyzed</span>
+              <span>{{ t('trading.tradesAnalyzed') || 'Trades Analyzed' }}</span>
               <span>{{ drawdown.tradesAnalyzed || 0 }}</span>
             </div>
           </div>
