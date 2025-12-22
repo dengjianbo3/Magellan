@@ -1,11 +1,10 @@
 """
-Search Router - 统一搜索路由器
-根据 priority 参数智能路由到不同搜索源
+Search Router - 统一搜索路由器 (Plan C 重构版)
 
-Priority:
-- realtime: 实时数据，直接Tavily，不缓存
-- critical: 关键数据，Tavily + 1小时缓存
-- normal: 一般信息，DuckDuckGo + 动态TTL缓存
+三层搜索架构:
+- normal:   DuckDuckGo (免费) → Serper → Tavily
+- critical: Serper (高性价比) → Tavily
+- realtime: Tavily (最佳质量，不缓存)
 """
 import logging
 from typing import Any, Dict, Optional
@@ -16,24 +15,24 @@ logger = logging.getLogger(__name__)
 
 class SearchPriority(Enum):
     """搜索优先级"""
-    REALTIME = "realtime"   # 实时数据：股价、突发新闻
-    CRITICAL = "critical"   # 关键决策：投资分析核心数据
-    NORMAL = "normal"       # 一般信息：公司背景、历史
+    REALTIME = "realtime"   # 实时数据：股价、突发新闻 → Tavily
+    CRITICAL = "critical"   # 关键决策：投资分析核心 → Serper
+    NORMAL = "normal"       # 一般信息：公司背景 → DuckDuckGo
 
 
 class SearchRouter:
     """
-    搜索路由器
+    搜索路由器 (Plan C 架构)
     
-    功能：
-    1. 根据 priority 参数路由到合适的搜索源
-    2. 管理搜索缓存（集成 SearchCache）
-    3. 处理 Fallback 逻辑
-    4. 会话级语义去重
+    三层路由:
+    - normal → DuckDuckGo → Serper → Tavily
+    - critical → Serper → Tavily
+    - realtime → Tavily only
     """
     
     def __init__(self):
         self._tavily_tool = None
+        self._serper_tool = None
         self._ddg_tool = None
         self._cache = None
         self._dedup = None
@@ -45,6 +44,14 @@ class SearchRouter:
             from .mcp_tools import TavilySearchTool
             self._tavily_tool = TavilySearchTool()
         return self._tavily_tool
+    
+    @property
+    def serper_tool(self):
+        """Lazy load Serper tool"""
+        if self._serper_tool is None:
+            from .serper_tool import SerperSearchTool
+            self._serper_tool = SerperSearchTool()
+        return self._serper_tool
     
     @property
     def ddg_tool(self):
@@ -97,22 +104,18 @@ class SearchRouter:
         **kwargs
     ) -> Dict[str, Any]:
         """
-        统一搜索接口
+        统一搜索接口 (Plan C 三层路由)
         
-        Args:
-            query: 搜索查询
-            priority: 优先级 ("realtime", "critical", "normal")
-            session_id: 会话ID（用于语义去重）
-            **kwargs: 其他搜索参数（max_results, topic, time_range等）
-        
-        Returns:
-            搜索结果
+        路由规则:
+        - normal:   DDG → Serper → Tavily
+        - critical: Serper → Tavily
+        - realtime: Tavily only (不缓存)
         """
         prio = self._get_priority(priority)
         
         logger.info(f"[SearchRouter] Query: '{query[:50]}...' Priority: {prio.value}")
         
-        # 0. 会话级语义去重（如果提供session_id）
+        # 0. 会话级语义去重
         if session_id and self.dedup:
             deduped = self.dedup.find_similar(query, session_id)
             if deduped:
@@ -128,20 +131,38 @@ class SearchRouter:
                 return cached
         
         # 2. 根据优先级路由
-        if prio in [SearchPriority.REALTIME, SearchPriority.CRITICAL]:
-            # 高优先级 -> Tavily
+        result = None
+        source = None
+        
+        if prio == SearchPriority.REALTIME:
+            # realtime → Tavily only (最高质量)
             result = await self._search_with_tavily(query, **kwargs)
             source = "tavily"
-        else:
-            # 普通优先级 -> DuckDuckGo (失败则 Fallback Tavily)
+            
+        elif prio == SearchPriority.CRITICAL:
+            # critical → Serper → Tavily
+            result = await self._search_with_serper(query, **kwargs)
+            source = "serper"
+            
+            if not result.get("success") or result.get("fallback_needed"):
+                logger.warning(f"[SearchRouter] Serper failed, falling back to Tavily")
+                result = await self._search_with_tavily(query, **kwargs)
+                source = "tavily_fallback"
+                
+        else:  # NORMAL
+            # normal → DDG → Serper → Tavily
             result = await self._search_with_ddg(query, **kwargs)
             source = "duckduckgo"
             
-            # Fallback to Tavily if DuckDuckGo fails
             if not result.get("success") or result.get("fallback_needed"):
-                logger.warning(f"[SearchRouter] DuckDuckGo failed, falling back to Tavily")
-                result = await self._search_with_tavily(query, **kwargs)
-                source = "tavily_fallback"
+                logger.warning(f"[SearchRouter] DuckDuckGo failed, trying Serper...")
+                result = await self._search_with_serper(query, **kwargs)
+                source = "serper_fallback"
+                
+                if not result.get("success") or result.get("fallback_needed"):
+                    logger.warning(f"[SearchRouter] Serper failed, falling back to Tavily")
+                    result = await self._search_with_tavily(query, **kwargs)
+                    source = "tavily_fallback"
         
         result["routed_source"] = source
         result["priority"] = prio.value
@@ -158,7 +179,7 @@ class SearchRouter:
         return result
     
     async def _search_with_tavily(self, query: str, **kwargs) -> Dict[str, Any]:
-        """使用Tavily搜索"""
+        """使用Tavily搜索 (最高质量，通过MCP)"""
         try:
             result = await self.tavily_tool.execute(query, **kwargs)
             return result
@@ -170,16 +191,32 @@ class SearchRouter:
                 "summary": f"Tavily search failed: {e}"
             }
     
-    async def _search_with_ddg(self, query: str, **kwargs) -> Dict[str, Any]:
-        """使用DuckDuckGo搜索"""
+    async def _search_with_serper(self, query: str, **kwargs) -> Dict[str, Any]:
+        """使用Serper搜索 (Google结果，高性价比)"""
         try:
-            # 转换参数格式
+            serper_kwargs = {
+                "max_results": kwargs.get("max_results", 5),
+                "search_type": "news" if kwargs.get("topic") == "news" else "text"
+            }
+            result = await self.serper_tool.execute(query, **serper_kwargs)
+            return result
+        except Exception as e:
+            logger.error(f"[SearchRouter] Serper search failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "summary": f"Serper search failed: {e}",
+                "fallback_needed": True
+            }
+    
+    async def _search_with_ddg(self, query: str, **kwargs) -> Dict[str, Any]:
+        """使用DuckDuckGo搜索 (免费)"""
+        try:
             ddg_kwargs = {
                 "max_results": kwargs.get("max_results", 5),
                 "search_type": "news" if kwargs.get("topic") == "news" else "text"
             }
             
-            # 时间范围转换
             time_range = kwargs.get("time_range")
             if time_range:
                 time_map = {"day": "d", "week": "w", "month": "m", "year": "y"}
