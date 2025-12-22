@@ -385,51 +385,68 @@ class YahooFinanceTool(Tool):
             eps_forward = info.get('forwardEps')
             book_value_per_share = info.get('bookValue')
 
+            # Helper function for safe number formatting
+            def fmt(val, suffix="", mult=1, prefix=""):
+                if val is None:
+                    return "N/A"
+                try:
+                    return f"{prefix}{val * mult:.2f}{suffix}"
+                except:
+                    return "N/A"
+            
+            def fmt_int(val, prefix="$"):
+                if val is None or val == 0:
+                    return "N/A"
+                try:
+                    return f"{prefix}{val:,.0f}"
+                except:
+                    return "N/A"
+
             # 构建摘要
             summary = f"""
 {symbol} 估值分析报告:
 
 📊 估值倍数:
-  - P/E (TTM): {pe_trailing:.2f if pe_trailing else 'N/A'}
-  - P/E (Forward): {pe_forward:.2f if pe_forward else 'N/A'}
-  - PEG: {peg_ratio:.2f if peg_ratio else 'N/A'}
-  - P/B: {pb_ratio:.2f if pb_ratio else 'N/A'}
-  - P/S: {ps_ratio:.2f if ps_ratio else 'N/A'}
-  - EV/EBITDA: {ev_to_ebitda:.2f if ev_to_ebitda else 'N/A'}
-  - EV/Revenue: {ev_to_revenue:.2f if ev_to_revenue else 'N/A'}
+  - P/E (TTM): {fmt(pe_trailing)}
+  - P/E (Forward): {fmt(pe_forward)}
+  - PEG: {fmt(peg_ratio)}
+  - P/B: {fmt(pb_ratio)}
+  - P/S: {fmt(ps_ratio)}
+  - EV/EBITDA: {fmt(ev_to_ebitda)}
+  - EV/Revenue: {fmt(ev_to_revenue)}
 
 💰 盈利能力:
-  - ROE: {roe*100:.2f}% if ROE else 'N/A'
-  - ROA: {roa*100:.2f}% if roa else 'N/A'
-  - 净利率: {profit_margin*100:.2f}% if profit_margin else 'N/A'
-  - 毛利率: {gross_margin*100:.2f}% if gross_margin else 'N/A'
-  - 营业利润率: {operating_margin*100:.2f}% if operating_margin else 'N/A'
+  - ROE: {fmt(roe, '%', 100)}
+  - ROA: {fmt(roa, '%', 100)}
+  - 净利率: {fmt(profit_margin, '%', 100)}
+  - 毛利率: {fmt(gross_margin, '%', 100)}
+  - 营业利润率: {fmt(operating_margin, '%', 100)}
 
 📈 成长性:
-  - 营收增长: {revenue_growth*100:.2f}% if revenue_growth else 'N/A'
-  - 盈利增长: {earnings_growth*100:.2f}% if earnings_growth else 'N/A'
-  - 季度盈利增长: {earnings_quarterly_growth*100:.2f}% if earnings_quarterly_growth else 'N/A'
+  - 营收增长: {fmt(revenue_growth, '%', 100)}
+  - 盈利增长: {fmt(earnings_growth, '%', 100)}
+  - 季度盈利增长: {fmt(earnings_quarterly_growth, '%', 100)}
 
 🏦 财务健康:
-  - 流动比率: {current_ratio:.2f if current_ratio else 'N/A'}
-  - 速动比率: {quick_ratio:.2f if quick_ratio else 'N/A'}
-  - 负债/权益比: {debt_to_equity:.2f if debt_to_equity else 'N/A'}
-  - 净现金: ${(total_cash - total_debt):,.0f}
+  - 流动比率: {fmt(current_ratio)}
+  - 速动比率: {fmt(quick_ratio)}
+  - 负债/权益比: {fmt(debt_to_equity)}
+  - 净现金: {fmt_int(total_cash - total_debt)}
 
 💵 股息与现金流:
-  - 股息率: {dividend_yield*100:.2f}% if dividend_yield else 'N/A'
-  - 派息率: {payout_ratio*100:.2f}% if payout_ratio else 'N/A'
-  - FCF收益率: {fcf_yield:.2f}% if fcf_yield else 'N/A'
+  - 股息率: {fmt(dividend_yield, '%', 100)}
+  - 派息率: {fmt(payout_ratio, '%', 100)}
+  - FCF收益率: {fmt(fcf_yield, '%')}
 
 📋 每股指标:
-  - EPS (TTM): ${eps_trailing:.2f if eps_trailing else 'N/A'}
-  - EPS (Forward): ${eps_forward:.2f if eps_forward else 'N/A'}
-  - 每股净资产: ${book_value_per_share:.2f if book_value_per_share else 'N/A'}
+  - EPS (TTM): {fmt(eps_trailing, '', 1, '$')}
+  - EPS (Forward): {fmt(eps_forward, '', 1, '$')}
+  - 每股净资产: {fmt(book_value_per_share, '', 1, '$')}
 
 📊 市场数据:
-  - 市值: ${market_cap:,.0f}
-  - 企业价值: ${enterprise_value:,.0f}
-  - Beta: {beta:.2f if beta else 'N/A'}
+  - 市值: {fmt_int(market_cap)}
+  - 企业价值: {fmt_int(enterprise_value)}
+  - Beta: {fmt(beta)}
 """
 
             return {
@@ -524,13 +541,22 @@ class YahooFinanceTool(Tool):
                 if old_div > 0:
                     dividend_growth = ((new_div / old_div) - 1) * 100
 
+            # Helper for safe formatting
+            def fmt(val, suffix="", mult=1, prefix=""):
+                if val is None:
+                    return "N/A"
+                try:
+                    return f"{prefix}{val * mult:.2f}{suffix}"
+                except:
+                    return "N/A"
+
             summary = f"""
 {symbol} 股息分析:
 
 💰 当前股息:
-  - 股息率: {dividend_yield*100:.2f}% if dividend_yield else 'N/A'
-  - 每股股息: ${dividend_rate:.2f if dividend_rate else 'N/A'}
-  - 派息率: {payout_ratio*100:.2f}% if payout_ratio else 'N/A'
+  - 股息率: {fmt(dividend_yield, '%', 100)}
+  - 每股股息: {fmt(dividend_rate, '', 1, '$')}
+  - 派息率: {fmt(payout_ratio, '%', 100)}
 
 📅 历史派息 (最近8次):
 """
@@ -574,12 +600,21 @@ class YahooFinanceTool(Tool):
             insider_pct = info.get('heldPercentInsiders')
             institution_pct = info.get('heldPercentInstitutions')
 
+            # Helper for safe formatting
+            def fmt_pct(val):
+                if val is None:
+                    return "N/A"
+                try:
+                    return f"{val * 100:.2f}%"
+                except:
+                    return "N/A"
+
             summary = f"""
 {symbol} 持股分析:
 
 📊 持股比例:
-  - 机构持股: {institution_pct*100:.2f}% if institution_pct else 'N/A'
-  - 内部人持股: {insider_pct*100:.2f}% if insider_pct else 'N/A'
+  - 机构持股: {fmt_pct(institution_pct)}
+  - 内部人持股: {fmt_pct(insider_pct)}
 
 🏛️ 主要机构持股:
 """
