@@ -1070,28 +1070,28 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                 print(f"[ROUNDTABLE] conclude_meeting called: {reason}", flush=True)
                 return f"会议将在当前轮次结束后终止。原因: {reason}"
 
-            # Always ensure leader is included and first
-            if 'leader' in selected_experts:
-                leader = create_leader(language)
-                # Register end_meeting tool for Leader
-                end_meeting_tool = FunctionTool(
-                    name="end_meeting",
-                    description="结束圆桌会议。当讨论已经充分、已形成投资建议、所有专家观点已收集时调用此工具。调用后会议将终止并生成会议纪要。",
-                    func=conclude_meeting_func,
-                    parameters_schema={
-                        "type": "object",
-                        "properties": {
-                            "reason": {
-                                "type": "string",
-                                "description": "结束会议的原因，例如'所有专家已充分表达观点，已形成投资建议'"
-                            }
-                        },
-                        "required": ["reason"]
-                    }
-                )
-                leader.register_tool(end_meeting_tool)
-                print(f"[ROUNDTABLE] end_meeting tool registered for Leader", flush=True)
-                agents.append(leader)
+            # ALWAYS ensure leader is created first - Leader is essential for meeting orchestration
+            # Frontend intentionally excludes 'leader' from selection (it's always auto-included)
+            leader = create_leader(language)
+            # Register end_meeting tool for Leader
+            end_meeting_tool = FunctionTool(
+                name="end_meeting",
+                description="结束圆桌会议。当讨论已经充分、已形成投资建议、所有专家观点已收集时调用此工具。调用后会议将终止并生成会议纪要。",
+                func=conclude_meeting_func,
+                parameters_schema={
+                    "type": "object",
+                    "properties": {
+                        "reason": {
+                            "type": "string",
+                            "description": "结束会议的原因，例如'所有专家已充分表达观点，已形成投资建议'"
+                        }
+                    },
+                    "required": ["reason"]
+                }
+            )
+            leader.register_tool(end_meeting_tool)
+            print(f"[ROUNDTABLE] Leader ALWAYS created with end_meeting tool", flush=True)
+            agents.append(leader)
 
             # Add other agents based on selection
             for expert_id in selected_experts:
