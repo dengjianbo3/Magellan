@@ -240,7 +240,7 @@
       </div>
 
       <!-- Right Column: Charts & Agents -->
-      <div class="col-span-12 lg:col-span-8 space-y-6">
+      <div class="col-span-12 lg:col-span-8 flex flex-col gap-6">
         <!-- Equity Curve Chart -->
         <div class="glass-panel rounded-xl p-6">
           <div class="flex items-center justify-between mb-4">
@@ -258,37 +258,32 @@
           </div>
         </div>
 
-        <!-- Agent Team Panel -->
-        <div class="glass-panel rounded-xl p-6">
-          <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
-            <span class="material-symbols-outlined mr-2 text-accent-cyan">groups</span>
+        <!-- Agent Team Panel (Compact) -->
+        <div class="glass-panel rounded-xl p-4">
+          <h3 class="text-base font-semibold text-white mb-3 flex items-center">
+            <span class="material-symbols-outlined mr-2 text-accent-cyan text-lg">groups</span>
             {{ t('trading.agentTeam') || 'Trading Expert Team' }}
           </h3>
 
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="flex flex-wrap gap-2">
             <div
               v-for="agent in agents"
               :key="agent.id"
-              class="p-4 rounded-lg bg-white/5 border border-white/10 hover:border-primary/50 transition-colors"
+              class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-primary/50 transition-colors"
             >
-              <div class="flex items-center gap-3 mb-2">
-                <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
-                  <span class="material-symbols-outlined text-primary">{{ agent.icon }}</span>
-                </div>
-                <div>
-                  <div class="text-white font-medium text-sm">{{ agent.name }}</div>
-                  <div class="text-text-secondary text-xs">{{ agent.role }}</div>
-                </div>
+              <div class="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                <span class="material-symbols-outlined text-primary text-sm">{{ agent.icon }}</span>
               </div>
-              <div class="text-xs text-text-secondary">
-                {{ t('trading.winRate') || 'Win Rate' }}: {{ (agent.winRate * 100).toFixed(1) }}%
+              <div class="min-w-0">
+                <div class="text-white font-medium text-xs truncate">{{ agent.name }}</div>
+                <div class="text-text-secondary text-xs">{{ t('trading.winRate') || 'Win' }}: {{ (agent.winRate * 100).toFixed(1) }}%</div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Agent Discussion (Live) -->
-        <div class="glass-panel rounded-xl p-6">
+        <!-- Agent Discussion (Live) - grows to fill remaining space -->
+        <div class="glass-panel rounded-xl p-6 flex flex-col flex-1">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
             <span class="material-symbols-outlined mr-2 text-accent-violet">forum</span>
             {{ t('trading.discussion') || 'Live Discussion' }}
@@ -297,7 +292,7 @@
             </span>
           </h3>
 
-          <div class="h-80 overflow-y-auto space-y-4 pr-2" ref="discussionContainer">
+          <div class="flex-1 overflow-y-auto space-y-4 pr-2 min-h-[200px]" ref="discussionContainer">
             <div
               v-for="(msg, idx) in discussionMessages"
               :key="idx"
@@ -310,7 +305,7 @@
               <div class="text-text-secondary text-sm prose prose-sm prose-invert max-w-none" v-html="renderMarkdown(msg.content)"></div>
             </div>
 
-            <div v-if="discussionMessages.length === 0" class="text-center py-12 text-text-secondary">
+            <div v-if="discussionMessages.length === 0" class="flex flex-col items-center justify-center h-full py-8 text-text-secondary">
               <span class="material-symbols-outlined text-4xl mb-2 opacity-50">chat_bubble</span>
               <p>{{ t('trading.noMessages') || 'Waiting for analysis...' }}</p>
             </div>
