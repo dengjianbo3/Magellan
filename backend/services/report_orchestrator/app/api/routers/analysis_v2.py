@@ -275,7 +275,8 @@ async def get_available_scenarios():
                 "optional_inputs": ["bp_file_id", "team_members", "industry", "founded_year"],
                 "supported_depths": ["quick", "standard", "comprehensive"],
                 "quick_mode_duration": "3-5分钟",
-                "standard_mode_duration": "30-45分钟"
+                "standard_mode_duration": "30-45分钟",
+                "status": "active"
             },
             {
                 "id": "growth-investment",
@@ -287,7 +288,8 @@ async def get_available_scenarios():
                 "optional_inputs": ["financial_file_id", "annual_revenue", "growth_rate"],
                 "supported_depths": ["quick", "standard", "comprehensive"],
                 "quick_mode_duration": "3-5分钟",
-                "standard_mode_duration": "30-45分钟"
+                "standard_mode_duration": "30-45分钟",
+                "status": "coming_soon"
             },
             {
                 "id": "public-market-investment",
@@ -298,7 +300,8 @@ async def get_available_scenarios():
                 "optional_inputs": ["exchange", "asset_type"],
                 "supported_depths": ["quick", "standard", "comprehensive"],
                 "quick_mode_duration": "3-5分钟",
-                "standard_mode_duration": "20-30分钟"
+                "standard_mode_duration": "20-30分钟",
+                "status": "coming_soon"
             },
             {
                 "id": "alternative-investment",
@@ -309,7 +312,8 @@ async def get_available_scenarios():
                 "optional_inputs": ["symbol", "contract_address", "chain", "project_name"],
                 "supported_depths": ["quick", "standard", "comprehensive"],
                 "quick_mode_duration": "3-5分钟",
-                "standard_mode_duration": "25-35分钟"
+                "standard_mode_duration": "25-35分钟",
+                "status": "coming_soon"
             },
             {
                 "id": "industry-research",
@@ -320,7 +324,8 @@ async def get_available_scenarios():
                 "optional_inputs": ["geo_scope", "key_questions"],
                 "supported_depths": ["quick", "standard", "comprehensive"],
                 "quick_mode_duration": "5-8分钟",
-                "standard_mode_duration": "45-60分钟"
+                "standard_mode_duration": "45-60分钟",
+                "status": "coming_soon"
             }
         ]
     }
