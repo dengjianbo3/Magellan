@@ -29,12 +29,14 @@ class SearchRouter:
     1. 根据 priority 参数路由到合适的搜索源
     2. 管理搜索缓存（集成 SearchCache）
     3. 处理 Fallback 逻辑
+    4. 会话级语义去重
     """
     
     def __init__(self):
         self._tavily_tool = None
         self._ddg_tool = None
         self._cache = None
+        self._dedup = None
     
     @property
     def tavily_tool(self):
@@ -64,6 +66,18 @@ class SearchRouter:
                 self._cache = None
         return self._cache
     
+    @property
+    def dedup(self):
+        """Lazy load SearchDedup"""
+        if self._dedup is None:
+            try:
+                from .search_dedup import SearchDedup
+                self._dedup = SearchDedup()
+            except Exception as e:
+                logger.warning(f"SearchDedup not available: {e}")
+                self._dedup = None
+        return self._dedup
+    
     def _get_priority(self, priority_str: Optional[str]) -> SearchPriority:
         """解析优先级字符串"""
         if priority_str is None:
@@ -79,6 +93,7 @@ class SearchRouter:
         self,
         query: str,
         priority: str = "normal",
+        session_id: Optional[str] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -87,6 +102,7 @@ class SearchRouter:
         Args:
             query: 搜索查询
             priority: 优先级 ("realtime", "critical", "normal")
+            session_id: 会话ID（用于语义去重）
             **kwargs: 其他搜索参数（max_results, topic, time_range等）
         
         Returns:
@@ -95,6 +111,13 @@ class SearchRouter:
         prio = self._get_priority(priority)
         
         logger.info(f"[SearchRouter] Query: '{query[:50]}...' Priority: {prio.value}")
+        
+        # 0. 会话级语义去重（如果提供session_id）
+        if session_id and self.dedup:
+            deduped = self.dedup.find_similar(query, session_id)
+            if deduped:
+                logger.info(f"[SearchRouter] Dedup HIT for '{query[:30]}...'")
+                return deduped
         
         # 1. 检查缓存（realtime不查缓存）
         if prio != SearchPriority.REALTIME and self.cache:
@@ -127,6 +150,10 @@ class SearchRouter:
         if prio != SearchPriority.REALTIME and self.cache and result.get("success"):
             await self.cache.set(query, priority, result)
             logger.info(f"[SearchRouter] Cached result for '{query[:30]}...'")
+        
+        # 4. 添加到会话去重缓存
+        if session_id and self.dedup and result.get("success"):
+            self.dedup.add(query, session_id, result)
         
         return result
     
