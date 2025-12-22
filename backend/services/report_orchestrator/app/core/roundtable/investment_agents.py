@@ -12,6 +12,41 @@ from typing import Dict, Any, List
 import httpx
 
 
+# ==================== Language Helper ====================
+
+def get_output_language_instruction(language: str) -> str:
+    """
+    Generate output language instruction for hybrid mode.
+    
+    Hybrid mode: 
+    - Internal thinking/tool calls in English
+    - Final output in user's preferred language
+    
+    Args:
+        language: "zh" for Chinese, "en" for English
+    
+    Returns:
+        Language instruction to append to prompts
+    """
+    if language == "zh":
+        return """
+
+---
+**OUTPUT LANGUAGE INSTRUCTION**:
+Your internal thinking and tool calls can be in English.
+However, your **FINAL ANALYSIS and RESPONSE** that users will read **MUST be written in Chinese (中文)**.
+This includes your expert opinions, recommendations, scores, and any text shown in the discussion.
+请用中文撰写您的最终分析报告。
+---"""
+    else:
+        return """
+
+---
+**OUTPUT LANGUAGE INSTRUCTION**:
+Write your final analysis and response in English.
+---"""
+
+
 # ==================== Agent Creators ====================
 
 def create_leader(language: str = "en", meeting=None) -> Agent:
@@ -774,7 +809,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
     # 使用ReWOO架构 - 并行获取市场数据、竞品信息、行业报告
     agent = ReWOOAgent(
         name="MarketAnalyst",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
@@ -1059,7 +1094,7 @@ Rapid financial health check focusing on KEY METRICS ONLY.
     # 使用ReWOO架构
     agent = ReWOOAgent(
         name="FinancialExpert",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
@@ -1406,7 +1441,7 @@ Provide a rapid team evaluation focusing on KEY FINDINGS ONLY.
     # 使用ReWOO架构 - 并行获取创始人背景、团队信息、公司文化
     agent = ReWOOAgent(
         name="TeamEvaluator",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
@@ -1750,7 +1785,7 @@ Rapid risk identification focusing on CRITICAL RISKS ONLY.
     # 使用ReWOO架构 - 并行获取风险新闻、诉讼信息、监管动态
     agent = ReWOOAgent(
         name="RiskAssessor",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
@@ -2127,7 +2162,7 @@ Rapid technology assessment focusing on KEY STRENGTHS ONLY.
     # 使用ReWOO架构 - 并行获取GitHub、专利、技术文档
     agent = ReWOOAgent(
         name="TechSpecialist",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
@@ -2521,7 +2556,7 @@ Rapid legal check focusing on CRITICAL ISSUES ONLY.
     # 使用ReWOO架构 - 并行获取法规、诉讼记录、合规信息
     agent = ReWOOAgent(
         name="LegalAdvisor",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
@@ -2948,7 +2983,7 @@ Short-term price movements are inherently unpredictable.
     # 使用ReWOO架构 - 并行获取K线数据、计算指标、识别形态
     agent = ReWOOAgent(
         name="TechnicalAnalyst",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
@@ -3293,7 +3328,7 @@ Rapid macroeconomic assessment focusing on KEY INDICATORS ONLY.
 
     agent = ReWOOAgent(
         name="MacroEconomist",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=0.7
     )
@@ -3552,7 +3587,7 @@ Rapid ESG assessment focusing on MATERIAL ISSUES ONLY.
 
     agent = ReWOOAgent(
         name="ESGAnalyst",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=0.7
     )
@@ -3811,7 +3846,7 @@ Rapid sentiment assessment focusing on CURRENT MOOD ONLY.
 
     agent = ReWOOAgent(
         name="SentimentAnalyst",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=0.7
     )
@@ -4064,7 +4099,7 @@ Rapid quantitative assessment focusing on KEY METRICS ONLY.
 
     agent = ReWOOAgent(
         name="QuantStrategist",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=0.5  # Lower temperature for more precise quantitative analysis
     )
@@ -4333,7 +4368,7 @@ Rapid deal structure assessment focusing on KEY TERMS ONLY.
 
     agent = ReWOOAgent(
         name="DealStructurer",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=0.6
     )
@@ -4616,7 +4651,7 @@ Rapid M&A assessment focusing on KEY FACTORS ONLY.
 
     agent = ReWOOAgent(
         name="MAAdvisor",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=0.6
     )
@@ -4864,7 +4899,7 @@ Rapid on-chain assessment focusing on KEY SIGNALS ONLY.
 
     agent = ReWOOAgent(
         name="OnchainAnalyst",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=0.6
     )

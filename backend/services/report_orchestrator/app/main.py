@@ -1029,7 +1029,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
             topic = initial_request.get("topic", "投资价值分析")
             company_name = initial_request.get("company_name", "目标公司")
             context = initial_request.get("context", {})
-            language = initial_request.get("language", "zh")  # 获取语言偏好，默认中文
+            language = initial_request.get("language", "en")  # Default to English for hybrid mode
 
             # Generate session ID
             session_id = f"roundtable_{company_name}_{uuid.uuid4().hex[:8]}"
