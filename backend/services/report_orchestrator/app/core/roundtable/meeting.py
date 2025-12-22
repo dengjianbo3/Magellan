@@ -27,7 +27,7 @@ class Meeting:
         self,
         agents: List[Agent],
         agent_event_bus: Optional[AgentEventBus] = None,
-        max_turns: int = 20,
+        max_turns: int = 5,
         max_duration_seconds: int = 300,
         llm_service: Any = None,
         on_message: Optional[Callable] = None
