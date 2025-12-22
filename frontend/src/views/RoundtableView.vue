@@ -29,33 +29,66 @@
             <label class="block text-sm font-bold text-text-secondary mb-3 uppercase tracking-wider">
               {{ t('roundtable.startPanel.expertsLabel') }} ({{ selectedExperts.length }} {{ t('roundtable.startPanel.expertsSelected') }})
             </label>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div
-                v-for="expert in availableExperts"
-                :key="expert.id"
-                @click="toggleExpert(expert.id)"
-                :class="[
-                  'p-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 group',
-                  selectedExperts.includes(expert.id)
-                    ? 'border-primary bg-primary/10 shadow-[0_0_15px_rgba(56,189,248,0.15)]'
-                    : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
-                ]"
+            <!-- Selected experts tags -->
+            <div class="flex flex-wrap gap-2 mb-3">
+              <span
+                v-for="expertId in selectedExperts"
+                :key="expertId"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/30 text-primary text-sm"
               >
-                <div :class="[
-                    'w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors',
-                    selectedExperts.includes(expert.id) ? 'bg-primary text-background-dark' : 'bg-white/10 text-text-secondary group-hover:text-white'
-                ]">
-                  <span class="material-symbols-outlined text-2xl">{{ expert.icon }}</span>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <h4 :class="['font-bold text-sm mb-1', selectedExperts.includes(expert.id) ? 'text-white' : 'text-text-primary']">{{ expert.name }}</h4>
-                  <p class="text-xs text-text-secondary line-clamp-1">{{ expert.description }}</p>
-                </div>
-                <div v-if="selectedExperts.includes(expert.id)" class="text-primary animate-fade-in">
-                    <span class="material-symbols-outlined">check_circle</span>
+                <span class="material-symbols-outlined text-base">{{ getExpertById(expertId)?.icon }}</span>
+                {{ getExpertById(expertId)?.name }}
+                <button @click="toggleExpert(expertId)" class="hover:text-white ml-1">
+                  <span class="material-symbols-outlined text-base">close</span>
+                </button>
+              </span>
+              <span v-if="selectedExperts.length === 0" class="text-text-secondary text-sm italic">
+                请选择参与讨论的专家
+              </span>
+            </div>
+            <!-- Dropdown multi-select -->
+            <div class="relative" ref="expertDropdownRef">
+              <button
+                @click="showExpertDropdown = !showExpertDropdown"
+                class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white text-left flex items-center justify-between hover:border-primary/50 transition-all"
+              >
+                <span class="text-text-secondary">点击添加或移除专家...</span>
+                <span class="material-symbols-outlined text-text-secondary transition-transform" :class="showExpertDropdown ? 'rotate-180' : ''">
+                  expand_more
+                </span>
+              </button>
+              <!-- Dropdown list -->
+              <div
+                v-if="showExpertDropdown"
+                class="absolute top-full left-0 right-0 mt-2 bg-gray-900/95 border border-white/10 rounded-xl shadow-2xl z-50 max-h-64 overflow-y-auto backdrop-blur-sm"
+              >
+                <div
+                  v-for="expert in availableExperts"
+                  :key="expert.id"
+                  @click="toggleExpert(expert.id)"
+                  :class="[
+                    'flex items-center gap-3 px-4 py-3 cursor-pointer transition-all border-b border-white/5 last:border-b-0',
+                    selectedExperts.includes(expert.id)
+                      ? 'bg-primary/10 text-primary'
+                      : 'hover:bg-white/5 text-white'
+                  ]"
+                >
+                  <span class="material-symbols-outlined text-xl">{{ expert.icon }}</span>
+                  <div class="flex-1 min-w-0">
+                    <div class="font-medium text-sm">{{ expert.name }}</div>
+                    <div class="text-xs text-text-secondary line-clamp-1">{{ expert.description }}</div>
+                  </div>
+                  <span v-if="selectedExperts.includes(expert.id)" class="material-symbols-outlined text-primary">
+                    check_circle
+                  </span>
                 </div>
               </div>
             </div>
+            <!-- Note about Leader -->
+            <p class="text-xs text-text-secondary mt-2 flex items-center gap-1">
+              <span class="material-symbols-outlined text-sm text-primary">info</span>
+              讨论主持人将自动参与，无需手动选择
+            </p>
           </div>
 
           <!-- Discussion Settings -->
@@ -534,18 +567,37 @@ const interventionContent = ref(''); // User's intervention content
 const selectedMessageIndex = ref(null); // Index of message being responded to
 const isSubmittingIntervention = ref(false); // Submitting state
 
-// Available experts - computed to be reactive to language changes
+// Dropdown state for expert selection
+const showExpertDropdown = ref(false);
+const expertDropdownRef = ref(null);
+
+// Close dropdown when clicking outside
+const handleClickOutside = (event) => {
+  if (expertDropdownRef.value && !expertDropdownRef.value.contains(event.target)) {
+    showExpertDropdown.value = false;
+  }
+};
+
+// Available experts - computed to be reactive to language changes (excludes Leader)
 const availableExperts = computed(() => {
   const agents = getRoundtableAgents();
   const isZh = locale.value.startsWith('zh'); // 'zh-CN' or 'zh'
-  return agents.map(agent => ({
-    id: agent.id,
-    name: isZh ? agent.name_zh : agent.name,
-    role: isZh ? agent.role_zh : agent.role,
-    description: isZh ? agent.description_zh : agent.description,
-    icon: agent.icon
-  }));
+  // Exclude leader - it's always included automatically
+  return agents
+    .filter(agent => agent.id !== 'leader')
+    .map(agent => ({
+      id: agent.id,
+      name: isZh ? agent.name_zh : agent.name,
+      role: isZh ? agent.role_zh : agent.role,
+      description: isZh ? agent.description_zh : agent.description,
+      icon: agent.icon
+    }));
 });
+
+// Get expert by ID (for rendering selected tags)
+const getExpertById = (id) => {
+  return availableExperts.value.find(e => e.id === id);
+};
 
 const selectedExperts = ref([]);
 
@@ -555,10 +607,25 @@ const historyList = ref([]);
 const loadingHistory = ref(false);
 const selectedHistoryRef = ref(null);
 
-// Initialize selected experts on mount
+// Default core experts (5 most important for investment analysis)
+const DEFAULT_EXPERTS = [
+  'market-analyst',    // 市场分析师
+  'financial-expert',  // 财务专家
+  'tech-specialist',   // 技术专家
+  'legal-advisor',     // 法律顾问
+  'risk-assessor'      // 风险评估师
+];
+
+// Initialize selected experts on mount with defaults only
 onMounted(() => {
-  const agents = getRoundtableAgents();
-  selectedExperts.value = agents.map(a => a.id);
+  selectedExperts.value = [...DEFAULT_EXPERTS];
+  // Add click outside listener for dropdown
+  document.addEventListener('click', handleClickOutside);
+});
+
+// Cleanup on unmount
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside);
 });
 
 // History Reference Methods
