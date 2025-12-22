@@ -196,14 +196,20 @@ class Meeting:
         执行一轮对话
 
         让所有Agent依次或并发地思考和发言
+        重要：Leader总是在最后处理，确保能看到其他专家的发言
 
         Returns:
             是否有Agent产生了新消息
         """
         has_new_messages = False
 
-        # 策略1: 顺序执行（更可控）
-        for agent_name, agent in self.agents.items():
+        # 将agents分为两组：普通专家 和 Leader
+        # Leader必须在最后处理，否则会因为消息尚未到达而被跳过
+        other_agents = {name: agent for name, agent in self.agents.items() if name != "Leader"}
+        leader_agent = self.agents.get("Leader")
+
+        # 第一步：让所有非Leader专家发言
+        for agent_name, agent in other_agents.items():
             # 检查Agent是否有待处理消息
             pending = self.message_bus.peek_messages(agent_name)
 
@@ -238,15 +244,80 @@ class Meeting:
                         }
                     )
 
-        # 策略2: 并发执行（更快但需要仔细处理）
-        # tasks = []
-        # for agent_name, agent in self.agents.items():
-        #     pending = self.message_bus.peek_messages(agent_name)
-        #     if pending:
-        #         tasks.append(agent.think_and_act())
-        #
-        # results = await asyncio.gather(*tasks, return_exceptions=True)
-        # ...
+        # 第二步：Leader在最后发言（确保能看到所有专家的观点）
+        # Leader每隔几轮参与一次，或者当有足够多的新消息时参与
+        if leader_agent:
+            pending = self.message_bus.peek_messages("Leader")
+            
+            # Leader参与条件：
+            # 1. 有pending消息（其他专家@了Leader）
+            # 2. 或者当前轮次是3的倍数（定期主持）
+            # 3. 或者超过5轮没有Leader发言
+            should_leader_speak = (
+                len(pending) > 0 or 
+                self.current_turn % 3 == 2 or  # 第2, 5, 8, 11... 轮
+                self.current_turn >= self.max_turns - 2  # 接近结束时
+            )
+            
+            if should_leader_speak:
+                # 如果没有pending消息，创建一个汇总请求让Leader思考
+                if not pending:
+                    # 获取最近的对话历史
+                    recent_history = self.message_bus.get_conversation_history(limit=10)
+                    history_text = "\n".join([
+                        f"{msg.sender}: {msg.content[:200]}..." 
+                        for msg in recent_history[-5:]
+                    ])
+                    
+                    # 创建一个虚拟消息让Leader参与
+                    from .message import Message
+                    virtual_message = Message(
+                        sender="Meeting Orchestrator",
+                        recipient="Leader",
+                        content=f"""作为主持人，请对当前讨论进行以下操作之一：
+
+1. **如果讨论已充分**（各专家已表达观点、形成共识）：
+   - 调用 `end_meeting` 工具结束讨论
+   - 提供结束原因
+
+2. **如果讨论需要继续**：
+   - 总结当前进展
+   - 指出还需要讨论的问题
+   - 引导下一轮讨论方向
+
+最近讨论摘要：
+{history_text}
+
+当前轮次：{self.current_turn + 1}/{self.max_turns}
+"""
+                    )
+                    self.message_bus.agent_queues["Leader"].append(virtual_message)
+                
+                # 推送Leader开始思考事件
+                if self.agent_event_bus:
+                    await self.agent_event_bus.publish_thinking(
+                        agent_name="Leader",
+                        message="Leader正在主持讨论...",
+                        progress=self.current_turn / self.max_turns
+                    )
+
+                # 让Leader思考并生成响应
+                new_messages = await leader_agent.think_and_act()
+
+                if new_messages:
+                    has_new_messages = True
+
+                    for msg in new_messages:
+                        await self.message_bus.send(msg)
+
+                    if self.agent_event_bus:
+                        await self.agent_event_bus.publish_result(
+                            agent_name="Leader",
+                            message="Leader发表了主持意见",
+                            data={
+                                "messages": [msg.to_dict() for msg in new_messages]
+                            }
+                        )
 
         return has_new_messages
 
