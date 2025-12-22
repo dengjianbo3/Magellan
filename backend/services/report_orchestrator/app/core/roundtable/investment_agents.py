@@ -493,7 +493,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
 - Use `search_knowledge_base` for BP market data first
-- Use `tavily_search` only for critical missing data (e.g., "[industry] market size 2024")
+- Use `web_search` only for critical missing data (e.g., "[industry] market size 2024")
 
 ## Output Format (CONCISE):
 ```markdown
@@ -526,7 +526,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
 
 ## 工具使用 (限制1-2次搜索):
 - 优先使用 `search_knowledge_base` 查询BP中的市场数据
-- 仅在关键数据缺失时使用 `tavily_search` (如"[行业] 市场规模 2024")
+- 仅在关键数据缺失时使用 `web_search` (如"[行业] 市场规模 2024")
 
 ## 输出格式 (简洁):
 ```markdown
@@ -590,7 +590,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
    - action='history' to see 1-year price trend
 2. Use `sec_edgar` to view latest annual report market description
    - action='search_filings' with form_type='10-K'
-3. Use `tavily_search` for industry reports
+3. Use `web_search` for industry reports
    - Search "[industry name] market size 2024"
    - Search "[industry name] growth rate forecast"
 
@@ -598,7 +598,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
 1. Use `search_knowledge_base` to query BP market data
    - Search "TAM SAM SOM"
    - Search "market size target market"
-2. Use `tavily_search` for industry research
+2. Use `web_search` for industry research
    - Search competitor information
    - Search market trends and reports
 
@@ -657,7 +657,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
    - action='search_filings' with form_type='10-K'
    - 查看公司对市场机会的官方描述
 
-3. 使用 `tavily_search` 搜索行业报告
+3. 使用 `web_search` 搜索行业报告
    - 搜索"[行业名称] 市场规模 2024"
    - 搜索"[行业名称] 增长率 预测"
 
@@ -666,7 +666,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
    - 搜索"TAM SAM SOM"
    - 搜索"市场规模 目标市场"
 
-2. 使用 `tavily_search` 进行行业研究
+2. 使用 `web_search` 进行行业研究
    - 搜索竞品信息
    - 搜索市场趋势和行业报告
 
@@ -906,11 +906,11 @@ Rapid financial health check focusing on KEY METRICS ONLY.
 ### For Public Companies (Listed):
 1. Use `sec_edgar` to get official 10-K/10-Q filings (US companies)
 2. Use `yahoo_finance` to get financial ratios and historical data
-3. Use `tavily_search` to find industry benchmark data
+3. Use `web_search` to find industry benchmark data
 
 ### For Private Companies:
 1. Use `search_knowledge_base` to query BP financial data
-2. Use `tavily_search` to find comparable company data
+2. Use `web_search` to find comparable company data
 
 ## Output Requirements:
 - Cite specific data sources (e.g., "According to 2023 10-K")
@@ -959,14 +959,14 @@ Rapid financial health check focusing on KEY METRICS ONLY.
 2. 使用 `yahoo_finance` 获取财务比率和历史数据
    - action='financials' 获取利润表/资产负债表/现金流量表
    - action='price' 获取市值和估值倍数
-3. 使用 `tavily_search` 搜索行业benchmark数据
+3. 使用 `web_search` 搜索行业benchmark数据
    - 搜索同行业公司的平均财务指标
    - 查找行业报告和分析师预期
 
 ### 非上市公司分析:
 1. 使用 `search_knowledge_base` 查询BP中的财务数据
    - 搜索营收、利润、现金流等关键指标
-2. 使用 `tavily_search` 搜索同行业可比公司数据
+2. 使用 `web_search` 搜索同行业可比公司数据
    - 寻找类似规模和阶段的公司进行对比
 
 ## 输出要求:
@@ -1105,7 +1105,7 @@ Provide a rapid team evaluation focusing on KEY FINDINGS ONLY.
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
 - Use `search_knowledge_base` for BP team info first
-- Only use `tavily_search` if BP lacks critical info
+- Only use `web_search` if BP lacks critical info
 
 ## Output Format (CONCISE):
 ```markdown
@@ -1136,7 +1136,7 @@ Provide a rapid team evaluation focusing on KEY FINDINGS ONLY.
 
 ## 工具使用 (限制1-2次搜索):
 - 优先使用 `search_knowledge_base` 查询BP中的团队信息
-- 仅在BP缺少关键信息时使用 `tavily_search`
+- 仅在BP缺少关键信息时使用 `web_search`
 
 ## 输出格式 (简洁):
 ```markdown
@@ -1209,12 +1209,12 @@ Provide a rapid team evaluation focusing on KEY FINDINGS ONLY.
 ## Tool Usage Strategy:
 
 ### Team Background Research:
-1. Use `tavily_search` to find founder background
+1. Use `web_search` to find founder background
    - Search "[Founder Name] LinkedIn"
    - Search "[Founder Name] work history"
    - Search "[Founder Name] education"
 
-2. Use `tavily_search` for company team info
+2. Use `web_search` for company team info
    - Search "[Company] core team"
    - Search "[Company] management"
    - Search "[Company] founder interview"
@@ -1295,12 +1295,12 @@ Provide a rapid team evaluation focusing on KEY FINDINGS ONLY.
 ## 工具使用策略:
 
 ### 团队背景调查:
-1. 使用 `tavily_search` 搜索创始人背景
+1. 使用 `web_search` 搜索创始人背景
    - 搜索"[创始人姓名] LinkedIn"
    - 搜索"[创始人姓名] 工作经历"
    - 搜索"[创始人姓名] 教育背景"
 
-2. 使用 `tavily_search` 搜索公司团队信息
+2. 使用 `web_search` 搜索公司团队信息
    - 搜索"[公司名称] 核心团队"
    - 搜索"[公司名称] 管理层"
    - 搜索"[公司名称] 创始人采访"
@@ -1622,7 +1622,7 @@ Rapid risk identification focusing on CRITICAL RISKS ONLY.
    - 查看"Risk Factors"章节
    - action='search_filings', form_type='8-K' 查看重大事件
 
-2. 使用 `tavily_search` 搜索负面信息
+2. 使用 `web_search` 搜索负面信息
    - 搜索"[公司] lawsuit" (诉讼)
    - 搜索"[公司] controversy" (争议)
    - 搜索"[公司] regulatory issues"
@@ -1632,7 +1632,7 @@ Rapid risk identification focusing on CRITICAL RISKS ONLY.
    - 搜索"风险 挑战"
    - 搜索"竞争 威胁"
 
-2. 使用 `tavily_search` 行业风险研究
+2. 使用 `web_search` 行业风险研究
    - 搜索"[行业] risks 2024"
    - 搜索"[行业] regulatory changes"
 
@@ -1971,7 +1971,7 @@ Rapid technology assessment focusing on KEY STRENGTHS ONLY.
 ## 工具使用策略:
 
 ### 技术研究:
-1. 使用 `tavily_search` 搜索技术信息
+1. 使用 `web_search` 搜索技术信息
    - "[公司] technology stack"
    - "[公司] patents"
    - "[公司] tech blog"
@@ -1982,7 +1982,7 @@ Rapid technology assessment focusing on KEY STRENGTHS ONLY.
    - "核心技术 专利"
    - "研发 R&D"
 
-3. 使用 `tavily_search` 技术对比
+3. 使用 `web_search` 技术对比
    - "[技术A] vs [技术B]"
    - "[行业] best practices"
 
@@ -2370,7 +2370,7 @@ Rapid legal check focusing on CRITICAL ISSUES ONLY.
 ## 工具使用策略:
 
 ### 法律信息搜索:
-1. 使用 `tavily_search` 搜索法规和判例
+1. 使用 `web_search` 搜索法规和判例
    - "[公司] lawsuit"
    - "[公司] regulatory compliance"
    - "[行业] licensing requirements"
@@ -2381,7 +2381,7 @@ Rapid legal check focusing on CRITICAL ISSUES ONLY.
    - "股权结构 章程"
    - "诉讼 纠纷"
 
-3. 使用 `tavily_search` 查询监管动态
+3. 使用 `web_search` 查询监管动态
    - "[行业] new regulations 2024"
    - "[地区] compliance requirements"
 
@@ -3088,7 +3088,7 @@ Rapid macroeconomic assessment focusing on KEY INDICATORS ONLY.
 4. **Market Implications**: One key investment implication
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
-- Use `tavily_search` for "Fed rate decision 2024" or "China GDP growth 2024"
+- Use `web_search` for "Fed rate decision 2024" or "China GDP growth 2024"
 - Focus on latest central bank announcements
 
 ## Output Format (CONCISE):
@@ -3120,7 +3120,7 @@ Rapid macroeconomic assessment focusing on KEY INDICATORS ONLY.
 4. **投资影响**: 对当前投资的关键影响
 
 ## 工具使用 (限制1-2次搜索):
-- 使用 `tavily_search` 搜索"美联储利率 2024"或"中国GDP增长 2024"
+- 使用 `web_search` 搜索"美联储利率 2024"或"中国GDP增长 2024"
 - 聚焦最新央行声明
 
 ## 输出格式 (简洁):
@@ -3199,7 +3199,7 @@ Rapid macroeconomic assessment focusing on KEY INDICATORS ONLY.
 - Late Contraction: Technology (recovery plays)
 
 ## Tool Usage:
-1. Use `tavily_search` for latest economic data and central bank news
+1. Use `web_search` for latest economic data and central bank news
 2. Search for "[country] GDP growth [year]"
 3. Search for "Fed/PBOC/ECB policy [month] [year]"
 4. Search for "inflation forecast [country] [year]"
@@ -3271,7 +3271,7 @@ Rapid macroeconomic assessment focusing on KEY INDICATORS ONLY.
 - 收缩后期: 科技 (复苏题材)
 
 ## 工具使用:
-1. 使用 `tavily_search` 获取最新经济数据和央行新闻
+1. 使用 `web_search` 获取最新经济数据和央行新闻
 2. 搜索 "[国家] GDP增长 [年份]"
 3. 搜索 "美联储/央行 货币政策 [月份] [年份]"
 4. 搜索 "通胀预测 [国家] [年份]"
@@ -3337,7 +3337,7 @@ Rapid ESG assessment focusing on MATERIAL ISSUES ONLY.
 4. **Controversies**: Any major ESG controversies?
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
-- Use `tavily_search` for "[company] ESG controversy" or "[company] sustainability"
+- Use `web_search` for "[company] ESG controversy" or "[company] sustainability"
 
 ## Output Format (CONCISE):
 ```markdown
@@ -3368,7 +3368,7 @@ Rapid ESG assessment focusing on MATERIAL ISSUES ONLY.
 4. **争议事件**: 是否有重大ESG争议?
 
 ## 工具使用 (限制1-2次搜索):
-- 使用 `tavily_search` 搜索"[公司] ESG争议"或"[公司] 可持续发展"
+- 使用 `web_search` 搜索"[公司] ESG争议"或"[公司] 可持续发展"
 
 ## 输出格式 (简洁):
 ```markdown
@@ -3451,7 +3451,7 @@ Rapid ESG assessment focusing on MATERIAL ISSUES ONLY.
 - Tax avoidance schemes
 
 ## Tool Usage:
-1. Use `tavily_search` for "[company] ESG rating"
+1. Use `web_search` for "[company] ESG rating"
 2. Search "[company] sustainability report"
 3. Search "[company] controversy scandal"
 4. For public companies, check annual reports for ESG disclosures
@@ -3529,7 +3529,7 @@ Rapid ESG assessment focusing on MATERIAL ISSUES ONLY.
 - 避税行为
 
 ## 工具使用:
-1. 使用 `tavily_search` 搜索"[公司] ESG评级"
+1. 使用 `web_search` 搜索"[公司] ESG评级"
 2. 搜索"[公司] 可持续发展报告"
 3. 搜索"[公司] 争议 丑闻"
 4. 对上市公司，查看年报ESG披露
@@ -3596,7 +3596,7 @@ Rapid sentiment assessment focusing on CURRENT MOOD ONLY.
 4. **Sentiment Trend**: Improving/Stable/Deteriorating
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
-- Use `tavily_search` for "[company/asset] news today" or "[company/asset] sentiment"
+- Use `web_search` for "[company/asset] news today" or "[company/asset] sentiment"
 
 ## Output Format (CONCISE):
 ```markdown
@@ -3627,7 +3627,7 @@ Rapid sentiment assessment focusing on CURRENT MOOD ONLY.
 4. **情绪趋势**: 改善/稳定/恶化
 
 ## 工具使用 (限制1-2次搜索):
-- 使用 `tavily_search` 搜索"[公司/资产] 新闻 今天"或"[公司/资产] 市场情绪"
+- 使用 `web_search` 搜索"[公司/资产] 新闻 今天"或"[公司/资产] 市场情绪"
 
 ## 输出格式 (简洁):
 ```markdown
@@ -3709,7 +3709,7 @@ Rapid sentiment assessment focusing on CURRENT MOOD ONLY.
 - Insider buying
 
 ## Tool Usage:
-1. Use `tavily_search` for "[company] news today"
+1. Use `web_search` for "[company] news today"
 2. Search "[company] analyst rating upgrade downgrade"
 3. Search "[company] Reddit Twitter sentiment"
 4. For crypto: Search "[coin] fear greed index"
@@ -3787,7 +3787,7 @@ Rapid sentiment assessment focusing on CURRENT MOOD ONLY.
 - 内部人买入
 
 ## 工具使用:
-1. 使用 `tavily_search` 搜索"[公司] 新闻 今天"
+1. 使用 `web_search` 搜索"[公司] 新闻 今天"
 2. 搜索"[公司] 分析师 评级 升级 降级"
 3. 搜索"[公司] 雪球 讨论 情绪"
 4. 加密货币: 搜索"[币种] 恐惧贪婪指数"
@@ -3856,7 +3856,7 @@ Rapid quantitative assessment focusing on KEY METRICS ONLY.
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
 - Use `yahoo_finance` for stock price and fundamentals
-- Use `tavily_search` for sector P/E comparison
+- Use `web_search` for sector P/E comparison
 
 ## Output Format (CONCISE):
 ```markdown
@@ -3888,7 +3888,7 @@ Rapid quantitative assessment focusing on KEY METRICS ONLY.
 
 ## 工具使用 (限制1-2次搜索):
 - 使用 `yahoo_finance` 获取股价和基本面
-- 使用 `tavily_search` 获取行业P/E对比
+- 使用 `web_search` 获取行业P/E对比
 
 ## 输出格式 (简洁):
 ```markdown
@@ -3969,7 +3969,7 @@ Rapid quantitative assessment focusing on KEY METRICS ONLY.
 1. Use `yahoo_finance` to get:
    - action='price' for current price
    - action='history' for price history (calculate volatility)
-2. Use `tavily_search` for sector P/E, peer comparison
+2. Use `web_search` for sector P/E, peer comparison
 3. Calculate beta using price history vs market index
 
 ## Output Requirements:
@@ -4043,7 +4043,7 @@ Rapid quantitative assessment focusing on KEY METRICS ONLY.
 1. 使用 `yahoo_finance` 获取:
    - action='price' 当前价格
    - action='history' 价格历史 (计算波动率)
-2. 使用 `tavily_search` 获取行业P/E、同业对比
+2. 使用 `web_search` 获取行业P/E、同业对比
 3. 使用价格历史计算相对市场指数的Beta
 
 ## 输出要求:
@@ -4108,7 +4108,7 @@ Rapid deal structure assessment focusing on KEY TERMS ONLY.
 4. **Red Flag**: One deal structure concern
 
 ## Tool Usage (LIMIT TO 1 SEARCH):
-- Use `tavily_search` for "[industry] VC deal terms 2024" if needed
+- Use `web_search` for "[industry] VC deal terms 2024" if needed
 
 ## Output Format (CONCISE):
 ```markdown
@@ -4139,7 +4139,7 @@ Rapid deal structure assessment focusing on KEY TERMS ONLY.
 4. **风险点**: 一个交易结构担忧
 
 ## 工具使用 (限制1次搜索):
-- 如需要，使用 `tavily_search` 搜索"[行业] VC投资条款 2024"
+- 如需要，使用 `web_search` 搜索"[行业] VC投资条款 2024"
 
 ## 输出格式 (简洁):
 ```markdown
@@ -4228,7 +4228,7 @@ Rapid deal structure assessment focusing on KEY TERMS ONLY.
 - Secondary sale: Transfer restrictions
 
 ## Tool Usage:
-1. Use `tavily_search` for "[industry] VC deal terms"
+1. Use `web_search` for "[industry] VC deal terms"
 2. Search "Series [A/B/C] term sheet trends [year]"
 3. Search "[company type] M&A multiples"
 
@@ -4311,7 +4311,7 @@ Rapid deal structure assessment focusing on KEY TERMS ONLY.
 - 老股转让: 限制条件
 
 ## 工具使用:
-1. 使用 `tavily_search` 搜索"[行业] VC投资条款"
+1. 使用 `web_search` 搜索"[行业] VC投资条款"
 2. 搜索"[A/B/C]轮 条款清单 趋势 [年份]"
 3. 搜索"[公司类型] 并购倍数"
 
@@ -4377,7 +4377,7 @@ Rapid M&A assessment focusing on KEY FACTORS ONLY.
 4. **Deal Attractiveness**: Overall recommendation
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
-- Use `tavily_search` for "[industry] M&A deals 2024" or "[company] acquisition"
+- Use `web_search` for "[industry] M&A deals 2024" or "[company] acquisition"
 
 ## Output Format (CONCISE):
 ```markdown
@@ -4408,7 +4408,7 @@ Rapid M&A assessment focusing on KEY FACTORS ONLY.
 4. **交易吸引力**: 总体建议
 
 ## 工具使用 (限制1-2次搜索):
-- 使用 `tavily_search` 搜索"[行业] 并购交易 2024"或"[公司] 收购"
+- 使用 `web_search` 搜索"[行业] 并购交易 2024"或"[公司] 收购"
 
 ## 输出格式 (简洁):
 ```markdown
@@ -4503,7 +4503,7 @@ Rapid M&A assessment focusing on KEY FACTORS ONLY.
 - Preparation checklist
 
 ## Tool Usage:
-1. Use `tavily_search` for "[industry] M&A transactions [year]"
+1. Use `web_search` for "[industry] M&A transactions [year]"
 2. Search "[company] acquisition bid"
 3. Search "[sector] M&A multiples"
 4. Search "post-merger integration [industry]"
@@ -4593,7 +4593,7 @@ Rapid M&A assessment focusing on KEY FACTORS ONLY.
 - 准备清单
 
 ## 工具使用:
-1. 使用 `tavily_search` 搜索"[行业] 并购交易 [年份]"
+1. 使用 `web_search` 搜索"[行业] 并购交易 [年份]"
 2. 搜索"[公司] 收购 要约"
 3. 搜索"[行业] 并购倍数"
 4. 搜索"并购整合 [行业]"
@@ -4660,7 +4660,7 @@ Rapid on-chain assessment focusing on KEY SIGNALS ONLY.
 4. **Smart Money**: Following or exiting?
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
-- Use `tavily_search` for "[crypto] whale alert today" or "[crypto] exchange flow"
+- Use `web_search` for "[crypto] whale alert today" or "[crypto] exchange flow"
 
 ## Output Format (CONCISE):
 ```markdown
@@ -4691,7 +4691,7 @@ Rapid on-chain assessment focusing on KEY SIGNALS ONLY.
 4. **聪明钱**: 在进场还是离场?
 
 ## 工具使用 (限制1-2次搜索):
-- 使用 `tavily_search` 搜索"[币种] 巨鲸 今天"或"[币种] 交易所 流向"
+- 使用 `web_search` 搜索"[币种] 巨鲸 今天"或"[币种] 交易所 流向"
 
 ## 输出格式 (简洁):
 ```markdown
@@ -4767,7 +4767,7 @@ Rapid on-chain assessment focusing on KEY SIGNALS ONLY.
 - Active Addresses: Growing = healthy network
 
 ## Tool Usage:
-1. Use `tavily_search` to search "[crypto] whale alert today"
+1. Use `web_search` to search "[crypto] whale alert today"
 2. Search "[crypto] exchange netflow weekly"
 3. Search "[crypto] DeFi TVL trend"
 4. Search "[crypto] MVRV SOPR indicator"
@@ -4840,7 +4840,7 @@ Rapid on-chain assessment focusing on KEY SIGNALS ONLY.
 - 活跃地址: 增长=健康
 
 ## 工具使用:
-1. 使用 `tavily_search` 搜索"[币种] 巨鲸 动态 今天"
+1. 使用 `web_search` 搜索"[币种] 巨鲸 动态 今天"
 2. 搜索"[币种] 交易所 净流量"
 3. 搜索"[币种] DeFi TVL 趋势"
 4. 搜索"[币种] MVRV SOPR 指标"
