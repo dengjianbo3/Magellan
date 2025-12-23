@@ -288,13 +288,17 @@ async function handleSubmit() {
     for (const key in formData.value) {
       const value = formData.value[key];
       if (value !== '' && value !== null && value !== undefined && value !== 0) {
-        // Check if value is a File object
+        // Check if value is a File object - upload it first
         if (value instanceof File) {
-          // Convert File to base64
-          const base64 = await fileToBase64(value);
-          targetData[`${key}_base64`] = base64;
-          targetData[`${key}name`] = value.name;
-          console.log(`[UnifiedForm] Converted file ${value.name} to base64 (${base64.length} chars)`);
+          // Upload file to server first (to avoid Kafka message size limits)
+          const uploadResult = await uploadFile(value, key);
+          if (uploadResult.success) {
+            targetData[`${key}_id`] = uploadResult.file_id;
+            targetData[`${key}name`] = value.name;
+            console.log(`[UnifiedForm] Uploaded file ${value.name} → ${uploadResult.file_id}`);
+          } else {
+            throw new Error(`Failed to upload ${value.name}: ${uploadResult.error}`);
+          }
         } else {
           targetData[key] = value;
         }
@@ -307,23 +311,38 @@ async function handleSubmit() {
     });
   } catch (error) {
     console.error('[UnifiedForm] Error preparing form data:', error);
+    alert(`提交失败: ${error.message}`);
   } finally {
     isSubmitting.value = false;
   }
 }
 
-// Helper function to convert File to base64
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      // Remove data URL prefix (e.g., "data:application/pdf;base64,")
-      const base64 = reader.result.split(',')[1];
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+// Helper function to upload file to server
+async function uploadFile(file, fieldName) {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  // Determine upload endpoint based on field name
+  const endpoint = fieldName.includes('bp') 
+    ? '/api/files/v2/upload/bp'
+    : '/api/files/v2/upload/financial';
+  
+  try {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:8005'}${endpoint}`, {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!response.ok) {
+      const error = await response.text();
+      return { success: false, error };
+    }
+    
+    const result = await response.json();
+    return { success: true, file_id: result.file_id };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 </script>
 

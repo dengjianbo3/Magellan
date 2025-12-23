@@ -38,7 +38,7 @@ class BPParserAgent:
         解析 BP 文件并返回结构化数据
         
         Args:
-            target: 包含 bp_file_base64 和 bp_filename 的 dict
+            target: 包含 bp_file_id 或 bp_file_base64 的 dict
             context: 上下文信息（本 Agent 不需要）
             
         Returns:
@@ -46,13 +46,47 @@ class BPParserAgent:
         """
         logger.info(f"🔍 BPParserAgent starting analysis...")
         
-        # 获取 BP 文件数据
-        bp_base64 = target.get('bp_file_base64')
-        bp_filename = target.get('bp_filename', 'business_plan.pdf')
+        bp_filename = target.get('bp_filename', target.get('bp_file_name', 'business_plan.pdf'))
         company_name = target.get('company_name', 'Unknown Company')
         
-        if not bp_base64:
-            logger.error("No BP file provided in target")
+        # Method 1: Read file from disk using file_id (preferred, avoids Kafka size limits)
+        bp_file_id = target.get('bp_file_id')
+        bp_content = None
+        
+        if bp_file_id:
+            import os
+            UPLOAD_DIR = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+                "uploads"
+            )
+            
+            # Find file with matching file_id prefix
+            for filename in os.listdir(UPLOAD_DIR):
+                if filename.startswith(bp_file_id):
+                    file_path = os.path.join(UPLOAD_DIR, filename)
+                    with open(file_path, 'rb') as f:
+                        bp_content = f.read()
+                    bp_filename = filename
+                    logger.info(f"📄 Loaded BP from disk: {file_path}, size: {len(bp_content)} bytes")
+                    break
+            
+            if not bp_content:
+                logger.error(f"File not found for file_id: {bp_file_id}")
+                return {
+                    "success": False,
+                    "error": f"找不到文件: {bp_file_id}",
+                    "bp_data": None
+                }
+        
+        # Method 2: Legacy - decode from base64 (may fail with large files)
+        if not bp_content:
+            bp_base64 = target.get('bp_file_base64')
+            if bp_base64:
+                bp_content = base64.b64decode(bp_base64)
+                logger.info(f"📄 Decoded BP from base64, size: {len(bp_content)} bytes")
+        
+        if not bp_content:
+            logger.error("No BP file provided in target (neither file_id nor base64)")
             return {
                 "success": False,
                 "error": "未提供商业计划书文件",
@@ -60,10 +94,6 @@ class BPParserAgent:
             }
         
         try:
-            # 解码 base64
-            bp_content = base64.b64decode(bp_base64)
-            logger.info(f"📄 Parsed BP file: {bp_filename}, size: {len(bp_content)} bytes")
-            
             # 调用 BPParser 解析
             bp_data = await self.parser.parse_bp(
                 file_content=bp_content,
