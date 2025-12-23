@@ -234,16 +234,6 @@ class Meeting:
                 for msg in new_messages:
                     await self.message_bus.send(msg)
 
-                # 推送Agent发言完成事件
-                if self.agent_event_bus:
-                    await self.agent_event_bus.publish_result(
-                        agent_name=agent_name,
-                        message=f"{agent_name}发表了观点",
-                        data={
-                            "messages": [msg.to_dict() for msg in new_messages]
-                        }
-                    )
-
         # 第二步：Leader在最后发言（确保能看到所有专家的观点）
         # Leader每隔几轮参与一次，或者当有足够多的新消息时参与
         if leader_agent:
