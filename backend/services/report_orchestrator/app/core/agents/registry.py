@@ -65,6 +65,7 @@ class AgentRegistry:
             create_tech_specialist,
             create_legal_advisor,
             create_technical_analyst,
+            create_bp_parser,  # Added bp_parser
         )
 
         # 特殊 Agent 工厂
@@ -79,6 +80,7 @@ class AgentRegistry:
             "tech_specialist": create_tech_specialist,
             "legal_advisor": create_legal_advisor,
             "technical_analyst": create_technical_analyst,
+            "bp_parser": create_bp_parser,  # Added bp_parser
 
             # 特殊 Agent
             "leader": create_leader,
