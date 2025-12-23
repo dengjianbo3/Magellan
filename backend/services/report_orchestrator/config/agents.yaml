@@ -17,6 +17,42 @@
 
 agents:
   # ============================================
+  # BP解析Agent (必须作为早期投资分析第一步)
+  # ============================================
+
+  - agent_id: bp_parser
+    type: atomic
+    scope: [analysis]
+    name:
+      zh: 商业计划书解析器
+      en: Business Plan Parser
+    description:
+      zh: 解析商业计划书，提取公司、产品、团队、市场等结构化信息
+      en: Parse business plan to extract structured company, product, team, market information
+    class_path: app.core.agents.atomic.bp_parser_agent.create_bp_parser
+    capabilities:
+      - PDF解析
+      - 结构化信息提取
+      - 团队信息提取
+      - 市场数据提取
+      - 融资信息提取
+    inputs:
+      - bp_file_id: 上传的BP文件ID
+      - company_name: 公司名称 (可选)
+    outputs:
+      bp_data: 结构化BP数据
+      company_name: 公司名称
+      product_name: 产品名称
+      team: 核心团队
+      competitors: 竞品列表
+      summary: BP摘要
+    quick_mode_support: true
+    estimated_duration:
+      quick: 20
+      standard: 30
+    tags: [parser, bp, extraction]
+
+  # ============================================
   # 原子Agent层 (Atomic Agents)
   # 基础能力单元 - 所有场景复用
   # ============================================
