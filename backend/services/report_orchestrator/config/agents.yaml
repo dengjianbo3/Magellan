@@ -582,7 +582,7 @@ agents:
     description:
       zh: 综合所有原子Agent的分析结果，生成结构化投资分析报告
       en: Synthesize all atomic agent outputs into structured investment analysis report
-    class_path: app.agents.report_synthesizer_agent.ReportSynthesizerAgent
+    class_path: app.core.agents.special.synthesizer.create_report_synthesizer
     capabilities:
       - 多维分析整合
       - SWOT分析生成

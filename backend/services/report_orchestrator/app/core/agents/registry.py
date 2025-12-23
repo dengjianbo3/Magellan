@@ -68,7 +68,7 @@ class AgentRegistry:
         )
 
         # 特殊 Agent 工厂
-        from .special import create_leader
+        from .special import create_leader, create_report_synthesizer
 
         self._factory_map = {
             # 原子 Agent
@@ -82,6 +82,7 @@ class AgentRegistry:
 
             # 特殊 Agent
             "leader": create_leader,
+            "report_synthesizer": create_report_synthesizer,
         }
 
         logger.info(f"Registered {len(self._factory_map)} agent factories")
