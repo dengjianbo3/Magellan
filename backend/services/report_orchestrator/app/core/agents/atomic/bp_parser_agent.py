@@ -4,12 +4,15 @@ BP Parser Agent
 
 作为分析流程的第一步，解析 BP 并提取结构化数据
 所有后续 Agent 将基于 BP 数据进行分析
+
+使用 Gemini 3 API 直接解析 PDF，不走 Kafka
 """
 import base64
+import os
 import logging
 from typing import Dict, Any
 
-from app.parsers.bp_parser import BPParser
+from app.parsers.gemini_pdf_parser import get_gemini_parser
 
 logger = logging.getLogger(__name__)
 
@@ -18,20 +21,20 @@ class BPParserAgent:
     """
     BP 解析 Agent
     
-    将 BP 文件（base64 编码）解析为结构化数据，
+    使用 Gemini 3 API 直接解析 PDF 文件，
     作为后续所有分析 Agent 的数据基础
     """
     
     def __init__(
         self,
-        llm_gateway_url: str = "http://llm_gateway:8003",
+        llm_gateway_url: str = "http://llm_gateway:8003",  # 保留参数但不使用
         quick_mode: bool = False,
         language: str = "zh"
     ):
-        self.llm_gateway_url = llm_gateway_url
         self.quick_mode = quick_mode
         self.language = language
-        self.parser = BPParser(llm_gateway_url)
+        # 使用 Gemini PDF 解析器
+        self.parser = get_gemini_parser()
         
     async def analyze(self, target: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
@@ -94,8 +97,8 @@ class BPParserAgent:
             }
         
         try:
-            # 调用 BPParser 解析
-            bp_data = await self.parser.parse_bp(
+            # 调用 Gemini PDF 解析器
+            bp_data = await self.parser.parse_pdf(
                 file_content=bp_content,
                 filename=bp_filename,
                 company_name=company_name
