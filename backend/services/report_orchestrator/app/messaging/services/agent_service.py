@@ -98,6 +98,17 @@ class AgentMessageService:
 
         start_time = datetime.now()
 
+        # bp_parser 必须直接执行，不走 Kafka，因为：
+        # 1. PDF 解析使用 Gemini API 需要较长时间
+        # 2. PDF 文件较大，Kafka 消息有大小限制
+        agents_bypass_kafka = ["bp_parser"]
+        
+        if agent_id in agents_bypass_kafka:
+            logger.info(f"Agent {agent_id} bypasses Kafka, executing directly")
+            result = await self._execute_directly(request)
+            await self._log_audit(request, result, start_time)
+            return result
+
         # 尝试使用 Kafka
         if self._kafka_client and self._kafka_client.is_available:
             try:
