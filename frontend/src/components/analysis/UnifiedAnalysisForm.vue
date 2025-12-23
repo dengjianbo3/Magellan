@@ -264,7 +264,7 @@ function goBack() {
   emit('back');
 }
 
-function handleSubmit() {
+async function handleSubmit() {
   // Validate all fields
   let isValid = true;
   for (const fieldName in fieldRefs.value) {
@@ -280,25 +280,50 @@ function handleSubmit() {
     return;
   }
 
-  // Filter out empty optional fields
-  const targetData = {};
-  for (const key in formData.value) {
-    const value = formData.value[key];
-    if (value !== '' && value !== null && value !== undefined && value !== 0) {
-      targetData[key] = value;
-    }
-  }
-
   isSubmitting.value = true;
 
-  // Simulate async operation
-  setTimeout(() => {
-    isSubmitting.value = false;
+  try {
+    // Filter out empty optional fields and handle File objects
+    const targetData = {};
+    for (const key in formData.value) {
+      const value = formData.value[key];
+      if (value !== '' && value !== null && value !== undefined && value !== 0) {
+        // Check if value is a File object
+        if (value instanceof File) {
+          // Convert File to base64
+          const base64 = await fileToBase64(value);
+          targetData[`${key}_base64`] = base64;
+          targetData[`${key}name`] = value.name;
+          console.log(`[UnifiedForm] Converted file ${value.name} to base64 (${base64.length} chars)`);
+        } else {
+          targetData[key] = value;
+        }
+      }
+    }
+
     emit('analysis-start', {
       target: targetData,
       config: config.value
     });
-  }, 500);
+  } catch (error) {
+    console.error('[UnifiedForm] Error preparing form data:', error);
+  } finally {
+    isSubmitting.value = false;
+  }
+}
+
+// Helper function to convert File to base64
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      // Remove data URL prefix (e.g., "data:application/pdf;base64,")
+      const base64 = reader.result.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 </script>
 
