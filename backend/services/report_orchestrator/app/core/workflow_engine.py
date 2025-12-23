@@ -71,7 +71,7 @@ class WorkflowEngine:
 
     async def execute(self, initial_context: Dict[str, Any]) -> Dict[str, Any]:
         """
-        执行整个workflow
+        执行整个workflow（支持并行执行）
 
         Args:
             initial_context: 初始上下文，包含用户输入和目标信息
@@ -98,7 +98,23 @@ class WorkflowEngine:
         Raises:
             WorkflowExecutionError: Workflow执行失败
         """
+        import asyncio
+
         try:
+            # 0. 检查缓存 (如果启用)
+            target = initial_context.get('target', {})
+            if target:
+                try:
+                    from .session_store import SessionStore
+                    session_store = SessionStore()
+                    cached_result = session_store.get_cached_analysis(target, self.scenario_id)
+                    if cached_result:
+                        logger.info(f"💾 Cache hit! Using cached analysis for {self.scenario_id}")
+                        cached_result['from_cache'] = True
+                        return cached_result
+                except Exception as e:
+                    logger.warning(f"Cache check failed (continuing without cache): {e}")
+
             # 1. 验证workflow配置
             if not self.registry.validate_workflow(self.scenario_id, self.mode):
                 raise WorkflowExecutionError(
@@ -121,41 +137,67 @@ class WorkflowEngine:
             # 4. 报告开始
             await self._report_workflow_start()
 
-            # 5. 顺序执行每个步骤
-            for step_index, step in enumerate(steps, 1):
-                self.current_step = step_index
+            # 5. 按依赖关系分组执行（并行优化）
+            executed_step_ids = set()
+            step_map = {step['step_id']: step for step in steps}
 
-                logger.info(f"⚡ Executing step {step_index}/{self.total_steps}: {step['agent_id']}")
-
-                try:
-                    # 执行步骤
-                    result = await self._execute_step(step)
-
-                    # 存储结果到context
-                    result_key = f"{step['agent_id']}_result"
-                    self.context[result_key] = result
-
-                    logger.info(f"✅ Step {step_index} completed: {step['agent_id']}")
-
-                except Exception as e:
-                    # 记录失败
-                    self.failed_steps.append({
-                        'step_id': step.get('step_id'),
-                        'agent_id': step['agent_id'],
-                        'error': str(e)
-                    })
-
-                    logger.error(f"❌ Step {step_index} failed: {step['agent_id']} - {e}")
-
-                    # 根据配置决定是继续还是停止
-                    if step.get('required', True):
-                        raise WorkflowExecutionError(
-                            f"Required step failed: {step['agent_id']} - {e}"
-                        )
-                    else:
-                        # 非必需步骤失败，继续执行
-                        logger.warning(f"⚠️  Non-required step failed, continuing...")
+            while len(executed_step_ids) < len(steps):
+                # 找出可以并行执行的步骤（依赖已满足）
+                ready_steps = []
+                for step in steps:
+                    step_id = step['step_id']
+                    if step_id in executed_step_ids:
                         continue
+                    
+                    depends_on = step.get('depends_on', [])
+                    if all(dep_id in executed_step_ids for dep_id in depends_on):
+                        ready_steps.append(step)
+
+                if not ready_steps:
+                    # 防止死循环
+                    remaining = [s['step_id'] for s in steps if s['step_id'] not in executed_step_ids]
+                    raise WorkflowExecutionError(f"Deadlock detected! Remaining steps: {remaining}")
+
+                # 并行执行所有就绪的步骤
+                if len(ready_steps) > 1:
+                    logger.info(f"🚀 Parallel execution: {[s['agent_id'] for s in ready_steps]}")
+                
+                async def execute_with_tracking(step):
+                    """执行单个步骤并跟踪结果"""
+                    step_index = steps.index(step) + 1
+                    self.current_step = step_index
+                    logger.info(f"⚡ Executing step {step_index}/{self.total_steps}: {step['agent_id']}")
+                    
+                    try:
+                        result = await self._execute_step(step)
+                        result_key = f"{step['agent_id']}_result"
+                        self.context[result_key] = result
+                        logger.info(f"✅ Step {step_index} completed: {step['agent_id']}")
+                        return (step['step_id'], 'success', result)
+                    except Exception as e:
+                        self.failed_steps.append({
+                            'step_id': step.get('step_id'),
+                            'agent_id': step['agent_id'],
+                            'error': str(e)
+                        })
+                        logger.error(f"❌ Step {step_index} failed: {step['agent_id']} - {e}")
+                        
+                        if step.get('required', True):
+                            raise
+                        else:
+                            logger.warning(f"⚠️  Non-required step failed, continuing...")
+                            return (step['step_id'], 'failed', None)
+
+                # 并行执行
+                tasks = [execute_with_tracking(step) for step in ready_steps]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                # 处理结果
+                for result in results:
+                    if isinstance(result, Exception):
+                        raise WorkflowExecutionError(f"Step execution failed: {result}")
+                    step_id, status, _ = result
+                    executed_step_ids.add(step_id)
 
             # 6. 标记完成
             self.context['end_time'] = datetime.now().isoformat()
@@ -164,6 +206,16 @@ class WorkflowEngine:
 
             # 7. 报告完成
             await self._report_workflow_complete()
+
+            # 8. 缓存结果 (成功时)
+            if self.context['status'] == 'success' and target:
+                try:
+                    from .session_store import SessionStore
+                    session_store = SessionStore()
+                    session_store.cache_analysis_result(target, self.scenario_id, self.context)
+                    logger.info(f"💾 Cached analysis result for {self.scenario_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to cache result: {e}")
 
             logger.info(f"🎉 Workflow execution completed: status={self.context['status']}")
 
