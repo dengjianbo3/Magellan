@@ -364,13 +364,18 @@ class WorkflowEngine:
     async def _report_step_complete(self, step: Dict[str, Any], result: Any):
         """报告步骤完成"""
         if self.websocket:
+            # 提取关键信息用于流式展示
+            summary = None
+            if isinstance(result, dict):
+                summary = result.get('summary') or result.get('key_findings', [])[:3]
+            
             await self.websocket.send_json({
                 'type': 'step_complete',
                 'step_id': step.get('step_id'),
                 'agent_id': step['agent_id'],
                 'progress': f"{self.current_step}/{self.total_steps}",
+                'summary': summary,  # 发送摘要而非完整结果
                 'timestamp': datetime.now().isoformat()
-                # 注意: 不发送完整result，避免数据过大
             })
 
     async def _report_step_error(self, step: Dict[str, Any], error: str):
@@ -391,6 +396,44 @@ class WorkflowEngine:
                 'type': 'workflow_complete',
                 'status': self.context['status'],
                 'failed_steps': self.failed_steps,
+                'timestamp': datetime.now().isoformat()
+            })
+
+    async def stream_content(self, agent_id: str, content_type: str, content: str):
+        """
+        流式输出Agent内容
+
+        Args:
+            agent_id: Agent标识
+            content_type: 内容类型 (thinking/analysis/finding/recommendation)
+            content: 内容片段
+        """
+        if self.websocket:
+            await self.websocket.send_json({
+                'type': 'stream_content',
+                'agent_id': agent_id,
+                'content_type': content_type,
+                'content': content,
+                'timestamp': datetime.now().isoformat()
+            })
+
+    async def stream_progress(self, agent_id: str, phase: str, progress_pct: int, message: str = None):
+        """
+        流式输出Agent执行进度
+
+        Args:
+            agent_id: Agent标识
+            phase: 执行阶段 (searching/analyzing/summarizing)
+            progress_pct: 进度百分比 (0-100)
+            message: 可选的进度消息
+        """
+        if self.websocket:
+            await self.websocket.send_json({
+                'type': 'stream_progress',
+                'agent_id': agent_id,
+                'phase': phase,
+                'progress_pct': progress_pct,
+                'message': message,
                 'timestamp': datetime.now().isoformat()
             })
 
