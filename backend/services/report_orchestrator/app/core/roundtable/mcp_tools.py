@@ -376,8 +376,7 @@ from .analysis_tools import (
 # Phase 3 MCP工具桥接
 from .mcp_tool_bridge import (
     MCPFinancialDataTool,
-    MCPCompanyIntelligenceTool,
-    get_mcp_tool_for_agent
+    MCPCompanyIntelligenceTool
 )
 
 # Phase 4 高级工具

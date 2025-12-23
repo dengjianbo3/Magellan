@@ -13,7 +13,6 @@ import logging
 import random
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Literal
-import json
 
 try:
     import httpx
@@ -21,8 +20,7 @@ except ImportError:
     httpx = None
 
 from app.core.trading.execution_config import (
-    ExecutionConfig, ExecutionPlan, ExecutionResult, CapitalTier,
-    get_execution_config
+    ExecutionPlan, ExecutionResult, get_execution_config
 )
 
 logger = logging.getLogger(__name__)

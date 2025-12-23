@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any
 
 from app.models.trading_models import (
-    Position, AccountBalance, MarketData, TradeRecord, TradingSignal
+    Position, AccountBalance, MarketData
 )
 
 logger = logging.getLogger(__name__)

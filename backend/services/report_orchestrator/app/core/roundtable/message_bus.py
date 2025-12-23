@@ -4,7 +4,6 @@ MessageBus: The communication backbone of the multi-agent system
 """
 from typing import Dict, List, Callable, Awaitable, Optional
 from .message import Message
-import asyncio
 
 
 class MessageBus:

@@ -10,10 +10,10 @@ Agent 消息服务
 import asyncio
 import logging
 import uuid
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, Optional, Callable
 from datetime import datetime
 
-from ..messages import AgentRequest, AgentResponse, MessageType, AuditLogMessage
+from ..messages import AgentRequest, AgentResponse, AuditLogMessage
 from ..topics import MagellanTopics
 from ..kafka_client import get_kafka_client
 from ...core.agents import AgentRegistry, get_agent_registry

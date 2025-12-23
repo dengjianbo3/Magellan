@@ -6,9 +6,8 @@ Supports crypto (Binance) and stock (Yahoo Finance) markets.
 """
 
 import pandas as pd
-import numpy as np
-from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime, timedelta
+from typing import Dict, Any, List, Optional
+from datetime import datetime
 import httpx
 import asyncio
 

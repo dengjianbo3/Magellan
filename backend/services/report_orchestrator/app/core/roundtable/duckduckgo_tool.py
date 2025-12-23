@@ -5,7 +5,7 @@ DuckDuckGo Search Tool
 使用 duckduckgo-search 包，完全免费无API Key
 """
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 from .tool import Tool
 
 

@@ -1,10 +1,9 @@
 """
 Yahoo Finance MCP Tool for Financial Data Retrieval
 """
-import httpx
 import yfinance as yf
-from typing import Any, Dict, List, Optional
-from datetime import datetime, timedelta
+from typing import Any, Dict
+from datetime import datetime
 from .tool import Tool
 
 

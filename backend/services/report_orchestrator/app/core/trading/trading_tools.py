@@ -7,7 +7,7 @@ Provides tools that trading agents can use to analyze markets and execute trades
 import logging
 import os
 from datetime import datetime
-from typing import Optional, Dict, List, Any
+from typing import Optional, List
 import json
 
 try:
@@ -18,9 +18,6 @@ except ImportError:
     np = None
 
 from app.core.roundtable.tool import FunctionTool
-from app.models.trading_models import (
-    MarketData, TechnicalIndicators, Position, AccountBalance
-)
 from app.core.trading.price_service import get_current_btc_price, PriceServiceError
 
 logger = logging.getLogger(__name__)
@@ -1182,7 +1179,7 @@ class TradingToolkit:
         """Get funding rate - fetches REAL data from Binance Futures API"""
         try:
             import httpx
-            from datetime import datetime, timedelta
+            from datetime import datetime
             async with httpx.AsyncClient(timeout=10.0) as client:
                 # Fetch from Binance Futures API
                 response = await client.get(

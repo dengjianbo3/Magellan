@@ -5,7 +5,6 @@ Adapts OKXClient to match the PaperTrader interface,
 allowing the trading system to use OKX demo trading.
 """
 
-import os
 import logging
 import asyncio
 import json

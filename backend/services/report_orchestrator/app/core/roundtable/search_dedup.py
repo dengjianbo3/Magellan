@@ -7,7 +7,6 @@ Search Deduplication - 会话级语义去重
 - 相似度>85%且5分钟内 → 复用结果
 - 每个会话独立缓存
 """
-import hashlib
 import logging
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta

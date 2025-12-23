@@ -9,7 +9,7 @@ import json
 import re
 import logging
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional
 
 from ..domain.vote import Vote, VoteDirection
 from .direction_normalizer import DirectionNormalizer

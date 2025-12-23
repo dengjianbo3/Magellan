@@ -2,7 +2,7 @@
 Meeting: The orchestrator that manages the multi-agent discussion
 Meeting: 管理多智能体讨论的编排器
 """
-from typing import List, Optional, Dict, Any, Callable, Awaitable, TYPE_CHECKING
+from typing import List, Optional, Dict, Any, Callable
 from .agent import Agent
 from .message import Message, MessageType
 from .message_bus import MessageBus

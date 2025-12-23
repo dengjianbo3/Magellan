@@ -18,11 +18,8 @@ import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import seaborn as sns
 import numpy as np
-from typing import Dict, Any, List, Optional, Tuple, Union
+from typing import Dict, Any, List, Union
 import io
-import base64
-from datetime import datetime
-import os
 import logging
 
 # Type for output path - can be a file path string or a BytesIO object

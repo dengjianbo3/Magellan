@@ -7,7 +7,6 @@ Report Storage Service
 
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,6 @@ Team Evaluator Agent
 
 职责：评估创始团队背景、能力、经验和团队结构
 """
-from typing import List
 from app.core.roundtable.investment_agents import create_team_evaluator
 from app.core.roundtable.rewoo_agent import ReWOOAgent
 

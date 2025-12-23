@@ -5,7 +5,6 @@ Health Check Router
 
 import time
 from datetime import datetime
-from typing import Dict, Any
 
 import httpx
 from fastapi import APIRouter

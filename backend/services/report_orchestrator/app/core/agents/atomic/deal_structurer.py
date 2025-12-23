@@ -4,7 +4,6 @@ Deal Structurer Agent
 
 职责：设计交易结构、估值谈判、条款设计和退出机制
 """
-from typing import List
 from app.core.roundtable.investment_agents import create_deal_structurer
 from app.core.roundtable.rewoo_agent import ReWOOAgent
 

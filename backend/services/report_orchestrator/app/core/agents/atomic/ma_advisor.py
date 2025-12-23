@@ -4,7 +4,6 @@ M&A Advisor Agent
 
 职责：并购标的筛选、战略契合度分析、协同效应量化和整合风险评估
 """
-from typing import List
 from app.core.roundtable.investment_agents import create_ma_advisor
 from app.core.roundtable.rewoo_agent import ReWOOAgent
 

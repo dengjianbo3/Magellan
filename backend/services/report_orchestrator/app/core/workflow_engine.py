@@ -14,9 +14,8 @@ WorkflowEngine - Workflow执行引擎
 - 可扩展: 支持添加新的执行策略
 """
 
-import asyncio
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime
 from fastapi import WebSocket
 

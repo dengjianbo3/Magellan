@@ -5,7 +5,6 @@ Phase 1: Analysts gather and analyze market data.
 """
 
 from datetime import datetime
-from typing import Dict, Any, Optional
 import logging
 
 from .base import PhaseExecutor, PhaseContext, PhaseResult

@@ -5,11 +5,11 @@ Implements in-memory caching for API responses with configurable TTL
 import time
 import hashlib
 import json
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Optional, Callable
 from functools import wraps
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response, JSONResponse
+from starlette.responses import Response
 import logging
 
 logger = logging.getLogger(__name__)

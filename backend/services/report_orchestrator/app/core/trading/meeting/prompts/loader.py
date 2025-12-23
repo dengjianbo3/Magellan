@@ -4,7 +4,6 @@ Prompt Loader
 Loads prompt templates from YAML files or returns defaults.
 """
 
-import os
 import yaml
 import logging
 from pathlib import Path

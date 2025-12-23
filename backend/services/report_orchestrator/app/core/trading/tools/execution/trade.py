@@ -4,7 +4,7 @@ Trade Execution Tools
 Tools for opening and closing trading positions.
 """
 
-from typing import List, Optional
+from typing import List
 import logging
 
 from ..base import BaseTool, ToolResult, ToolParameter, ToolCategory

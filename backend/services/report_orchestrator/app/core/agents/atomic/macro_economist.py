@@ -4,7 +4,6 @@ Macro Economist Agent
 
 职责：分析宏观经济周期、货币政策、通胀趋势和板块轮动
 """
-from typing import List
 from app.core.roundtable.investment_agents import create_macro_economist
 from app.core.roundtable.rewoo_agent import ReWOOAgent
 

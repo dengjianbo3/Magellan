@@ -4,7 +4,6 @@ Risk Assessor Agent
 
 职责：识别和评估各类投资风险（市场、运营、财务、法律等）
 """
-from typing import List
 from app.core.roundtable.investment_agents import create_risk_assessor
 from app.core.roundtable.rewoo_agent import ReWOOAgent
 

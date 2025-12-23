@@ -11,7 +11,7 @@ import asyncio
 import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Union
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 

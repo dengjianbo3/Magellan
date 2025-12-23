@@ -10,7 +10,7 @@ Hybrid approach:
 Target accuracy: 85%+
 """
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 from enum import Enum
 from pydantic import BaseModel
 import httpx

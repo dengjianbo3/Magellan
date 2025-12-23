@@ -3,7 +3,6 @@ Tool: MCP-based capabilities that agents can use
 工具: Agent可以使用的基于MCP的能力
 """
 from typing import Any, Dict, Optional, Callable
-from pydantic import BaseModel
 from abc import ABC, abstractmethod
 
 
@@ -130,7 +129,6 @@ class MCPTool(Tool):
     async def execute(self, **kwargs) -> Any:
         """通过MCP协议调用远程服务"""
         import httpx
-        import json
 
         async with httpx.AsyncClient() as client:
             response = await client.post(

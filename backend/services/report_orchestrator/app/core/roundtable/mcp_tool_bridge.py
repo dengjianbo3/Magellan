@@ -2,7 +2,7 @@
 MCP 工具桥接器
 将 MCP 服务包装为 Agent 可用的 Tool 接口
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from .tool import Tool
 from .mcp_services.financial_data_service import (
     FinancialDataService,

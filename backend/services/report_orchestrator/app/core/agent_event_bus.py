@@ -4,8 +4,7 @@ Agent事件总线 - 实时推送Agent工作状态
 
 用于在分析过程中实时向前端推送Agent的思考过程和中间结果
 """
-import asyncio
-from typing import Dict, List, Callable, Optional, Any
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pydantic import BaseModel
 from enum import Enum

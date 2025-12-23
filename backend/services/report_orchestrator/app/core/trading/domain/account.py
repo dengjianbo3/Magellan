@@ -5,7 +5,6 @@ Represents account balance and trading capacity information.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass

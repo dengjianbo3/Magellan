@@ -4,7 +4,6 @@ Quant Strategist Agent
 
 职责：因子分析、组合优化、风险量化和策略回测
 """
-from typing import List
 from app.core.roundtable.investment_agents import create_quant_strategist
 from app.core.roundtable.rewoo_agent import ReWOOAgent
 

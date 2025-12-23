@@ -8,24 +8,21 @@ import uuid
 import time
 from datetime import datetime
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 
 # V2 models (keep for backward compatibility)
 from .models.dd_models import (
-    DDAnalysisRequest,
-    DDWorkflowMessage,
     DDSessionContext,
-    PreliminaryIM,
 )
 
 # V3: Import state machine
 from .core.dd_state_machine import DDStateMachine
 
 # V4: Import intent recognition and conversation management
-from .core.intent_recognizer import IntentRecognizer, ConversationManager, IntentType
+from .core.intent_recognizer import IntentRecognizer, ConversationManager
 
 # V5: Import Redis session store
 from .core.session_store import SessionStore
@@ -41,10 +38,10 @@ from .api.routers.export import router as export_router, set_get_report_func
 from .api.routers.dd_workflow import router as dd_workflow_router, set_session_funcs
 from .api.routers.monitoring import router as monitoring_router
 from .api.trading_routes import router as trading_router
-from .middleware import RequestLoggingMiddleware, CachingMiddleware, response_cache
+from .middleware import RequestLoggingMiddleware, CachingMiddleware
 
 # Phase 4: Import storage services
-from .services.storage import init_report_storage, get_report_storage
+from .services.storage import init_report_storage
 
 # Phase 2: Prometheus metrics
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -54,10 +51,7 @@ from .core.logging_config import configure_logging, get_logger
 
 # Phase 2: Knowledge Base services
 from .services.vector_store import VectorStoreService
-from .services.document_parser import DocumentParser
 from .services.rag_service import RAGService
-import tempfile
-import shutil
 
 # Configure logging (JSON in production, console in development)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -977,7 +971,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
     print(f"[ROUNDTABLE] WebSocket connection accepted", flush=True)
 
     # Import roundtable components
-    from .core.roundtable import Meeting, Message, MessageType
+    from .core.roundtable import Meeting, Message
     from .core.roundtable.investment_agents import (
         create_leader,
         create_market_analyst,
@@ -1608,9 +1602,7 @@ async def websocket_conversation_endpoint(websocket: WebSocket):
 
 from .models.analysis_models import (
     AnalysisRequest,
-    AnalysisSession,
-    InvestmentScenario,
-    AnalysisDepth
+    InvestmentScenario
 )
 from .core.orchestrators.early_stage_orchestrator import EarlyStageInvestmentOrchestrator
 from .core.orchestrators.growth_orchestrator import GrowthInvestmentOrchestrator

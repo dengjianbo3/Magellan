@@ -5,7 +5,6 @@ Normalizes various direction expressions to standard enum values.
 Handles English, Chinese, and various synonyms.
 """
 
-from typing import Optional
 from ..domain.vote import VoteDirection
 
 

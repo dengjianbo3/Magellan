@@ -5,7 +5,6 @@ Dashboard Router
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends

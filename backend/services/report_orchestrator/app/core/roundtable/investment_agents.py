@@ -6,10 +6,9 @@ Based on the Magellan investment analysis requirements
 """
 from .agent import Agent
 from .rewoo_agent import ReWOOAgent
-from .tool import FunctionTool, MCPTool
+from .tool import FunctionTool
 from .mcp_tools import create_mcp_tools_for_agent
 from typing import Dict, Any, List
-import httpx
 
 
 # ==================== Language Helper ====================

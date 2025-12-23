@@ -6,7 +6,6 @@ Report Synthesizer Agent
 
 注意：此Agent仅用于分析模块workflow的最后一步
 """
-from typing import Dict, Any, List, Optional
 
 # 从现有实现导入
 from app.agents.report_synthesizer_agent import (

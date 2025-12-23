@@ -4,7 +4,6 @@ Market Analyst Agent
 
 职责：分析市场规模、竞争格局、行业趋势和增长潜力
 """
-from typing import List
 from app.core.roundtable.investment_agents import create_market_analyst
 from app.core.roundtable.rewoo_agent import ReWOOAgent
 

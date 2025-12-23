@@ -9,7 +9,7 @@ import logging
 from typing import Dict, Any
 
 import httpx
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 
 logger = logging.getLogger(__name__)
 

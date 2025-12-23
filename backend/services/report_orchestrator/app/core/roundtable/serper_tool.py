@@ -6,8 +6,7 @@ Serper Search Tool - L1层Google搜索工具
 """
 import os
 import httpx
-import asyncio
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 from .tool import Tool
 
 
