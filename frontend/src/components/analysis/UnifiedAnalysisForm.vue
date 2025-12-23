@@ -323,9 +323,10 @@ async function uploadFile(file, fieldName) {
   formData.append('file', file);
   
   // Determine upload endpoint based on field name
+  // Note: files router is mounted at /api, so path is /api/v2/upload/...
   const endpoint = fieldName.includes('bp') 
-    ? '/api/files/v2/upload/bp'
-    : '/api/files/v2/upload/financial';
+    ? '/api/v2/upload/bp'
+    : '/api/v2/upload/financial';
   
   try {
     const response = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:8005'}${endpoint}`, {
