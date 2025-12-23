@@ -266,14 +266,18 @@ class WorkflowEngine:
             agent_input = self._prepare_agent_input(step)
 
             # 3. 执行agent
-            # 注意: 这里假设agent有一个统一的接口方法
-            # 实际实现中可能需要根据agent类型调用不同的方法
+            # 根据agent类型调用不同的方法
+            # Agent.analyze 期望 (target, context) 两个参数
+            target = agent_input.get('target', agent_input)
+            context = {k: v for k, v in agent_input.items() if k != 'target'}
+            
             if hasattr(agent, 'run'):
                 result = await agent.run(agent_input)
             elif hasattr(agent, 'execute'):
                 result = await agent.execute(agent_input)
             elif hasattr(agent, 'analyze'):
-                result = await agent.analyze(agent_input)
+                # Agent.analyze(target, context) - 传递分离的参数
+                result = await agent.analyze(target, context)
             else:
                 # Fallback: 如果是旧的Agent类（同步方法）
                 if hasattr(agent, 'process'):
