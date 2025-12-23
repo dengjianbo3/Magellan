@@ -127,6 +127,35 @@
                 </span>
               </div>
             </template>
+
+            <!-- Performance Metrics -->
+            <div v-if="performanceMetrics.totalTrades > 0" class="pt-3 border-t border-white/10 space-y-2">
+              <div class="text-text-secondary text-xs mb-2">策略绩效指标</div>
+              <div class="grid grid-cols-2 gap-2 text-sm">
+                <div class="flex justify-between items-center">
+                  <span class="text-text-secondary">总交易</span>
+                  <span class="text-white">{{ performanceMetrics.totalTrades }}笔</span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-text-secondary">胜率</span>
+                  <span :class="performanceMetrics.winRate >= 50 ? 'text-emerald-400' : 'text-yellow-400'">
+                    {{ performanceMetrics.winRate.toFixed(1) }}%
+                  </span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-text-secondary">盈亏比</span>
+                  <span :class="performanceMetrics.pnlRatio >= 1.5 ? 'text-emerald-400' : 'text-yellow-400'">
+                    {{ performanceMetrics.pnlRatio === Infinity ? '∞' : performanceMetrics.pnlRatio.toFixed(2) }}
+                  </span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-text-secondary">夏普</span>
+                  <span :class="performanceMetrics.sharpeRatio >= 1 ? 'text-emerald-400' : performanceMetrics.sharpeRatio >= 0 ? 'text-yellow-400' : 'text-red-400'">
+                    {{ performanceMetrics.sharpeRatio.toFixed(2) }}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -795,6 +824,62 @@ const alpha = computed(() => {
     return null;  // Not enough data
   }
   return totalProfitPercent.value - btcBenchmark.value.returnPercent;
+});
+
+// Performance metrics calculated from trade history
+const performanceMetrics = computed(() => {
+  const trades = tradeHistory.value.filter(t => t.pnl !== null);
+  if (trades.length === 0) {
+    return { winRate: 0, pnlRatio: 0, sharpeRatio: 0, totalTrades: 0 };
+  }
+
+  // Win rate
+  const wins = trades.filter(t => t.pnl > 0).length;
+  const losses = trades.filter(t => t.pnl < 0).length;
+  const totalTrades = wins + losses;
+  const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
+
+  // PnL ratio (average win / average loss)
+  const totalProfit = trades.filter(t => t.pnl > 0).reduce((sum, t) => sum + t.pnl, 0);
+  const totalLoss = Math.abs(trades.filter(t => t.pnl < 0).reduce((sum, t) => sum + t.pnl, 0));
+  const avgWin = wins > 0 ? totalProfit / wins : 0;
+  const avgLoss = losses > 0 ? totalLoss / losses : 0;
+  const pnlRatio = avgLoss > 0 ? avgWin / avgLoss : avgWin > 0 ? Infinity : 0;
+
+  // Sharpe ratio (annualized)
+  // Group by date and calculate daily returns
+  const dailyPnl = {};
+  trades.forEach(t => {
+    const date = (t.timestamp || '').slice(0, 10);
+    if (date) {
+      dailyPnl[date] = (dailyPnl[date] || 0) + t.pnl;
+    }
+  });
+
+  const dates = Object.keys(dailyPnl).sort();
+  if (dates.length < 2) {
+    return { winRate, pnlRatio, sharpeRatio: 0, totalTrades };
+  }
+
+  // Calculate daily returns
+  let cumulative = INITIAL_CAPITAL;
+  const dailyReturns = [];
+  dates.forEach(date => {
+    const pnl = dailyPnl[date];
+    const dailyReturn = cumulative > 0 ? pnl / cumulative : 0;
+    dailyReturns.push(dailyReturn);
+    cumulative += pnl;
+  });
+
+  // Sharpe = (mean - rf) / std * sqrt(252)
+  const meanReturn = dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length;
+  const variance = dailyReturns.reduce((sum, r) => sum + Math.pow(r - meanReturn, 2), 0) / dailyReturns.length;
+  const stdDev = Math.sqrt(variance);
+  const riskFreeDaily = 0.05 / 252;
+  const dailySharpe = stdDev > 0 ? (meanReturn - riskFreeDaily) / stdDev : 0;
+  const sharpeRatio = dailySharpe * Math.sqrt(252);
+
+  return { winRate, pnlRatio, sharpeRatio, totalTrades };
 });
 
 // Dynamic interval text based on actual scheduler state
