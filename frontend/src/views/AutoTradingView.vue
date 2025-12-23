@@ -60,26 +60,54 @@
         <div class="glass-panel rounded-xl p-6">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
             <span class="material-symbols-outlined mr-2 text-primary">account_balance_wallet</span>
-            {{ t('trading.account') || 'Account' }}
+            {{ t('trading.account') || '账户概览' }}
           </h3>
 
-          <div class="space-y-4">
+          <div class="space-y-3">
+            <!-- Trading Start Date -->
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary">{{ t('trading.equity') || 'Total Equity' }}</span>
+              <span class="text-text-secondary text-sm">交易起始日期</span>
+              <span class="text-white">{{ tradingStartDateFormatted }}</span>
+            </div>
+
+            <!-- Initial Capital -->
+            <div class="flex justify-between items-center">
+              <span class="text-text-secondary text-sm">起始金额</span>
+              <span class="text-white font-medium">$3,000.00</span>
+            </div>
+
+            <!-- Current Equity -->
+            <div class="flex justify-between items-center pt-2 border-t border-white/10">
+              <span class="text-text-secondary">当前权益</span>
               <span class="text-2xl font-bold text-white">${{ formatNumber(account.totalEquity) }}</span>
             </div>
 
+            <!-- Total Profit -->
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary">{{ t('trading.available') || 'Available' }}</span>
-              <span class="text-white">${{ formatNumber(account.availableBalance) }}</span>
-            </div>
-
-            <div class="flex justify-between items-center">
-              <span class="text-text-secondary">{{ t('trading.unrealizedPnl') || 'Unrealized PnL' }}</span>
-              <span :class="account.unrealizedPnl >= 0 ? 'text-emerald-400' : 'text-red-400'">
-                {{ account.unrealizedPnl >= 0 ? '+' : '' }}${{ formatNumber(account.unrealizedPnl) }}
+              <span class="text-text-secondary">总盈利</span>
+              <span :class="totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400'" class="font-semibold">
+                {{ totalProfit >= 0 ? '+' : '' }}${{ formatNumber(totalProfit) }}
+                <span class="text-sm">({{ totalProfitPercent >= 0 ? '+' : '' }}{{ totalProfitPercent.toFixed(2) }}%)</span>
               </span>
             </div>
+
+            <!-- Max Drawdown -->
+            <div class="flex justify-between items-center">
+              <span class="text-text-secondary">最大回撤</span>
+              <span class="text-red-400 font-medium">
+                -{{ drawdown.maxDrawdownPct?.toFixed(2) || 0 }}%
+              </span>
+            </div>
+
+            <!-- Unrealized PnL (if has position) -->
+            <template v-if="position.hasPosition">
+              <div class="flex justify-between items-center pt-2 border-t border-white/10">
+                <span class="text-text-secondary text-sm">未实现盈亏</span>
+                <span :class="account.unrealizedPnl >= 0 ? 'text-emerald-400' : 'text-red-400'">
+                  {{ account.unrealizedPnl >= 0 ? '+' : '' }}${{ formatNumber(account.unrealizedPnl) }}
+                </span>
+              </div>
+            </template>
           </div>
         </div>
 
@@ -160,57 +188,6 @@
               <p>{{ t('trading.noPosition') || 'No open position' }}</p>
             </div>
           </template>
-        </div>
-
-        <!-- Maximum Drawdown Card -->
-        <div class="glass-panel rounded-xl p-6">
-          <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
-            <span class="material-symbols-outlined mr-2 text-red-400">trending_down</span>
-            {{ t('trading.maxDrawdown') || 'Maximum Drawdown' }}
-          </h3>
-
-          <div class="space-y-3">
-            <div class="flex justify-between items-center">
-              <span class="text-text-secondary text-sm">{{ t('trading.startDate') || 'Start Date' }}</span>
-              <input
-                type="date"
-                v-model="drawdownStartDate"
-                @change="fetchDrawdown"
-                class="bg-white/10 border border-white/20 rounded px-2 py-1 text-white text-sm"
-              />
-            </div>
-
-            <div class="flex justify-between items-center">
-              <span class="text-text-secondary">{{ t('trading.maxDrawdownPct') || 'Max Drawdown' }}</span>
-              <span class="text-red-400 font-medium">
-                -{{ drawdown.maxDrawdownPct?.toFixed(2) || 0 }}% (${{ formatNumber(drawdown.maxDrawdownUsd || 0) }})
-              </span>
-            </div>
-
-            <div class="flex justify-between items-center">
-              <span class="text-text-secondary">{{ t('trading.currentDrawdown') || 'Current Drawdown' }}</span>
-              <span :class="drawdown.currentDrawdownPct > 0 ? 'text-red-400' : 'text-text-secondary'">
-                -{{ drawdown.currentDrawdownPct?.toFixed(2) || 0 }}%
-              </span>
-            </div>
-
-            <div class="flex justify-between items-center">
-              <span class="text-text-secondary">{{ t('trading.peakEquity') || 'Peak Equity' }}</span>
-              <span class="text-white">${{ formatNumber(drawdown.peakEquity || 0) }}</span>
-            </div>
-
-            <div class="flex justify-between items-center">
-              <span class="text-text-secondary">{{ t('trading.recovery') || 'Recovery' }}</span>
-              <span :class="drawdown.recoveryPct >= 100 ? 'text-emerald-400' : 'text-yellow-400'">
-                {{ drawdown.recoveryPct?.toFixed(1) || 0 }}%
-              </span>
-            </div>
-
-            <div class="flex justify-between items-center text-xs text-text-secondary pt-2 border-t border-white/10">
-              <span>{{ t('trading.tradesAnalyzed') || 'Trades Analyzed' }}</span>
-              <span>{{ drawdown.tradesAnalyzed || 0 }}</span>
-            </div>
-          </div>
         </div>
 
         <!-- Next Analysis Countdown -->
@@ -743,6 +720,40 @@ let ws = null;
 let countdownInterval = null;
 
 // Computed
+// Fixed initial capital
+const INITIAL_CAPITAL = 3000;
+
+// Trading start date - earliest trade timestamp
+const tradingStartDate = computed(() => {
+  if (!tradeHistory.value || tradeHistory.value.length === 0) return null;
+  // Find the earliest trade
+  const sorted = [...tradeHistory.value].sort((a, b) => 
+    new Date(a.timestamp) - new Date(b.timestamp)
+  );
+  return sorted[0]?.timestamp ? new Date(sorted[0].timestamp) : null;
+});
+
+// Format trading start date for display
+const tradingStartDateFormatted = computed(() => {
+  if (!tradingStartDate.value) return '--';
+  return tradingStartDate.value.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+});
+
+// Total profit = current equity - initial capital
+const totalProfit = computed(() => {
+  return account.value.totalEquity - INITIAL_CAPITAL;
+});
+
+// Total profit percent
+const totalProfitPercent = computed(() => {
+  if (INITIAL_CAPITAL === 0) return 0;
+  return (totalProfit.value / INITIAL_CAPITAL) * 100;
+});
+
 // Use initial_balance from account API for accurate PnL calculation
 const totalPnl = computed(() => {
   const initial = account.value.initialBalance || account.value.totalEquity;
