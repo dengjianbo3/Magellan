@@ -99,6 +99,25 @@
               </span>
             </div>
 
+            <!-- Alpha (Excess Return vs BTC) -->
+            <div v-if="btcBenchmark.startPrice > 0" class="pt-2 border-t border-white/10 space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="text-text-secondary text-sm">BTC 同期收益</span>
+                <span :class="btcBenchmark.returnPercent >= 0 ? 'text-emerald-400' : 'text-red-400'" class="text-sm">
+                  {{ btcBenchmark.returnPercent >= 0 ? '+' : '' }}{{ btcBenchmark.returnPercent.toFixed(2) }}%
+                </span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-text-secondary font-medium">超额收益 (Alpha)</span>
+                <span 
+                  :class="alpha >= 0 ? 'text-emerald-400' : 'text-red-400'" 
+                  class="font-bold text-lg"
+                >
+                  {{ alpha >= 0 ? '+' : '' }}{{ alpha?.toFixed(2) || 0 }}%
+                </span>
+              </div>
+            </div>
+
             <!-- Unrealized PnL (if has position) -->
             <template v-if="position.hasPosition">
               <div class="flex justify-between items-center pt-2 border-t border-white/10">
@@ -762,6 +781,22 @@ const totalPnlPercent = computed(() => {
   return (totalPnl.value / initial) * 100;
 });
 
+// BTC benchmark data for alpha calculation
+const btcBenchmark = ref({
+  startPrice: 0,       // BTC price when trading started
+  currentPrice: 0,     // Current BTC price
+  returnPercent: 0,    // BTC return %
+  loading: false
+});
+
+// Alpha = System return - BTC return (excess return)
+const alpha = computed(() => {
+  if (!btcBenchmark.value.startPrice || btcBenchmark.value.returnPercent === 0) {
+    return null;  // Not enough data
+  }
+  return totalProfitPercent.value - btcBenchmark.value.returnPercent;
+});
+
 // Dynamic interval text based on actual scheduler state
 const intervalText = computed(() => {
   // Prefer actual scheduler state over settings form
@@ -892,6 +927,43 @@ async function fetchDrawdown() {
     };
   } catch (e) {
     console.error('Error fetching drawdown:', e);
+  }
+}
+
+// Fetch BTC benchmark data for alpha calculation
+async function fetchBtcBenchmark() {
+  if (!tradingStartDate.value) return;
+  
+  btcBenchmark.value.loading = true;
+  try {
+    // Get current BTC price from Binance API
+    const currentResponse = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+    const currentData = await currentResponse.json();
+    const currentPrice = parseFloat(currentData.price);
+    
+    // Get historical BTC price at trading start date using Klines API
+    const startTimestamp = tradingStartDate.value.getTime();
+    const historyResponse = await fetch(
+      `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&startTime=${startTimestamp}&limit=1`
+    );
+    const historyData = await historyResponse.json();
+    
+    // Kline format: [openTime, open, high, low, close, ...]
+    const startPrice = historyData.length > 0 ? parseFloat(historyData[0][4]) : 0; // Use close price
+    
+    if (startPrice > 0 && currentPrice > 0) {
+      const btcReturn = ((currentPrice - startPrice) / startPrice) * 100;
+      btcBenchmark.value = {
+        startPrice,
+        currentPrice,
+        returnPercent: btcReturn,
+        loading: false
+      };
+      console.log(`[BTC Benchmark] Start: $${startPrice.toFixed(2)}, Current: $${currentPrice.toFixed(2)}, Return: ${btcReturn.toFixed(2)}%`);
+    }
+  } catch (e) {
+    console.error('Error fetching BTC benchmark:', e);
+    btcBenchmark.value.loading = false;
   }
 }
 
@@ -1432,6 +1504,9 @@ onMounted(async () => {
     fetchDiscussionMessages(),  // Restore discussion messages on page load
     fetchDrawdown()  // Fetch drawdown data
   ]);
+
+  // Fetch BTC benchmark after trade history is loaded (needs tradingStartDate)
+  await fetchBtcBenchmark();
 
   initEquityChart();
   connectWebSocket();
