@@ -1026,15 +1026,16 @@ async function fetchBtcBenchmark() {
     const currentData = await currentResponse.json();
     const currentPrice = parseFloat(currentData.price);
     
-    // Get historical BTC price at trading start date using Klines API
+    // Get historical BTC price at trading start date using Klines API (hourly for precision)
     const startTimestamp = tradingStartDate.value.getTime();
     const historyResponse = await fetch(
-      `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&startTime=${startTimestamp}&limit=1`
+      `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&startTime=${startTimestamp}&limit=1`
     );
     const historyData = await historyResponse.json();
     
     // Kline format: [openTime, open, high, low, close, ...]
-    const startPrice = historyData.length > 0 ? parseFloat(historyData[0][4]) : 0; // Use close price
+    // Use open price [1] for more accurate timestamp matching
+    const startPrice = historyData.length > 0 ? parseFloat(historyData[0][1]) : 0;
     
     if (startPrice > 0 && currentPrice > 0) {
       const btcReturn = ((currentPrice - startPrice) / startPrice) * 100;
