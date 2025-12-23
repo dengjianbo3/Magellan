@@ -161,8 +161,8 @@ class AgentMessageService:
                 request_id=request.correlation_id
             )
 
-            # 执行分析
-            result = await agent.analyze(agent_input)
+            # 执行分析 - Agent.analyze 期望 (target, context) 两个参数
+            result = await agent.analyze(agent_input.target, agent_input.context)
 
             # 将 AgentOutput 转换为字典 (确保完全序列化 for direct call)
             if hasattr(result, 'model_dump'):
