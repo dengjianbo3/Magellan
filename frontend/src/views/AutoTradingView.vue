@@ -225,9 +225,6 @@
               <span class="material-symbols-outlined mr-2 text-primary">show_chart</span>
               {{ t('trading.equityCurve') || 'Equity Curve' }}
             </h3>
-            <div class="text-sm text-text-secondary">
-              {{ t('trading.startingCapital') || 'Starting' }}: $10,000
-            </div>
           </div>
 
           <div class="h-64">
