@@ -59,12 +59,22 @@ class EarlyStageInvestmentOrchestrator(BaseOrchestrator):
             return False
 
         # 2. BP文件检查 (如果提供)
+        # Note: bp_parser_agent will handle actual file loading from /app/uploads/
         if self.target.bp_file_id:
-            # TODO: 验证文件是否存在于/var/uploads
             import os
-            file_path = f"/var/uploads/{self.target.bp_file_id}"
-            if not os.path.exists(file_path):
-                raise ValueError(f"BP文件不存在: {self.target.bp_file_id}")
+            # files.py stores uploads in /app/uploads/ with file_id prefix
+            UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
+            # Find file with matching file_id prefix
+            file_exists = False
+            if os.path.exists(UPLOAD_DIR):
+                for filename in os.listdir(UPLOAD_DIR):
+                    if filename.startswith(self.target.bp_file_id):
+                        file_exists = True
+                        break
+            if not file_exists:
+                # Log warning but don't block - bp_parser_agent will handle error
+                import logging
+                logging.warning(f"BP文件未找到: {self.target.bp_file_id}，bp_parser将尝试加载")
 
         # 3. 融资阶段检查
         valid_stages = ["angel", "seed", "pre-a", "series-a"]
