@@ -329,7 +329,7 @@ async function uploadFile(file, fieldName) {
     : '/api/v2/upload/financial';
   
   try {
-    const response = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:8005'}${endpoint}`, {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${endpoint}`, {
       method: 'POST',
       body: formData
     });
