@@ -572,13 +572,51 @@ After tool execution, you will receive results to continue the discussion.
 
         Args:
             target: Analysis target data
-            context: Context information (optional)
+            context: Context information (optional, may contain bp_parser_result)
 
         Returns:
             Analysis result dictionary
         """
-        # Build analysis prompt
-        analysis_prompt = f"""Please analyze the following investment target:
+        context = context or {}
+        
+        # Check if BP data is available from bp_parser step
+        bp_parser_result = context.get('bp_parser_result', {})
+        bp_data = bp_parser_result.get('bp_data', {}) if bp_parser_result else {}
+        
+        # Build analysis prompt based on whether BP data is available
+        if bp_data:
+            # BP-CENTRIC ANALYSIS: Use BP as the primary data source
+            analysis_prompt = f"""## 商业计划书 (BP) 核心分析
+
+**重要**: 以下分析必须以商业计划书内容为核心数据来源。你的任务是验证和扩展 BP 中的信息，而非搜索公司名称获取无关信息。
+
+### 📋 BP 结构化数据:
+{json.dumps(bp_data, ensure_ascii=False, indent=2)}
+
+### 🎯 分析目标:
+{json.dumps(target, ensure_ascii=False, indent=2)}
+
+### 📌 分析指南:
+1. **基于 BP 内容分析**: 专注于 BP 中提到的具体信息（团队、产品、市场、竞品等）
+2. **验证 BP 声明**: 使用工具搜索来验证 BP 中的关键声明是否属实
+3. **扩展 BP 信息**: 对 BP 提到的行业/竞品/团队成员进行深入研究
+4. **识别缺失信息**: 指出 BP 中缺少但投资决策需要的关键信息
+
+### ⚠️ 禁止行为:
+- 不要仅基于公司名称进行泛搜索
+- 所有搜索必须围绕 BP 中提到的具体内容
+- 如找到与 BP 矛盾的信息，需特别标注
+
+请从你的专业角度提供分析，包括:
+1. BP 内容关键发现
+2. BP 声明验证结果
+3. 风险因素
+4. 优势分析
+5. 评分 (1-10)
+6. 投资建议"""
+        else:
+            # Fallback: Original prompt without BP data
+            analysis_prompt = f"""Please analyze the following investment target:
 
 {json.dumps(target, ensure_ascii=False, indent=2)}
 

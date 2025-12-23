@@ -77,8 +77,8 @@ export const SCENARIOS = {
       {
         name: 'bp_file',
         type: 'file',
-        label: { zh: '商业计划书 (可选)', en: 'Business Plan (Optional)' },
-        required: false,
+        label: { zh: '商业计划书 (必选)', en: 'Business Plan (Required)' },
+        required: true,
         accept: '.pdf,.doc,.docx,.ppt,.pptx'
       },
       {
