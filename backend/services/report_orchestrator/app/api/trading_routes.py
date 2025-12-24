@@ -1593,3 +1593,152 @@ MOBILE_STATUS_HTML = """<!DOCTYPE html>
 async def trading_dashboard():
     """Mobile-friendly trading status dashboard"""
     return MOBILE_STATUS_HTML
+
+
+# ============================================
+# User Decision Recording (RLHF Data Collection)
+# ============================================
+
+class UserDecision(BaseModel):
+    """User decision on AI trading signal"""
+    decision_id: str
+    action: str  # "confirm", "modify", "defer"
+    original_signal: Dict[str, Any]
+    modified_leverage: Optional[int] = None
+    defer_reason: Optional[str] = None
+    timestamp: str
+
+
+# In-memory storage for decisions (should be Redis in production)
+_user_decisions: List[Dict[str, Any]] = []
+
+
+@router.post("/decision")
+async def record_user_decision(decision: UserDecision):
+    """
+    Record user's decision on AI trading signal.
+    
+    This data is valuable for RLHF training - each decision represents
+    high-quality human feedback on AI trading recommendations.
+    """
+    decision_data = decision.model_dump()
+    decision_data['recorded_at'] = datetime.now().isoformat()
+    
+    # Store decision
+    _user_decisions.insert(0, decision_data)
+    
+    # Keep only last 1000 decisions in memory
+    if len(_user_decisions) > 1000:
+        _user_decisions.pop()
+    
+    logger.info(f"[RLHF] User decision recorded: {decision.action} for {decision.original_signal.get('direction', 'N/A')}")
+    
+    # Calculate statistics
+    total = len(_user_decisions)
+    confirms = len([d for d in _user_decisions if d['action'] == 'confirm'])
+    defers = len([d for d in _user_decisions if d['action'] == 'defer'])
+    modifies = len([d for d in _user_decisions if d['action'] == 'modify'])
+    
+    return {
+        "success": True,
+        "message": "Decision recorded for RLHF training",
+        "statistics": {
+            "total_decisions": total,
+            "confirm_count": confirms,
+            "defer_count": defers,
+            "modify_count": modifies,
+            "confirm_rate": round(confirms / total * 100, 1) if total > 0 else 0,
+            "defer_rate": round(defers / total * 100, 1) if total > 0 else 0
+        }
+    }
+
+
+@router.get("/decisions")
+async def get_user_decisions(limit: int = Query(default=50, le=200)):
+    """
+    Get history of user decisions.
+    
+    This endpoint demonstrates the data collection capability to investors.
+    """
+    decisions = _user_decisions[:limit]
+    
+    # Calculate statistics
+    total = len(_user_decisions)
+    confirms = len([d for d in _user_decisions if d['action'] == 'confirm'])
+    defers = len([d for d in _user_decisions if d['action'] == 'defer'])
+    modifies = len([d for d in _user_decisions if d['action'] == 'modify'])
+    
+    # Analyze defer reasons
+    defer_reasons = {}
+    for d in _user_decisions:
+        if d['action'] == 'defer' and d.get('defer_reason'):
+            reason = d['defer_reason']
+            defer_reasons[reason] = defer_reasons.get(reason, 0) + 1
+    
+    return {
+        "decisions": decisions,
+        "statistics": {
+            "total_decisions": total,
+            "confirm_count": confirms,
+            "defer_count": defers,
+            "modify_count": modifies,
+            "confirm_rate": round(confirms / total * 100, 1) if total > 0 else 0,
+            "defer_rate": round(defers / total * 100, 1) if total > 0 else 0,
+            "defer_reasons": defer_reasons
+        },
+        "data_value": {
+            "description": "每条决策记录代表高价值的金融推理标注数据 (RLHF)",
+            "use_cases": [
+                "微调模型提升胜率",
+                "剔除导致亏损的幻觉推理",
+                "训练垂直领域金融大模型"
+            ]
+        }
+    }
+
+
+@router.post("/execute")
+async def execute_trade(request: Dict[str, Any]):
+    """
+    Execute a trade after user confirmation.
+    
+    This is called after user confirms or modifies the AI decision.
+    """
+    system = get_trading_system()
+    if not system or not system.paper_trader:
+        return {"success": False, "error": "Trading system not initialized"}
+    
+    direction = request.get("direction", "long")
+    leverage = request.get("leverage", 5)
+    take_profit = request.get("take_profit")
+    stop_loss = request.get("stop_loss")
+    
+    try:
+        # Get account balance
+        account = await system.paper_trader.get_account()
+        available = account.get("available_balance", 0)
+        amount_usdt = available * 0.3  # Use 30% of available balance
+        
+        if direction == "long":
+            result = await system.paper_trader.open_long(
+                symbol="BTC-USDT-SWAP",
+                leverage=leverage,
+                amount_usdt=amount_usdt,
+                tp_price=take_profit,
+                sl_price=stop_loss
+            )
+        else:
+            result = await system.paper_trader.open_short(
+                symbol="BTC-USDT-SWAP",
+                leverage=leverage,
+                amount_usdt=amount_usdt,
+                tp_price=take_profit,
+                sl_price=stop_loss
+            )
+        
+        logger.info(f"[UserConfirm] Trade executed: {direction} {leverage}x, result={result.get('success')}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"[UserConfirm] Trade execution failed: {e}")
+        return {"success": False, "error": str(e)}
