@@ -631,9 +631,9 @@ class OKXClient:
                     # 🆕 Confirm order was filled
                     actual_price, actual_size = await self._confirm_order_filled(order_id, symbol, price, sz * contract_val)
 
-                    # Set TP/SL if provided
+                    # Set TP/SL if provided (pass sz for contract count)
                     if tp_price or sl_price:
-                        await self._set_tp_sl(symbol, pos_side, tp_price, sl_price)
+                        await self._set_tp_sl(symbol, pos_side, tp_price, sl_price, size=sz)
 
                     return {
                         'success': True,
@@ -741,11 +741,33 @@ class OKXClient:
             logger.error(f"[OKXClient] Error confirming order {order_id}: {e}")
             return expected_price, expected_size
 
-    async def _set_tp_sl(self, symbol: str, pos_side: str, tp_price: Optional[float], sl_price: Optional[float]):
-        """Set take-profit and stop-loss orders"""
-        logger.info(f"[OKXClient] Setting TP/SL for {pos_side}: TP=${tp_price}, SL=${sl_price}")
+    async def _set_tp_sl(self, symbol: str, pos_side: str, tp_price: Optional[float], sl_price: Optional[float], size: float = None):
+        """Set take-profit and stop-loss orders
+        
+        Args:
+            symbol: Trading symbol (e.g., BTC-USDT-SWAP)
+            pos_side: Position side ('long' or 'short')
+            tp_price: Take profit trigger price
+            sl_price: Stop loss trigger price
+            size: Position size in contracts (required for conditional orders)
+        """
+        logger.info(f"[OKXClient] Setting TP/SL for {pos_side}: TP=${tp_price}, SL=${sl_price}, size={size}")
         
         try:
+            # If size not provided, try to get from current position
+            if size is None:
+                position = await self.get_current_position(symbol)
+                if position:
+                    # OKX uses contracts, 1 contract = 0.01 BTC for BTC-USDT-SWAP
+                    size = int(position.size * 100)  # Convert BTC to contracts
+                    logger.info(f"[OKXClient] Got position size: {size} contracts")
+                else:
+                    logger.error(f"[OKXClient] Cannot set TP/SL: no position found")
+                    return
+            
+            # Ensure size is positive integer string
+            sz_str = str(int(abs(size))) if size else "1"
+            
             if tp_price:
                 result = await self._request('POST', '/api/v5/trade/order-algo', {
                     'instId': symbol,
@@ -753,14 +775,15 @@ class OKXClient:
                     'side': 'sell' if pos_side == 'long' else 'buy',
                     'posSide': pos_side,
                     'ordType': 'conditional',
-                    'sz': '-1',  # Close all
-                    'tpTriggerPx': str(tp_price),
-                    'tpOrdPx': '-1'  # Market price
+                    'sz': sz_str,  # Use actual position size
+                    'tpTriggerPx': str(round(tp_price, 1)),
+                    'tpOrdPx': '-1',  # Market price execution
+                    'reduceOnly': 'true'  # Ensure this only reduces position
                 })
                 if result.get('code') == '0':
-                    logger.info(f"[OKXClient] ✅ Take Profit set at ${tp_price:.2f}")
+                    logger.info(f"[OKXClient] ✅ Take Profit set at ${tp_price:.2f} for {sz_str} contracts")
                 else:
-                    logger.error(f"[OKXClient] ❌ Failed to set TP: {result.get('msg')}")
+                    logger.error(f"[OKXClient] ❌ Failed to set TP: {result.get('msg')} (code={result.get('code')})")
 
             if sl_price:
                 result = await self._request('POST', '/api/v5/trade/order-algo', {
@@ -769,14 +792,15 @@ class OKXClient:
                     'side': 'sell' if pos_side == 'long' else 'buy',
                     'posSide': pos_side,
                     'ordType': 'conditional',
-                    'sz': '-1',
-                    'slTriggerPx': str(sl_price),
-                    'slOrdPx': '-1'
+                    'sz': sz_str,  # Use actual position size
+                    'slTriggerPx': str(round(sl_price, 1)),
+                    'slOrdPx': '-1',  # Market price execution
+                    'reduceOnly': 'true'  # Ensure this only reduces position
                 })
                 if result.get('code') == '0':
-                    logger.info(f"[OKXClient] ✅ Stop Loss set at ${sl_price:.2f}")
+                    logger.info(f"[OKXClient] ✅ Stop Loss set at ${sl_price:.2f} for {sz_str} contracts")
                 else:
-                    logger.error(f"[OKXClient] ❌ Failed to set SL: {result.get('msg')}")
+                    logger.error(f"[OKXClient] ❌ Failed to set SL: {result.get('msg')} (code={result.get('code')})")
 
         except Exception as e:
             logger.error(f"Error setting TP/SL: {e}")
