@@ -571,69 +571,8 @@
           </div>
         </div>
 
-        <!-- Visual Analytics (Universal) - Hide for roundtable discussions -->
-        <div v-if="selectedReport.type !== 'roundtable'" class="glass-panel rounded-2xl p-6">
-          <div class="flex items-center justify-between mb-6">
-            <h2 class="text-lg font-bold text-white flex items-center gap-2">
-               <span class="material-symbols-outlined text-accent-cyan">analytics</span> 数据可视化
-            </h2>
-            <button
-              @click="refreshCharts"
-              class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-text-primary transition-colors text-xs font-bold flex items-center gap-2"
-            >
-              <span class="material-symbols-outlined text-sm">refresh</span>
-              刷新
-            </button>
-          </div>
-
-          <!-- Chart Tabs -->
-          <div class="flex gap-2 mb-6 p-1 bg-black/20 rounded-lg w-fit">
-            <button
-              v-for="tab in chartTabs"
-              :key="tab.id"
-              @click="activeChartTab = tab.id"
-              :class="[
-                'px-4 py-2 rounded-md text-sm font-bold transition-all',
-                activeChartTab === tab.id
-                  ? 'bg-primary text-background-dark shadow-lg'
-                  : 'text-text-secondary hover:text-white'
-              ]"
-            >
-              {{ tab.label }}
-            </button>
-          </div>
-
-          <!-- Charts Content -->
-          <div class="space-y-6 min-h-[300px]">
-             <!-- Financial -->
-            <div v-if="activeChartTab === 'financial'" class="grid grid-cols-1 gap-6 animate-fade-in">
-              <div class="bg-black/20 rounded-xl p-4 border border-white/5">
-                <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">收入趋势</h3>
-                <img :src="`${apiBase}/api/reports/${selectedReport.id}/charts/revenue?language=${currentLanguage}`" alt="Revenue Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
-              </div>
-              <div class="bg-black/20 rounded-xl p-4 border border-white/5">
-                <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">利润率趋势</h3>
-                <img :src="`${apiBase}/api/reports/${selectedReport.id}/charts/profit?language=${currentLanguage}`" alt="Profit Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
-              </div>
-            </div>
-            
-            <!-- Market -->
-            <div v-if="activeChartTab === 'market'" class="grid grid-cols-1 gap-6 animate-fade-in">
-              <div class="bg-black/20 rounded-xl p-4 border border-white/5">
-                <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">市场份额分布</h3>
-                <img :src="`${apiBase}/api/reports/${selectedReport.id}/charts/market_share?language=${currentLanguage}`" alt="Market Share Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
-              </div>
-            </div>
-            
-             <!-- Team & Risk -->
-             <div v-if="activeChartTab === 'team_risk'" class="grid grid-cols-1 gap-6 animate-fade-in">
-               <div class="bg-black/20 rounded-xl p-4 border border-white/5">
-                 <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">风险评估矩阵</h3>
-                 <img :src="`${apiBase}/api/reports/${selectedReport.id}/charts/risk_matrix?language=${currentLanguage}`" alt="Risk Matrix Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
-               </div>
-             </div>
-          </div>
-        </div>
+        <!-- Data Visualization section removed as this feature is not implemented -->
+        <!-- If visualization is needed in the future, re-enable the section from git history -->
       </div>
 
       <!-- Sidebar -->
