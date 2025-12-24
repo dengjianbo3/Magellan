@@ -8,9 +8,8 @@ Uses openpyxl to generate structured investment analysis reports in Excel format
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 
 class ExcelReportGenerator:

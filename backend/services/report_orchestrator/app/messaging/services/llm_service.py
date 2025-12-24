@@ -15,7 +15,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import httpx
 
-from ..messages import LLMRequest, LLMResponse, MessageType, AuditLogMessage
+from ..messages import LLMRequest, AuditLogMessage
 from ..topics import MagellanTopics
 from ..kafka_client import get_kafka_client
 

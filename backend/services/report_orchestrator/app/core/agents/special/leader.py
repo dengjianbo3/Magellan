@@ -6,7 +6,6 @@ Leader Agent
 
 注意：此Agent仅用于圆桌会议场景
 """
-from typing import List
 from app.core.roundtable.investment_agents import create_leader
 from app.core.roundtable.agent import Agent
 

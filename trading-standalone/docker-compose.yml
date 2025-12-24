@@ -166,7 +166,7 @@ services:
       # 模式
       - STANDALONE_MODE=true
     ports:
-      - "8000:8000"
+      - "8000:8000" # Reverted to 8000 for server deployment
     depends_on:
       redis:
         condition: service_healthy

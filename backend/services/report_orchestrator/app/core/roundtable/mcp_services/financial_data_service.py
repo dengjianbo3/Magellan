@@ -2,12 +2,10 @@
 金融数据 MCP 服务
 提供统一的金融数据访问接口，聚合多个数据源
 """
-import os
 import re
 import httpx
-import asyncio
-from typing import Any, Dict, List, Optional
-from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
+from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum
 import logging

@@ -10,10 +10,10 @@ Agent 消息服务
 import asyncio
 import logging
 import uuid
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, Optional, Callable
 from datetime import datetime
 
-from ..messages import AgentRequest, AgentResponse, MessageType, AuditLogMessage
+from ..messages import AgentRequest, AgentResponse, AuditLogMessage
 from ..topics import MagellanTopics
 from ..kafka_client import get_kafka_client
 from ...core.agents import AgentRegistry, get_agent_registry
@@ -98,6 +98,17 @@ class AgentMessageService:
 
         start_time = datetime.now()
 
+        # bp_parser 必须直接执行，不走 Kafka，因为：
+        # 1. PDF 解析使用 Gemini API 需要较长时间
+        # 2. PDF 文件较大，Kafka 消息有大小限制
+        agents_bypass_kafka = ["bp_parser"]
+        
+        if agent_id in agents_bypass_kafka:
+            logger.info(f"Agent {agent_id} bypasses Kafka, executing directly")
+            result = await self._execute_directly(request)
+            await self._log_audit(request, result, start_time)
+            return result
+
         # 尝试使用 Kafka
         if self._kafka_client and self._kafka_client.is_available:
             try:
@@ -161,8 +172,8 @@ class AgentMessageService:
                 request_id=request.correlation_id
             )
 
-            # 执行分析
-            result = await agent.analyze(agent_input)
+            # 执行分析 - Agent.analyze 期望 (target, context) 两个参数
+            result = await agent.analyze(agent_input.target, agent_input.context)
 
             # 将 AgentOutput 转换为字典 (确保完全序列化 for direct call)
             if hasattr(result, 'model_dump'):
@@ -231,8 +242,8 @@ class AgentMessageService:
                 request_id=message.correlation_id
             )
 
-            # 执行分析
-            result = await agent.analyze(agent_input)
+            # 执行分析 - Agent.analyze 期望 (target, context) 两个参数
+            result = await agent.analyze(agent_input.target, agent_input.context)
 
             # 将 AgentOutput 转换为字典 (确保完全序列化 for Kafka)
             if hasattr(result, 'model_dump'):

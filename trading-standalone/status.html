@@ -798,8 +798,12 @@
                 console.log('[DEBUG] History data:', history);
                 console.log('[DEBUG] Signals:', history?.signals);
                 if (history && history.signals && history.signals.length > 0) {
-                    // Cache all signals for modal (reversed for newest first)
-                    signalCache = [...history.signals].reverse();
+                    // Sort signals by timestamp descending (newest first)
+                    signalCache = [...history.signals].sort((a, b) => {
+                        const timeA = new Date(a.timestamp || 0);
+                        const timeB = new Date(b.timestamp || 0);
+                        return timeB - timeA;
+                    });
 
                     html += `
                         <div class="card">
@@ -869,18 +873,27 @@
 
                 // Trade History
                 if (history && history.trades && history.trades.length > 0) {
+                    // Sort by timestamp descending (most recent first)
+                    const sortedTrades = [...history.trades].sort((a, b) => {
+                        const timeA = new Date(a.timestamp || a.closed_at || 0);
+                        const timeB = new Date(b.timestamp || b.closed_at || 0);
+                        return timeB - timeA;  // descending order
+                    });
                     html += `
                         <div class="card">
                             <div class="card-title">Closed Trades (${history.trades.length})</div>
                             <div class="scrollable-list">
                     `;
-                    for (const trade of [...history.trades].reverse()) {
+                    for (const trade of sortedTrades) {
                         const dir = trade.direction || trade.side || 'N/A';
                         const pnl = trade.pnl || trade.realized_pnl || 0;
+                        const tradeTime = trade.timestamp || trade.closed_at;
+                        const timeStr = tradeTime ? new Date(tradeTime).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A';
                         html += `
                             <div class="trade-item">
                                 <div class="trade-header">
                                     <span class="trade-direction ${dir}">${dir.toUpperCase()}</span>
+                                    <span class="trade-time" style="color: #888; font-size: 0.8em;">${timeStr}</span>
                                     ${formatPnL(pnl)}
                                 </div>
                                 <div class="row">

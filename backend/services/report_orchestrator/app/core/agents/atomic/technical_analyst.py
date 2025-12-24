@@ -4,7 +4,6 @@ Technical Analyst Agent
 
 职责：基于K线形态、技术指标进行量化分析，提供交易信号
 """
-from typing import List
 from app.core.roundtable.investment_agents import create_technical_analyst
 from app.core.roundtable.rewoo_agent import ReWOOAgent
 

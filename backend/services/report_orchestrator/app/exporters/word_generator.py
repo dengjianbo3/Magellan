@@ -7,11 +7,10 @@ Uses python-docx to generate editable investment analysis reports in Word format
 """
 
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.style import WD_STYLE_TYPE
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 
 class WordReportGenerator:

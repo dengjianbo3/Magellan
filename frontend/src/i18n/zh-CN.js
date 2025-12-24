@@ -29,7 +29,9 @@ export default {
     sec: '秒',
     optional: '可选',
     refresh: '刷新',
-    triggerNow: '立即触发'
+    triggerNow: '立即触发',
+    collapse: '收起',
+    expand: '展开'
   },
 
   // Authentication

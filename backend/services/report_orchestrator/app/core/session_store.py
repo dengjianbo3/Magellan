@@ -420,6 +420,128 @@ class SessionStore:
             print(f"[SessionStore] ❌ Failed to search similar roundtables: {e}")
             return []
 
+    # ==================== Analysis Result Caching ====================
+
+    def _generate_cache_key(self, target: Dict[str, Any], scenario_id: str) -> str:
+        """
+        Generate a cache key based on analysis target and scenario.
+
+        Args:
+            target: Analysis target (company name, symbol, etc.)
+            scenario_id: Analysis scenario ID
+
+        Returns:
+            Cache key string
+        """
+        import hashlib
+        # Create a stable hash from target data
+        target_str = json.dumps(target, sort_keys=True, ensure_ascii=False)
+        target_hash = hashlib.md5(target_str.encode()).hexdigest()[:12]
+        return f"analysis_cache:{scenario_id}:{target_hash}"
+
+    def cache_analysis_result(
+        self,
+        target: Dict[str, Any],
+        scenario_id: str,
+        result: Dict[str, Any],
+        ttl_hours: int = 1
+    ) -> bool:
+        """
+        Cache analysis result for quick retrieval.
+
+        Args:
+            target: Analysis target
+            scenario_id: Scenario ID
+            result: Analysis result to cache
+            ttl_hours: Cache TTL in hours (default 1 hour)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            cache_key = self._generate_cache_key(target, scenario_id)
+            value = json.dumps(result, ensure_ascii=False, default=str)
+
+            self.redis_client.setex(
+                cache_key,
+                timedelta(hours=ttl_hours),
+                value
+            )
+
+            print(f"[SessionStore] ✅ Cached analysis result: {cache_key}")
+            return True
+
+        except Exception as e:
+            print(f"[SessionStore] ❌ Failed to cache analysis: {e}")
+            return False
+
+    def get_cached_analysis(
+        self,
+        target: Dict[str, Any],
+        scenario_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve cached analysis result.
+
+        Args:
+            target: Analysis target
+            scenario_id: Scenario ID
+
+        Returns:
+            Cached result if found and not expired, None otherwise
+        """
+        try:
+            cache_key = self._generate_cache_key(target, scenario_id)
+            value = self.redis_client.get(cache_key)
+
+            if value is None:
+                print(f"[SessionStore] Cache miss: {cache_key}")
+                return None
+
+            result = json.loads(value)
+            print(f"[SessionStore] ✅ Cache hit: {cache_key}")
+            return result
+
+        except Exception as e:
+            print(f"[SessionStore] ❌ Failed to get cached analysis: {e}")
+            return None
+
+    def invalidate_analysis_cache(
+        self,
+        target: Dict[str, Any] = None,
+        scenario_id: str = None
+    ) -> int:
+        """
+        Invalidate analysis cache.
+
+        Args:
+            target: Specific target to invalidate (optional)
+            scenario_id: Specific scenario to invalidate (optional)
+            If both None, invalidates all analysis caches.
+
+        Returns:
+            Number of keys deleted
+        """
+        try:
+            if target and scenario_id:
+                cache_key = self._generate_cache_key(target, scenario_id)
+                return self.redis_client.delete(cache_key)
+            elif scenario_id:
+                pattern = f"analysis_cache:{scenario_id}:*"
+            else:
+                pattern = "analysis_cache:*"
+
+            keys = self.redis_client.keys(pattern)
+            if keys:
+                deleted = self.redis_client.delete(*keys)
+                print(f"[SessionStore] ✅ Invalidated {deleted} cache entries")
+                return deleted
+            return 0
+
+        except Exception as e:
+            print(f"[SessionStore] ❌ Failed to invalidate cache: {e}")
+            return 0
+
     # ==================== Utility Methods ====================
 
     def get_stats(self) -> Dict[str, Any]:

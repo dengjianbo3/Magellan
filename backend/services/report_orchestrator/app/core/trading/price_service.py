@@ -6,7 +6,6 @@ Uses Binance as primary, OKX as secondary, CoinGecko as tertiary.
 NO hardcoded fallback prices - raises error if all sources fail.
 """
 
-import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List

@@ -5,7 +5,7 @@ Phase 4: Leader summarizes discussion and builds consensus.
 """
 
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import logging
 
 from .base import PhaseExecutor, PhaseContext, PhaseResult

@@ -376,8 +376,7 @@ from .analysis_tools import (
 # Phase 3 MCP工具桥接
 from .mcp_tool_bridge import (
     MCPFinancialDataTool,
-    MCPCompanyIntelligenceTool,
-    get_mcp_tool_for_agent
+    MCPCompanyIntelligenceTool
 )
 
 # Phase 4 高级工具
@@ -401,11 +400,14 @@ def create_mcp_tools_for_agent(agent_role: str) -> List[Tool]:
     Returns:
         工具列表
     """
+    # 导入统一搜索工具
+    from .web_search_tool import WebSearchTool
+    
     # 基础工具 - 所有专家都可以使用
     tools = []
 
-    # Tavily 搜索 - 所有专家都可以使用
-    tools.append(TavilySearchTool())
+    # 统一网络搜索 - 所有专家都可以使用 (通过SearchRouter智能路由)
+    tools.append(WebSearchTool())
 
     # 根据角色添加特定工具
     if agent_role in ["MarketAnalyst", "市场分析师"]:

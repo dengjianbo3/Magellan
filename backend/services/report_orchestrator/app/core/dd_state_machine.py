@@ -5,7 +5,6 @@ DD 工作流状态机
 """
 import asyncio
 import json
-import re
 from typing import Optional, Dict, Any, List
 from fastapi import WebSocket
 from starlette.websockets import WebSocketState
@@ -20,13 +19,12 @@ from ..models.dd_models import (
     BPStructuredData,
     TeamAnalysisOutput,
     MarketAnalysisOutput,
-    DDQuestion,
     PreliminaryIM,
     CrossCheckResult,
 )
 
 # V4: Import AgentEventBus
-from .agent_event_bus import get_event_bus, AgentEventType
+from .agent_event_bus import get_event_bus
 
 
 class DDStateMachine:

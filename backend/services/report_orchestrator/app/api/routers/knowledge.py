@@ -9,7 +9,7 @@ import os
 import shutil
 import tempfile
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 

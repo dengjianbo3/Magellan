@@ -5,7 +5,6 @@ Default prompt templates for meeting phases.
 Used when YAML files are not available.
 """
 
-from typing import Dict
 
 
 class PromptTemplates:

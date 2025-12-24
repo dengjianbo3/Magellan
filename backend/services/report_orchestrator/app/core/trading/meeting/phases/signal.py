@@ -5,11 +5,11 @@ Phase 2: Each analyst provides their trading vote.
 """
 
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import List
 import logging
 
 from .base import PhaseExecutor, PhaseContext, PhaseResult
-from ...domain.vote import Vote, AgentVote, VoteDirection, VoteSummary
+from ...domain.vote import AgentVote, VoteSummary
 from ...parsers.vote_parser import VoteParser
 
 logger = logging.getLogger(__name__)

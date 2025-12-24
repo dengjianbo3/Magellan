@@ -8,24 +8,21 @@ import uuid
 import time
 from datetime import datetime
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 
 # V2 models (keep for backward compatibility)
 from .models.dd_models import (
-    DDAnalysisRequest,
-    DDWorkflowMessage,
     DDSessionContext,
-    PreliminaryIM,
 )
 
 # V3: Import state machine
 from .core.dd_state_machine import DDStateMachine
 
 # V4: Import intent recognition and conversation management
-from .core.intent_recognizer import IntentRecognizer, ConversationManager, IntentType
+from .core.intent_recognizer import IntentRecognizer, ConversationManager
 
 # V5: Import Redis session store
 from .core.session_store import SessionStore
@@ -41,10 +38,10 @@ from .api.routers.export import router as export_router, set_get_report_func
 from .api.routers.dd_workflow import router as dd_workflow_router, set_session_funcs
 from .api.routers.monitoring import router as monitoring_router
 from .api.trading_routes import router as trading_router
-from .middleware import RequestLoggingMiddleware, CachingMiddleware, response_cache
+from .middleware import RequestLoggingMiddleware, CachingMiddleware
 
 # Phase 4: Import storage services
-from .services.storage import init_report_storage, get_report_storage
+from .services.storage import init_report_storage
 
 # Phase 2: Prometheus metrics
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -54,10 +51,7 @@ from .core.logging_config import configure_logging, get_logger
 
 # Phase 2: Knowledge Base services
 from .services.vector_store import VectorStoreService
-from .services.document_parser import DocumentParser
 from .services.rag_service import RAGService
-import tempfile
-import shutil
 
 # Configure logging (JSON in production, console in development)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -977,7 +971,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
     print(f"[ROUNDTABLE] WebSocket connection accepted", flush=True)
 
     # Import roundtable components
-    from .core.roundtable import Meeting, Message, MessageType
+    from .core.roundtable import Meeting, Message
     from .core.roundtable.investment_agents import (
         create_leader,
         create_market_analyst,
@@ -1029,7 +1023,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
             topic = initial_request.get("topic", "投资价值分析")
             company_name = initial_request.get("company_name", "目标公司")
             context = initial_request.get("context", {})
-            language = initial_request.get("language", "zh")  # 获取语言偏好，默认中文
+            language = initial_request.get("language", "en")  # Default to English for hybrid mode
 
             # Generate session ID
             session_id = f"roundtable_{company_name}_{uuid.uuid4().hex[:8]}"
@@ -1070,28 +1064,28 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                 print(f"[ROUNDTABLE] conclude_meeting called: {reason}", flush=True)
                 return f"会议将在当前轮次结束后终止。原因: {reason}"
 
-            # Always ensure leader is included and first
-            if 'leader' in selected_experts:
-                leader = create_leader(language)
-                # Register end_meeting tool for Leader
-                end_meeting_tool = FunctionTool(
-                    name="end_meeting",
-                    description="结束圆桌会议。当讨论已经充分、已形成投资建议、所有专家观点已收集时调用此工具。调用后会议将终止并生成会议纪要。",
-                    func=conclude_meeting_func,
-                    parameters_schema={
-                        "type": "object",
-                        "properties": {
-                            "reason": {
-                                "type": "string",
-                                "description": "结束会议的原因，例如'所有专家已充分表达观点，已形成投资建议'"
-                            }
-                        },
-                        "required": ["reason"]
-                    }
-                )
-                leader.register_tool(end_meeting_tool)
-                print(f"[ROUNDTABLE] end_meeting tool registered for Leader", flush=True)
-                agents.append(leader)
+            # ALWAYS ensure leader is created first - Leader is essential for meeting orchestration
+            # Frontend intentionally excludes 'leader' from selection (it's always auto-included)
+            leader = create_leader(language)
+            # Register end_meeting tool for Leader
+            end_meeting_tool = FunctionTool(
+                name="end_meeting",
+                description="结束圆桌会议。当讨论已经充分、已形成投资建议、所有专家观点已收集时调用此工具。调用后会议将终止并生成会议纪要。",
+                func=conclude_meeting_func,
+                parameters_schema={
+                    "type": "object",
+                    "properties": {
+                        "reason": {
+                            "type": "string",
+                            "description": "结束会议的原因，例如'所有专家已充分表达观点，已形成投资建议'"
+                        }
+                    },
+                    "required": ["reason"]
+                }
+            )
+            leader.register_tool(end_meeting_tool)
+            print(f"[ROUNDTABLE] Leader ALWAYS created with end_meeting tool", flush=True)
+            agents.append(leader)
 
             # Add other agents based on selection
             for expert_id in selected_experts:
@@ -1302,7 +1296,8 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                             "total_duration_seconds": result.get("total_duration_seconds", 0),
                             "participating_agents": result.get("participating_agents", []),
                             "agent_stats": result.get("agent_stats", {}),
-                            "message_type_stats": result.get("message_type_stats", {})
+                            "message_type_stats": result.get("message_type_stats", {}),
+                            "conversation_history": result.get("conversation_history", [])  # 添加消息历史
                         },
                         "message_count": result.get("total_messages", 0),
                         "total_turns": result.get("total_turns", 0),
@@ -1607,9 +1602,7 @@ async def websocket_conversation_endpoint(websocket: WebSocket):
 
 from .models.analysis_models import (
     AnalysisRequest,
-    AnalysisSession,
-    InvestmentScenario,
-    AnalysisDepth
+    InvestmentScenario
 )
 from .core.orchestrators.early_stage_orchestrator import EarlyStageInvestmentOrchestrator
 from .core.orchestrators.growth_orchestrator import GrowthInvestmentOrchestrator

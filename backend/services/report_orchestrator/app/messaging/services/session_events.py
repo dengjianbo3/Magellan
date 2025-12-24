@@ -13,7 +13,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from enum import Enum
 
-from ..messages import SessionEvent, MessageType
+from ..messages import SessionEvent
 from ..topics import MagellanTopics
 from ..kafka_client import get_kafka_client
 

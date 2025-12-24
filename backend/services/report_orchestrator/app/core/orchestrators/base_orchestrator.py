@@ -10,7 +10,6 @@ from fastapi import WebSocket
 
 from app.models.analysis_models import (
     AnalysisRequest,
-    AnalysisSession,
     AnalysisDepth,
     DecisionMode,
     WorkflowStep,

@@ -5,7 +5,6 @@ Loads agent configurations from YAML files.
 Provides centralized prompt management and easy customization.
 """
 
-import os
 import yaml
 import logging
 from pathlib import Path

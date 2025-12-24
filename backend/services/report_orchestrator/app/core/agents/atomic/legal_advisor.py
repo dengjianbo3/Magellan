@@ -4,7 +4,6 @@ Legal Advisor Agent
 
 职责：评估法律合规、知识产权、合同风险和监管环境
 """
-from typing import List
 from app.core.roundtable.investment_agents import create_legal_advisor
 from app.core.roundtable.rewoo_agent import ReWOOAgent
 

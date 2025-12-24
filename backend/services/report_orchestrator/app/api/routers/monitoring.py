@@ -2,10 +2,9 @@
 Monitoring Router
 Handles error reporting from frontend and exposes monitoring endpoints
 """
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
-from datetime import datetime
 import logging
 
 from ...core.metrics import record_frontend_error

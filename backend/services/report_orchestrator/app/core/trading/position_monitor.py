@@ -9,7 +9,7 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import Optional, Callable, Dict, Any, List
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 
 from app.models.trading_models import Position, EquitySnapshot
 

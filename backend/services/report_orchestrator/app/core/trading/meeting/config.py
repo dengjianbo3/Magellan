@@ -4,7 +4,7 @@ Meeting Configuration
 Configuration dataclass for TradingMeeting.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
 

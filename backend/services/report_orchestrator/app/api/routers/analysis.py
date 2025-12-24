@@ -16,7 +16,6 @@ from fastapi import APIRouter, HTTPException
 
 from ...models.analysis_models import (
     AnalysisRequest,
-    InvestmentScenario,
     AnalysisDepth
 )
 

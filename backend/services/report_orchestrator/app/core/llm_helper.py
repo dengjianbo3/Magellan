@@ -5,7 +5,7 @@ LLM Helper - 通用的LLM调用封装
 import httpx
 import json
 import re
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime
 
 

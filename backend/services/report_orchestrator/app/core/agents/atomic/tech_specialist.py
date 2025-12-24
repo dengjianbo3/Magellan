@@ -4,7 +4,6 @@ Tech Specialist Agent
 
 职责：评估技术架构、产品能力、技术壁垒和技术债务
 """
-from typing import List
 from app.core.roundtable.investment_agents import create_tech_specialist
 from app.core.roundtable.rewoo_agent import ReWOOAgent
 

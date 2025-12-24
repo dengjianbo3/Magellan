@@ -5,16 +5,12 @@ Alternative Investment Orchestrator (另类投资协调器)
 关注点: 技术基础、社区、代币经济学、风险
 """
 
-from typing import Dict, Any, List, Optional
-from datetime import datetime
-import asyncio
+from typing import Dict, Any
 
 from .base_orchestrator import BaseOrchestrator
 from ...models.analysis_models import (
     InvestmentScenario,
-    AnalysisDepth,
-    QuickJudgmentResult,
-    RecommendationType
+    QuickJudgmentResult
 )
 # Phase 2: All agents now loaded from AgentRegistry
 # Legacy imports removed

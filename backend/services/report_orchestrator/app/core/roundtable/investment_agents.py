@@ -6,15 +6,49 @@ Based on the Magellan investment analysis requirements
 """
 from .agent import Agent
 from .rewoo_agent import ReWOOAgent
-from .tool import FunctionTool, MCPTool
+from .tool import FunctionTool
 from .mcp_tools import create_mcp_tools_for_agent
 from typing import Dict, Any, List
-import httpx
+
+
+# ==================== Language Helper ====================
+
+def get_output_language_instruction(language: str) -> str:
+    """
+    Generate output language instruction for hybrid mode.
+    
+    Hybrid mode: 
+    - Internal thinking/tool calls in English
+    - Final output in user's preferred language
+    
+    Args:
+        language: "zh" for Chinese, "en" for English
+    
+    Returns:
+        Language instruction to append to prompts
+    """
+    if language == "zh":
+        return """
+
+---
+**OUTPUT LANGUAGE INSTRUCTION**:
+Your internal thinking and tool calls can be in English.
+However, your **FINAL ANALYSIS and RESPONSE** that users will read **MUST be written in Chinese (中文)**.
+This includes your expert opinions, recommendations, scores, and any text shown in the discussion.
+请用中文撰写您的最终分析报告。
+---"""
+    else:
+        return """
+
+---
+**OUTPUT LANGUAGE INSTRUCTION**:
+Write your final analysis and response in English.
+---"""
 
 
 # ==================== Agent Creators ====================
 
-def create_leader(language: str = "zh", meeting=None) -> Agent:
+def create_leader(language: str = "en", meeting=None) -> Agent:
     """
     创建领导者Agent
 
@@ -375,58 +409,50 @@ def create_leader(language: str = "zh", meeting=None) -> Agent:
 
 **重要**: 请用中文回复。
 
-## 结束会议工具 (end_meeting)
+## 主持行为准则（最重要）
 
-你有一个特殊的工具 `end_meeting`，用于在你认为讨论已经充分时结束会议。
+**🎯 你的核心职责是：总结和引导，而非结束会议。**
 
-**⚠️ 重要: 不要过早结束会议！**
+每当你被邀请发言时，你应该：
+1. **总结本轮各专家观点**：提炼关键发现和评分
+2. **识别分歧和共识**：指出专家之间的不同看法  
+3. **引导下一轮方向**：提出需要深入讨论的问题
+4. **向特定专家提问**：推动辩论深入
 
-**必须满足的严格条件 (ALL必须满足)**:
-1. **轮次要求**: 至少进行了 **2-3轮** 深入讨论
-   - Round 1: 各专家初步分析
-   - Round 2: 交叉质疑和辩论
-   - Round 3 (如有必要): 深入分歧点讨论
+## 结束会议工具 (end_meeting) - 极其谨慎使用！
 
-2. **内容深度要求**:
-   - ✅ 所有专家都基于具体数据和证据发表了观点（不是泛泛而谈）
-   - ✅ 关键分歧点已经过充分辩论（不是简单表态）
-   - ✅ 对分歧点进行了深入分析，理解了分歧根源
-   - ✅ 风险和机会都有具体量化评估
+你有一个工具 `end_meeting`，但**请不要轻易使用**。
 
-3. **覆盖完整性**:
-   - ✅ 每个专业领域(市场/财务/团队/风险/技术/法律)都有充分讨论
-   - ✅ 关键假设都已被质疑和验证
-   - ✅ 极端情况(best/worst case)都有讨论
+**⛔ 错误做法：**
+- 只进行了1-2轮发言就想结束
+- 只是简单总结了专家观点就想结束
+- 尚未形成明确投资建议就想结束
+- 专家之间存在未解决的分歧就想结束
 
-4. **共识形成**:
-   - ✅ 已形成明确且有说服力的投资建议
-   - ✅ 建议有充分的数据和逻辑支撑
-   - ✅ 投资条件和风险对冲措施已明确
+**✅ 正确做法：**
+默认情况下，你应该**继续引导讨论**，除非以下**严格条件全部满足**：
 
-**结束前必做动作**:
-在调用end_meeting之前，你必须：
-1. 先向全体专家广播: "各位专家，我认为讨论已经比较充分，准备结束会议。请问是否还有重要观点需要补充？"
-2. 等待至少一轮专家回应
-3. 如果有专家提出需要继续讨论，必须尊重并继续
+1. **轮次要求**: 已进行了**至少3轮**实质性讨论
+2. **深度要求**: 
+   - 所有专家基于具体数据发表了深度观点
+   - 关键分歧已充分辩论（不是简单表态）
+   - 极端情况(best/worst case)已讨论
+3. **共识要求**:
+   - 已形成明确的投资建议（推荐/观望/不推荐）
+   - 建议有充分的数据支撑
+   - 投资条件和风险对冲已明确
+4. **时间要求**: 当前轮次已接近系统设定的max_turns上限
 
-**不应该结束会议的情况**:
-- ❌ 仅进行了1轮发言就想结束
-- ❌ 存在重大分歧但未充分讨论
-- ❌ 关键数据缺失或模糊
-- ❌ 专家观点浮于表面，缺乏深度
-- ❌ 有专家明确反对结束
+**调用前必做**：
+- 向全体广播："各位专家，讨论进行了X轮，我准备结束会议。还有重要观点要补充吗？"
+- 等待专家回应
+- 若有反对，继续讨论
 
-**调用方式**: 当满足所有上述严格条件时，调用 `end_meeting` 工具，并在 `reason` 参数中详细说明:
-- 进行了几轮讨论
-- 哪些关键问题已解决
-- 形成了什么共识
-- 为什么认为可以结束
-
-**注意**: 调用此工具后，会议将在当前轮次结束后自动终止，系统会请求你生成最终会议纪要。"""
+**记住：你的默认行为是总结并引导下一轮，而不是结束会议。**"""
 
     agent = Agent(
         name="Leader",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
@@ -459,7 +485,7 @@ def create_leader(language: str = "zh", meeting=None) -> Agent:
     return agent
 
 
-def create_market_analyst(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_market_analyst(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建市场分析师Agent (使用ReWOO架构)
 
@@ -493,7 +519,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
 - Use `search_knowledge_base` for BP market data first
-- Use `tavily_search` only for critical missing data (e.g., "[industry] market size 2024")
+- Use `web_search` only for critical missing data (e.g., "[industry] market size 2024")
 
 ## Output Format (CONCISE):
 ```markdown
@@ -526,7 +552,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
 
 ## 工具使用 (限制1-2次搜索):
 - 优先使用 `search_knowledge_base` 查询BP中的市场数据
-- 仅在关键数据缺失时使用 `tavily_search` (如"[行业] 市场规模 2024")
+- 仅在关键数据缺失时使用 `web_search` (如"[行业] 市场规模 2024")
 
 ## 输出格式 (简洁):
 ```markdown
@@ -590,7 +616,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
    - action='history' to see 1-year price trend
 2. Use `sec_edgar` to view latest annual report market description
    - action='search_filings' with form_type='10-K'
-3. Use `tavily_search` for industry reports
+3. Use `web_search` for industry reports
    - Search "[industry name] market size 2024"
    - Search "[industry name] growth rate forecast"
 
@@ -598,7 +624,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
 1. Use `search_knowledge_base` to query BP market data
    - Search "TAM SAM SOM"
    - Search "market size target market"
-2. Use `tavily_search` for industry research
+2. Use `web_search` for industry research
    - Search competitor information
    - Search market trends and reports
 
@@ -657,7 +683,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
    - action='search_filings' with form_type='10-K'
    - 查看公司对市场机会的官方描述
 
-3. 使用 `tavily_search` 搜索行业报告
+3. 使用 `web_search` 搜索行业报告
    - 搜索"[行业名称] 市场规模 2024"
    - 搜索"[行业名称] 增长率 预测"
 
@@ -666,7 +692,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
    - 搜索"TAM SAM SOM"
    - 搜索"市场规模 目标市场"
 
-2. 使用 `tavily_search` 进行行业研究
+2. 使用 `web_search` 进行行业研究
    - 搜索竞品信息
    - 搜索市场趋势和行业报告
 
@@ -774,7 +800,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
     # 使用ReWOO架构 - 并行获取市场数据、竞品信息、行业报告
     agent = ReWOOAgent(
         name="MarketAnalyst",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
@@ -787,7 +813,7 @@ Rapid market assessment focusing on KEY METRICS ONLY.
     return agent
 
 
-def create_financial_expert(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_financial_expert(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建财务专家Agent (使用ReWOO架构)
 
@@ -906,11 +932,11 @@ Rapid financial health check focusing on KEY METRICS ONLY.
 ### For Public Companies (Listed):
 1. Use `sec_edgar` to get official 10-K/10-Q filings (US companies)
 2. Use `yahoo_finance` to get financial ratios and historical data
-3. Use `tavily_search` to find industry benchmark data
+3. Use `web_search` to find industry benchmark data
 
 ### For Private Companies:
 1. Use `search_knowledge_base` to query BP financial data
-2. Use `tavily_search` to find comparable company data
+2. Use `web_search` to find comparable company data
 
 ## Output Requirements:
 - Cite specific data sources (e.g., "According to 2023 10-K")
@@ -959,14 +985,14 @@ Rapid financial health check focusing on KEY METRICS ONLY.
 2. 使用 `yahoo_finance` 获取财务比率和历史数据
    - action='financials' 获取利润表/资产负债表/现金流量表
    - action='price' 获取市值和估值倍数
-3. 使用 `tavily_search` 搜索行业benchmark数据
+3. 使用 `web_search` 搜索行业benchmark数据
    - 搜索同行业公司的平均财务指标
    - 查找行业报告和分析师预期
 
 ### 非上市公司分析:
 1. 使用 `search_knowledge_base` 查询BP中的财务数据
    - 搜索营收、利润、现金流等关键指标
-2. 使用 `tavily_search` 搜索同行业可比公司数据
+2. 使用 `web_search` 搜索同行业可比公司数据
    - 寻找类似规模和阶段的公司进行对比
 
 ## 输出要求:
@@ -1059,7 +1085,7 @@ Rapid financial health check focusing on KEY METRICS ONLY.
     # 使用ReWOO架构
     agent = ReWOOAgent(
         name="FinancialExpert",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
@@ -1072,7 +1098,7 @@ Rapid financial health check focusing on KEY METRICS ONLY.
     return agent
 
 
-def create_team_evaluator(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_team_evaluator(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建团队评估专家Agent (使用ReWOO架构)
 
@@ -1105,7 +1131,7 @@ Provide a rapid team evaluation focusing on KEY FINDINGS ONLY.
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
 - Use `search_knowledge_base` for BP team info first
-- Only use `tavily_search` if BP lacks critical info
+- Only use `web_search` if BP lacks critical info
 
 ## Output Format (CONCISE):
 ```markdown
@@ -1136,7 +1162,7 @@ Provide a rapid team evaluation focusing on KEY FINDINGS ONLY.
 
 ## 工具使用 (限制1-2次搜索):
 - 优先使用 `search_knowledge_base` 查询BP中的团队信息
-- 仅在BP缺少关键信息时使用 `tavily_search`
+- 仅在BP缺少关键信息时使用 `web_search`
 
 ## 输出格式 (简洁):
 ```markdown
@@ -1209,12 +1235,12 @@ Provide a rapid team evaluation focusing on KEY FINDINGS ONLY.
 ## Tool Usage Strategy:
 
 ### Team Background Research:
-1. Use `tavily_search` to find founder background
+1. Use `web_search` to find founder background
    - Search "[Founder Name] LinkedIn"
    - Search "[Founder Name] work history"
    - Search "[Founder Name] education"
 
-2. Use `tavily_search` for company team info
+2. Use `web_search` for company team info
    - Search "[Company] core team"
    - Search "[Company] management"
    - Search "[Company] founder interview"
@@ -1295,12 +1321,12 @@ Provide a rapid team evaluation focusing on KEY FINDINGS ONLY.
 ## 工具使用策略:
 
 ### 团队背景调查:
-1. 使用 `tavily_search` 搜索创始人背景
+1. 使用 `web_search` 搜索创始人背景
    - 搜索"[创始人姓名] LinkedIn"
    - 搜索"[创始人姓名] 工作经历"
    - 搜索"[创始人姓名] 教育背景"
 
-2. 使用 `tavily_search` 搜索公司团队信息
+2. 使用 `web_search` 搜索公司团队信息
    - 搜索"[公司名称] 核心团队"
    - 搜索"[公司名称] 管理层"
    - 搜索"[公司名称] 创始人采访"
@@ -1406,7 +1432,7 @@ Provide a rapid team evaluation focusing on KEY FINDINGS ONLY.
     # 使用ReWOO架构 - 并行获取创始人背景、团队信息、公司文化
     agent = ReWOOAgent(
         name="TeamEvaluator",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
@@ -1419,7 +1445,7 @@ Provide a rapid team evaluation focusing on KEY FINDINGS ONLY.
     return agent
 
 
-def create_risk_assessor(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_risk_assessor(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建风险评估专家Agent (使用ReWOO架构)
 
@@ -1622,7 +1648,7 @@ Rapid risk identification focusing on CRITICAL RISKS ONLY.
    - 查看"Risk Factors"章节
    - action='search_filings', form_type='8-K' 查看重大事件
 
-2. 使用 `tavily_search` 搜索负面信息
+2. 使用 `web_search` 搜索负面信息
    - 搜索"[公司] lawsuit" (诉讼)
    - 搜索"[公司] controversy" (争议)
    - 搜索"[公司] regulatory issues"
@@ -1632,7 +1658,7 @@ Rapid risk identification focusing on CRITICAL RISKS ONLY.
    - 搜索"风险 挑战"
    - 搜索"竞争 威胁"
 
-2. 使用 `tavily_search` 行业风险研究
+2. 使用 `web_search` 行业风险研究
    - 搜索"[行业] risks 2024"
    - 搜索"[行业] regulatory changes"
 
@@ -1750,7 +1776,7 @@ Rapid risk identification focusing on CRITICAL RISKS ONLY.
     # 使用ReWOO架构 - 并行获取风险新闻、诉讼信息、监管动态
     agent = ReWOOAgent(
         name="RiskAssessor",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
@@ -1763,7 +1789,7 @@ Rapid risk identification focusing on CRITICAL RISKS ONLY.
     return agent
 
 
-def create_tech_specialist(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_tech_specialist(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建技术专家Agent (使用ReWOO架构)
 
@@ -1971,7 +1997,7 @@ Rapid technology assessment focusing on KEY STRENGTHS ONLY.
 ## 工具使用策略:
 
 ### 技术研究:
-1. 使用 `tavily_search` 搜索技术信息
+1. 使用 `web_search` 搜索技术信息
    - "[公司] technology stack"
    - "[公司] patents"
    - "[公司] tech blog"
@@ -1982,7 +2008,7 @@ Rapid technology assessment focusing on KEY STRENGTHS ONLY.
    - "核心技术 专利"
    - "研发 R&D"
 
-3. 使用 `tavily_search` 技术对比
+3. 使用 `web_search` 技术对比
    - "[技术A] vs [技术B]"
    - "[行业] best practices"
 
@@ -2127,7 +2153,7 @@ Rapid technology assessment focusing on KEY STRENGTHS ONLY.
     # 使用ReWOO架构 - 并行获取GitHub、专利、技术文档
     agent = ReWOOAgent(
         name="TechSpecialist",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
@@ -2140,7 +2166,7 @@ Rapid technology assessment focusing on KEY STRENGTHS ONLY.
     return agent
 
 
-def create_legal_advisor(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_legal_advisor(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建法律顾问Agent (使用ReWOO架构)
 
@@ -2370,7 +2396,7 @@ Rapid legal check focusing on CRITICAL ISSUES ONLY.
 ## 工具使用策略:
 
 ### 法律信息搜索:
-1. 使用 `tavily_search` 搜索法规和判例
+1. 使用 `web_search` 搜索法规和判例
    - "[公司] lawsuit"
    - "[公司] regulatory compliance"
    - "[行业] licensing requirements"
@@ -2381,7 +2407,7 @@ Rapid legal check focusing on CRITICAL ISSUES ONLY.
    - "股权结构 章程"
    - "诉讼 纠纷"
 
-3. 使用 `tavily_search` 查询监管动态
+3. 使用 `web_search` 查询监管动态
    - "[行业] new regulations 2024"
    - "[地区] compliance requirements"
 
@@ -2521,7 +2547,7 @@ Rapid legal check focusing on CRITICAL ISSUES ONLY.
     # 使用ReWOO架构 - 并行获取法规、诉讼记录、合规信息
     agent = ReWOOAgent(
         name="LegalAdvisor",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
@@ -2534,7 +2560,7 @@ Rapid legal check focusing on CRITICAL ISSUES ONLY.
     return agent
 
 
-def create_technical_analyst(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_technical_analyst(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建技术分析师Agent (使用ReWOO架构，K线/技术指标分析)
 
@@ -2948,7 +2974,7 @@ Short-term price movements are inherently unpredictable.
     # 使用ReWOO架构 - 并行获取K线数据、计算指标、识别形态
     agent = ReWOOAgent(
         name="TechnicalAnalyst",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=1.0
     )
@@ -3056,7 +3082,7 @@ Parameters:
 
 # ==================== New Agents (Phase 2) ====================
 
-def create_macro_economist(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_macro_economist(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建宏观经济分析师Agent (使用ReWOO架构)
 
@@ -3088,7 +3114,7 @@ Rapid macroeconomic assessment focusing on KEY INDICATORS ONLY.
 4. **Market Implications**: One key investment implication
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
-- Use `tavily_search` for "Fed rate decision 2024" or "China GDP growth 2024"
+- Use `web_search` for "Fed rate decision 2024" or "China GDP growth 2024"
 - Focus on latest central bank announcements
 
 ## Output Format (CONCISE):
@@ -3120,7 +3146,7 @@ Rapid macroeconomic assessment focusing on KEY INDICATORS ONLY.
 4. **投资影响**: 对当前投资的关键影响
 
 ## 工具使用 (限制1-2次搜索):
-- 使用 `tavily_search` 搜索"美联储利率 2024"或"中国GDP增长 2024"
+- 使用 `web_search` 搜索"美联储利率 2024"或"中国GDP增长 2024"
 - 聚焦最新央行声明
 
 ## 输出格式 (简洁):
@@ -3199,7 +3225,7 @@ Rapid macroeconomic assessment focusing on KEY INDICATORS ONLY.
 - Late Contraction: Technology (recovery plays)
 
 ## Tool Usage:
-1. Use `tavily_search` for latest economic data and central bank news
+1. Use `web_search` for latest economic data and central bank news
 2. Search for "[country] GDP growth [year]"
 3. Search for "Fed/PBOC/ECB policy [month] [year]"
 4. Search for "inflation forecast [country] [year]"
@@ -3271,7 +3297,7 @@ Rapid macroeconomic assessment focusing on KEY INDICATORS ONLY.
 - 收缩后期: 科技 (复苏题材)
 
 ## 工具使用:
-1. 使用 `tavily_search` 获取最新经济数据和央行新闻
+1. 使用 `web_search` 获取最新经济数据和央行新闻
 2. 搜索 "[国家] GDP增长 [年份]"
 3. 搜索 "美联储/央行 货币政策 [月份] [年份]"
 4. 搜索 "通胀预测 [国家] [年份]"
@@ -3293,7 +3319,7 @@ Rapid macroeconomic assessment focusing on KEY INDICATORS ONLY.
 
     agent = ReWOOAgent(
         name="MacroEconomist",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=0.7
     )
@@ -3305,7 +3331,7 @@ Rapid macroeconomic assessment focusing on KEY INDICATORS ONLY.
     return agent
 
 
-def create_esg_analyst(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_esg_analyst(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建ESG分析师Agent (使用ReWOO架构)
 
@@ -3337,7 +3363,7 @@ Rapid ESG assessment focusing on MATERIAL ISSUES ONLY.
 4. **Controversies**: Any major ESG controversies?
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
-- Use `tavily_search` for "[company] ESG controversy" or "[company] sustainability"
+- Use `web_search` for "[company] ESG controversy" or "[company] sustainability"
 
 ## Output Format (CONCISE):
 ```markdown
@@ -3368,7 +3394,7 @@ Rapid ESG assessment focusing on MATERIAL ISSUES ONLY.
 4. **争议事件**: 是否有重大ESG争议?
 
 ## 工具使用 (限制1-2次搜索):
-- 使用 `tavily_search` 搜索"[公司] ESG争议"或"[公司] 可持续发展"
+- 使用 `web_search` 搜索"[公司] ESG争议"或"[公司] 可持续发展"
 
 ## 输出格式 (简洁):
 ```markdown
@@ -3451,7 +3477,7 @@ Rapid ESG assessment focusing on MATERIAL ISSUES ONLY.
 - Tax avoidance schemes
 
 ## Tool Usage:
-1. Use `tavily_search` for "[company] ESG rating"
+1. Use `web_search` for "[company] ESG rating"
 2. Search "[company] sustainability report"
 3. Search "[company] controversy scandal"
 4. For public companies, check annual reports for ESG disclosures
@@ -3529,7 +3555,7 @@ Rapid ESG assessment focusing on MATERIAL ISSUES ONLY.
 - 避税行为
 
 ## 工具使用:
-1. 使用 `tavily_search` 搜索"[公司] ESG评级"
+1. 使用 `web_search` 搜索"[公司] ESG评级"
 2. 搜索"[公司] 可持续发展报告"
 3. 搜索"[公司] 争议 丑闻"
 4. 对上市公司，查看年报ESG披露
@@ -3552,7 +3578,7 @@ Rapid ESG assessment focusing on MATERIAL ISSUES ONLY.
 
     agent = ReWOOAgent(
         name="ESGAnalyst",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=0.7
     )
@@ -3564,7 +3590,7 @@ Rapid ESG assessment focusing on MATERIAL ISSUES ONLY.
     return agent
 
 
-def create_sentiment_analyst(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_sentiment_analyst(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建情绪分析师Agent (使用ReWOO架构)
 
@@ -3596,7 +3622,7 @@ Rapid sentiment assessment focusing on CURRENT MOOD ONLY.
 4. **Sentiment Trend**: Improving/Stable/Deteriorating
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
-- Use `tavily_search` for "[company/asset] news today" or "[company/asset] sentiment"
+- Use `web_search` for "[company/asset] news today" or "[company/asset] sentiment"
 
 ## Output Format (CONCISE):
 ```markdown
@@ -3627,7 +3653,7 @@ Rapid sentiment assessment focusing on CURRENT MOOD ONLY.
 4. **情绪趋势**: 改善/稳定/恶化
 
 ## 工具使用 (限制1-2次搜索):
-- 使用 `tavily_search` 搜索"[公司/资产] 新闻 今天"或"[公司/资产] 市场情绪"
+- 使用 `web_search` 搜索"[公司/资产] 新闻 今天"或"[公司/资产] 市场情绪"
 
 ## 输出格式 (简洁):
 ```markdown
@@ -3709,7 +3735,7 @@ Rapid sentiment assessment focusing on CURRENT MOOD ONLY.
 - Insider buying
 
 ## Tool Usage:
-1. Use `tavily_search` for "[company] news today"
+1. Use `web_search` for "[company] news today"
 2. Search "[company] analyst rating upgrade downgrade"
 3. Search "[company] Reddit Twitter sentiment"
 4. For crypto: Search "[coin] fear greed index"
@@ -3787,7 +3813,7 @@ Rapid sentiment assessment focusing on CURRENT MOOD ONLY.
 - 内部人买入
 
 ## 工具使用:
-1. 使用 `tavily_search` 搜索"[公司] 新闻 今天"
+1. 使用 `web_search` 搜索"[公司] 新闻 今天"
 2. 搜索"[公司] 分析师 评级 升级 降级"
 3. 搜索"[公司] 雪球 讨论 情绪"
 4. 加密货币: 搜索"[币种] 恐惧贪婪指数"
@@ -3811,7 +3837,7 @@ Rapid sentiment assessment focusing on CURRENT MOOD ONLY.
 
     agent = ReWOOAgent(
         name="SentimentAnalyst",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=0.7
     )
@@ -3823,7 +3849,7 @@ Rapid sentiment assessment focusing on CURRENT MOOD ONLY.
     return agent
 
 
-def create_quant_strategist(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_quant_strategist(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建量化策略师Agent (使用ReWOO架构)
 
@@ -3856,7 +3882,7 @@ Rapid quantitative assessment focusing on KEY METRICS ONLY.
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
 - Use `yahoo_finance` for stock price and fundamentals
-- Use `tavily_search` for sector P/E comparison
+- Use `web_search` for sector P/E comparison
 
 ## Output Format (CONCISE):
 ```markdown
@@ -3888,7 +3914,7 @@ Rapid quantitative assessment focusing on KEY METRICS ONLY.
 
 ## 工具使用 (限制1-2次搜索):
 - 使用 `yahoo_finance` 获取股价和基本面
-- 使用 `tavily_search` 获取行业P/E对比
+- 使用 `web_search` 获取行业P/E对比
 
 ## 输出格式 (简洁):
 ```markdown
@@ -3969,7 +3995,7 @@ Rapid quantitative assessment focusing on KEY METRICS ONLY.
 1. Use `yahoo_finance` to get:
    - action='price' for current price
    - action='history' for price history (calculate volatility)
-2. Use `tavily_search` for sector P/E, peer comparison
+2. Use `web_search` for sector P/E, peer comparison
 3. Calculate beta using price history vs market index
 
 ## Output Requirements:
@@ -4043,7 +4069,7 @@ Rapid quantitative assessment focusing on KEY METRICS ONLY.
 1. 使用 `yahoo_finance` 获取:
    - action='price' 当前价格
    - action='history' 价格历史 (计算波动率)
-2. 使用 `tavily_search` 获取行业P/E、同业对比
+2. 使用 `web_search` 获取行业P/E、同业对比
 3. 使用价格历史计算相对市场指数的Beta
 
 ## 输出要求:
@@ -4064,7 +4090,7 @@ Rapid quantitative assessment focusing on KEY METRICS ONLY.
 
     agent = ReWOOAgent(
         name="QuantStrategist",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=0.5  # Lower temperature for more precise quantitative analysis
     )
@@ -4076,7 +4102,7 @@ Rapid quantitative assessment focusing on KEY METRICS ONLY.
     return agent
 
 
-def create_deal_structurer(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_deal_structurer(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建交易结构师Agent (使用ReWOO架构)
 
@@ -4108,7 +4134,7 @@ Rapid deal structure assessment focusing on KEY TERMS ONLY.
 4. **Red Flag**: One deal structure concern
 
 ## Tool Usage (LIMIT TO 1 SEARCH):
-- Use `tavily_search` for "[industry] VC deal terms 2024" if needed
+- Use `web_search` for "[industry] VC deal terms 2024" if needed
 
 ## Output Format (CONCISE):
 ```markdown
@@ -4139,7 +4165,7 @@ Rapid deal structure assessment focusing on KEY TERMS ONLY.
 4. **风险点**: 一个交易结构担忧
 
 ## 工具使用 (限制1次搜索):
-- 如需要，使用 `tavily_search` 搜索"[行业] VC投资条款 2024"
+- 如需要，使用 `web_search` 搜索"[行业] VC投资条款 2024"
 
 ## 输出格式 (简洁):
 ```markdown
@@ -4228,7 +4254,7 @@ Rapid deal structure assessment focusing on KEY TERMS ONLY.
 - Secondary sale: Transfer restrictions
 
 ## Tool Usage:
-1. Use `tavily_search` for "[industry] VC deal terms"
+1. Use `web_search` for "[industry] VC deal terms"
 2. Search "Series [A/B/C] term sheet trends [year]"
 3. Search "[company type] M&A multiples"
 
@@ -4311,7 +4337,7 @@ Rapid deal structure assessment focusing on KEY TERMS ONLY.
 - 老股转让: 限制条件
 
 ## 工具使用:
-1. 使用 `tavily_search` 搜索"[行业] VC投资条款"
+1. 使用 `web_search` 搜索"[行业] VC投资条款"
 2. 搜索"[A/B/C]轮 条款清单 趋势 [年份]"
 3. 搜索"[公司类型] 并购倍数"
 
@@ -4333,7 +4359,7 @@ Rapid deal structure assessment focusing on KEY TERMS ONLY.
 
     agent = ReWOOAgent(
         name="DealStructurer",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=0.6
     )
@@ -4345,7 +4371,7 @@ Rapid deal structure assessment focusing on KEY TERMS ONLY.
     return agent
 
 
-def create_ma_advisor(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_ma_advisor(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建并购顾问Agent (使用ReWOO架构)
 
@@ -4377,7 +4403,7 @@ Rapid M&A assessment focusing on KEY FACTORS ONLY.
 4. **Deal Attractiveness**: Overall recommendation
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
-- Use `tavily_search` for "[industry] M&A deals 2024" or "[company] acquisition"
+- Use `web_search` for "[industry] M&A deals 2024" or "[company] acquisition"
 
 ## Output Format (CONCISE):
 ```markdown
@@ -4408,7 +4434,7 @@ Rapid M&A assessment focusing on KEY FACTORS ONLY.
 4. **交易吸引力**: 总体建议
 
 ## 工具使用 (限制1-2次搜索):
-- 使用 `tavily_search` 搜索"[行业] 并购交易 2024"或"[公司] 收购"
+- 使用 `web_search` 搜索"[行业] 并购交易 2024"或"[公司] 收购"
 
 ## 输出格式 (简洁):
 ```markdown
@@ -4503,7 +4529,7 @@ Rapid M&A assessment focusing on KEY FACTORS ONLY.
 - Preparation checklist
 
 ## Tool Usage:
-1. Use `tavily_search` for "[industry] M&A transactions [year]"
+1. Use `web_search` for "[industry] M&A transactions [year]"
 2. Search "[company] acquisition bid"
 3. Search "[sector] M&A multiples"
 4. Search "post-merger integration [industry]"
@@ -4593,7 +4619,7 @@ Rapid M&A assessment focusing on KEY FACTORS ONLY.
 - 准备清单
 
 ## 工具使用:
-1. 使用 `tavily_search` 搜索"[行业] 并购交易 [年份]"
+1. 使用 `web_search` 搜索"[行业] 并购交易 [年份]"
 2. 搜索"[公司] 收购 要约"
 3. 搜索"[行业] 并购倍数"
 4. 搜索"并购整合 [行业]"
@@ -4616,7 +4642,7 @@ Rapid M&A assessment focusing on KEY FACTORS ONLY.
 
     agent = ReWOOAgent(
         name="MAAdvisor",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=0.6
     )
@@ -4628,7 +4654,7 @@ Rapid M&A assessment focusing on KEY FACTORS ONLY.
     return agent
 
 
-def create_onchain_analyst(language: str = "zh", quick_mode: bool = False) -> ReWOOAgent:
+def create_onchain_analyst(language: str = "en", quick_mode: bool = False) -> ReWOOAgent:
     """
     创建链上分析师Agent (使用ReWOO架构)
 
@@ -4660,7 +4686,7 @@ Rapid on-chain assessment focusing on KEY SIGNALS ONLY.
 4. **Smart Money**: Following or exiting?
 
 ## Tool Usage (LIMIT TO 1-2 SEARCHES):
-- Use `tavily_search` for "[crypto] whale alert today" or "[crypto] exchange flow"
+- Use `web_search` for "[crypto] whale alert today" or "[crypto] exchange flow"
 
 ## Output Format (CONCISE):
 ```markdown
@@ -4691,7 +4717,7 @@ Rapid on-chain assessment focusing on KEY SIGNALS ONLY.
 4. **聪明钱**: 在进场还是离场?
 
 ## 工具使用 (限制1-2次搜索):
-- 使用 `tavily_search` 搜索"[币种] 巨鲸 今天"或"[币种] 交易所 流向"
+- 使用 `web_search` 搜索"[币种] 巨鲸 今天"或"[币种] 交易所 流向"
 
 ## 输出格式 (简洁):
 ```markdown
@@ -4767,7 +4793,7 @@ Rapid on-chain assessment focusing on KEY SIGNALS ONLY.
 - Active Addresses: Growing = healthy network
 
 ## Tool Usage:
-1. Use `tavily_search` to search "[crypto] whale alert today"
+1. Use `web_search` to search "[crypto] whale alert today"
 2. Search "[crypto] exchange netflow weekly"
 3. Search "[crypto] DeFi TVL trend"
 4. Search "[crypto] MVRV SOPR indicator"
@@ -4840,7 +4866,7 @@ Rapid on-chain assessment focusing on KEY SIGNALS ONLY.
 - 活跃地址: 增长=健康
 
 ## 工具使用:
-1. 使用 `tavily_search` 搜索"[币种] 巨鲸 动态 今天"
+1. 使用 `web_search` 搜索"[币种] 巨鲸 动态 今天"
 2. 搜索"[币种] 交易所 净流量"
 3. 搜索"[币种] DeFi TVL 趋势"
 4. 搜索"[币种] MVRV SOPR 指标"
@@ -4864,7 +4890,7 @@ Rapid on-chain assessment focusing on KEY SIGNALS ONLY.
 
     agent = ReWOOAgent(
         name="OnchainAnalyst",
-        role_prompt=role_prompt,
+        role_prompt=role_prompt + get_output_language_instruction(language),
         model="gpt-4",
         temperature=0.6
     )

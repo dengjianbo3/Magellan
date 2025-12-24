@@ -9,8 +9,7 @@ Phase 4: 迁移自 main.py 的 DD 工作流端点
 """
 import uuid
 import asyncio
-from datetime import datetime
-from typing import Dict, Any, Optional, Callable
+from typing import Any, Optional, Callable
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 
@@ -167,8 +166,8 @@ async def generate_valuation_analysis(session_id: str):
 
     try:
         # 3. 导入 Agents
-        from ...agents.valuation_agent import ValuationAgent, ValuationAnalysis
-        from ...agents.exit_agent import ExitAgent, ExitAnalysis
+        from ...agents.valuation_agent import ValuationAgent
+        from ...agents.exit_agent import ExitAgent
 
         # 4. 执行估值分析
         valuation_agent = ValuationAgent()

@@ -5,22 +5,18 @@ Specialized roundtable meeting for trading decisions.
 Extends the base Meeting class with trading-specific phases and signal generation.
 """
 
-import asyncio
 import logging
 import json
-import os
 import re
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Callable
-from dataclasses import dataclass, field
 
 from app.core.roundtable.meeting import Meeting
 from app.core.roundtable.agent import Agent
 from app.core.roundtable.rewoo_agent import ReWOOAgent
 from app.models.trading_models import TradingSignal, AgentVote
 from app.core.trading.retry_handler import (
-    RetryHandler, RetryConfig, CircuitBreaker,
-    CircuitBreakerOpenError, get_llm_retry_handler
+    RetryHandler, get_llm_retry_handler
 )
 from app.core.trading.agent_memory import (
     get_memory_store, AgentMemoryStore,

@@ -6,7 +6,7 @@ Enables Redis storage or in-memory storage for testing.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, List, Dict, Any
+from typing import List
 from dataclasses import dataclass, field
 from datetime import datetime
 

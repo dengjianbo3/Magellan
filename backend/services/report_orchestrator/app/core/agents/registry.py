@@ -65,12 +65,16 @@ class AgentRegistry:
             create_tech_specialist,
             create_legal_advisor,
             create_technical_analyst,
+            create_bp_parser,  # BP 解析器
         )
 
         # 特殊 Agent 工厂
-        from .special import create_leader
+        from .special import create_leader, create_report_synthesizer
 
         self._factory_map = {
+            # BP 解析（必须作为第一步）
+            "bp_parser": create_bp_parser,
+            
             # 原子 Agent
             "team_evaluator": create_team_evaluator,
             "market_analyst": create_market_analyst,
@@ -82,6 +86,7 @@ class AgentRegistry:
 
             # 特殊 Agent
             "leader": create_leader,
+            "report_synthesizer": create_report_synthesizer,
         }
 
         logger.info(f"Registered {len(self._factory_map)} agent factories")

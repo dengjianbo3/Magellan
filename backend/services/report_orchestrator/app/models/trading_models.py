@@ -6,7 +6,7 @@ Pydantic models for the auto trading system.
 
 import os
 from datetime import datetime
-from typing import Optional, Dict, List, Literal
+from typing import Optional, Dict, Literal
 from pydantic import BaseModel, Field, field_validator
 
 

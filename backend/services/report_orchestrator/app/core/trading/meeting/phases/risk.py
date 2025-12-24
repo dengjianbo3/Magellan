@@ -5,7 +5,7 @@ Phase 3: Risk Assessor evaluates position risks.
 """
 
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import logging
 
 from .base import PhaseExecutor, PhaseContext, PhaseResult

@@ -7,7 +7,7 @@ Represents agent votes and voting-related structures.
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional, List
+from typing import List
 
 
 class VoteDirection(Enum):

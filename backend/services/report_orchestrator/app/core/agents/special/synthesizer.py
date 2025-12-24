@@ -6,7 +6,6 @@ Report Synthesizer Agent
 
 注意：此Agent仅用于分析模块workflow的最后一步
 """
-from typing import Dict, Any, List, Optional
 
 # 从现有实现导入
 from app.agents.report_synthesizer_agent import (
@@ -14,8 +13,23 @@ from app.agents.report_synthesizer_agent import (
     synthesize_report
 )
 
+
+def create_report_synthesizer(language: str = "zh", quick_mode: bool = False):
+    """
+    创建 Report Synthesizer Agent 实例
+
+    Args:
+        language: 输出语言（暂未使用，为统一接口保留）
+        quick_mode: 是否快速模式
+
+    Returns:
+        ReportSynthesizerAgent 实例
+    """
+    return ReportSynthesizerAgent(quick_mode=quick_mode)
+
+
 # 导出
-__all__ = ["ReportSynthesizerAgent", "synthesize_report"]
+__all__ = ["ReportSynthesizerAgent", "synthesize_report", "create_report_synthesizer"]
 
 # Agent 元数据
 AGENT_METADATA = {

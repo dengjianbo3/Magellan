@@ -60,25 +60,101 @@
         <div class="glass-panel rounded-xl p-6">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
             <span class="material-symbols-outlined mr-2 text-primary">account_balance_wallet</span>
-            {{ t('trading.account') || 'Account' }}
+            {{ t('trading.account') || '账户概览' }}
           </h3>
 
-          <div class="space-y-4">
+          <div class="space-y-3">
+            <!-- Trading Start Date -->
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary">{{ t('trading.equity') || 'Total Equity' }}</span>
+              <span class="text-text-secondary text-sm">交易起始日期</span>
+              <span class="text-white">{{ tradingStartDateFormatted }}</span>
+            </div>
+
+            <!-- Initial Capital -->
+            <div class="flex justify-between items-center">
+              <span class="text-text-secondary text-sm">起始金额</span>
+              <span class="text-white font-medium">$3,000.00</span>
+            </div>
+
+            <!-- Current Equity -->
+            <div class="flex justify-between items-center pt-2 border-t border-white/10">
+              <span class="text-text-secondary">当前权益</span>
               <span class="text-2xl font-bold text-white">${{ formatNumber(account.totalEquity) }}</span>
             </div>
 
+            <!-- Total Profit -->
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary">{{ t('trading.available') || 'Available' }}</span>
-              <span class="text-white">${{ formatNumber(account.availableBalance) }}</span>
+              <span class="text-text-secondary">总盈利</span>
+              <span :class="totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400'" class="font-semibold">
+                {{ totalProfit >= 0 ? '+' : '' }}${{ formatNumber(totalProfit) }}
+                <span class="text-sm">({{ totalProfitPercent >= 0 ? '+' : '' }}{{ totalProfitPercent.toFixed(2) }}%)</span>
+              </span>
             </div>
 
+            <!-- Max Drawdown -->
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary">{{ t('trading.unrealizedPnl') || 'Unrealized PnL' }}</span>
-              <span :class="account.unrealizedPnl >= 0 ? 'text-emerald-400' : 'text-red-400'">
-                {{ account.unrealizedPnl >= 0 ? '+' : '' }}${{ formatNumber(account.unrealizedPnl) }}
+              <span class="text-text-secondary">最大回撤</span>
+              <span class="text-red-400 font-medium">
+                -{{ drawdown.maxDrawdownPct?.toFixed(2) || 0 }}%
               </span>
+            </div>
+
+            <!-- Alpha (Excess Return vs BTC) -->
+            <div v-if="btcBenchmark.startPrice > 0" class="pt-2 border-t border-white/10 space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="text-text-secondary text-sm">BTC 同期收益</span>
+                <span :class="btcBenchmark.returnPercent >= 0 ? 'text-emerald-400' : 'text-red-400'" class="text-sm">
+                  {{ btcBenchmark.returnPercent >= 0 ? '+' : '' }}{{ btcBenchmark.returnPercent.toFixed(2) }}%
+                </span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-text-secondary font-medium">超额收益 (Alpha)</span>
+                <span 
+                  :class="alpha >= 0 ? 'text-emerald-400' : 'text-red-400'" 
+                  class="font-bold text-lg"
+                >
+                  {{ alpha >= 0 ? '+' : '' }}{{ alpha?.toFixed(2) || 0 }}%
+                </span>
+              </div>
+            </div>
+
+            <!-- Unrealized PnL (if has position) -->
+            <template v-if="position.hasPosition">
+              <div class="flex justify-between items-center pt-2 border-t border-white/10">
+                <span class="text-text-secondary text-sm">未实现盈亏</span>
+                <span :class="account.unrealizedPnl >= 0 ? 'text-emerald-400' : 'text-red-400'">
+                  {{ account.unrealizedPnl >= 0 ? '+' : '' }}${{ formatNumber(account.unrealizedPnl) }}
+                </span>
+              </div>
+            </template>
+
+            <!-- Performance Metrics -->
+            <div v-if="performanceMetrics.totalTrades > 0" class="pt-3 border-t border-white/10 space-y-2">
+              <div class="text-text-secondary text-xs mb-2">策略绩效指标</div>
+              <div class="grid grid-cols-2 gap-2 text-sm">
+                <div class="flex justify-between items-center">
+                  <span class="text-text-secondary">总交易</span>
+                  <span class="text-white">{{ performanceMetrics.totalTrades }}笔</span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-text-secondary">胜率</span>
+                  <span :class="performanceMetrics.winRate >= 50 ? 'text-emerald-400' : 'text-yellow-400'">
+                    {{ performanceMetrics.winRate.toFixed(1) }}%
+                  </span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-text-secondary">盈亏比</span>
+                  <span :class="performanceMetrics.pnlRatio >= 1.5 ? 'text-emerald-400' : 'text-yellow-400'">
+                    {{ performanceMetrics.pnlRatio === Infinity ? '∞' : performanceMetrics.pnlRatio.toFixed(2) }}
+                  </span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-text-secondary">夏普</span>
+                  <span :class="performanceMetrics.sharpeRatio >= 1 ? 'text-emerald-400' : performanceMetrics.sharpeRatio >= 0 ? 'text-yellow-400' : 'text-red-400'">
+                    {{ performanceMetrics.sharpeRatio.toFixed(2) }}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -162,57 +238,6 @@
           </template>
         </div>
 
-        <!-- Maximum Drawdown Card -->
-        <div class="glass-panel rounded-xl p-6">
-          <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
-            <span class="material-symbols-outlined mr-2 text-red-400">trending_down</span>
-            {{ t('trading.maxDrawdown') || 'Maximum Drawdown' }}
-          </h3>
-
-          <div class="space-y-3">
-            <div class="flex justify-between items-center">
-              <span class="text-text-secondary text-sm">{{ t('trading.startDate') || 'Start Date' }}</span>
-              <input
-                type="date"
-                v-model="drawdownStartDate"
-                @change="fetchDrawdown"
-                class="bg-white/10 border border-white/20 rounded px-2 py-1 text-white text-sm"
-              />
-            </div>
-
-            <div class="flex justify-between items-center">
-              <span class="text-text-secondary">{{ t('trading.maxDrawdownPct') || 'Max Drawdown' }}</span>
-              <span class="text-red-400 font-medium">
-                -{{ drawdown.maxDrawdownPct?.toFixed(2) || 0 }}% (${{ formatNumber(drawdown.maxDrawdownUsd || 0) }})
-              </span>
-            </div>
-
-            <div class="flex justify-between items-center">
-              <span class="text-text-secondary">{{ t('trading.currentDrawdown') || 'Current Drawdown' }}</span>
-              <span :class="drawdown.currentDrawdownPct > 0 ? 'text-red-400' : 'text-text-secondary'">
-                -{{ drawdown.currentDrawdownPct?.toFixed(2) || 0 }}%
-              </span>
-            </div>
-
-            <div class="flex justify-between items-center">
-              <span class="text-text-secondary">{{ t('trading.peakEquity') || 'Peak Equity' }}</span>
-              <span class="text-white">${{ formatNumber(drawdown.peakEquity || 0) }}</span>
-            </div>
-
-            <div class="flex justify-between items-center">
-              <span class="text-text-secondary">{{ t('trading.recovery') || 'Recovery' }}</span>
-              <span :class="drawdown.recoveryPct >= 100 ? 'text-emerald-400' : 'text-yellow-400'">
-                {{ drawdown.recoveryPct?.toFixed(1) || 0 }}%
-              </span>
-            </div>
-
-            <div class="flex justify-between items-center text-xs text-text-secondary pt-2 border-t border-white/10">
-              <span>{{ t('trading.tradesAnalyzed') || 'Trades Analyzed' }}</span>
-              <span>{{ drawdown.tradesAnalyzed || 0 }}</span>
-            </div>
-          </div>
-        </div>
-
         <!-- Next Analysis Countdown -->
         <div class="glass-panel rounded-xl p-6">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
@@ -248,9 +273,6 @@
               <span class="material-symbols-outlined mr-2 text-primary">show_chart</span>
               {{ t('trading.equityCurve') || 'Equity Curve' }}
             </h3>
-            <div class="text-sm text-text-secondary">
-              {{ t('trading.startingCapital') || 'Starting' }}: $10,000
-            </div>
           </div>
 
           <div class="h-64">
@@ -743,6 +765,40 @@ let ws = null;
 let countdownInterval = null;
 
 // Computed
+// Fixed initial capital
+const INITIAL_CAPITAL = 3000;
+
+// Trading start date - earliest trade timestamp
+const tradingStartDate = computed(() => {
+  if (!tradeHistory.value || tradeHistory.value.length === 0) return null;
+  // Find the earliest trade
+  const sorted = [...tradeHistory.value].sort((a, b) => 
+    new Date(a.timestamp) - new Date(b.timestamp)
+  );
+  return sorted[0]?.timestamp ? new Date(sorted[0].timestamp) : null;
+});
+
+// Format trading start date for display
+const tradingStartDateFormatted = computed(() => {
+  if (!tradingStartDate.value) return '--';
+  return tradingStartDate.value.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+});
+
+// Total profit = current equity - initial capital
+const totalProfit = computed(() => {
+  return account.value.totalEquity - INITIAL_CAPITAL;
+});
+
+// Total profit percent
+const totalProfitPercent = computed(() => {
+  if (INITIAL_CAPITAL === 0) return 0;
+  return (totalProfit.value / INITIAL_CAPITAL) * 100;
+});
+
 // Use initial_balance from account API for accurate PnL calculation
 const totalPnl = computed(() => {
   const initial = account.value.initialBalance || account.value.totalEquity;
@@ -752,6 +808,78 @@ const totalPnlPercent = computed(() => {
   const initial = account.value.initialBalance || account.value.totalEquity;
   if (initial === 0) return 0;
   return (totalPnl.value / initial) * 100;
+});
+
+// BTC benchmark data for alpha calculation
+const btcBenchmark = ref({
+  startPrice: 0,       // BTC price when trading started
+  currentPrice: 0,     // Current BTC price
+  returnPercent: 0,    // BTC return %
+  loading: false
+});
+
+// Alpha = System return - BTC return (excess return)
+const alpha = computed(() => {
+  if (!btcBenchmark.value.startPrice || btcBenchmark.value.returnPercent === 0) {
+    return null;  // Not enough data
+  }
+  return totalProfitPercent.value - btcBenchmark.value.returnPercent;
+});
+
+// Performance metrics calculated from trade history
+const performanceMetrics = computed(() => {
+  const trades = tradeHistory.value.filter(t => t.pnl !== null);
+  if (trades.length === 0) {
+    return { winRate: 0, pnlRatio: 0, sharpeRatio: 0, totalTrades: 0 };
+  }
+
+  // Win rate
+  const wins = trades.filter(t => t.pnl > 0).length;
+  const losses = trades.filter(t => t.pnl < 0).length;
+  const totalTrades = wins + losses;
+  const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
+
+  // PnL ratio (average win / average loss)
+  const totalProfit = trades.filter(t => t.pnl > 0).reduce((sum, t) => sum + t.pnl, 0);
+  const totalLoss = Math.abs(trades.filter(t => t.pnl < 0).reduce((sum, t) => sum + t.pnl, 0));
+  const avgWin = wins > 0 ? totalProfit / wins : 0;
+  const avgLoss = losses > 0 ? totalLoss / losses : 0;
+  const pnlRatio = avgLoss > 0 ? avgWin / avgLoss : avgWin > 0 ? Infinity : 0;
+
+  // Sharpe ratio (annualized)
+  // Group by date and calculate daily returns
+  const dailyPnl = {};
+  trades.forEach(t => {
+    const date = (t.timestamp || '').slice(0, 10);
+    if (date) {
+      dailyPnl[date] = (dailyPnl[date] || 0) + t.pnl;
+    }
+  });
+
+  const dates = Object.keys(dailyPnl).sort();
+  if (dates.length < 2) {
+    return { winRate, pnlRatio, sharpeRatio: 0, totalTrades };
+  }
+
+  // Calculate daily returns
+  let cumulative = INITIAL_CAPITAL;
+  const dailyReturns = [];
+  dates.forEach(date => {
+    const pnl = dailyPnl[date];
+    const dailyReturn = cumulative > 0 ? pnl / cumulative : 0;
+    dailyReturns.push(dailyReturn);
+    cumulative += pnl;
+  });
+
+  // Sharpe = (mean - rf) / std * sqrt(252)
+  const meanReturn = dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length;
+  const variance = dailyReturns.reduce((sum, r) => sum + Math.pow(r - meanReturn, 2), 0) / dailyReturns.length;
+  const stdDev = Math.sqrt(variance);
+  const riskFreeDaily = 0.05 / 252;
+  const dailySharpe = stdDev > 0 ? (meanReturn - riskFreeDaily) / stdDev : 0;
+  const sharpeRatio = dailySharpe * Math.sqrt(252);
+
+  return { winRate, pnlRatio, sharpeRatio, totalTrades };
 });
 
 // Dynamic interval text based on actual scheduler state
@@ -884,6 +1012,44 @@ async function fetchDrawdown() {
     };
   } catch (e) {
     console.error('Error fetching drawdown:', e);
+  }
+}
+
+// Fetch BTC benchmark data for alpha calculation
+async function fetchBtcBenchmark() {
+  if (!tradingStartDate.value) return;
+  
+  btcBenchmark.value.loading = true;
+  try {
+    // Get current BTC price from Binance API
+    const currentResponse = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+    const currentData = await currentResponse.json();
+    const currentPrice = parseFloat(currentData.price);
+    
+    // Get historical BTC price at trading start date using Klines API (hourly for precision)
+    const startTimestamp = tradingStartDate.value.getTime();
+    const historyResponse = await fetch(
+      `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&startTime=${startTimestamp}&limit=1`
+    );
+    const historyData = await historyResponse.json();
+    
+    // Kline format: [openTime, open, high, low, close, ...]
+    // Use open price [1] for more accurate timestamp matching
+    const startPrice = historyData.length > 0 ? parseFloat(historyData[0][1]) : 0;
+    
+    if (startPrice > 0 && currentPrice > 0) {
+      const btcReturn = ((currentPrice - startPrice) / startPrice) * 100;
+      btcBenchmark.value = {
+        startPrice,
+        currentPrice,
+        returnPercent: btcReturn,
+        loading: false
+      };
+      console.log(`[BTC Benchmark] Start: $${startPrice.toFixed(2)}, Current: $${currentPrice.toFixed(2)}, Return: ${btcReturn.toFixed(2)}%`);
+    }
+  } catch (e) {
+    console.error('Error fetching BTC benchmark:', e);
+    btcBenchmark.value.loading = false;
   }
 }
 
@@ -1424,6 +1590,9 @@ onMounted(async () => {
     fetchDiscussionMessages(),  // Restore discussion messages on page load
     fetchDrawdown()  // Fetch drawdown data
   ]);
+
+  // Fetch BTC benchmark after trade history is loaded (needs tradingStartDate)
+  await fetchBtcBenchmark();
 
   initEquityChart();
   connectWebSocket();

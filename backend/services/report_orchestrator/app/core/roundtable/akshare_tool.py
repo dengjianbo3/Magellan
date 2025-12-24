@@ -6,7 +6,7 @@ AkShare is an open-source Python financial data interface library
 Official docs: https://akshare.akfamily.xyz/
 """
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 from datetime import datetime, timedelta
 from .tool import Tool
 

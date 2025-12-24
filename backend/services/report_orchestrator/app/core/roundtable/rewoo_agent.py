@@ -16,18 +16,14 @@ import asyncio
 import json
 import re
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from .agent import Agent
-from .tool import Tool
 import httpx
 
 # Import timeout configurations
 from ..config_timeouts import (
-    AGENT_ACTION_TIMEOUT,
     TOOL_EXECUTION_TIMEOUT,
-    MEETING_TOTAL_TIMEOUT,
-    HTTP_CLIENT_TIMEOUT,
-    log_timeout_warning
+    HTTP_CLIENT_TIMEOUT
 )
 
 # 配置日志
@@ -64,7 +60,7 @@ class ReWOOAgent(Agent):
         Returns:
             List of Message objects to send
         """
-        from .message import Message, MessageType
+        from .message import Message
 
         if not self.message_bus:
             raise RuntimeError(f"Agent {self.name} not connected to MessageBus")

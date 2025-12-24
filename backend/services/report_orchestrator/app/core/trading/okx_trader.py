@@ -5,7 +5,6 @@ Adapts OKXClient to match the PaperTrader interface,
 allowing the trading system to use OKX demo trading.
 """
 
-import os
 import logging
 import asyncio
 import json
@@ -103,6 +102,7 @@ class OKXTrader:
         # 🆕 Saved TP/SL from Redis for recovery after restart
         self._saved_tp_price: Optional[float] = None
         self._saved_sl_price: Optional[float] = None
+        self._saved_direction: Optional[str] = None  # 🆕 Fix: Track saved direction to prevent TP/SL mismatch
 
         # Callbacks (compatible with PaperTrader)
         self.on_position_closed: Optional[Callable] = None
@@ -162,13 +162,32 @@ class OKXTrader:
     async def _sync_position(self):
         """Sync position from OKX, preserving local TP/SL values"""
         try:
-            # Priority for TP/SL: existing position > saved from Redis > OKX API
-            existing_tp = self._position.take_profit_price if self._position else self._saved_tp_price
-            existing_sl = self._position.stop_loss_price if self._position else self._saved_sl_price
-            
             pos = await self._okx_client.get_current_position()
             if pos:
-                # Use OKX TP/SL if available, otherwise keep local/saved values
+                # 🆕 FIX: Only use saved TP/SL if direction matches to prevent SHORT TP/SL on LONG position
+                # Priority for TP/SL: existing position (same direction) > saved from Redis (if direction matches) > OKX API
+                existing_tp = None
+                existing_sl = None
+                
+                if self._position and self._position.direction == pos.direction:
+                    # Use existing position's TP/SL (same direction confirmed)
+                    existing_tp = self._position.take_profit_price
+                    existing_sl = self._position.stop_loss_price
+                elif self._saved_direction == pos.direction:
+                    # Use saved TP/SL only if direction matches
+                    existing_tp = self._saved_tp_price
+                    existing_sl = self._saved_sl_price
+                    logger.info(f"[_sync_position] Using saved TP/SL (direction {self._saved_direction} matches)")
+                else:
+                    # Direction mismatch - do NOT use saved TP/SL
+                    if self._saved_tp_price or self._saved_sl_price:
+                        logger.warning(f"[_sync_position] ⚠️ Discarding saved TP/SL: saved_dir={self._saved_direction}, current_dir={pos.direction}")
+                        # Clear stale saved values
+                        self._saved_tp_price = None
+                        self._saved_sl_price = None
+                        self._saved_direction = None
+                
+                # Use OKX TP/SL if available, otherwise use existing (direction-validated) values
                 tp_price = pos.take_profit_price if pos.take_profit_price else existing_tp
                 sl_price = pos.stop_loss_price if pos.stop_loss_price else existing_sl
                 
@@ -185,7 +204,25 @@ class OKXTrader:
                     current_price=pos.current_price,
                     unrealized_pnl=pos.unrealized_pnl
                 )
-                logger.info(f"Synced position: {pos.direction} {pos.size} BTC @ ${pos.entry_price}, TP=${tp_price}, SL=${sl_price}")
+                
+                # 🆕 CRITICAL FIX: Final validation - ensure TP/SL makes sense for direction
+                if tp_price and pos.entry_price:
+                    if pos.direction == "long" and tp_price < pos.entry_price:
+                        logger.critical(f"[TP/SL_VALIDATION] ❌ WRONG DIRECTION TP! LONG position has TP below entry: TP=${tp_price:.2f} < entry=${pos.entry_price:.2f}")
+                        self._position.take_profit_price = None
+                    elif pos.direction == "short" and tp_price > pos.entry_price:
+                        logger.critical(f"[TP/SL_VALIDATION] ❌ WRONG DIRECTION TP! SHORT position has TP above entry: TP=${tp_price:.2f} > entry=${pos.entry_price:.2f}")
+                        self._position.take_profit_price = None
+                        
+                if sl_price and pos.entry_price:
+                    if pos.direction == "long" and sl_price > pos.entry_price:
+                        logger.critical(f"[TP/SL_VALIDATION] ❌ WRONG DIRECTION SL! LONG position has SL above entry: SL=${sl_price:.2f} > entry=${pos.entry_price:.2f}")
+                        self._position.stop_loss_price = None
+                    elif pos.direction == "short" and sl_price < pos.entry_price:
+                        logger.critical(f"[TP/SL_VALIDATION] ❌ WRONG DIRECTION SL! SHORT position has SL below entry: SL=${sl_price:.2f} < entry=${pos.entry_price:.2f}")
+                        self._position.stop_loss_price = None
+                
+                logger.info(f"Synced position: {pos.direction} {pos.size} BTC @ ${pos.entry_price}, TP=${self._position.take_profit_price}, SL=${self._position.stop_loss_price}")
             else:
                 self._position = None
         except Exception as e:
@@ -274,13 +311,14 @@ class OKXTrader:
                 self._equity_history = json.loads(equity_data)
                 logger.info(f"[Redis] Loaded {len(self._equity_history)} equity snapshots")
 
-            # 🆕 Load position TP/SL for recovery
+            # 🆕 Load position TP/SL for recovery (with direction validation)
             tp_sl_data = await self._redis.get(f"{self._key_prefix}position_tp_sl")
             if tp_sl_data:
                 tp_sl_state = json.loads(tp_sl_data)
                 self._saved_tp_price = tp_sl_state.get('take_profit_price')
                 self._saved_sl_price = tp_sl_state.get('stop_loss_price')
-                logger.info(f"[Redis] Loaded saved TP=${self._saved_tp_price}, SL=${self._saved_sl_price}")
+                self._saved_direction = tp_sl_state.get('direction')  # 🆕 FIX: Load direction to prevent TP/SL mismatch
+                logger.info(f"[Redis] Loaded saved TP=${self._saved_tp_price}, SL=${self._saved_sl_price}, dir={self._saved_direction}")
 
         except Exception as e:
             logger.error(f"[Redis] Error loading state: {e}")
@@ -675,6 +713,11 @@ class OKXTrader:
                             current_price=executed_price
                         )
                         logger.info(f"OKX position opened: {direction} {self._position.size} BTC @ ${self._position.entry_price}")
+                        
+                        # 🆕 FIX: Save state immediately after opening new position
+                        # This ensures correct TP/SL and direction are persisted to Redis
+                        await self._save_state()
+                        logger.info(f"[Redis] Saved new position state: dir={direction}, TP={tp_price}, SL={sl_price}")
 
                     # Return format consistent with PaperTrader
                     return {
@@ -769,6 +812,11 @@ class OKXTrader:
 
                     closed_position = self._position
                     self._position = None
+                    
+                    # 🆕 FIX: Clear saved TP/SL to prevent stale values being used for new positions
+                    self._saved_tp_price = None
+                    self._saved_sl_price = None
+                    self._saved_direction = None
 
                     logger.info(f"OKX position closed: PnL=${pnl:.2f} ({reason})")
 

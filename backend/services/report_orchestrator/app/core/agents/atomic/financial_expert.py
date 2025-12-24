@@ -4,7 +4,6 @@ Financial Expert Agent
 
 职责：分析财务数据、盈利能力、现金流和估值
 """
-from typing import List
 from app.core.roundtable.investment_agents import create_financial_expert
 from app.core.roundtable.rewoo_agent import ReWOOAgent
 

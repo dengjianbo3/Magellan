@@ -38,6 +38,7 @@ from .sentiment_analyst import create_sentiment_analyst, SentimentAnalystAgent
 from .quant_strategist import create_quant_strategist, QuantStrategistAgent
 from .deal_structurer import create_deal_structurer, DealStructurerAgent
 from .ma_advisor import create_ma_advisor, MAAdvisorAgent
+from .bp_parser_agent import create_bp_parser, BPParserAgent
 
 __all__ = [
     # 工厂函数 (用于创建 Agent 实例)
@@ -90,6 +91,8 @@ AGENT_FACTORY_MAP = {
     "quant_strategist": create_quant_strategist,
     "deal_structurer": create_deal_structurer,
     "ma_advisor": create_ma_advisor,
+    # BP 解析 Agent (早期投资必需)
+    "bp_parser": create_bp_parser,
 }
 
 

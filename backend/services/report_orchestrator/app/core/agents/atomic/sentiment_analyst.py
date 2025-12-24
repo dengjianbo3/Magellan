@@ -4,7 +4,6 @@ Sentiment Analyst Agent
 
 职责：分析市场情绪、新闻舆情、社交媒体信号和机构观点
 """
-from typing import List
 from app.core.roundtable.investment_agents import create_sentiment_analyst
 from app.core.roundtable.rewoo_agent import ReWOOAgent
 

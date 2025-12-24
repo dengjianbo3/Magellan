@@ -2,7 +2,7 @@
 Meeting: The orchestrator that manages the multi-agent discussion
 Meeting: 管理多智能体讨论的编排器
 """
-from typing import List, Optional, Dict, Any, Callable, Awaitable, TYPE_CHECKING
+from typing import List, Optional, Dict, Any, Callable
 from .agent import Agent
 from .message import Message, MessageType
 from .message_bus import MessageBus
@@ -27,7 +27,7 @@ class Meeting:
         self,
         agents: List[Agent],
         agent_event_bus: Optional[AgentEventBus] = None,
-        max_turns: int = 20,
+        max_turns: int = 5,
         max_duration_seconds: int = 300,
         llm_service: Any = None,
         on_message: Optional[Callable] = None
@@ -196,14 +196,20 @@ class Meeting:
         执行一轮对话
 
         让所有Agent依次或并发地思考和发言
+        重要：Leader总是在最后处理，确保能看到其他专家的发言
 
         Returns:
             是否有Agent产生了新消息
         """
         has_new_messages = False
 
-        # 策略1: 顺序执行（更可控）
-        for agent_name, agent in self.agents.items():
+        # 将agents分为两组：普通专家 和 Leader
+        # Leader必须在最后处理，否则会因为消息尚未到达而被跳过
+        other_agents = {name: agent for name, agent in self.agents.items() if name != "Leader"}
+        leader_agent = self.agents.get("Leader")
+
+        # 第一步：让所有非Leader专家发言
+        for agent_name, agent in other_agents.items():
             # 检查Agent是否有待处理消息
             pending = self.message_bus.peek_messages(agent_name)
 
@@ -228,25 +234,85 @@ class Meeting:
                 for msg in new_messages:
                     await self.message_bus.send(msg)
 
-                # 推送Agent发言完成事件
+        # 第二步：Leader在最后发言（确保能看到所有专家的观点）
+        # Leader每隔几轮参与一次，或者当有足够多的新消息时参与
+        if leader_agent:
+            pending = self.message_bus.peek_messages("Leader")
+            
+            # Leader参与条件：
+            # Leader每轮都应该参与，总结讨论并决定下一步
+            # 这确保了Leader能够持续引导会议进程
+            should_leader_speak = True  # Leader每轮都参与
+            
+            if should_leader_speak:
+                # 如果没有pending消息，创建一个汇总请求让Leader思考
+                if not pending:
+                    # 获取最近的对话历史
+                    recent_history = self.message_bus.get_conversation_history(limit=10)
+                    history_text = "\n".join([
+                        f"{msg.sender}: {msg.content[:200]}..." 
+                        for msg in recent_history[-5:]
+                    ])
+                    
+                    # 创建一个虚拟消息让Leader参与
+                    from .message import Message
+                    virtual_message = Message(
+                        sender="Meeting Orchestrator",
+                        recipient="Leader",
+                        content=f"""作为主持人，请对当前讨论进行**阶段性总结和引导**：
+
+## 你的主要任务（每轮必做）：
+1. **总结本轮进展**：各专家提出了哪些关键观点？
+2. **识别分歧点**：专家之间是否存在不同看法？
+3. **引导下一轮方向**：接下来应该深入讨论哪些问题？
+4. **提出深度问题**：向特定专家提问，推动讨论深入
+
+## ⚠️ 关于结束会议（极其谨慎）：
+**只有当以下ALL条件都满足时，才考虑调用 `end_meeting` 工具：**
+- ✅ 已进行至少2-3轮深入讨论（不是泛泛而谈）
+- ✅ 所有领域专家都基于数据发表了实质性观点
+- ✅ 关键分歧点已充分辩论并达成共识
+- ✅ 已形成明确、有说服力的投资建议
+- ✅ 当前轮次接近 max_turns (比如 {self.max_turns - 2}/{self.max_turns} 以上)
+
+**如果不满足上述条件，请：**
+- 继续引导讨论
+- 指出还需要深入的问题
+- 邀请专家补充观点
+
+最近讨论摘要：
+{history_text}
+
+当前轮次：{self.current_turn + 1}/{self.max_turns}
+"""
+                    )
+                    self.message_bus.agent_queues["Leader"].append(virtual_message)
+                
+                # 推送Leader开始思考事件
                 if self.agent_event_bus:
-                    await self.agent_event_bus.publish_result(
-                        agent_name=agent_name,
-                        message=f"{agent_name}发表了观点",
-                        data={
-                            "messages": [msg.to_dict() for msg in new_messages]
-                        }
+                    await self.agent_event_bus.publish_thinking(
+                        agent_name="Leader",
+                        message="Leader正在主持讨论...",
+                        progress=self.current_turn / self.max_turns
                     )
 
-        # 策略2: 并发执行（更快但需要仔细处理）
-        # tasks = []
-        # for agent_name, agent in self.agents.items():
-        #     pending = self.message_bus.peek_messages(agent_name)
-        #     if pending:
-        #         tasks.append(agent.think_and_act())
-        #
-        # results = await asyncio.gather(*tasks, return_exceptions=True)
-        # ...
+                # 让Leader思考并生成响应
+                new_messages = await leader_agent.think_and_act()
+
+                if new_messages:
+                    has_new_messages = True
+
+                    for msg in new_messages:
+                        await self.message_bus.send(msg)
+
+                    if self.agent_event_bus:
+                        await self.agent_event_bus.publish_result(
+                            agent_name="Leader",
+                            message="Leader发表了主持意见",
+                            data={
+                                "messages": [msg.to_dict() for msg in new_messages]
+                            }
+                        )
 
         return has_new_messages
 
@@ -289,11 +355,23 @@ class Meeting:
             print("[Meeting] No Leader found, skipping summary generation")
             return "讨论已结束。"
 
-        # 构建总结请求
+        # 临时禁用 end_meeting 工具，避免Leader在生成总结时又调用它
+        # 保存当前工具，生成完毕后恢复
+        saved_tools = leader.tools.copy()
+        if "end_meeting" in leader.tools:
+            del leader.tools["end_meeting"]
+            print("[Meeting] Temporarily disabled end_meeting tool for summary generation")
+
+        # 构建总结请求 - 明确告诉Leader会议已结束，不要调用任何工具
         summary_request = Message(
             sender="Meeting Orchestrator",
             recipient="Leader",
-            content="""请作为主持人，对本次圆桌讨论进行总结。
+            content="""会议已经结束。请作为主持人，对本次圆桌讨论进行**最终总结**。
+
+⚠️ 重要提示：
+- 会议已经结束，你无需调用任何工具
+- 直接用文字生成完整的会议纪要
+- 不要再次尝试结束会议
 
 总结要求：
 1. 回顾讨论的核心议题和各专家的主要观点
@@ -302,7 +380,7 @@ class Meeting:
 4. 提供最终投资建议或决策建议
 5. 使用Markdown格式，结构清晰
 
-请生成完整的会议纪要。""",
+请直接输出会议纪要内容：""",
             message_type=MessageType.QUESTION
         )
 
@@ -334,6 +412,9 @@ class Meeting:
                 return summary_content
             else:
                 print("[Meeting] Leader did not generate summary")
+                # 如果仍然失败，尝试使用conclusion_reason作为备选总结
+                if self.conclusion_reason:
+                    return f"## 会议总结\n\n{self.conclusion_reason}"
                 return "讨论已结束，但未能生成总结。"
 
         except Exception as e:
@@ -341,6 +422,11 @@ class Meeting:
             import traceback
             traceback.print_exc()
             return f"讨论已结束。（总结生成失败：{str(e)}）"
+        
+        finally:
+            # 恢复工具（虽然会议已结束，但保持代码完整性）
+            leader.tools = saved_tools
+            print("[Meeting] Restored Leader tools")
 
     def _generate_summary(self) -> Dict[str, Any]:
         """

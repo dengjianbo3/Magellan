@@ -18,7 +18,8 @@ class Settings(BaseSettings):
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
 
     # 默认提供商: "gemini", "kimi" 或 "deepseek"
-    DEFAULT_LLM_PROVIDER: str = "gemini"
+    # Note: PDF parsing still uses Gemini via GeminiPDFParser (separate from LLM Gateway)
+    DEFAULT_LLM_PROVIDER: str = "deepseek"
 
     # Load variables from a .env file
     model_config = SettingsConfigDict(env_file=".env")

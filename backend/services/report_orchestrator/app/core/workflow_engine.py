@@ -14,9 +14,8 @@ WorkflowEngine - Workflow执行引擎
 - 可扩展: 支持添加新的执行策略
 """
 
-import asyncio
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime
 from fastapi import WebSocket
 
@@ -72,7 +71,7 @@ class WorkflowEngine:
 
     async def execute(self, initial_context: Dict[str, Any]) -> Dict[str, Any]:
         """
-        执行整个workflow
+        执行整个workflow（支持并行执行）
 
         Args:
             initial_context: 初始上下文，包含用户输入和目标信息
@@ -99,7 +98,23 @@ class WorkflowEngine:
         Raises:
             WorkflowExecutionError: Workflow执行失败
         """
+        import asyncio
+
         try:
+            # 0. 检查缓存 (如果启用)
+            target = initial_context.get('target', {})
+            if target:
+                try:
+                    from .session_store import SessionStore
+                    session_store = SessionStore()
+                    cached_result = session_store.get_cached_analysis(target, self.scenario_id)
+                    if cached_result:
+                        logger.info(f"💾 Cache hit! Using cached analysis for {self.scenario_id}")
+                        cached_result['from_cache'] = True
+                        return cached_result
+                except Exception as e:
+                    logger.warning(f"Cache check failed (continuing without cache): {e}")
+
             # 1. 验证workflow配置
             if not self.registry.validate_workflow(self.scenario_id, self.mode):
                 raise WorkflowExecutionError(
@@ -122,41 +137,67 @@ class WorkflowEngine:
             # 4. 报告开始
             await self._report_workflow_start()
 
-            # 5. 顺序执行每个步骤
-            for step_index, step in enumerate(steps, 1):
-                self.current_step = step_index
+            # 5. 按依赖关系分组执行（并行优化）
+            executed_step_ids = set()
+            step_map = {step['step_id']: step for step in steps}
 
-                logger.info(f"⚡ Executing step {step_index}/{self.total_steps}: {step['agent_id']}")
-
-                try:
-                    # 执行步骤
-                    result = await self._execute_step(step)
-
-                    # 存储结果到context
-                    result_key = f"{step['agent_id']}_result"
-                    self.context[result_key] = result
-
-                    logger.info(f"✅ Step {step_index} completed: {step['agent_id']}")
-
-                except Exception as e:
-                    # 记录失败
-                    self.failed_steps.append({
-                        'step_id': step.get('step_id'),
-                        'agent_id': step['agent_id'],
-                        'error': str(e)
-                    })
-
-                    logger.error(f"❌ Step {step_index} failed: {step['agent_id']} - {e}")
-
-                    # 根据配置决定是继续还是停止
-                    if step.get('required', True):
-                        raise WorkflowExecutionError(
-                            f"Required step failed: {step['agent_id']} - {e}"
-                        )
-                    else:
-                        # 非必需步骤失败，继续执行
-                        logger.warning(f"⚠️  Non-required step failed, continuing...")
+            while len(executed_step_ids) < len(steps):
+                # 找出可以并行执行的步骤（依赖已满足）
+                ready_steps = []
+                for step in steps:
+                    step_id = step['step_id']
+                    if step_id in executed_step_ids:
                         continue
+                    
+                    depends_on = step.get('depends_on', [])
+                    if all(dep_id in executed_step_ids for dep_id in depends_on):
+                        ready_steps.append(step)
+
+                if not ready_steps:
+                    # 防止死循环
+                    remaining = [s['step_id'] for s in steps if s['step_id'] not in executed_step_ids]
+                    raise WorkflowExecutionError(f"Deadlock detected! Remaining steps: {remaining}")
+
+                # 并行执行所有就绪的步骤
+                if len(ready_steps) > 1:
+                    logger.info(f"🚀 Parallel execution: {[s['agent_id'] for s in ready_steps]}")
+                
+                async def execute_with_tracking(step):
+                    """执行单个步骤并跟踪结果"""
+                    step_index = steps.index(step) + 1
+                    self.current_step = step_index
+                    logger.info(f"⚡ Executing step {step_index}/{self.total_steps}: {step['agent_id']}")
+                    
+                    try:
+                        result = await self._execute_step(step)
+                        result_key = f"{step['agent_id']}_result"
+                        self.context[result_key] = result
+                        logger.info(f"✅ Step {step_index} completed: {step['agent_id']}")
+                        return (step['step_id'], 'success', result)
+                    except Exception as e:
+                        self.failed_steps.append({
+                            'step_id': step.get('step_id'),
+                            'agent_id': step['agent_id'],
+                            'error': str(e)
+                        })
+                        logger.error(f"❌ Step {step_index} failed: {step['agent_id']} - {e}")
+                        
+                        if step.get('required', True):
+                            raise
+                        else:
+                            logger.warning(f"⚠️  Non-required step failed, continuing...")
+                            return (step['step_id'], 'failed', None)
+
+                # 并行执行
+                tasks = [execute_with_tracking(step) for step in ready_steps]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                # 处理结果
+                for result in results:
+                    if isinstance(result, Exception):
+                        raise WorkflowExecutionError(f"Step execution failed: {result}")
+                    step_id, status, _ = result
+                    executed_step_ids.add(step_id)
 
             # 6. 标记完成
             self.context['end_time'] = datetime.now().isoformat()
@@ -165,6 +206,16 @@ class WorkflowEngine:
 
             # 7. 报告完成
             await self._report_workflow_complete()
+
+            # 8. 缓存结果 (成功时)
+            if self.context['status'] == 'success' and target:
+                try:
+                    from .session_store import SessionStore
+                    session_store = SessionStore()
+                    session_store.cache_analysis_result(target, self.scenario_id, self.context)
+                    logger.info(f"💾 Cached analysis result for {self.scenario_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to cache result: {e}")
 
             logger.info(f"🎉 Workflow execution completed: status={self.context['status']}")
 
@@ -215,14 +266,18 @@ class WorkflowEngine:
             agent_input = self._prepare_agent_input(step)
 
             # 3. 执行agent
-            # 注意: 这里假设agent有一个统一的接口方法
-            # 实际实现中可能需要根据agent类型调用不同的方法
+            # 根据agent类型调用不同的方法
+            # Agent.analyze 期望 (target, context) 两个参数
+            target = agent_input.get('target', agent_input)
+            context = {k: v for k, v in agent_input.items() if k != 'target'}
+            
             if hasattr(agent, 'run'):
                 result = await agent.run(agent_input)
             elif hasattr(agent, 'execute'):
                 result = await agent.execute(agent_input)
             elif hasattr(agent, 'analyze'):
-                result = await agent.analyze(agent_input)
+                # Agent.analyze(target, context) - 传递分离的参数
+                result = await agent.analyze(target, context)
             else:
                 # Fallback: 如果是旧的Agent类（同步方法）
                 if hasattr(agent, 'process'):
@@ -313,13 +368,18 @@ class WorkflowEngine:
     async def _report_step_complete(self, step: Dict[str, Any], result: Any):
         """报告步骤完成"""
         if self.websocket:
+            # 提取关键信息用于流式展示
+            summary = None
+            if isinstance(result, dict):
+                summary = result.get('summary') or result.get('key_findings', [])[:3]
+            
             await self.websocket.send_json({
                 'type': 'step_complete',
                 'step_id': step.get('step_id'),
                 'agent_id': step['agent_id'],
                 'progress': f"{self.current_step}/{self.total_steps}",
+                'summary': summary,  # 发送摘要而非完整结果
                 'timestamp': datetime.now().isoformat()
-                # 注意: 不发送完整result，避免数据过大
             })
 
     async def _report_step_error(self, step: Dict[str, Any], error: str):
@@ -340,6 +400,44 @@ class WorkflowEngine:
                 'type': 'workflow_complete',
                 'status': self.context['status'],
                 'failed_steps': self.failed_steps,
+                'timestamp': datetime.now().isoformat()
+            })
+
+    async def stream_content(self, agent_id: str, content_type: str, content: str):
+        """
+        流式输出Agent内容
+
+        Args:
+            agent_id: Agent标识
+            content_type: 内容类型 (thinking/analysis/finding/recommendation)
+            content: 内容片段
+        """
+        if self.websocket:
+            await self.websocket.send_json({
+                'type': 'stream_content',
+                'agent_id': agent_id,
+                'content_type': content_type,
+                'content': content,
+                'timestamp': datetime.now().isoformat()
+            })
+
+    async def stream_progress(self, agent_id: str, phase: str, progress_pct: int, message: str = None):
+        """
+        流式输出Agent执行进度
+
+        Args:
+            agent_id: Agent标识
+            phase: 执行阶段 (searching/analyzing/summarizing)
+            progress_pct: 进度百分比 (0-100)
+            message: 可选的进度消息
+        """
+        if self.websocket:
+            await self.websocket.send_json({
+                'type': 'stream_progress',
+                'agent_id': agent_id,
+                'phase': phase,
+                'progress_pct': progress_pct,
+                'message': message,
                 'timestamp': datetime.now().isoformat()
             })
 

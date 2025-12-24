@@ -6,7 +6,7 @@ Agent 管理路由
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from pydantic import BaseModel
 
 from fastapi import APIRouter, HTTPException, Depends

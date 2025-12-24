@@ -5,16 +5,12 @@ Industry Research Orchestrator (行业研究协调器)
 关注点: 行业趋势、竞争格局、投资机会、风险因素
 """
 
-from typing import Dict, Any, List, Optional
-from datetime import datetime
-import asyncio
+from typing import Dict, Any
 
 from .base_orchestrator import BaseOrchestrator
 from ...models.analysis_models import (
     InvestmentScenario,
-    AnalysisDepth,
-    QuickJudgmentResult,
-    RecommendationType
+    QuickJudgmentResult
 )
 # Phase 2: All agents now loaded from AgentRegistry
 # Legacy imports removed

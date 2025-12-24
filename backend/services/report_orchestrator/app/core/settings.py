@@ -5,8 +5,6 @@ Application Settings
 统一管理所有环境变量和配置项
 """
 
-import os
-from typing import Optional
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 

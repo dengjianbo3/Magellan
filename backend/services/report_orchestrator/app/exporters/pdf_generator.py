@@ -6,19 +6,19 @@ Uses ReportLab to generate professional investment analysis reports in PDF forma
 使用ReportLab生成专业的投资分析报告PDF格式。
 """
 
-from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, PageBreak,
-    Table, TableStyle, Image as RLImage
+    Table, TableStyle
 )
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 import os
 
 
@@ -43,11 +43,52 @@ class PDFReportGenerator:
         """
         self.language = language
         self.page_size = A4
+        
+        # 注册中文字体
+        self.chinese_font = self._register_chinese_font()
+        self.chinese_font_bold = self.chinese_font  # CJK字体通常不区分Bold，使用同一字体
+        
         self.styles = self._setup_styles()
+    
+    def _register_chinese_font(self) -> str:
+        """
+        注册中文字体，返回可用的字体名称
+        
+        Returns:
+            字体名称 (如果中文字体不可用，返回Helvetica)
+        """
+        # 尝试使用 Noto Sans CJK 中文字体
+        chinese_font_paths = [
+            '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+            '/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc',
+            '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
+            '/usr/local/share/fonts/NotoSansCJK-Regular.ttc',
+        ]
+        
+        for font_path in chinese_font_paths:
+            if os.path.exists(font_path):
+                try:
+                    # TTC 文件需要指定 subfontIndex (0 是第一个字体)
+                    pdfmetrics.registerFont(TTFont('NotoSansCJK', font_path, subfontIndex=0))
+                    print(f"[PDFGenerator] Registered Chinese font: {font_path}")
+                    return 'NotoSansCJK'
+                except Exception as e:
+                    print(f"[PDFGenerator] Failed to register font {font_path}: {e}")
+                    continue
+        
+        # 如果是中文但没有找到中文字体，打印警告
+        if self.language == "zh":
+            print("[PDFGenerator] WARNING: Chinese font not found, PDF may show garbled text for Chinese characters")
+        
+        return 'Helvetica'  # 回退到默认字体
 
     def _setup_styles(self) -> Dict[str, ParagraphStyle]:
         """设置样式"""
         styles = getSampleStyleSheet()
+        
+        # 根据语言选择字体
+        title_font = self.chinese_font if self.language == "zh" else 'Helvetica-Bold'
+        body_font = self.chinese_font if self.language == "zh" else 'Helvetica'
 
         # 标题样式
         if 'ReportTitle' not in styles:
@@ -58,7 +99,7 @@ class PDFReportGenerator:
                 textColor=colors.HexColor('#1a1a1a'),
                 spaceAfter=30,
                 alignment=TA_CENTER,
-                fontName='Helvetica-Bold'
+                fontName=title_font
             ))
 
         # 章节标题
@@ -70,7 +111,7 @@ class PDFReportGenerator:
                 textColor=colors.HexColor('#2c3e50'),
                 spaceBefore=20,
                 spaceAfter=12,
-                fontName='Helvetica-Bold'
+                fontName=title_font
             ))
 
         # 小节标题
@@ -82,7 +123,7 @@ class PDFReportGenerator:
                 textColor=colors.HexColor('#34495e'),
                 spaceBefore=12,
                 spaceAfter=6,
-                fontName='Helvetica-Bold'
+                fontName=title_font
             ))
 
         # 正文样式
@@ -94,7 +135,8 @@ class PDFReportGenerator:
                 leading=16,
                 textColor=colors.HexColor('#2c3e50'),
                 alignment=TA_JUSTIFY,
-                spaceAfter=10
+                spaceAfter=10,
+                fontName=body_font
             ))
 
         # 重点文本
@@ -103,7 +145,7 @@ class PDFReportGenerator:
                 name='Highlight',
                 parent=styles['BodyText'],
                 textColor=colors.HexColor('#e74c3c'),
-                fontName='Helvetica-Bold'
+                fontName=title_font
             ))
 
         return styles

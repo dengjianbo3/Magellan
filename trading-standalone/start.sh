@@ -29,21 +29,31 @@ fi
 
 # Check if .env exists, if not create from parent or template
 if [ ! -f ".env" ]; then
-    if [ -f "../.env" ]; then
-        echo -e "${YELLOW}Creating .env from parent directory...${NC}"
-        cp "../.env" ".env"
-    else
-        echo -e "${RED}Error: .env file not found!${NC}"
-        echo "Please create .env with your API keys."
-        exit 1
+    if [ -f ".env.example" ]; then
+        echo -e "${YELLOW}Creating .env from .env.example...${NC}"
+        cp ".env.example" ".env"
+        echo -e "${GREEN}Created .env - please review and customize if needed${NC}"
     fi
 fi
 
 # Load environment variables
-source .env 2>/dev/null || true
+# Priority: 1. Root project .env (API keys), 2. Local .env (trading overrides)
+echo -e "${BLUE}Loading configuration...${NC}"
 
-# Configuration loading priority: .env > config.yaml > defaults
-echo -e "${BLUE}Loading configuration (.env takes priority over config.yaml)...${NC}"
+# First, load root project .env for shared API keys
+if [ -f "../.env" ]; then
+    echo -e "  ${GREEN}✓${NC} Loading shared API keys from root .env"
+    source "../.env" 2>/dev/null || true
+fi
+
+# Then, load local .env for trading-specific overrides
+if [ -f ".env" ]; then
+    echo -e "  ${GREEN}✓${NC} Loading trading overrides from local .env"
+    source ".env" 2>/dev/null || true
+fi
+
+# Configuration loading priority: local .env > root .env > config.yaml > defaults
+echo -e "${BLUE}Configuration priority: local .env > root .env > config.yaml > defaults${NC}"
 
 # Helper function: get value from config.yaml
 get_yaml_value() {

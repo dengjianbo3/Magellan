@@ -7,7 +7,7 @@ Tools are functions that agents can call to interact with external systems.
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 import json
 

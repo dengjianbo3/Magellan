@@ -264,7 +264,7 @@ function goBack() {
   emit('back');
 }
 
-function handleSubmit() {
+async function handleSubmit() {
   // Validate all fields
   let isValid = true;
   for (const fieldName in fieldRefs.value) {
@@ -280,25 +280,70 @@ function handleSubmit() {
     return;
   }
 
-  // Filter out empty optional fields
-  const targetData = {};
-  for (const key in formData.value) {
-    const value = formData.value[key];
-    if (value !== '' && value !== null && value !== undefined && value !== 0) {
-      targetData[key] = value;
-    }
-  }
-
   isSubmitting.value = true;
 
-  // Simulate async operation
-  setTimeout(() => {
-    isSubmitting.value = false;
+  try {
+    // Filter out empty optional fields and handle File objects
+    const targetData = {};
+    for (const key in formData.value) {
+      const value = formData.value[key];
+      if (value !== '' && value !== null && value !== undefined && value !== 0) {
+        // Check if value is a File object - upload it first
+        if (value instanceof File) {
+          // Upload file to server first (to avoid Kafka message size limits)
+          const uploadResult = await uploadFile(value, key);
+          if (uploadResult.success) {
+            targetData[`${key}_id`] = uploadResult.file_id;
+            targetData[`${key}name`] = value.name;
+            console.log(`[UnifiedForm] Uploaded file ${value.name} → ${uploadResult.file_id}`);
+          } else {
+            throw new Error(`Failed to upload ${value.name}: ${uploadResult.error}`);
+          }
+        } else {
+          targetData[key] = value;
+        }
+      }
+    }
+
     emit('analysis-start', {
       target: targetData,
       config: config.value
     });
-  }, 500);
+  } catch (error) {
+    console.error('[UnifiedForm] Error preparing form data:', error);
+    alert(`提交失败: ${error.message}`);
+  } finally {
+    isSubmitting.value = false;
+  }
+}
+
+// Helper function to upload file to server
+async function uploadFile(file, fieldName) {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  // Determine upload endpoint based on field name
+  // Note: files router is mounted at /api, so path is /api/v2/upload/...
+  const endpoint = fieldName.includes('bp') 
+    ? '/api/v2/upload/bp'
+    : '/api/v2/upload/financial';
+  
+  try {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${endpoint}`, {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!response.ok) {
+      const error = await response.text();
+      return { success: false, error };
+    }
+    
+    const result = await response.json();
+    return { success: true, file_id: result.file_id };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 </script>
 

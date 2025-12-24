@@ -4,7 +4,6 @@ ESG 分析师 Agent
 
 职责：评估环境、社会、公司治理因素，识别ESG风险与机会
 """
-from typing import List
 from app.core.roundtable.investment_agents import create_esg_analyst
 from app.core.roundtable.rewoo_agent import ReWOOAgent
 

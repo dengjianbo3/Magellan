@@ -9,7 +9,7 @@ import logging
 from typing import Dict, Any
 
 import httpx
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +172,7 @@ async def generate_roundtable_summary(request: dict):
         messages = request.get("messages", [])
         participants = request.get("participants", [])
         rounds = request.get("rounds", 0)
-        language = request.get("language", "zh")  # 获取语言偏好
+        language = request.get("language", "en")  # Default to English
 
         # 构建对话历史
         dialogue_text = "\n\n".join([
@@ -295,7 +295,7 @@ async def generate_roundtable_summary_stream(request: dict):
     messages = request.get("messages", [])
     participants = request.get("participants", [])
     rounds = request.get("rounds", 0)
-    language = request.get("language", "zh")
+    language = request.get("language", "en")  # Default to English
     
     # 构建对话历史
     dialogue_text = "\n\n".join([
