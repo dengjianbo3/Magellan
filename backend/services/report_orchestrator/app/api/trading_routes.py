@@ -265,36 +265,45 @@ class TradingSystem:
                     })
                     logger.info(f"[SIGNAL_DEBUG] History now has {len(self._trade_history)} entries")
                 else:
-                    # 🆕 交易已在TradingMeeting.TradeExecutorWrapper中执行
+                    # 🆕 交易已在TradingMeeting.TradeExecutor中执行
                     # 这里只记录结果，不再重复执行
-                    # paper_trader有防重复锁，即使调用也会被阻止
                     logger.info(f"[SIGNAL_DEBUG] Recording {signal.direction} signal to history")
                     
-                    # 检查是否需要执行（如果TradeExecutor没有执行成功）
-                    # 检查当前持仓状态
-                    current_position = await self.paper_trader.get_position() if self.paper_trader else None
-                    has_matching_position = (
-                        current_position and 
-                        current_position.get("has_position") and
-                        current_position.get("direction") == signal.direction
-                    )
+                    # 🔧 FIX Issue #1: 更可靠的检测 - TradeExecutor执行成功后会设置entry_price
+                    # 如果signal.entry_price已设置，说明交易已执行
+                    trade_already_executed = signal.entry_price is not None and signal.entry_price > 0
                     
-                    if has_matching_position:
-                        # 持仓已存在且方向匹配，说明TradeExecutor已经执行了
-                        logger.info(f"[SIGNAL_DEBUG] Trade already executed by TradeExecutor, skipping _execute_signal")
+                    if trade_already_executed:
+                        # TradeExecutor已成功执行，直接使用signal中的信息
+                        logger.info(f"[SIGNAL_DEBUG] Trade already executed by TradeExecutor (entry_price=${signal.entry_price:.2f}), skipping _execute_signal")
                         trade_result = {
                             "success": True,
                             "action": signal.direction,
                             "message": "交易已由TradeExecutor执行",
-                            "entry_price": current_position.get("entry_price"),
-                            "leverage": current_position.get("leverage"),
-                            "size": current_position.get("size")
+                            "entry_price": signal.entry_price,
+                            "leverage": signal.leverage,
+                            "tp_price": signal.take_profit_price,
+                            "sl_price": signal.stop_loss_price
                         }
                     else:
-                        # 没有持仓或方向不匹配，尝试执行
-                        # 这种情况可能是TradeExecutor执行失败，作为备用方案
-                        logger.info(f"[SIGNAL_DEBUG] No matching position found, attempting _execute_signal")
-                        trade_result = await self._execute_signal(signal)
+                        # TradeExecutor可能执行失败，检查当前持仓状态作为备用
+                        current_position = await self.paper_trader.get_position() if self.paper_trader else None
+                        has_any_position = current_position and current_position.get("has_position")
+                        
+                        if has_any_position:
+                            # 有持仓存在，不要尝试再次执行以避免冲突
+                            existing_dir = current_position.get("direction")
+                            logger.info(f"[SIGNAL_DEBUG] Position exists ({existing_dir}), not calling _execute_signal to avoid conflict")
+                            trade_result = {
+                                "success": False,
+                                "action": signal.direction,
+                                "message": f"跳过执行: 已存在{existing_dir}持仓",
+                                "existing_position": existing_dir
+                            }
+                        else:
+                            # 没有持仓，作为备用方案尝试执行
+                            logger.info(f"[SIGNAL_DEBUG] No position found and TradeExecutor didn't execute, attempting _execute_signal as fallback")
+                            trade_result = await self._execute_signal(signal)
                     
                     self._trade_history.append({
                         "timestamp": datetime.now().isoformat(),
@@ -358,16 +367,32 @@ class TradingSystem:
             # Check if we already have a position
             position = await self.paper_trader.get_position()
             if position and position.get("has_position"):
-                # Close existing position first if direction changed
+                # 🔧 FIX Issue #3: 在hedge mode中不要自动关闭仓位反转
+                # 因为在OKX hedge mode中，LONG和SHORT可以同时存在
                 existing_direction = position.get("direction")
                 if existing_direction and existing_direction != signal.direction:
-                    logger.info(f"Closing existing {existing_direction} position before opening {signal.direction}")
-                    close_result = await self.paper_trader.close_position(reason="signal_reversal")
-                    await self._broadcast({
-                        "type": "position_closed",
-                        "reason": "signal_reversal",
-                        "pnl": close_result.get("pnl", 0) if close_result else 0
-                    })
+                    # 检查是否是OKX trader (hedge mode)
+                    is_okx_trader = self.trader_type == "okx"
+                    
+                    if is_okx_trader:
+                        # OKX hedge mode: 不自动关闭，避免关错仓位
+                        logger.warning(f"[_execute_signal] OKX hedge mode: Cannot auto-close {existing_direction} to open {signal.direction}")
+                        return {
+                            "success": False, 
+                            "action": "blocked",
+                            "message": f"OKX hedge mode: 已存在{existing_direction}仓位，请先手动平仓后再反向开仓",
+                            "existing_direction": existing_direction,
+                            "requested_direction": signal.direction
+                        }
+                    else:
+                        # Paper trading: 可以安全关闭
+                        logger.info(f"Closing existing {existing_direction} position before opening {signal.direction}")
+                        close_result = await self.paper_trader.close_position(reason="signal_reversal")
+                        await self._broadcast({
+                            "type": "position_closed",
+                            "reason": "signal_reversal",
+                            "pnl": close_result.get("pnl", 0) if close_result else 0
+                        })
                 else:
                     # Same direction, skip opening new position
                     return {"success": True, "action": "skip", "message": f"Already in {existing_direction} position"}
