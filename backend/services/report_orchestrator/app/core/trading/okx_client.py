@@ -454,29 +454,46 @@ class OKXClient:
             raise RuntimeError(f"Failed to fetch market price from OKX: {e}")
 
     async def get_current_position(self, symbol: str = "BTC-USDT-SWAP") -> Optional[Position]:
-        """Get current open position"""
+        """Get current open position
+        
+        In hedge mode (long_short_mode), both LONG and SHORT positions can exist.
+        This function returns the most recently opened position based on size.
+        Uses posSide field for accurate direction in hedge mode.
+        """
         try:
             if self.api_key and self.secret_key:
                 data = await self._request('GET', f'/api/v5/account/positions?instId={symbol}')
 
                 if data.get('code') == '0':
                     positions = data.get('data', [])
+                    
+                    # In hedge mode, we might have multiple positions (long AND short)
+                    # Collect all non-zero positions
+                    active_positions = []
+                    
                     for pos in positions:
                         pos_amt = float(pos.get('pos', 0) or 0)
                         if abs(pos_amt) > 0:
-                            side = 'long' if pos_amt > 0 else 'short'
+                            # In hedge mode, use posSide for direction (more reliable)
+                            pos_side = pos.get('posSide', '')
+                            if pos_side in ['long', 'short']:
+                                side = pos_side
+                            else:
+                                # Fallback to pos sign for net mode
+                                side = 'long' if pos_amt > 0 else 'short'
+                            
                             entry_price = float(pos.get('avgPx', 0) or 0)
                             mark_price = float(pos.get('markPx', entry_price) or entry_price)
                             leverage = int(pos.get('lever', 1) or 1)
                             upl = float(pos.get('upl', 0) or 0)
                             margin = float(pos.get('margin', 0) or 0)
                             liq_price = float(pos.get('liqPx', 0) or 0)
+                            utime = int(pos.get('uTime', 0) or 0)  # Update time for priority
 
                             # Get TP/SL prices
                             tp_price, sl_price = await self._get_tp_sl_prices(symbol, side)
                             
-                            # Fix: Calculate margin from position value / leverage
-                            # OKX returns margin=0 for cross margin mode
+                            # Calculate margin from position value / leverage
                             position_value = abs(pos_amt) * entry_price
                             calculated_margin = position_value / leverage if leverage > 0 else position_value
                             actual_margin = margin if margin > 0 else calculated_margin
@@ -484,21 +501,36 @@ class OKXClient:
                             # Calculate PnL percent using actual margin
                             pnl_percent = (upl / actual_margin * 100) if actual_margin > 0 else 0
 
-                            return Position(
-                                symbol=symbol,
-                                direction=side,
-                                size=abs(pos_amt),
-                                entry_price=entry_price,
-                                current_price=mark_price,
-                                leverage=leverage,
-                                unrealized_pnl=upl,
-                                unrealized_pnl_percent=pnl_percent,
-                                margin=actual_margin,  # Use calculated margin
-                                liquidation_price=liq_price,
-                                take_profit_price=tp_price,
-                                stop_loss_price=sl_price,
-                                opened_at=datetime.now()
-                            )
+                            active_positions.append({
+                                'position': Position(
+                                    symbol=symbol,
+                                    direction=side,
+                                    size=abs(pos_amt),
+                                    entry_price=entry_price,
+                                    current_price=mark_price,
+                                    leverage=leverage,
+                                    unrealized_pnl=upl,
+                                    unrealized_pnl_percent=pnl_percent,
+                                    margin=actual_margin,
+                                    liquidation_price=liq_price,
+                                    take_profit_price=tp_price,
+                                    stop_loss_price=sl_price,
+                                    opened_at=datetime.now()
+                                ),
+                                'utime': utime,
+                                'size': abs(pos_amt)
+                            })
+                    
+                    if active_positions:
+                        # If multiple positions, log warning and return most recently updated
+                        if len(active_positions) > 1:
+                            directions = [p['position'].direction for p in active_positions]
+                            sizes = [p['size'] for p in active_positions]
+                            logger.warning(f"[OKXClient] Multiple positions detected in hedge mode: {list(zip(directions, sizes))}")
+                            # Return most recently updated position
+                            active_positions.sort(key=lambda x: x['utime'], reverse=True)
+                        
+                        return active_positions[0]['position']
 
         except Exception as e:
             logger.error(f"Error fetching position: {e}")
