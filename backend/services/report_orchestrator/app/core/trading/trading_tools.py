@@ -1249,7 +1249,7 @@ class TradingToolkit:
             "message": "No trade history"
         }, ensure_ascii=False)
 
-    async def _tavily_search(self, query: str, max_results: int = 5, time_range: str = None, topic: str = "general", days: int = None) -> str:
+    async def _tavily_search(self, query: str, max_results: int = 5, time_range: str = None, topic: str = "general", days: int = None, **kwargs) -> str:
         """
         Search for cryptocurrency news and market information using MCP.
 
