@@ -12,7 +12,7 @@ services:
     command: >
       redis-server --maxmemory ${REDIS_MAX_MEMORY:-256mb} --maxmemory-policy allkeys-lru --appendonly no --save ""
     ports:
-      - "6379:6379"
+      - "6389:6379" # Changed from 6379 to avoid conflict with main magellan redis
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -40,7 +40,7 @@ services:
       - SERPER_API_KEY=${SERPER_API_KEY:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     ports:
-      - "8010:8010"
+      - "8020:8010" # Changed from 8010 to avoid conflict
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health', timeout=5)" ]
@@ -76,7 +76,7 @@ services:
       - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-deepseek}
       - WORKERS=${LLM_WORKERS:-1}
     ports:
-      - "8003:8003"
+      - "8013:8003" # Changed from 8003 to avoid conflict
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health', timeout=5)" ]
@@ -166,7 +166,7 @@ services:
       # 模式
       - STANDALONE_MODE=true
     ports:
-      - "8000:8000"
+      - "8030:8000" # Changed from 8000 to avoid conflict
     depends_on:
       redis:
         condition: service_healthy
