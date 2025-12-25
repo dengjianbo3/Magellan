@@ -665,6 +665,175 @@
         </div>
       </div>
     </div>
+
+    <!-- Decision Confirmation Modal -->
+    <div
+      v-if="showDecisionModal"
+      class="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+    >
+      <div class="glass-panel rounded-xl p-6 w-full max-w-lg mx-4 border border-primary/30 shadow-2xl">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-white flex items-center">
+            <span class="material-symbols-outlined mr-2 text-primary animate-pulse">smart_toy</span>
+            AI 投资委员会决策
+          </h3>
+          <span class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-400">
+            待确认
+          </span>
+        </div>
+
+        <!-- Signal Details -->
+        <div class="bg-white/5 rounded-lg p-4 mb-4">
+          <div class="grid grid-cols-3 gap-4 text-center mb-4">
+            <div>
+              <span class="text-text-secondary text-xs block mb-1">方向</span>
+              <span 
+                :class="[
+                  'px-3 py-1 rounded-lg font-bold text-lg',
+                  pendingDecision.direction === 'long' 
+                    ? 'bg-emerald-500/20 text-emerald-400' 
+                    : 'bg-red-500/20 text-red-400'
+                ]"
+              >
+                {{ pendingDecision.direction === 'long' ? 'LONG ↑' : 'SHORT ↓' }}
+              </span>
+            </div>
+            <div>
+              <span class="text-text-secondary text-xs block mb-1">杠杆</span>
+              <span class="text-white font-bold text-lg">{{ modifiedLeverage }}x</span>
+            </div>
+            <div>
+              <span class="text-text-secondary text-xs block mb-1">置信度</span>
+              <span 
+                :class="[
+                  'font-bold text-lg',
+                  pendingDecision.confidence >= 70 ? 'text-emerald-400' : 
+                  pendingDecision.confidence >= 50 ? 'text-yellow-400' : 'text-red-400'
+                ]"
+              >
+                {{ pendingDecision.confidence }}%
+              </span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 text-sm">
+            <div class="flex justify-between">
+              <span class="text-text-secondary">止盈价</span>
+              <span class="text-emerald-400 font-medium">
+                ${{ formatNumber(pendingDecision.take_profit) }}
+                <span class="text-xs">(+{{ ((pendingDecision.take_profit / pendingDecision.current_price - 1) * 100).toFixed(1) }}%)</span>
+              </span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-text-secondary">止损价</span>
+              <span class="text-red-400 font-medium">
+                ${{ formatNumber(pendingDecision.stop_loss) }}
+                <span class="text-xs">({{ ((pendingDecision.stop_loss / pendingDecision.current_price - 1) * 100).toFixed(1) }}%)</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Leader Reasoning -->
+        <div class="bg-white/5 rounded-lg p-4 mb-4 max-h-32 overflow-y-auto">
+          <div class="text-text-secondary text-xs mb-2 flex items-center">
+            <span class="material-symbols-outlined text-sm mr-1">psychology</span>
+            Leader 综合意见
+          </div>
+          <p class="text-white text-sm leading-relaxed">
+            {{ pendingDecision.reasoning || '综合技术面、宏观面、市场情绪等多维度分析...' }}
+          </p>
+        </div>
+
+        <!-- Modification Panel -->
+        <div v-if="showModifyPanel" class="bg-white/5 rounded-lg p-4 mb-4 border border-primary/30">
+          <div class="text-text-secondary text-xs mb-3">修改参数</div>
+          <div class="flex items-center gap-4">
+            <label class="text-sm text-white">杠杆倍数:</label>
+            <input
+              type="range"
+              v-model="modifiedLeverage"
+              :min="1"
+              :max="20"
+              class="flex-1"
+            />
+            <span class="text-primary font-bold w-12 text-right">{{ modifiedLeverage }}x</span>
+          </div>
+        </div>
+
+        <!-- Defer Reasons (shown when deferring) -->
+        <div v-if="showDeferReasons" class="bg-white/5 rounded-lg p-4 mb-4 border border-red-500/30">
+          <div class="text-text-secondary text-xs mb-3">请选择搁置原因</div>
+          <div class="grid grid-cols-2 gap-2">
+            <label 
+              v-for="reason in deferReasonOptions" 
+              :key="reason"
+              class="flex items-center gap-2 text-sm text-white cursor-pointer p-2 rounded hover:bg-white/10"
+            >
+              <input 
+                type="radio" 
+                :value="reason" 
+                v-model="selectedDeferReason"
+                class="accent-primary"
+              />
+              {{ reason }}
+            </label>
+          </div>
+          <input
+            v-if="selectedDeferReason === '其他'"
+            v-model="customDeferReason"
+            type="text"
+            placeholder="请输入原因..."
+            class="mt-2 w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
+          />
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex gap-3">
+          <button
+            @click="handleConfirmDecision"
+            :disabled="processingDecision"
+            class="flex-1 px-4 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            <span class="material-symbols-outlined text-lg">check_circle</span>
+            确认执行
+          </button>
+          <button
+            @click="toggleModifyPanel"
+            :disabled="processingDecision"
+            class="px-4 py-3 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            <span class="material-symbols-outlined text-lg">edit</span>
+            修改
+          </button>
+          <button
+            @click="toggleDeferReasons"
+            :disabled="processingDecision"
+            class="px-4 py-3 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            <span class="material-symbols-outlined text-lg">close</span>
+            搁置
+          </button>
+        </div>
+
+        <!-- Confirm Defer Button (shown after selecting reason) -->
+        <button
+          v-if="showDeferReasons && selectedDeferReason"
+          @click="handleDeferDecision"
+          :disabled="processingDecision"
+          class="w-full mt-3 px-4 py-2 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-all disabled:opacity-50"
+        >
+          确认搁置
+        </button>
+
+        <!-- User Responsibility Notice -->
+        <div class="mt-4 text-center text-xs text-text-secondary">
+          <span class="material-symbols-outlined text-sm align-middle mr-1">info</span>
+          请仔细确认后再执行交易
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -746,6 +915,27 @@ const settingsForm = ref({
   useOkxTrading: false  // Whether to use OKX demo trading
 });
 const loadingConfig = ref(false);
+
+// Decision Confirmation Modal State
+const showDecisionModal = ref(false);
+const pendingDecision = ref({
+  decision_id: '',
+  direction: 'long',
+  leverage: 5,
+  confidence: 0,
+  take_profit: 0,
+  stop_loss: 0,
+  current_price: 0,
+  reasoning: ''
+});
+const modifiedLeverage = ref(5);
+const showModifyPanel = ref(false);
+const showDeferReasons = ref(false);
+const selectedDeferReason = ref('');
+const customDeferReason = ref('');
+const processingDecision = ref(false);
+const deferReasonOptions = ['杠杆过高', '方向不同意', '止损太紧', '市场不确定', '其他'];
+const decisionHistory = ref([]);  // Store user decisions for display
 
 // Drawdown data
 const drawdownStartDate = ref('');
@@ -1149,6 +1339,117 @@ async function triggerAnalysis() {
   }
 }
 
+// Decision Confirmation Methods
+function toggleModifyPanel() {
+  showModifyPanel.value = !showModifyPanel.value;
+  showDeferReasons.value = false;
+}
+
+function toggleDeferReasons() {
+  showDeferReasons.value = !showDeferReasons.value;
+  showModifyPanel.value = false;
+}
+
+async function handleConfirmDecision() {
+  processingDecision.value = true;
+  try {
+    const decision = {
+      decision_id: pendingDecision.value.decision_id,
+      action: 'confirm',
+      original_signal: { ...pendingDecision.value },
+      modified_leverage: showModifyPanel.value ? modifiedLeverage.value : pendingDecision.value.leverage,
+      timestamp: new Date().toISOString()
+    };
+    
+    // Record decision to backend
+    await fetch('/api/trading/decision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(decision)
+    });
+    
+    // Add to local history
+    decisionHistory.value.unshift({
+      ...decision,
+      display: `${pendingDecision.value.direction.toUpperCase()} ${modifiedLeverage.value}x → ✓ 确认执行`
+    });
+    
+    // Execute the trade
+    await fetch('/api/trading/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        direction: pendingDecision.value.direction,
+        leverage: showModifyPanel.value ? modifiedLeverage.value : pendingDecision.value.leverage,
+        take_profit: pendingDecision.value.take_profit,
+        stop_loss: pendingDecision.value.stop_loss
+      })
+    });
+    
+    discussionMessages.value.push({
+      agentName: '系统',
+      content: `✓ 用户确认执行 ${pendingDecision.value.direction.toUpperCase()} ${showModifyPanel.value ? modifiedLeverage.value : pendingDecision.value.leverage}x`,
+      timestamp: new Date().toISOString()
+    });
+    
+    showDecisionModal.value = false;
+    resetDecisionState();
+    
+  } catch (e) {
+    console.error('Error confirming decision:', e);
+  } finally {
+    processingDecision.value = false;
+  }
+}
+
+async function handleDeferDecision() {
+  processingDecision.value = true;
+  try {
+    const reason = selectedDeferReason.value === '其他' ? customDeferReason.value : selectedDeferReason.value;
+    const decision = {
+      decision_id: pendingDecision.value.decision_id,
+      action: 'defer',
+      original_signal: { ...pendingDecision.value },
+      defer_reason: reason,
+      timestamp: new Date().toISOString()
+    };
+    
+    // Record decision to backend
+    await fetch('/api/trading/decision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(decision)
+    });
+    
+    // Add to local history
+    decisionHistory.value.unshift({
+      ...decision,
+      display: `${pendingDecision.value.direction.toUpperCase()} ${pendingDecision.value.leverage}x → ✕ 搁置 (${reason})`
+    });
+    
+    discussionMessages.value.push({
+      agentName: '系统',
+      content: `✕ 用户搁置决策，原因: ${reason}`,
+      timestamp: new Date().toISOString()
+    });
+    
+    showDecisionModal.value = false;
+    resetDecisionState();
+    
+  } catch (e) {
+    console.error('Error deferring decision:', e);
+  } finally {
+    processingDecision.value = false;
+  }
+}
+
+function resetDecisionState() {
+  showModifyPanel.value = false;
+  showDeferReasons.value = false;
+  selectedDeferReason.value = '';
+  customDeferReason.value = '';
+}
+
 async function closePosition() {
   if (closingPosition.value) return;
   closingPosition.value = true;
@@ -1399,9 +1700,35 @@ function handleWebSocketMessage(msg) {
 
     case 'signal_generated':
       isAnalyzing.value = false;
+      
+      // Check if this is a HOLD signal (no action needed)
+      if (msg.signal?.direction === 'hold' || !msg.signal?.direction) {
+        discussionMessages.value.push({
+          agentName: '系统',
+          content: `市场分析完成: 维持观望 (HOLD)`,
+          timestamp: new Date().toISOString()
+        });
+        break;
+      }
+      
+      // Show decision confirmation modal for LONG/SHORT signals
+      const signal = msg.signal || {};
+      pendingDecision.value = {
+        decision_id: `decision-${Date.now()}`,
+        direction: signal.direction || 'long',
+        leverage: signal.leverage || 5,
+        confidence: signal.confidence || 70,
+        take_profit: signal.take_profit_price || 0,
+        stop_loss: signal.stop_loss_price || 0,
+        current_price: signal.entry_price || 0,
+        reasoning: signal.reasoning || msg.reasoning || '综合技术面、宏观面、市场情绪等进行多维度分析，建议执行此交易。'
+      };
+      modifiedLeverage.value = pendingDecision.value.leverage;
+      showDecisionModal.value = true;
+      
       discussionMessages.value.push({
         agentName: '系统',
-        content: `交易信号生成: ${msg.signal?.direction || 'N/A'}`,
+        content: `🔔 交易信号生成: ${signal.direction?.toUpperCase()} ${signal.leverage}x - 请确认执行`,
         timestamp: new Date().toISOString()
       });
       break;
