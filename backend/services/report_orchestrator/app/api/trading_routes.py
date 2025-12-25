@@ -1588,12 +1588,317 @@ MOBILE_STATUS_HTML = """<!DOCTYPE html>
 </html>
 """
 
-
 @router.get("/dashboard", response_class=HTMLResponse)
 async def trading_dashboard():
     """Mobile-friendly trading status dashboard"""
     return MOBILE_STATUS_HTML
 
+
+# ============================================
+# Mock Testing APIs
+# ============================================
+
+@router.post("/mock/enable")
+async def enable_mock_mode(scenario: str = Query(default="random", description="Scenario: bullish, bearish, neutral, random")):
+    """
+    Enable mock Tavily mode for testing.
+    
+    This allows testing the full trading flow without Tavily API costs.
+    The LLM will receive mock news data designed to lead to LONG/SHORT/HOLD decisions.
+    
+    Args:
+        scenario: 'bullish' (leads to LONG), 'bearish' (leads to SHORT), 
+                  'neutral' (leads to HOLD), 'random' (random each time)
+    """
+    from app.core.trading.mock_tavily import enable_mock_mode, set_scenario
+    
+    enable_mock_mode()
+    set_scenario(scenario)
+    
+    return {
+        "success": True,
+        "mock_mode": True,
+        "scenario": scenario,
+        "message": f"Mock mode enabled with scenario: {scenario}",
+        "expected_outcome": {
+            "bullish": "AI will likely recommend LONG",
+            "bearish": "AI will likely recommend SHORT",
+            "neutral": "AI will likely recommend HOLD",
+            "random": "Random scenario each analysis"
+        }.get(scenario, "Unknown")
+    }
+
+
+@router.post("/mock/disable")
+async def disable_mock_mode():
+    """Disable mock mode and use real Tavily API"""
+    from app.core.trading.mock_tavily import disable_mock_mode
+    
+    disable_mock_mode()
+    
+    return {
+        "success": True,
+        "mock_mode": False,
+        "message": "Mock mode disabled, using real Tavily API"
+    }
+
+
+@router.get("/mock/status")
+async def get_mock_status():
+    """Get current mock mode status"""
+    import os
+    from app.core.trading.mock_tavily import is_mock_mode_enabled
+    
+    return {
+        "mock_mode": is_mock_mode_enabled(),
+        "scenario": os.getenv("MOCK_SCENARIO", "random"),
+        "okx_trading": os.getenv("USE_OKX_TRADING", "false").lower() == "true"
+    }
+
+
+@router.post("/mock/test")
+async def run_mock_test(scenario: str = Query(default="bullish", description="Test scenario")):
+    """
+    Run a complete mock test cycle.
+    
+    1. Enables mock mode with specified scenario
+    2. Triggers analysis (LLM will use mock Tavily data)
+    3. Returns the analysis result
+    
+    ⚠️ SAFETY: This endpoint BLOCKS execution if OKX trading is enabled.
+    Mock tests only work with Paper Trader to prevent real money loss.
+    """
+    import os
+    from app.core.trading.mock_tavily import enable_mock_mode, set_scenario
+    
+    # SAFETY CHECK: Block if OKX trading is enabled
+    system = await get_trading_system()
+    if system and system.trader_type == "okx":
+        return {
+            "success": False,
+            "error": "⚠️ BLOCKED: Cannot run mock test while OKX trading is enabled!",
+            "message": "Mock testing is only allowed with Paper Trader.",
+            "action_required": "Set USE_OKX_TRADING=false in .env and restart the service",
+            "current_trader": "okx"
+        }
+    
+    if not system:
+        return {"success": False, "error": "Trading system not initialized"}
+    
+    # Additional check - ensure we're not in OKX mode
+    if os.getenv("USE_OKX_TRADING", "false").lower() == "true":
+        return {
+            "success": False,
+            "error": "⚠️ BLOCKED: USE_OKX_TRADING is set to true in environment!",
+            "message": "Cannot run mock test with OKX trading enabled.",
+            "action_required": "Disable OKX trading first"
+        }
+    
+    # Enable mock with scenario
+    enable_mock_mode()
+    set_scenario(scenario)
+    
+    try:
+        # Trigger the analysis via scheduler
+        if system.scheduler:
+            await system.scheduler.trigger_now(reason=f"mock_test_{scenario}")
+        else:
+            return {"success": False, "error": "Scheduler not initialized"}
+        
+        return {
+            "success": True,
+            "scenario": scenario,
+            "trader_type": system.trader_type,  # Should be "paper"
+            "message": f"Mock test triggered with {scenario} scenario. Check WebSocket for signal.",
+            "expected_behavior": {
+                "bullish": "Should generate LONG signal with decision confirmation modal",
+                "bearish": "Should generate SHORT signal with decision confirmation modal",
+                "neutral": "Should generate HOLD signal (no modal)"
+            }.get(scenario),
+            "safety_note": "Using Paper Trader - no real money at risk"
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@router.post("/mock/test-tp-sl")
+async def test_tp_sl_trigger(trigger_type: str = Query(default="tp", description="tp or sl")):
+    """
+    Test TP/SL trigger by simulating price movement.
+    
+    This endpoint manually sets the price to trigger TP or SL,
+    verifying the position monitor works correctly.
+    
+    Args:
+        trigger_type: 'tp' for take profit, 'sl' for stop loss
+    """
+    system = await get_trading_system()
+    if not system or not system.paper_trader:
+        return {"success": False, "error": "Trading system not initialized"}
+    
+    if system.trader_type == "okx":
+        return {"success": False, "error": "Cannot test TP/SL with OKX - use Paper Trader"}
+    
+    position = await system.paper_trader.get_position()
+    if not position or not position.get("has_position"):
+        return {"success": False, "error": "No open position to test TP/SL"}
+    
+    direction = position.get("direction")
+    entry_price = position.get("entry_price")
+    tp_price = position.get("take_profit_price")
+    sl_price = position.get("stop_loss_price")
+    
+    if trigger_type == "tp":
+        if not tp_price:
+            return {"success": False, "error": "No take profit price set"}
+        # Set price to trigger TP
+        if direction == "long":
+            trigger_price = tp_price + 10  # Above TP for long
+        else:
+            trigger_price = tp_price - 10  # Below TP for short
+        system.paper_trader.set_price(trigger_price)
+    else:  # sl
+        if not sl_price:
+            return {"success": False, "error": "No stop loss price set"}
+        # Set price to trigger SL
+        if direction == "long":
+            trigger_price = sl_price - 10  # Below SL for long
+        else:
+            trigger_price = sl_price + 10  # Above SL for short
+        system.paper_trader.set_price(trigger_price)
+    
+    # Force check TP/SL immediately
+    result = await system.paper_trader.check_tp_sl()
+    
+    # Get updated position
+    new_position = await system.paper_trader.get_position()
+    account = await system.paper_trader.get_account()
+    
+    return {
+        "success": True,
+        "trigger_type": trigger_type,
+        "trigger_price": trigger_price,
+        "original_position": {
+            "direction": direction,
+            "entry_price": entry_price,
+            "tp_price": tp_price,
+            "sl_price": sl_price
+        },
+        "result": result,
+        "position_closed": not new_position.get("has_position"),
+        "account_balance": account.get("balance"),
+        "realized_pnl": account.get("realized_pnl")
+    }
+
+
+@router.post("/mock/test-cooldown")
+async def test_cooldown(losses: int = Query(default=3, description="Number of consecutive losses to simulate")):
+    """
+    Test cooldown by simulating consecutive losses.
+    
+    After 3 consecutive losses (default), the system should enter cooldown
+    and block new analysis cycles.
+    """
+    system = await get_trading_system()
+    if not system:
+        return {"success": False, "error": "Trading system not initialized"}
+    
+    # Simulate consecutive losses
+    for i in range(losses):
+        # Record a loss (-100 each)
+        can_continue = system.cooldown_manager.record_trade_result(-100)
+        logger.info(f"Recorded loss {i+1}/{losses}, can_continue={can_continue}")
+    
+    status = system.cooldown_manager.get_cooldown_status()
+    
+    return {
+        "success": True,
+        "simulated_losses": losses,
+        "cooldown_status": status,
+        "in_cooldown": status.get("in_cooldown"),
+        "cooldown_until": status.get("cooldown_until"),
+        "message": "Cooldown triggered!" if status.get("in_cooldown") else "Still trading"
+    }
+
+
+@router.post("/mock/reset-cooldown")
+async def reset_cooldown():
+    """Reset cooldown for testing purposes."""
+    system = await get_trading_system()
+    if not system:
+        return {"success": False, "error": "Trading system not initialized"}
+    
+    system.cooldown_manager.force_end_cooldown()
+    system.cooldown_manager._consecutive_losses = 0
+    
+    return {
+        "success": True,
+        "message": "Cooldown reset successfully",
+        "cooldown_status": system.cooldown_manager.get_cooldown_status()
+    }
+
+
+@router.post("/mock/open-position")
+async def open_test_position(
+    direction: str = Query(default="long", description="long or short"),
+    leverage: int = Query(default=3, description="Leverage 1-20"),
+    amount_usdt: float = Query(default=1000, description="Amount in USDT")
+):
+    """
+    Open a test position directly for TP/SL testing.
+    This bypasses the full analysis cycle for quick testing.
+    """
+    system = await get_trading_system()
+    if not system or not system.paper_trader:
+        return {"success": False, "error": "Trading system not initialized"}
+    
+    if system.trader_type == "okx":
+        return {"success": False, "error": "Cannot open test position with OKX - use Paper Trader"}
+    
+    # Check if already has position
+    position = await system.paper_trader.get_position()
+    if position and position.get("has_position"):
+        return {"success": False, "error": "Already has open position. Close it first."}
+    
+    # Get current price for TP/SL calculation
+    current_price = await system.paper_trader.get_current_price("BTC-USDT-SWAP")
+    
+    # Calculate TP/SL based on direction
+    if direction == "long":
+        tp_price = current_price * 1.05  # 5% profit
+        sl_price = current_price * 0.98  # 2% loss
+        result = await system.paper_trader.open_long(
+            symbol="BTC-USDT-SWAP",
+            leverage=leverage,
+            amount_usdt=amount_usdt,
+            tp_price=tp_price,
+            sl_price=sl_price
+        )
+    else:
+        tp_price = current_price * 0.95  # 5% profit (price goes down)
+        sl_price = current_price * 1.02  # 2% loss (price goes up)
+        result = await system.paper_trader.open_short(
+            symbol="BTC-USDT-SWAP",
+            leverage=leverage,
+            amount_usdt=amount_usdt,
+            tp_price=tp_price,
+            sl_price=sl_price
+        )
+    
+    # Get updated position
+    new_position = await system.paper_trader.get_position()
+    
+    return {
+        "success": True,
+        "direction": direction,
+        "leverage": leverage,
+        "amount_usdt": amount_usdt,
+        "entry_price": current_price,
+        "take_profit_price": tp_price,
+        "stop_loss_price": sl_price,
+        "position": new_position,
+        "message": f"Opened {direction} position for TP/SL testing"
+    }
 
 # ============================================
 # User Decision Recording (RLHF Data Collection)

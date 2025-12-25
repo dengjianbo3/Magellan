@@ -1264,6 +1264,14 @@ class TradingToolkit:
             JSON string with search results
         """
         try:
+            # Check if mock mode is enabled
+            from app.core.trading.mock_tavily import is_mock_mode_enabled, get_mock_search_results
+            
+            if is_mock_mode_enabled():
+                logger.info(f"[TradingTools] Using MOCK Tavily for query: '{query}'")
+                mock_results = get_mock_search_results(query, max_results)
+                return json.dumps(mock_results, ensure_ascii=False)
+            
             # Use MCP Client to call web-search service
             from app.core.roundtable.mcp_tools import get_mcp_client
 
