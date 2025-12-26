@@ -1164,10 +1164,15 @@ class OKXTrader:
         # Trading days for annualization
         if trades:
             try:
-                first_trade = datetime.fromisoformat(trades[0].get('closed_at', '').replace('Z', '+00:00'))
-                last_trade = datetime.fromisoformat(trades[-1].get('closed_at', '').replace('Z', '+00:00'))
-                trading_days = max(1, (last_trade - first_trade).days)
-            except:
+                # trades are sorted NEWEST first, so:
+                # trades[-1] = oldest (first) trade
+                # trades[0] = newest (last) trade
+                oldest_trade = datetime.fromisoformat(trades[-1].get('closed_at', '').replace('Z', '+00:00'))
+                newest_trade = datetime.fromisoformat(trades[0].get('closed_at', '').replace('Z', '+00:00'))
+                trading_days = max(1, (newest_trade - oldest_trade).days)
+                logger.debug(f"[Annualization] Oldest trade: {oldest_trade}, Newest: {newest_trade}, Trading days: {trading_days}")
+            except Exception as e:
+                logger.warning(f"Failed to calculate trading days: {e}")
                 trading_days = len(trades)
         else:
             trading_days = 1
