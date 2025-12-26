@@ -1119,7 +1119,15 @@ class OKXTrader:
         
         # Extract PnL data
         pnl_list = [t.get('pnl', 0) for t in trades]
-        pnl_pct_list = [t.get('pnl_percent', 0) for t in trades]
+        # Calculate pnl_percent from pnl/margin if not provided (OKX API doesn't return pnl_percent)
+        pnl_pct_list = []
+        for t in trades:
+            pnl = t.get('pnl', 0)
+            margin = t.get('margin', 0)
+            if margin > 0:
+                pnl_pct_list.append((pnl / margin) * 100)
+            else:
+                pnl_pct_list.append(t.get('pnl_percent', 0))
         
         # Basic stats
         total_pnl = sum(pnl_list)
