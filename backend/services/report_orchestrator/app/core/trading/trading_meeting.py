@@ -608,8 +608,8 @@ First explain your analysis reasoning, then output a JSON trading signal at the 
   "direction": "<long|short|hold - choose based on YOUR analysis, NOT this example>",
   "confidence": 75,
   "leverage": 6,
-  "take_profit_percent": 5.0,
-  "stop_loss_percent": 2.0,
+  "take_profit_percent": 8.0,
+  "stop_loss_percent": 3.0,
   "reasoning": "Brief reasoning with specific data references"
 }}
 ```
@@ -627,6 +627,17 @@ First explain your analysis reasoning, then output a JSON trading signal at the 
 - confidence >= 80: leverage should be in range {int(self.config.max_leverage * 0.5)}-{self.config.max_leverage}
 - confidence 60-79: leverage should be in range {int(self.config.max_leverage * 0.25)}-{int(self.config.max_leverage * 0.5)}
 - confidence < 60: leverage should be in range 1-{int(self.config.max_leverage * 0.25)}, or choose hold
+
+**⚠️ CRITICAL - TP/SL Guidelines (MARGIN-BASED, not price-based)**:
+- `take_profit_percent` and `stop_loss_percent` represent **MARGIN** gain/loss, NOT price movement
+- With leverage, actual price move = margin_percent / leverage
+- Example: 5x leverage, 4% margin SL → triggers at 0.8% price drop
+
+**TP/SL Based on Market Volatility**:
+- High volatility (BTC 24h range > 5%): TP 10-15%, SL 4-6%
+- Medium volatility (2-5% range): TP 6-10%, SL 3-4%
+- Low volatility (<2% range): TP 4-6%, SL 2-3%
+- Consider recent ATR (Average True Range) for better precision
 
 **Important**: JSON must be at the END of your response and properly formatted!
 """
@@ -834,9 +845,17 @@ As moderator, please:
    - Where are the potential trading opportunities?
    - Recommendations for current position (if any)
 
-4. **Provide Meeting Conclusions**:
+4. **⚠️ CRITICAL - Final Risk Parameters Decision**:
+   Based on expert TP/SL recommendations and current market volatility:
+   - **Take Profit %**: Average expert recommendation, adjust for volatility
+   - **Stop Loss %**: Average expert recommendation, adjust for protection
+   - These are MARGIN-based (not price-based)!
+   
+   Example: "Given 4% volatility, I recommend TP 10%, SL 4% on margin"
+
+5. **Provide Meeting Conclusions**:
    - Based on all analysis, what strategy should be adopted?
-   - Recommended risk level and position size
+   - Recommended leverage, position size, **TP% and SL%**
    - How confident are you?
 
 ## 📋 Output Format
@@ -850,13 +869,16 @@ You can express naturally, for example:
 - However, MacroEconomist advises caution due to...
 - Considering the current {('no position' if not position_context.has_position else f'{position_context.direction} position')} status...
 I recommend... strategy because...
-Suggested leverage is..., position size is..., my confidence is approximately...%"
+Suggested leverage is..., position size is...
+**For risk management, I recommend TP at X% and SL at Y% (margin-based)**
+My confidence is approximately...%"
 
 ⚠️ **Important Reminders**:
 - ✅ Express your summary and recommendations in natural language
 - ✅ Include expert opinions, your judgment, recommended strategy
+- ✅ **ALWAYS include your recommended TP% and SL% values**
 - ✅ No need for markers like "【Final Decision】"
-- ✅ Your summary will be passed to the Trade Executor, who will make the final decision based on your recommendations
+- ✅ Your summary will be passed to the Trade Executor
 
 Please begin your summary!
 """
