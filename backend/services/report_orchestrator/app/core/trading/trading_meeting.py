@@ -503,18 +503,24 @@ Based on real data, provide **objective analysis**:
 
 {position_analysis_prompt}
 
-**IMPORTANT**: Use your tools to get real-time on-chain data. The system will automatically execute tool calls for you.
+**IMPORTANT**: Use your specialized on-chain tools FIRST before using web search. The system will automatically execute tool calls for you.
 
-**Required Analysis Steps**:
-1. Get whale wallet movements and large transaction data
-2. Check exchange inflow/outflow metrics
-3. Analyze DeFi TVL changes and smart money flows
+**Required Analysis Steps (in order)**:
+1. **FIRST**: Call `get_fear_greed_index` to get market sentiment index (FREE API, no search needed)
+2. **SECOND**: Call `get_defi_tvl` with query_type="overview" to get DeFi ecosystem health (FREE API)
+3. **THIRD**: Call `get_onchain_data` to get unified on-chain analysis (combines Fear&Greed + TVL)
+4. **OPTIONAL**: Use `web_search` ONLY for whale alerts and specific on-chain news that APIs don't cover
+
+**Available Tools (Use in this priority order)**:
+- `get_fear_greed_index`: Returns 0-100 sentiment index (Extreme Fear/Fear/Greed/Extreme Greed)
+- `get_defi_tvl`: Returns DeFi TVL data ($118B+), daily/weekly changes, chain breakdown
+- `get_onchain_data`: Returns combined analysis with trading signals
+- `web_search`: Use ONLY for whale alerts, MVRV/SOPR news, or data not available from above APIs
 
 Based on real on-chain data, provide **objective analysis**:
-- Whale activity signals (accumulation/distribution)
-- Exchange flow trends (net inflow/outflow)
-- DeFi ecosystem health (TVL changes, protocol metrics)
-- MVRV, SOPR and other on-chain indicators
+- Fear & Greed Index interpretation (contrarian signals)
+- DeFi TVL trend (ecosystem health indicator)
+- Whale activity signals (from search if needed)
 - On-chain support for **LONG** position (strong/medium/weak/against)
 - On-chain support for **SHORT** position (strong/medium/weak/against)
 - Your on-chain score and **independent** directional judgment (unbiased by current position)""",
