@@ -1072,8 +1072,165 @@ class OKXTrader:
             'trades_analyzed': len(trades)
         }
 
+    async def calculate_performance_metrics(self, start_date: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Calculate performance metrics: Sharpe Ratio, Sortino Ratio, Alpha, etc.
+        
+        Args:
+            start_date: Optional start date in ISO format (YYYY-MM-DD).
+        
+        Returns:
+            Dict with performance metrics
+        """
+        import math
+        
+        # Get trade history
+        trades = await self.get_trade_history(limit=200)
+        
+        if start_date:
+            try:
+                filter_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                trades = [
+                    t for t in trades 
+                    if datetime.fromisoformat(t.get('closed_at', '2000-01-01').replace('Z', '+00:00')) >= filter_date
+                ]
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid start_date format: {start_date}, using all trades. Error: {e}")
+        
+        if not trades or len(trades) < 2:
+            return {
+                'sharpe_ratio': 0.0,
+                'sortino_ratio': 0.0,
+                'alpha': 0.0,
+                'beta': 1.0,
+                'win_rate': 0.0,
+                'profit_factor': 0.0,
+                'avg_profit': 0.0,
+                'avg_loss': 0.0,
+                'total_return_pct': 0.0,
+                'annualized_return_pct': 0.0,
+                'volatility_pct': 0.0,
+                'best_trade': 0.0,
+                'worst_trade': 0.0,
+                'avg_holding_hours': 0.0,
+                'trades_analyzed': len(trades),
+                'start_date': start_date
+            }
+        
+        # Extract PnL data
+        pnl_list = [t.get('pnl', 0) for t in trades]
+        pnl_pct_list = [t.get('pnl_percent', 0) for t in trades]
+        
+        # Basic stats
+        total_pnl = sum(pnl_list)
+        wins = [p for p in pnl_list if p > 0]
+        losses = [p for p in pnl_list if p < 0]
+        
+        win_rate = len(wins) / len(pnl_list) * 100 if pnl_list else 0
+        avg_profit = sum(wins) / len(wins) if wins else 0
+        avg_loss = sum(losses) / len(losses) if losses else 0
+        
+        # Profit factor
+        gross_profit = sum(wins) if wins else 0
+        gross_loss = abs(sum(losses)) if losses else 0
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf') if gross_profit > 0 else 0
+        
+        # Returns
+        initial = self.initial_balance
+        current_equity = initial + total_pnl
+        total_return_pct = ((current_equity - initial) / initial) * 100 if initial > 0 else 0
+        
+        # Calculate holding time
+        holding_hours = []
+        for t in trades:
+            try:
+                opened = datetime.fromisoformat(t.get('opened_at', '').replace('Z', '+00:00'))
+                closed = datetime.fromisoformat(t.get('closed_at', '').replace('Z', '+00:00'))
+                hours = (closed - opened).total_seconds() / 3600
+                holding_hours.append(hours)
+            except:
+                pass
+        
+        avg_holding_hours = sum(holding_hours) / len(holding_hours) if holding_hours else 0
+        
+        # Trading days for annualization
+        if trades:
+            try:
+                first_trade = datetime.fromisoformat(trades[0].get('closed_at', '').replace('Z', '+00:00'))
+                last_trade = datetime.fromisoformat(trades[-1].get('closed_at', '').replace('Z', '+00:00'))
+                trading_days = max(1, (last_trade - first_trade).days)
+            except:
+                trading_days = len(trades)
+        else:
+            trading_days = 1
+        
+        # Annualized return (assuming 365 days per year)
+        annualized_return_pct = (total_return_pct / trading_days) * 365 if trading_days > 0 else 0
+        
+        # Volatility (standard deviation of returns)
+        if len(pnl_pct_list) > 1:
+            mean_return = sum(pnl_pct_list) / len(pnl_pct_list)
+            variance = sum((r - mean_return) ** 2 for r in pnl_pct_list) / (len(pnl_pct_list) - 1)
+            volatility_pct = math.sqrt(variance)
+        else:
+            volatility_pct = 0
+            mean_return = 0
+        
+        # Sharpe Ratio (risk-free rate assumed 0 for crypto)
+        # Sharpe = (Mean Return - Risk Free Rate) / Volatility
+        # Annualized: multiply by sqrt(trades_per_year)
+        trades_per_year = (len(trades) / trading_days) * 365 if trading_days > 0 else len(trades)
+        if volatility_pct > 0:
+            sharpe_ratio = (mean_return / volatility_pct) * math.sqrt(trades_per_year)
+        else:
+            sharpe_ratio = 0
+        
+        # Sortino Ratio (only considers downside volatility)
+        downside_returns = [r for r in pnl_pct_list if r < 0]
+        if len(downside_returns) > 1:
+            downside_variance = sum((r) ** 2 for r in downside_returns) / (len(downside_returns) - 1)
+            downside_volatility = math.sqrt(downside_variance)
+            if downside_volatility > 0:
+                sortino_ratio = (mean_return / downside_volatility) * math.sqrt(trades_per_year)
+            else:
+                sortino_ratio = float('inf') if mean_return > 0 else 0
+        else:
+            sortino_ratio = sharpe_ratio  # Fallback to Sharpe if not enough downside data
+        
+        # Beta (sensitivity to market) - simplified: using BTC price changes
+        # For simplicity, assume beta = 1 for crypto trading (moves with market)
+        beta = 1.0
+        
+        # Alpha (excess return over benchmark)
+        # Alpha = Actual Return - Beta * Market Return
+        # For crypto, we assume market return is 0 (benchmark is holding cash)
+        alpha = total_return_pct
+        
+        best_trade = max(pnl_list) if pnl_list else 0
+        worst_trade = min(pnl_list) if pnl_list else 0
+        
+        return {
+            'sharpe_ratio': round(sharpe_ratio, 2),
+            'sortino_ratio': round(min(sortino_ratio, 99.99), 2),  # Cap extreme values
+            'alpha': round(alpha, 2),
+            'beta': round(beta, 2),
+            'win_rate': round(win_rate, 2),
+            'profit_factor': round(min(profit_factor, 99.99), 2),  # Cap extreme values
+            'avg_profit': round(avg_profit, 2),
+            'avg_loss': round(avg_loss, 2),
+            'total_return_pct': round(total_return_pct, 2),
+            'annualized_return_pct': round(annualized_return_pct, 2),
+            'volatility_pct': round(volatility_pct, 2),
+            'best_trade': round(best_trade, 2),
+            'worst_trade': round(worst_trade, 2),
+            'avg_holding_hours': round(avg_holding_hours, 2),
+            'trades_analyzed': len(trades),
+            'start_date': start_date
+        }
+
 
 # Singleton
+
 _okx_trader: Optional[OKXTrader] = None
 
 

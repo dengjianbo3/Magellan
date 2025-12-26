@@ -950,6 +950,23 @@ const drawdown = ref({
   tradesAnalyzed: 0
 });
 
+// Performance metrics from backend API
+const performanceData = ref({
+  sharpeRatio: 0,
+  sortinoRatio: 0,
+  alpha: 0,
+  winRate: 0,
+  profitFactor: 0,
+  totalReturnPct: 0,
+  annualizedReturnPct: 0,
+  volatilityPct: 0,
+  bestTrade: 0,
+  worstTrade: 0,
+  avgHoldingHours: 0,
+  tradesAnalyzed: 0
+});
+
+
 // WebSocket
 let ws = null;
 let countdownInterval = null;
@@ -1016,61 +1033,23 @@ const alpha = computed(() => {
   return totalProfitPercent.value - btcBenchmark.value.returnPercent;
 });
 
-// Performance metrics calculated from trade history
+// Performance metrics from backend API (no longer calculated locally)
 const performanceMetrics = computed(() => {
-  const trades = tradeHistory.value.filter(t => t.pnl !== null);
-  if (trades.length === 0) {
-    return { winRate: 0, pnlRatio: 0, sharpeRatio: 0, totalTrades: 0 };
-  }
-
-  // Win rate
-  const wins = trades.filter(t => t.pnl > 0).length;
-  const losses = trades.filter(t => t.pnl < 0).length;
-  const totalTrades = wins + losses;
-  const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
-
-  // PnL ratio (average win / average loss)
-  const totalProfit = trades.filter(t => t.pnl > 0).reduce((sum, t) => sum + t.pnl, 0);
-  const totalLoss = Math.abs(trades.filter(t => t.pnl < 0).reduce((sum, t) => sum + t.pnl, 0));
-  const avgWin = wins > 0 ? totalProfit / wins : 0;
-  const avgLoss = losses > 0 ? totalLoss / losses : 0;
-  const pnlRatio = avgLoss > 0 ? avgWin / avgLoss : avgWin > 0 ? Infinity : 0;
-
-  // Sharpe ratio (annualized)
-  // Group by date and calculate daily returns
-  const dailyPnl = {};
-  trades.forEach(t => {
-    const date = (t.timestamp || '').slice(0, 10);
-    if (date) {
-      dailyPnl[date] = (dailyPnl[date] || 0) + t.pnl;
-    }
-  });
-
-  const dates = Object.keys(dailyPnl).sort();
-  if (dates.length < 2) {
-    return { winRate, pnlRatio, sharpeRatio: 0, totalTrades };
-  }
-
-  // Calculate daily returns
-  let cumulative = INITIAL_CAPITAL;
-  const dailyReturns = [];
-  dates.forEach(date => {
-    const pnl = dailyPnl[date];
-    const dailyReturn = cumulative > 0 ? pnl / cumulative : 0;
-    dailyReturns.push(dailyReturn);
-    cumulative += pnl;
-  });
-
-  // Sharpe = (mean - rf) / std * sqrt(252)
-  const meanReturn = dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length;
-  const variance = dailyReturns.reduce((sum, r) => sum + Math.pow(r - meanReturn, 2), 0) / dailyReturns.length;
-  const stdDev = Math.sqrt(variance);
-  const riskFreeDaily = 0.05 / 252;
-  const dailySharpe = stdDev > 0 ? (meanReturn - riskFreeDaily) / stdDev : 0;
-  const sharpeRatio = dailySharpe * Math.sqrt(252);
-
-  return { winRate, pnlRatio, sharpeRatio, totalTrades };
+  // Use backend data from performanceData ref
+  return {
+    winRate: performanceData.value.winRate || 0,
+    pnlRatio: performanceData.value.profitFactor || 0,
+    sharpeRatio: performanceData.value.sharpeRatio || 0,
+    sortinoRatio: performanceData.value.sortinoRatio || 0,
+    totalTrades: performanceData.value.tradesAnalyzed || 0,
+    volatility: performanceData.value.volatilityPct || 0,
+    bestTrade: performanceData.value.bestTrade || 0,
+    worstTrade: performanceData.value.worstTrade || 0,
+    avgHoldingHours: performanceData.value.avgHoldingHours || 0,
+    annualizedReturn: performanceData.value.annualizedReturnPct || 0
+  };
 });
+
 
 // Dynamic interval text based on actual scheduler state
 const intervalText = computed(() => {
@@ -1202,6 +1181,33 @@ async function fetchDrawdown() {
     };
   } catch (e) {
     console.error('Error fetching drawdown:', e);
+  }
+}
+
+// Fetch performance metrics from backend API
+async function fetchPerformance() {
+  try {
+    const endpoint = drawdownStartDate.value
+      ? `/api/trading/performance?start_date=${drawdownStartDate.value}`
+      : '/api/trading/performance';
+    const response = await fetch(endpoint);
+    const data = await response.json();
+    performanceData.value = {
+      sharpeRatio: data.sharpe_ratio || 0,
+      sortinoRatio: data.sortino_ratio || 0,
+      alpha: data.alpha || 0,
+      winRate: data.win_rate || 0,
+      profitFactor: data.profit_factor || 0,
+      totalReturnPct: data.total_return_pct || 0,
+      annualizedReturnPct: data.annualized_return_pct || 0,
+      volatilityPct: data.volatility_pct || 0,
+      bestTrade: data.best_trade || 0,
+      worstTrade: data.worst_trade || 0,
+      avgHoldingHours: data.avg_holding_hours || 0,
+      tradesAnalyzed: data.trades_analyzed || 0
+    };
+  } catch (e) {
+    console.error('Error fetching performance metrics:', e);
   }
 }
 
@@ -1900,9 +1906,11 @@ async function refreshAllData() {
     fetchStatus(),
     fetchAccount(),
     fetchPosition(),
-    fetchTradeHistory()
+    fetchTradeHistory(),
+    fetchPerformance()  // Refresh performance metrics
   ]);
 }
+
 
 onMounted(async () => {
   isComponentMounted = true;
@@ -1915,8 +1923,10 @@ onMounted(async () => {
     fetchTradeHistory(),
     fetchAgentPerformance(),
     fetchDiscussionMessages(),  // Restore discussion messages on page load
-    fetchDrawdown()  // Fetch drawdown data
+    fetchDrawdown(),  // Fetch drawdown data
+    fetchPerformance()  // Fetch performance metrics from backend
   ]);
+
 
   // Fetch BTC benchmark after trade history is loaded (needs tradingStartDate)
   await fetchBtcBenchmark();

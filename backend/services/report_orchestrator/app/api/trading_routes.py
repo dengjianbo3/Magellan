@@ -951,6 +951,122 @@ async def get_max_drawdown(start_date: Optional[str] = Query(default=None, descr
         }
 
 
+@router.get("/performance")
+async def get_performance_metrics(start_date: Optional[str] = Query(default=None, description="Start date in YYYY-MM-DD format")):
+    """
+    Get performance metrics including Sharpe Ratio, Sortino Ratio, Alpha, etc.
+    
+    Args:
+        start_date: Optional start date filter (YYYY-MM-DD format)
+        
+    Returns:
+        - sharpe_ratio: Risk-adjusted return
+        - sortino_ratio: Downside risk-adjusted return
+        - alpha: Excess return over benchmark
+        - win_rate: Winning trade percentage
+        - profit_factor: Gross profit / Gross loss
+        - total_return_pct: Total return percentage
+        - volatility_pct: Return volatility
+        - And more...
+    """
+    system = await get_trading_system()
+    
+    if not system.paper_trader:
+        return {
+            "error": "Trader not initialized",
+            "sharpe_ratio": 0.0,
+            "sortino_ratio": 0.0,
+            "alpha": 0.0,
+            "trades_analyzed": 0
+        }
+    
+    try:
+        # Check if trader has calculate_performance_metrics method (OKXTrader)
+        if hasattr(system.paper_trader, 'calculate_performance_metrics'):
+            return await system.paper_trader.calculate_performance_metrics(start_date)
+        
+        # Fallback: Calculate from trade history for PaperTrader
+        import math
+        trades = await system.paper_trader.get_trade_history(limit=200)
+        
+        if start_date and trades:
+            try:
+                from datetime import datetime
+                filter_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                trades = [
+                    t for t in trades 
+                    if datetime.fromisoformat(
+                        t.get('closed_at', '2000-01-01').replace('Z', '+00:00')
+                    ) >= filter_date
+                ]
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid start_date format: {start_date}. Error: {e}")
+        
+        if not trades or len(trades) < 2:
+            return {
+                'sharpe_ratio': 0.0,
+                'sortino_ratio': 0.0,
+                'alpha': 0.0,
+                'beta': 1.0,
+                'win_rate': 0.0,
+                'profit_factor': 0.0,
+                'total_return_pct': 0.0,
+                'trades_analyzed': len(trades) if trades else 0,
+                'start_date': start_date
+            }
+        
+        # Calculate metrics
+        pnl_list = [t.get('pnl', 0) for t in trades]
+        pnl_pct_list = [t.get('pnl_percent', 0) for t in trades]
+        
+        wins = [p for p in pnl_list if p > 0]
+        losses = [p for p in pnl_list if p < 0]
+        
+        win_rate = len(wins) / len(pnl_list) * 100 if pnl_list else 0
+        gross_profit = sum(wins) if wins else 0
+        gross_loss = abs(sum(losses)) if losses else 0
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0
+        
+        initial = getattr(system.paper_trader, 'initial_balance', 10000)
+        total_pnl = sum(pnl_list)
+        total_return_pct = (total_pnl / initial) * 100 if initial > 0 else 0
+        
+        # Sharpe calculation
+        if len(pnl_pct_list) > 1:
+            mean_return = sum(pnl_pct_list) / len(pnl_pct_list)
+            variance = sum((r - mean_return) ** 2 for r in pnl_pct_list) / (len(pnl_pct_list) - 1)
+            volatility = math.sqrt(variance)
+            sharpe_ratio = (mean_return / volatility) * math.sqrt(len(trades)) if volatility > 0 else 0
+        else:
+            sharpe_ratio = 0
+            volatility = 0
+        
+        return {
+            'sharpe_ratio': round(sharpe_ratio, 2),
+            'sortino_ratio': round(sharpe_ratio, 2),  # Simplified
+            'alpha': round(total_return_pct, 2),
+            'beta': 1.0,
+            'win_rate': round(win_rate, 2),
+            'profit_factor': round(min(profit_factor, 99.99), 2),
+            'total_return_pct': round(total_return_pct, 2),
+            'volatility_pct': round(volatility, 2),
+            'best_trade': round(max(pnl_list), 2) if pnl_list else 0,
+            'worst_trade': round(min(pnl_list), 2) if pnl_list else 0,
+            'trades_analyzed': len(trades),
+            'start_date': start_date
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating performance metrics: {e}")
+        return {
+            "error": str(e),
+            "sharpe_ratio": 0.0,
+            "sortino_ratio": 0.0,
+            "alpha": 0.0,
+            "trades_analyzed": 0
+        }
+
+
 @router.post("/start")
 async def start_trading():
     """Start auto trading"""
