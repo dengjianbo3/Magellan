@@ -92,8 +92,8 @@ class Vote:
     direction: VoteDirection
     confidence: int  # 0-100
     leverage: int = 1  # 1-125
-    take_profit_percent: float = 5.0
-    stop_loss_percent: float = 2.0
+    take_profit_percent: float = 8.0  # Default 8% margin gain
+    stop_loss_percent: float = 3.0    # Default 3% margin loss
     reasoning: str = ""
     
     def __post_init__(self):
@@ -205,13 +205,13 @@ class VoteSummary:
     @property
     def avg_take_profit_percent(self) -> float:
         if not self.votes:
-            return 5.0
+            return 8.0  # Updated default
         return sum(v.take_profit_percent for v in self.votes) / len(self.votes)
     
     @property
     def avg_stop_loss_percent(self) -> float:
         if not self.votes:
-            return 2.0
+            return 3.0  # Updated default
         return sum(v.stop_loss_percent for v in self.votes) / len(self.votes)
     
     @property
