@@ -1209,10 +1209,25 @@ class OKXTrader:
         # For simplicity, assume beta = 1 for crypto trading (moves with market)
         beta = 1.0
         
-        # Alpha (excess return over benchmark)
-        # Alpha = Actual Return - Beta * Market Return
-        # For crypto, we assume market return is 0 (benchmark is holding cash)
-        alpha = total_return_pct
+        # Alpha (excess return over benchmark = strategy return - BTC return)
+        # Get BTC benchmark: from first trade entry price to current price
+        btc_benchmark_return = 0.0
+        try:
+            # Get first trade entry price (oldest trade)
+            first_trade = trades[-1] if trades else None  # trades are sorted newest first
+            if first_trade and first_trade.get('entry_price'):
+                first_trade_price = float(first_trade.get('entry_price', 0))
+                # Get current BTC price
+                current_price = await self.get_current_price()
+                if first_trade_price > 0 and current_price > 0:
+                    btc_benchmark_return = ((current_price - first_trade_price) / first_trade_price) * 100
+                    logger.info(f"[Alpha] First trade price: ${first_trade_price:.2f}, Current: ${current_price:.2f}, BTC return: {btc_benchmark_return:.2f}%")
+        except Exception as e:
+            logger.warning(f"Failed to calculate BTC benchmark for Alpha: {e}")
+            btc_benchmark_return = 0.0
+        
+        # Alpha = Strategy Return - BTC Benchmark Return
+        alpha = total_return_pct - btc_benchmark_return
         
         best_trade = max(pnl_list) if pnl_list else 0
         worst_trade = min(pnl_list) if pnl_list else 0
@@ -1222,6 +1237,7 @@ class OKXTrader:
             'sortino_ratio': round(min(sortino_ratio, 99.99), 2),  # Cap extreme values
             'alpha': round(alpha, 2),
             'beta': round(beta, 2),
+            'btc_benchmark_return': round(btc_benchmark_return, 2),  # BTC same-period return
             'win_rate': round(win_rate, 2),
             'profit_factor': round(min(profit_factor, 99.99), 2),  # Cap extreme values
             'avg_profit': round(avg_profit, 2),
