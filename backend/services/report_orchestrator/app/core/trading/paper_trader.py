@@ -505,6 +505,7 @@ class PaperTrader(BaseTrader):
 
             # Recalculate TP/SL prices (based on actual entry price, not LLM expected price)
             # If provided tp/sl prices don't match actual entry price, use default percentages
+            # CRITICAL: Default percentages are MARGIN-based, must divide by leverage for PRICE movement
             if tp_price is not None and sl_price is not None:
                 if direction == "long":
                     # Long: TP should be above entry, SL should be below entry
@@ -512,19 +513,25 @@ class PaperTrader(BaseTrader):
                         # Invalid TP/SL prices, recalculate using default percentages
                         logger.warning(
                             f"Invalid TP/SL prices (tp={tp_price}, sl={sl_price}, entry={current_price}), "
-                            f"recalculating using default percentages"
+                            f"recalculating using default percentages (adjusted for {leverage}x leverage)"
                         )
-                        tp_price = current_price * (1 + self.config.default_tp_percent / 100)
-                        sl_price = current_price * (1 - self.config.default_sl_percent / 100)
+                        # Divide by leverage: margin_percent / leverage = price_percent
+                        price_tp_pct = self.config.default_tp_percent / leverage
+                        price_sl_pct = self.config.default_sl_percent / leverage
+                        tp_price = current_price * (1 + price_tp_pct / 100)
+                        sl_price = current_price * (1 - price_sl_pct / 100)
                 else:  # short
                     # Short: TP should be below entry, SL should be above entry
                     if tp_price >= current_price or sl_price <= current_price:
                         logger.warning(
                             f"Invalid TP/SL prices (tp={tp_price}, sl={sl_price}, entry={current_price}), "
-                            f"recalculating using default percentages"
+                            f"recalculating using default percentages (adjusted for {leverage}x leverage)"
                         )
-                        tp_price = current_price * (1 - self.config.default_tp_percent / 100)
-                        sl_price = current_price * (1 + self.config.default_sl_percent / 100)
+                        price_tp_pct = self.config.default_tp_percent / leverage
+                        price_sl_pct = self.config.default_sl_percent / leverage
+                        tp_price = current_price * (1 - price_tp_pct / 100)
+                        sl_price = current_price * (1 + price_sl_pct / 100)
+
 
             logger.info(f"Open position params: entry={current_price}, tp={tp_price}, sl={sl_price}")
 

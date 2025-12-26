@@ -50,21 +50,35 @@ class TradingSignal:
     trigger_reason: str = "scheduled"  # "scheduled", "manual", "position_closed"
     
     def __post_init__(self):
-        """Calculate dependent fields if not set."""
-        if self.entry_price > 0:
+        """
+        Calculate dependent fields if not set.
+        
+        CRITICAL: TP/SL percentages represent MARGIN loss/gain, not price movement.
+        With leverage, actual price movement = margin_percent / leverage
+        
+        Example: 5x leverage, 2% margin stop loss
+        - Price move needed = 2% / 5 = 0.4%
+        - So SL price = entry * (1 - 0.4%)
+        """
+        if self.entry_price > 0 and self.leverage > 0:
+            # Adjust percentages for leverage
+            # TP/SL percent is margin-based, convert to price-based
+            price_tp_percent = self.take_profit_percent / self.leverage
+            price_sl_percent = self.stop_loss_percent / self.leverage
+            
             # Calculate TP price if not set
             if self.take_profit_price is None:
                 if self.direction == VoteDirection.LONG:
-                    self.take_profit_price = self.entry_price * (1 + self.take_profit_percent / 100)
+                    self.take_profit_price = self.entry_price * (1 + price_tp_percent / 100)
                 elif self.direction == VoteDirection.SHORT:
-                    self.take_profit_price = self.entry_price * (1 - self.take_profit_percent / 100)
+                    self.take_profit_price = self.entry_price * (1 - price_tp_percent / 100)
             
             # Calculate SL price if not set
             if self.stop_loss_price is None:
                 if self.direction == VoteDirection.LONG:
-                    self.stop_loss_price = self.entry_price * (1 - self.stop_loss_percent / 100)
+                    self.stop_loss_price = self.entry_price * (1 - price_sl_percent / 100)
                 elif self.direction == VoteDirection.SHORT:
-                    self.stop_loss_price = self.entry_price * (1 + self.stop_loss_percent / 100)
+                    self.stop_loss_price = self.entry_price * (1 + price_sl_percent / 100)
     
     @property
     def is_actionable(self) -> bool:
