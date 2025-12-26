@@ -388,6 +388,13 @@ from .advanced_tools import (
     BlackSwanScannerTool
 )
 
+# Phase 5 链上数据工具 (P0 - 免费API)
+from .onchain_tools import (
+    FearGreedIndexTool,
+    DefiLlamaTVLTool,
+    OnchainDataTool
+)
+
 
 # 工具工厂函数
 def create_mcp_tools_for_agent(agent_role: str) -> List[Tool]:
@@ -507,6 +514,12 @@ def create_mcp_tools_for_agent(agent_role: str) -> List[Tool]:
         tools.append(DCFCalculatorTool())      # DCF估值
         tools.append(ComparableAnalysisTool()) # 可比公司分析
         tools.append(MCPCompanyIntelligenceTool()) # 企业情报
+
+    elif agent_role in ["OnchainAnalyst", "链上分析师"]:
+        # 链上分析师需要链上数据工具 (Phase 5 - P0 免费API)
+        tools.append(FearGreedIndexTool())     # 免费: 恐慌贪婪指数
+        tools.append(DefiLlamaTVLTool())       # 免费: DeFi TVL 数据
+        tools.append(OnchainDataTool())        # 免费: 统一链上数据
 
     # 知识库工具 - 所有专家都可以使用
     tools.append(KnowledgeBaseTool())
