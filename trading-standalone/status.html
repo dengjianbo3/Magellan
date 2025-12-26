@@ -635,13 +635,17 @@
                 const drawdownEndpoint = drawdownStartDate
                     ? `drawdown?start_date=${drawdownStartDate}`
                     : 'drawdown';
+                const performanceEndpoint = drawdownStartDate
+                    ? `performance?start_date=${drawdownStartDate}`
+                    : 'performance';
 
-                const [status, account, position, history, drawdown] = await Promise.all([
+                const [status, account, position, history, drawdown, performance] = await Promise.all([
                     fetchData('status'),
                     fetchData('account'),
                     fetchData('position'),
                     fetchData('history?limit=50'),
-                    fetchData(drawdownEndpoint)
+                    fetchData(drawdownEndpoint),
+                    fetchData(performanceEndpoint)
                 ]);
 
                 if (!status) {
@@ -651,6 +655,7 @@
 
                 console.log('[DEBUG] Position data:', position);
                 console.log('[DEBUG] has_position:', position?.has_position);
+                console.log('[DEBUG] Performance data:', performance);
 
                 let html = '';
 
@@ -744,6 +749,80 @@
                             <div class="row">
                                 <span class="label">Trades Analyzed</span>
                                 <span class="value">${tradesAnalyzed}</span>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Performance Metrics Card
+                if (performance && !performance.error) {
+                    const sharpe = performance.sharpe_ratio || 0;
+                    const sortino = performance.sortino_ratio || 0;
+                    const alpha = performance.alpha || 0;
+                    const winRate = performance.win_rate || 0;
+                    const profitFactor = performance.profit_factor || 0;
+                    const totalReturn = performance.total_return_pct || 0;
+                    const annualizedReturn = performance.annualized_return_pct || 0;
+                    const volatility = performance.volatility_pct || 0;
+                    const bestTrade = performance.best_trade || 0;
+                    const worstTrade = performance.worst_trade || 0;
+                    const avgHoldingHours = performance.avg_holding_hours || 0;
+                    const perfTradesAnalyzed = performance.trades_analyzed || 0;
+
+                    // Color coding for Sharpe
+                    const sharpeClass = sharpe >= 2 ? 'positive' : (sharpe >= 1 ? 'neutral' : (sharpe < 0 ? 'negative' : ''));
+                    const alphaClass = alpha > 0 ? 'positive' : (alpha < 0 ? 'negative' : '');
+                    const winRateClass = winRate >= 50 ? 'positive' : 'negative';
+
+                    html += `
+                        <div class="card">
+                            <div class="card-title">📊 Performance Metrics</div>
+                            <div class="row">
+                                <span class="label">Sharpe Ratio</span>
+                                <span class="value ${sharpeClass}">${sharpe.toFixed(2)}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Sortino Ratio</span>
+                                <span class="value ${sharpeClass}">${sortino.toFixed(2)}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Alpha (α)</span>
+                                <span class="value ${alphaClass}">${alpha >= 0 ? '+' : ''}${alpha.toFixed(2)}%</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Win Rate</span>
+                                <span class="value ${winRateClass}">${winRate.toFixed(1)}%</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Profit Factor</span>
+                                <span class="value ${profitFactor >= 1 ? 'positive' : 'negative'}">${profitFactor.toFixed(2)}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Total Return</span>
+                                <span class="value ${alphaClass}">${totalReturn >= 0 ? '+' : ''}${totalReturn.toFixed(2)}%</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Annualized Return</span>
+                                <span class="value ${annualizedReturn >= 0 ? 'positive' : 'negative'}">${annualizedReturn >= 0 ? '+' : ''}${annualizedReturn.toFixed(1)}%</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Volatility</span>
+                                <span class="value">${volatility.toFixed(2)}%</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Best / Worst Trade</span>
+                                <span class="value">
+                                    <span class="positive">+$${formatNumber(bestTrade)}</span> /
+                                    <span class="negative">$${formatNumber(worstTrade)}</span>
+                                </span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Avg Holding Time</span>
+                                <span class="value">${avgHoldingHours.toFixed(1)} hours</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Trades Analyzed</span>
+                                <span class="value">${perfTradesAnalyzed}</span>
                             </div>
                         </div>
                     `;
