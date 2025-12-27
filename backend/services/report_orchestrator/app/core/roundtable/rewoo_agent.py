@@ -27,11 +27,23 @@ from ..config_timeouts import (
 )
 
 # Import context compression (P0 Context Engineering)
-try:
-    from ..trading.context_compressor import ToolResultCompressor
-    CONTEXT_COMPRESSOR_AVAILABLE = True
-except ImportError:
-    CONTEXT_COMPRESSOR_AVAILABLE = False
+# Use lazy import to avoid circular dependency
+CONTEXT_COMPRESSOR_AVAILABLE = False
+ToolResultCompressor = None
+
+def _init_context_compressor():
+    """Lazy import to avoid circular import issues"""
+    global CONTEXT_COMPRESSOR_AVAILABLE, ToolResultCompressor
+    if ToolResultCompressor is None:
+        try:
+            from ..trading.context_compressor import ToolResultCompressor as TRC
+            ToolResultCompressor = TRC
+            CONTEXT_COMPRESSOR_AVAILABLE = True
+            print("[ReWOO] ✅ Context compression available")
+        except Exception as e:
+            CONTEXT_COMPRESSOR_AVAILABLE = False
+            print(f"[ReWOO] ❌ Context compression unavailable: {type(e).__name__}: {e}")
+    return ToolResultCompressor
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -57,8 +69,9 @@ class ReWOOAgent(Agent):
         self.planning_temperature = 0.3  # 规划阶段使用更低温度
         self.solving_temperature = temperature  # 综合阶段使用正常温度
         
-        # 🆕 Context Engineering: Tool result compressor
-        self._result_compressor = ToolResultCompressor() if CONTEXT_COMPRESSOR_AVAILABLE else None
+        # 🆕 Context Engineering: Tool result compressor (lazy init)
+        TRC = _init_context_compressor()
+        self._result_compressor = TRC() if TRC else None
 
     async def think_and_act(self) -> List:
         """
