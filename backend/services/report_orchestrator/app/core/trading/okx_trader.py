@@ -767,6 +767,39 @@ class OKXTrader:
 
         return True, ""
 
+    async def reset_daily_pnl(self) -> Dict[str, Any]:
+        """
+        Reset daily PnL tracking.
+        
+        Use this when:
+        1. Daily PnL data is corrupted
+        2. Manual override needed after fixing bugs
+        3. Starting fresh for a new trading day
+        
+        Returns:
+            Dict with reset result
+        """
+        old_pnl = self._daily_pnl
+        old_halted = self._is_trading_halted
+        
+        self._daily_pnl = 0.0
+        self._daily_pnl_reset_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        self._is_trading_halted = False
+        
+        # Save to Redis
+        await self._save_state()
+        
+        logger.info(f"[DailyLimit] ⚠️ RESET: Daily PnL reset from ${old_pnl:.2f} to $0, halted={old_halted} -> False")
+        
+        return {
+            "success": True,
+            "old_daily_pnl": old_pnl,
+            "old_is_halted": old_halted,
+            "new_daily_pnl": 0.0,
+            "new_is_halted": False,
+            "message": f"Daily PnL reset from ${old_pnl:.2f} to $0.00"
+        }
+
     async def close_position(self, symbol: str = "BTC-USDT-SWAP", reason: str = "manual") -> Optional[Dict]:
         """Close current position on OKX demo"""
         # 🔒 Use trade lock

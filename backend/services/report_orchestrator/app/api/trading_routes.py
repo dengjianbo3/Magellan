@@ -1230,6 +1230,32 @@ async def end_cooldown():
     return {"status": "cooldown_ended"}
 
 
+@router.post("/reset-daily-pnl")
+async def reset_daily_pnl():
+    """
+    Reset daily PnL tracking and halt status.
+    
+    Use this when:
+    1. Daily PnL data is corrupted (e.g., showing impossible values)
+    2. Manual override needed after fixing bugs
+    3. Trading is incorrectly halted due to bad data
+    
+    Returns:
+        Dict with old and new values
+    """
+    system = await get_trading_system()
+    
+    if not system.trader:
+        return {"success": False, "error": "Trading system not initialized"}
+    
+    # OKXTrader has reset_daily_pnl method
+    if hasattr(system.trader, 'reset_daily_pnl'):
+        result = await system.trader.reset_daily_pnl()
+        return result
+    else:
+        return {"success": False, "error": "Trader does not support daily PnL reset"}
+
+
 @router.post("/reset")
 async def reset_trading_system():
     """
