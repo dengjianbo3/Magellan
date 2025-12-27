@@ -26,6 +26,13 @@ from ..config_timeouts import (
     HTTP_CLIENT_TIMEOUT
 )
 
+# Import context compression (P0 Context Engineering)
+try:
+    from ..trading.context_compressor import ToolResultCompressor
+    CONTEXT_COMPRESSOR_AVAILABLE = True
+except ImportError:
+    CONTEXT_COMPRESSOR_AVAILABLE = False
+
 # 配置日志
 logger = logging.getLogger(__name__)
 
@@ -49,6 +56,9 @@ class ReWOOAgent(Agent):
         super().__init__(name, role_prompt, llm_gateway_url, model, temperature)
         self.planning_temperature = 0.3  # 规划阶段使用更低温度
         self.solving_temperature = temperature  # 综合阶段使用正常温度
+        
+        # 🆕 Context Engineering: Tool result compressor
+        self._result_compressor = ToolResultCompressor() if CONTEXT_COMPRESSOR_AVAILABLE else None
 
     async def think_and_act(self) -> List:
         """
@@ -321,8 +331,25 @@ class ReWOOAgent(Agent):
                     "raw_result": obs
                 })
             elif isinstance(obs, dict):
-                # Normal dict result
-                processed_observations.append(obs)
+                # Normal dict result - apply compression if available
+                if self._result_compressor and plan[i].get("tool"):
+                    try:
+                        tool_name = plan[i].get("tool", "unknown")
+                        compressed = await self._result_compressor.compress(
+                            tool_name, obs, store_full=False
+                        )
+                        processed_observations.append({
+                            "success": True,
+                            "summary": compressed.summary,
+                            "tokens_saved": compressed.token_estimate
+                        })
+                        logger.debug(f"[{self.name}] Compressed {tool_name} result")
+                    except Exception as e:
+                        # Compression failed, use original
+                        logger.warning(f"[{self.name}] Compression failed: {e}")
+                        processed_observations.append(obs)
+                else:
+                    processed_observations.append(obs)
             else:
                 # Unknown type - convert to string
                 processed_observations.append({
