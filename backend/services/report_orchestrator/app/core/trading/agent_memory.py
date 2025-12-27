@@ -187,6 +187,9 @@ class AgentMemory:
     last_trade_summary: str = ""  # Brief summary of last trade
     current_focus: str = ""       # Current focus points to pay attention to
     common_mistakes: List[str] = field(default_factory=list)  # Common mistakes made
+    
+    # 🆕 Context Engineering: Compacted historical summary
+    compacted_history_summary: str = ""  # Summary of older reflections (beyond recent 10)
 
     def get_recent_win_rate(self, n: int = 10) -> float:
         """
@@ -217,6 +220,30 @@ class AgentMemory:
             return 0.5
         
         return sum(recent_trades) / len(recent_trades)
+
+    def _compact_old_reflection(self, old_reflection: Dict):
+        """
+        🆕 Context Engineering: Summarize old reflection before discarding.
+        Appends key info to compacted_history_summary string.
+        """
+        # Extract key info from old reflection
+        pnl = old_reflection.get('pnl', 0)
+        direction = old_reflection.get('direction', 'unknown')
+        result = "win" if pnl > 0 else "loss"
+        lessons = old_reflection.get('lessons_learned', [])
+        
+        # Create concise summary line
+        summary_line = f"• {direction} {result} (${pnl:.2f})"
+        if lessons and len(lessons) > 0:
+            summary_line += f": {lessons[0][:50]}"
+        
+        # Append to compacted summary (keep under 500 chars)
+        if self.compacted_history_summary:
+            self.compacted_history_summary = (
+                self.compacted_history_summary + "\n" + summary_line
+            )[-500:]
+        else:
+            self.compacted_history_summary = summary_line
 
     def add_trade_result(self, experience: TradeExperience):
         """Add a new trade result and update statistics"""
@@ -259,8 +286,12 @@ class AgentMemory:
         """Add a trade reflection while updating trade statistics"""
         # Save reflection record
         self.recent_reflections.append(reflection.to_dict())
-        # Keep only last 10 records
+        
+        # 🆕 Context Engineering: Compact old reflections before discarding
         if len(self.recent_reflections) > 10:
+            # Summarize the oldest reflection before removing
+            old_reflection = self.recent_reflections[0]
+            self._compact_old_reflection(old_reflection)
             self.recent_reflections = self.recent_reflections[-10:]
 
         # Update last trade summary
