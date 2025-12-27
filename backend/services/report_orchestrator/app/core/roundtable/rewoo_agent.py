@@ -345,9 +345,28 @@ class ReWOOAgent(Agent):
                 })
             elif isinstance(obs, dict):
                 # Normal dict result - apply compression if available
-                if self._result_compressor and plan[i].get("tool"):
+                # BUT skip compression for critical tools that agents need full content
+                SKIP_COMPRESSION_TOOLS = {
+                    # Search tools - agents need full news/article content
+                    "web_search", "tavily_search", "google_search",
+                    # Position/Balance - critical trading data
+                    "get_current_position", "get_account_balance", "get_trade_history",
+                    # Technical analysis - need full indicator details
+                    "technical_analysis", "calculate_technical_indicators",
+                    # Market data - need complete data
+                    "get_market_price", "get_klines", "orderbook_analyzer",
+                    # Risk tools
+                    "black_swan_scanner", "analyze_execution_conditions"
+                }
+                
+                tool_name = plan[i].get("tool", "unknown")
+                should_compress = (
+                    self._result_compressor 
+                    and tool_name not in SKIP_COMPRESSION_TOOLS
+                )
+                
+                if should_compress:
                     try:
-                        tool_name = plan[i].get("tool", "unknown")
                         compressed = await self._result_compressor.compress(
                             tool_name, obs, store_full=False
                         )
@@ -362,6 +381,7 @@ class ReWOOAgent(Agent):
                         logger.warning(f"[{self.name}] Compression failed: {e}")
                         processed_observations.append(obs)
                 else:
+                    # Critical tool - keep full content for agent decision making
                     processed_observations.append(obs)
             else:
                 # Unknown type - convert to string
