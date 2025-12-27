@@ -26,24 +26,10 @@ from ..config_timeouts import (
     HTTP_CLIENT_TIMEOUT
 )
 
-# Import context compression (P0 Context Engineering)
-# Use lazy import to avoid circular dependency
-CONTEXT_COMPRESSOR_AVAILABLE = False
-ToolResultCompressor = None
-
-def _init_context_compressor():
-    """Lazy import to avoid circular import issues"""
-    global CONTEXT_COMPRESSOR_AVAILABLE, ToolResultCompressor
-    if ToolResultCompressor is None:
-        try:
-            from ..trading.context_compressor import ToolResultCompressor as TRC
-            ToolResultCompressor = TRC
-            CONTEXT_COMPRESSOR_AVAILABLE = True
-            print("[ReWOO] ✅ Context compression available")
-        except Exception as e:
-            CONTEXT_COMPRESSOR_AVAILABLE = False
-            print(f"[ReWOO] ❌ Context compression unavailable: {type(e).__name__}: {e}")
-    return ToolResultCompressor
+# Context Engineering Note:
+# Tool result compression was removed - agents need FULL data for current decisions.
+# Compression should only apply to HISTORICAL data (MeetingCompactor, AgentMemory)
+# not to current tool call results within a decision cycle.
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -68,10 +54,6 @@ class ReWOOAgent(Agent):
         super().__init__(name, role_prompt, llm_gateway_url, model, temperature)
         self.planning_temperature = 0.3  # 规划阶段使用更低温度
         self.solving_temperature = temperature  # 综合阶段使用正常温度
-        
-        # 🆕 Context Engineering: Tool result compressor (lazy init)
-        TRC = _init_context_compressor()
-        self._result_compressor = TRC() if TRC else None
 
     async def think_and_act(self) -> List:
         """
@@ -344,45 +326,10 @@ class ReWOOAgent(Agent):
                     "raw_result": obs
                 })
             elif isinstance(obs, dict):
-                # Normal dict result - apply compression if available
-                # BUT skip compression for critical tools that agents need full content
-                SKIP_COMPRESSION_TOOLS = {
-                    # Search tools - agents need full news/article content
-                    "web_search", "tavily_search", "google_search",
-                    # Position/Balance - critical trading data
-                    "get_current_position", "get_account_balance", "get_trade_history",
-                    # Technical analysis - need full indicator details
-                    "technical_analysis", "calculate_technical_indicators",
-                    # Market data - need complete data
-                    "get_market_price", "get_klines", "orderbook_analyzer",
-                    # Risk tools
-                    "black_swan_scanner", "analyze_execution_conditions"
-                }
-                
-                tool_name = plan[i].get("tool", "unknown")
-                should_compress = (
-                    self._result_compressor 
-                    and tool_name not in SKIP_COMPRESSION_TOOLS
-                )
-                
-                if should_compress:
-                    try:
-                        compressed = await self._result_compressor.compress(
-                            tool_name, obs, store_full=False
-                        )
-                        processed_observations.append({
-                            "success": True,
-                            "summary": compressed.summary,
-                            "tokens_saved": compressed.token_estimate
-                        })
-                        logger.debug(f"[{self.name}] Compressed {tool_name} result")
-                    except Exception as e:
-                        # Compression failed, use original
-                        logger.warning(f"[{self.name}] Compression failed: {e}")
-                        processed_observations.append(obs)
-                else:
-                    # Critical tool - keep full content for agent decision making
-                    processed_observations.append(obs)
+                # Pass through full tool result - agents need complete data for decisions
+                # Context Engineering note: compression should only apply to HISTORICAL data
+                # (previous meeting transcripts, old reflections), not current tool results
+                processed_observations.append(obs)
             else:
                 # Unknown type - convert to string
                 processed_observations.append({
