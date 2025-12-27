@@ -132,6 +132,9 @@ class FileMemory:
                 "metadata": json.dumps(metadata or {}),
                 "size_bytes": str(size_bytes)
             }
+            # Track stats in fallback mode too
+            self._stats["writes"] += 1
+            self._stats["bytes_stored"] += size_bytes
         
         return ref_id
     
