@@ -295,6 +295,17 @@ class TradingMeeting(Meeting):
         cycle_id = f"meeting_{self.config.symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         cycle_cache.start_cycle(cycle_id)
         logger.info(f"[Context Engineering] Started search cache for cycle: {cycle_id}")
+        
+        # 🆕 Context Engineering P1: Create shared market data snapshot
+        # Fetch market data once, share across all agents
+        from app.core.trading.market_data_snapshot import get_market_snapshot_manager
+        snapshot_manager = get_market_snapshot_manager()
+        market_snapshot = await snapshot_manager.create_snapshot(
+            symbol=self.config.symbol,
+            cycle_id=cycle_id,
+            paper_trader=self.toolkit.paper_trader if self.toolkit else None
+        )
+        logger.info(f"[Context Engineering] Market snapshot: price=${market_snapshot.price:,.2f}, sentiment={market_snapshot.fear_greed_index}")
 
         # Step 0: Collect position context
         logger.info("[PositionContext] Collecting position context...")
@@ -346,7 +357,8 @@ class TradingMeeting(Meeting):
 
             # 🆕 Context Engineering P0: End cycle and log statistics
             cache_stats = cycle_cache.end_cycle()
-            logger.info(f"[Context Engineering] Cycle ended. Stats: {cache_stats}")
+            snapshot_manager.clear()  # P1: Clear market snapshot
+            logger.info(f"[Context Engineering] Cycle ended. Search cache stats: {cache_stats}")
 
             return self._final_signal
 
