@@ -74,14 +74,19 @@ class CycleSearchCache:
         words = [w for w in words if w not in stop_words]
         return ' '.join(words)
     
-    def _calculate_similarity(self, query1: str, query2: str) -> float:
-        """计算两个查询的相似度 (0-1)"""
+    def _calculate_similarity_string(self, query1: str, query2: str) -> float:
+        """计算两个查询的字符串相似度 (0-1) - 后备方案"""
         norm1 = self._normalize_query(query1)
         norm2 = self._normalize_query(query2)
         return SequenceMatcher(None, norm1, norm2).ratio()
     
-    def _find_similar_query(self, query: str) -> Optional[str]:
-        """查找语义相似的已缓存查询"""
+    async def _find_similar_query(self, query: str) -> Optional[str]:
+        """
+        查找语义相似的已缓存查询
+        
+        🆕 使用 Gemini Embedding 进行真正的语义匹配
+        如果 API 不可用则退回到字符串相似度
+        """
         if not self._cache:
             return None
         
@@ -91,19 +96,47 @@ class CycleSearchCache:
         if normalized in self._normalized_index:
             return self._normalized_index[normalized]
         
-        # 语义相似匹配
+        # 尝试使用 Gemini Embedding 进行语义匹配
+        try:
+            from app.core.trading.gemini_embedding import get_embedding_service
+            
+            embedding_service = get_embedding_service()
+            
+            if embedding_service.api_key:
+                # 使用 Gemini Embedding 进行真正的语义匹配
+                cached_queries = list(self._cache.keys())
+                result = await embedding_service.find_most_similar(
+                    query=query,
+                    candidates=cached_queries,
+                    threshold=self.SIMILARITY_THRESHOLD
+                )
+                
+                if result:
+                    best_match, score = result
+                    logger.info(
+                        f"[CycleSearchCache] 🧠 Gemini semantic match: "
+                        f"'{query[:40]}...' ≈ '{best_match[:40]}...' (sim={score:.3f})"
+                    )
+                    return best_match
+                
+                return None
+                
+        except Exception as e:
+            logger.warning(f"[CycleSearchCache] Gemini embedding failed, falling back to string similarity: {e}")
+        
+        # 后备方案：使用字符串相似度
         best_match = None
         best_score = 0
         
         for cached_query in self._cache.keys():
-            score = self._calculate_similarity(query, cached_query)
+            score = self._calculate_similarity_string(query, cached_query)
             if score > best_score and score >= self.SIMILARITY_THRESHOLD:
                 best_match = cached_query
                 best_score = score
         
         if best_match:
             logger.debug(
-                f"[CycleSearchCache] Semantic match: '{query[:50]}...' ≈ '{best_match[:50]}...' "
+                f"[CycleSearchCache] String match (fallback): '{query[:50]}...' ≈ '{best_match[:50]}...' "
                 f"(similarity: {best_score:.2f})"
             )
         
@@ -135,8 +168,8 @@ class CycleSearchCache:
             result["_cache_status"] = "exact_hit"
             return result
         
-        # 2. 语义相似匹配
-        similar_query = self._find_similar_query(query)
+        # 2. 语义相似匹配 (使用 Gemini Embedding)
+        similar_query = await self._find_similar_query(query)
         if similar_query:
             self._stats["semantic_hits"] += 1
             self._stats["api_calls_saved"] += 1
