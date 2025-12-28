@@ -178,7 +178,6 @@ services:
         condition: service_healthy
     volumes:
       - ./logs:/app/logs
-      - ./config.yaml:/app/config.yaml:ro
       # Agent 和 Workflow 配置文件 (从主项目挂载到代码所在目录)
       - ../backend/services/report_orchestrator/config/agents.yaml:/usr/src/app/config/agents.yaml:ro
       - ../backend/services/report_orchestrator/config/workflows.yaml:/usr/src/app/config/workflows.yaml:ro

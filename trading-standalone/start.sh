@@ -2,6 +2,7 @@
 # ===========================================
 # Magellan Trading Standalone - Startup Script
 # ===========================================
+# Simplified: All config now in main project .env
 
 set -e
 
@@ -20,112 +21,31 @@ echo -e "${BLUE}║  Magellan Trading Standalone - Startup    ║${NC}"
 echo -e "${BLUE}╚═══════════════════════════════════════════╝${NC}"
 echo ""
 
-# Check if config.yaml exists
-if [ ! -f "config.yaml" ]; then
-    echo -e "${RED}Error: config.yaml not found!${NC}"
-    echo "Please create config.yaml from the template."
+# Load environment from main project .env (single source of truth)
+if [ -f "../.env" ]; then
+    echo -e "  ${GREEN}✓${NC} Loading config from main project .env"
+    set -a
+    source "../.env"
+    set +a
+else
+    echo -e "${RED}Error: Main project .env not found!${NC}"
+    echo "Please create .env in the project root directory."
     exit 1
 fi
 
-# Check if .env exists, if not create from parent or template
-if [ ! -f ".env" ]; then
-    if [ -f ".env.example" ]; then
-        echo -e "${YELLOW}Creating .env from .env.example...${NC}"
-        cp ".env.example" ".env"
-        echo -e "${GREEN}Created .env - please review and customize if needed${NC}"
-    fi
-fi
-
-# Load environment variables
-# Priority: 1. Root project .env (API keys), 2. Local .env (trading overrides)
-echo -e "${BLUE}Loading configuration...${NC}"
-
-# First, load root project .env for shared API keys
-if [ -f "../.env" ]; then
-    echo -e "  ${GREEN}✓${NC} Loading shared API keys from root .env"
-    source "../.env" 2>/dev/null || true
-fi
-
-# Then, load local .env for trading-specific overrides
-if [ -f ".env" ]; then
-    echo -e "  ${GREEN}✓${NC} Loading trading overrides from local .env"
-    source ".env" 2>/dev/null || true
-fi
-
-# Configuration loading priority: local .env > root .env > config.yaml > defaults
-echo -e "${BLUE}Configuration priority: local .env > root .env > config.yaml > defaults${NC}"
-
-# Helper function: get value from config.yaml
-get_yaml_value() {
-    local key=$1
-    grep "${key}:" config.yaml 2>/dev/null | head -1 | sed 's/.*://' | tr -d ' "' | sed 's/#.*//'
-}
-
-# Helper function: set env var if not already set (priority: .env > yaml > default)
-set_if_empty() {
-    local var_name=$1
-    local yaml_key=$2
-    local default_val=$3
-
-    # If already set from .env, keep it
-    if [ -n "${!var_name}" ]; then
-        return
-    fi
-
-    # Try to get from config.yaml
-    local yaml_val=$(get_yaml_value "$yaml_key")
-    if [ -n "$yaml_val" ]; then
-        export "$var_name"="$yaml_val"
-        return
-    fi
-
-    # Use default
-    if [ -n "$default_val" ]; then
-        export "$var_name"="$default_val"
-    fi
-}
-
-# Trading config (priority: .env > config.yaml > defaults)
-set_if_empty TRADING_SYMBOL "symbol" "BTC-USDT-SWAP"
-set_if_empty OKX_DEMO_MODE "demo_mode" "true"
-
-# Scheduler config
-set_if_empty SCHEDULER_INTERVAL_HOURS "interval_hours" "4"
-set_if_empty COOLDOWN_HOURS "cooldown_hours" "24"
-set_if_empty MAX_CONSECUTIVE_LOSSES "max_consecutive_losses" "3"
-
-# Risk control config
-set_if_empty MAX_LEVERAGE "max_leverage" "20"
-set_if_empty MAX_POSITION_PERCENT "max_position_percent" "30"
-set_if_empty MIN_POSITION_PERCENT "min_position_percent" "10"
-set_if_empty DEFAULT_POSITION_PERCENT "default_position_percent" "20"
-set_if_empty MIN_CONFIDENCE "min_confidence" "60"
-set_if_empty DEFAULT_TP_PERCENT "default_tp_percent" "5.0"
-set_if_empty DEFAULT_SL_PERCENT "default_sl_percent" "2.0"
-
-# Other config
-set_if_empty DEFAULT_LLM_PROVIDER "provider" "deepseek"
-set_if_empty LOG_LEVEL "level" "INFO"
-set_if_empty EMAIL_ENABLED "enabled" "false"
-
 echo ""
 echo -e "${GREEN}Configuration loaded:${NC}"
-echo "  Symbol:          ${TRADING_SYMBOL:-BTC-USDT-SWAP}"
-echo "  Demo Mode:       ${OKX_DEMO_MODE:-true}"
-echo "  Analysis Interval: ${SCHEDULER_INTERVAL_HOURS:-4} hours"
+echo "  Symbol:           ${TRADING_SYMBOL:-BTC-USDT-SWAP}"
+echo "  Demo Mode:        ${OKX_DEMO_MODE:-true}"
+echo "  Use OKX Trading:  ${USE_OKX_TRADING:-false}"
+echo "  Analysis Interval: ${SCHEDULER_INTERVAL_HOURS:-2} hours"
 echo ""
 echo -e "${GREEN}Risk Control Settings:${NC}"
-echo "  Max Leverage:    ${MAX_LEVERAGE:-20}x"
-echo "  Position Range:  ${MIN_POSITION_PERCENT:-10}% - ${MAX_POSITION_PERCENT:-30}%"
+echo "  Max Leverage:     ${MAX_LEVERAGE:-20}x"
+echo "  Position Range:   ${MIN_POSITION_PERCENT:-10}% - ${MAX_POSITION_PERCENT:-30}%"
 echo "  Default Position: ${DEFAULT_POSITION_PERCENT:-20}%"
-echo "  Min Confidence:  ${MIN_CONFIDENCE:-60}%"
-echo "  Default TP/SL:   +${DEFAULT_TP_PERCENT:-5.0}% / -${DEFAULT_SL_PERCENT:-2.0}%"
-echo ""
-echo -e "${GREEN}Other Settings:${NC}"
-echo "  Cooldown Hours:  ${COOLDOWN_HOURS:-24}"
-echo "  Max Losses:      ${MAX_CONSECUTIVE_LOSSES:-3}"
-echo "  LLM Provider:    ${DEFAULT_LLM_PROVIDER:-gemini}"
-echo "  Email Enabled:   ${EMAIL_ENABLED:-false}"
+echo "  Min Confidence:   ${MIN_CONFIDENCE:-60}%"
+echo "  Default TP/SL:    +${DEFAULT_TP_PERCENT:-5.0}% / -${DEFAULT_SL_PERCENT:-2.0}%"
 echo ""
 
 # Check required environment variables
@@ -163,7 +83,7 @@ if [ ${#missing_keys[@]} -ne 0 ]; then
         echo "  - $key"
     done
     echo ""
-    echo "Please set these in your .env file."
+    echo "Please set these in the main project .env file."
     exit 1
 fi
 
@@ -184,7 +104,7 @@ if ! docker info &> /dev/null; then
     exit 1
 fi
 
-# Detect docker compose command (v2 uses "docker compose", v1 uses "docker-compose")
+# Detect docker compose command
 if docker compose version &> /dev/null; then
     DOCKER_COMPOSE="docker compose"
 elif docker-compose version &> /dev/null; then
@@ -198,7 +118,7 @@ fi
 echo -e "${BLUE}Starting Docker services...${NC}"
 echo ""
 
-# Smart rebuild: only build if --build flag is passed or if images don't exist
+# Smart rebuild
 BUILD_FLAG=""
 if [[ "$*" == *"--build"* ]] || [[ "$*" == *"-b"* ]]; then
     echo -e "${YELLOW}Build flag detected, rebuilding images...${NC}"
@@ -212,7 +132,7 @@ fi
 
 $DOCKER_COMPOSE up -d $BUILD_FLAG
 
-# Wait for services to be healthy
+# Wait for services
 echo ""
 echo -e "${YELLOW}Waiting for services to be ready...${NC}"
 
@@ -234,7 +154,7 @@ echo ""
 echo -e "${BLUE}Service Status:${NC}"
 $DOCKER_COMPOSE ps
 
-# Start trading if all services are up
+# Start trading
 echo ""
 if $DOCKER_COMPOSE ps | grep -q "Up"; then
     echo -e "${GREEN}╔═══════════════════════════════════════════╗${NC}"
@@ -261,12 +181,9 @@ if $DOCKER_COMPOSE ps | grep -q "Up"; then
         echo -e "${GREEN}Trading started successfully!${NC}"
         echo ""
         echo "The system will now:"
-        echo "  1. Analyze the market every ${SCHEDULER_INTERVAL_HOURS:-4} hours"
+        echo "  1. Analyze the market every ${SCHEDULER_INTERVAL_HOURS:-2} hours"
         echo "  2. Execute trades based on AI analysis"
         echo "  3. Monitor positions for TP/SL"
-        if [ "$EMAIL_ENABLED" == "true" ]; then
-            echo "  4. Send email notifications on decisions"
-        fi
     else
         echo -e "${YELLOW}Note: Trading auto-start pending. You can start manually:${NC}"
         echo "  curl -X POST http://localhost:8000/api/trading/start"
