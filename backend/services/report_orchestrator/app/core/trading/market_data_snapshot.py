@@ -164,11 +164,15 @@ class MarketDataSnapshotManager:
             
             price_data = await get_current_btc_price()
             if price_data:
-                self._snapshot.price = price_data.get("price", 0)
-                self._snapshot.change_24h = price_data.get("change_24h", "0%")
-                self._snapshot.volume_24h = price_data.get("volume_24h", "$0")
-                self._snapshot.high_24h = price_data.get("high_24h", 0)
-                self._snapshot.low_24h = price_data.get("low_24h", 0)
+                # price_data can be float or dict depending on source
+                if isinstance(price_data, (int, float)):
+                    self._snapshot.price = float(price_data)
+                elif isinstance(price_data, dict):
+                    self._snapshot.price = price_data.get("price", 0)
+                    self._snapshot.change_24h = price_data.get("change_24h", "0%")
+                    self._snapshot.volume_24h = price_data.get("volume_24h", "$0")
+                    self._snapshot.high_24h = price_data.get("high_24h", 0)
+                    self._snapshot.low_24h = price_data.get("low_24h", 0)
         except Exception as e:
             logger.warning(f"[MarketSnapshot] Price fetch failed: {e}")
     
@@ -209,8 +213,9 @@ class MarketDataSnapshotManager:
     async def _fetch_position_data(self, paper_trader=None):
         """获取持仓数据"""
         try:
-            if paper_trader:
-                position = await paper_trader.get_current_position()
+            if paper_trader and hasattr(paper_trader, 'get_position'):
+                # PaperTrader uses get_position(), not get_current_position()
+                position = await paper_trader.get_position()
                 if position:
                     self._snapshot.has_position = position.get("size", 0) != 0
                     self._snapshot.position_direction = position.get("direction")
@@ -222,8 +227,9 @@ class MarketDataSnapshotManager:
     async def _fetch_balance_data(self, paper_trader=None):
         """获取账户余额"""
         try:
-            if paper_trader:
-                balance = await paper_trader.get_account_balance()
+            if paper_trader and hasattr(paper_trader, 'get_account'):
+                # PaperTrader uses get_account(), not get_account_balance()
+                balance = await paper_trader.get_account()
                 if balance:
                     self._snapshot.available_balance = balance.get("available_balance", 0)
                     self._snapshot.true_available_margin = balance.get("true_available_margin", 0)
