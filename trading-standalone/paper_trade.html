@@ -473,8 +473,8 @@
                 // === Account & Equity ===
                 const balance = paperTrader.balance || account?.available_balance || 0;
                 const equity = paperTrader.equity || account?.total_equity || balance;
-                const totalPnL = equity - 10000; // Assuming $10,000 initial balance
-                const totalPnLPercent = ((equity / 10000) - 1) * 100;
+                const totalPnL = equity - 5000; // Initial balance for OKX demo sub-account
+                const totalPnLPercent = ((equity / 5000) - 1) * 100;
                 const pnlClass = totalPnL >= 0 ? 'positive' : 'negative';
 
                 html += `
