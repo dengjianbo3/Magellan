@@ -34,9 +34,10 @@ class GeminiEmbeddingService:
         初始化 Embedding 服务
         
         Args:
-            api_key: Gemini API Key，默认从环境变量 GEMINI_API_KEY 获取
+            api_key: Gemini API Key，默认从环境变量获取
+                     (尝试 GOOGLE_API_KEY 或 GEMINI_API_KEY)
         """
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        self.api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
         self._client = None
         self._embedding_cache: Dict[str, List[float]] = {}
         self._stats = {

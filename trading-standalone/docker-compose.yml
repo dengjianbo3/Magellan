@@ -122,6 +122,8 @@ services:
       # Tavily (网络搜索)
       - TAVILY_API_KEY=${TAVILY_API_KEY}
       - SERPER_API_KEY=${SERPER_API_KEY:-}
+      # Gemini Embedding (for semantic search matching)
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       # OKX 交易所
       - OKX_API_KEY=${OKX_API_KEY}
       - OKX_SECRET_KEY=${OKX_SECRET_KEY}
