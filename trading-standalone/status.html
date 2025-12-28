@@ -429,10 +429,11 @@
         function formatLocalTime(isoString) {
             if (!isoString) return 'N/A';
             try {
-                // If timestamp has no timezone info (naive), treat as UTC
-                let dateStr = isoString;
-                if (!dateStr.includes('+') && !dateStr.includes('Z') && !dateStr.includes('-', 10)) {
-                    dateStr = dateStr + 'Z';  // Append UTC marker
+                let dateStr = String(isoString);
+                // Check if timestamp has timezone info (Z, +HH:MM, -HH:MM)
+                const hasTimezone = /[Zz]$|[+-]\d{2}:?\d{2}$/.test(dateStr);
+                if (!hasTimezone) {
+                    dateStr = dateStr + 'Z';  // Treat naive timestamp as UTC
                 }
                 const date = new Date(dateStr);
                 return date.toLocaleString('zh-CN', {
