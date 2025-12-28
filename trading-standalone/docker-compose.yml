@@ -10,7 +10,7 @@ services:
     image: redis:7-alpine
     container_name: trading-redis
     command: >
-      redis-server --maxmemory ${REDIS_MAX_MEMORY:-256mb} --maxmemory-policy allkeys-lru --appendonly no --save ""
+      redis-server  --maxmemory ${REDIS_MAX_MEMORY:-256mb}  --maxmemory-policy allkeys-lru  --appendonly yes  --appendfsync everysec
     ports:
       - "6381:6379" # Avoid conflict with main Redis on 6380
     volumes:
