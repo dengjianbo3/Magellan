@@ -287,6 +287,14 @@ class TradingMeeting(Meeting):
             TradingSignal if a trade decision is made, None otherwise
         """
         logger.info(f"Starting trading meeting for {self.config.symbol}")
+        
+        # 🆕 Context Engineering P0: Start cycle search cache
+        # All agents in this cycle will share search results
+        from app.core.trading.cycle_search_cache import get_cycle_search_cache
+        cycle_cache = get_cycle_search_cache()
+        cycle_id = f"meeting_{self.config.symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        cycle_cache.start_cycle(cycle_id)
+        logger.info(f"[Context Engineering] Started search cache for cycle: {cycle_id}")
 
         # Step 0: Collect position context
         logger.info("[PositionContext] Collecting position context...")
@@ -336,6 +344,10 @@ class TradingMeeting(Meeting):
                 if self.on_signal:
                     await self.on_signal(self._final_signal)
 
+            # 🆕 Context Engineering P0: End cycle and log statistics
+            cache_stats = cycle_cache.end_cycle()
+            logger.info(f"[Context Engineering] Cycle ended. Stats: {cache_stats}")
+
             return self._final_signal
 
         except Exception as e:
@@ -346,6 +358,11 @@ class TradingMeeting(Meeting):
                 content=f"Meeting error occurred: {str(e)}",
                 message_type="error"
             )
+            # 🆕 Context Engineering: End cycle even on error
+            try:
+                cycle_cache.end_cycle()
+            except:
+                pass
             return None
 
     def _build_agenda(self, context: Optional[str] = None, position_context: Optional[PositionContext] = None) -> str:
