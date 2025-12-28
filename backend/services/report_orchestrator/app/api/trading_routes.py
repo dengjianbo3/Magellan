@@ -481,9 +481,9 @@ class TradingSystem:
             "new_state": new_state.value
         }))
 
-    async def _on_position_closed(self, position, pnl: float):
+    async def _on_position_closed(self, position, pnl: float, reason: str = None):
         """Handle position closed"""
-        logger.info(f"Position closed with PnL: {pnl}")
+        logger.info(f"Position closed with PnL: {pnl}" + (f", reason: {reason[:100]}..." if reason else ""))
 
         # Record result
         result = self.cooldown_manager.record_trade_result(pnl)

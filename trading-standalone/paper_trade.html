@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paper Trading Dashboard</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 10px;
+            min-height: 100vh;
+        }
+
+        .header {
+            text-align: center;
+            padding: 20px;
+            background: linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%);
+            border-radius: 12px;
+            margin-bottom: 15px;
+            position: relative;
+        }
+
+        .header h1 {
+            font-size: 1.4em;
+            color: white;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .header p {
+            font-size: 0.85em;
+            opacity: 0.9;
+            margin-top: 5px;
+            color: white;
+        }
+
+        .paper-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.7em;
+            font-weight: bold;
+        }
+
+        .card {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            border: 1px solid #334155;
+        }
+
+        .card-title {
+            font-size: 0.95em;
+            color: #10b981;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            font-size: 0.9em;
+            border-bottom: 1px solid #334155;
+        }
+
+        .row:last-child {
+            border-bottom: none;
+        }
+
+        .label {
+            color: #94a3b8;
+        }
+
+        .value {
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+
+        .positive {
+            color: #4ade80;
+        }
+
+        .negative {
+            color: #f87171;
+        }
+
+        .neutral {
+            color: #fbbf24;
+        }
+
+        /* Large PnL Display */
+        .pnl-card {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            border: 2px solid #334155;
+            text-align: center;
+            padding: 25px;
+        }
+
+        .pnl-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .pnl-label {
+            font-size: 0.85em;
+            color: #94a3b8;
+        }
+
+        .pnl-percent {
+            font-size: 1.2em;
+            margin-top: 5px;
+        }
+
+        /* Position Card */
+        .position-card {
+            background: linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%);
+            border: 2px solid #3b82f6;
+        }
+
+        .position-direction {
+            font-size: 2em;
+            font-weight: bold;
+            text-align: center;
+            padding: 15px;
+        }
+
+        .position-direction.long {
+            color: #4ade80;
+        }
+
+        .position-direction.short {
+            color: #f87171;
+        }
+
+        .position-direction.none {
+            color: #64748b;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .stat-box {
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #e2e8f0;
+        }
+
+        .stat-label {
+            font-size: 0.75em;
+            color: #64748b;
+            margin-top: 5px;
+        }
+
+        /* Trade History */
+        .trade-item {
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            border-left: 3px solid #334155;
+            transition: transform 0.1s;
+        }
+
+        .trade-item.long {
+            border-left-color: #4ade80;
+        }
+
+        .trade-item.short {
+            border-left-color: #f87171;
+        }
+
+        .trade-item:hover {
+            transform: translateX(3px);
+        }
+
+        .trade-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .trade-direction {
+            font-weight: bold;
+            padding: 2px 10px;
+            border-radius: 4px;
+            font-size: 0.8em;
+        }
+
+        .trade-direction.long {
+            background: #166534;
+            color: #4ade80;
+        }
+
+        .trade-direction.short {
+            background: #991b1b;
+            color: #f87171;
+        }
+
+        .scrollable-list {
+            max-height: 350px;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+
+        .scrollable-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .scrollable-list::-webkit-scrollbar-thumb {
+            background: #10b981;
+            border-radius: 3px;
+        }
+
+        /* Buttons */
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 10px;
+            transition: transform 0.1s, opacity 0.1s;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #334155;
+            color: #e2e8f0;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+            color: white;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .button-row .btn {
+            flex: 1;
+            min-width: 100px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 30px;
+            color: #64748b;
+        }
+
+        .error {
+            background: #7f1d1d;
+            color: #fca5a5;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .last-update {
+            text-align: center;
+            font-size: 0.75em;
+            color: #64748b;
+            margin-top: 15px;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.running {
+            background: #4ade80;
+        }
+
+        .status-dot.stopped {
+            background: #f87171;
+        }
+
+        .status-dot.analyzing {
+            background: #fbbf24;
+            animation: pulse 0.5s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <span class="paper-badge">📝 PAPER MODE</span>
+        <h1>🧪 Paper Trading Dashboard</h1>
+        <p>Simulated Trading - No Real Money</p>
+    </div>
+
+    <div id="content">
+        <div class="loading">Loading Paper Trading data...</div>
+    </div>
+
+    <div class="button-row">
+        <button class="btn btn-primary" onclick="refresh()">🔄 Refresh</button>
+        <button class="btn btn-secondary" onclick="toggleAutoRefresh()">
+            Auto: <span id="autoRefreshStatus">OFF</span>
+        </button>
+    </div>
+
+    <div class="button-row">
+        <button class="btn btn-primary" id="analyzeBtn" onclick="triggerAnalysis()"
+            style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);">
+            🚀 Analyze Now
+        </button>
+        <button class="btn btn-danger" id="closeBtn" onclick="closePosition()">
+            ⚠️ Close Position
+        </button>
+    </div>
+
+    <div class="last-update" id="lastUpdate"></div>
+
+    <script>
+        const SERVER = 'http://localhost:9000';
+        let autoRefresh = false;
+        let refreshInterval = null;
+
+        async function fetchData(endpoint) {
+            try {
+                const response = await fetch(`${SERVER}/api/trading/${endpoint}`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (!response.ok) return null;
+                return await response.json();
+            } catch (e) {
+                console.error(`Error fetching ${endpoint}:`, e);
+                return null;
+            }
+        }
+
+        function formatNumber(num, decimals = 2) {
+            if (num === null || num === undefined) return '0.00';
+            return Number(num).toLocaleString('en-US', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals
+            });
+        }
+
+        function formatTime(isoString) {
+            if (!isoString) return 'N/A';
+            try {
+                const date = new Date(isoString);
+                return date.toLocaleString(undefined, {
+                    month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit',
+                    hour12: false
+                });
+            } catch (e) { return 'N/A'; }
+        }
+
+        async function refresh() {
+            const content = document.getElementById('content');
+            content.innerHTML = '<div class="loading">Loading...</div>';
+
+            try {
+                const [status, account, position, history] = await Promise.all([
+                    fetchData('status'),
+                    fetchData('account'),
+                    fetchData('position'),
+                    fetchData('history?limit=20')
+                ]);
+
+                if (!status) {
+                    content.innerHTML = '<div class="error">❌ Cannot connect to server</div>';
+                    return;
+                }
+
+                // Check if using Paper Trader
+                const isPaperTrader = status.trader_type === 'paper';
+                const paperTrader = status.paper_trader || status.trader || {};
+
+                let html = '';
+
+                // === System Status ===
+                const schedulerState = status.scheduler?.state || 'stopped';
+                const stateClass = schedulerState === 'analyzing' ? 'analyzing' :
+                    (status.enabled ? 'running' : 'stopped');
+                html += `
+                    <div class="card">
+                        <div class="card-title">⚙️ System Status</div>
+                        <div class="row">
+                            <span class="label">Status</span>
+                            <span class="value">
+                                <span class="status-dot ${stateClass}"></span>
+                                ${schedulerState.toUpperCase()}
+                            </span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Trader Type</span>
+                            <span class="value ${isPaperTrader ? 'positive' : 'neutral'}">
+                                ${isPaperTrader ? '📝 Paper Trader' : '💰 Live Trader'}
+                            </span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Symbol</span>
+                            <span class="value">${status.symbol || 'BTC-USDT-SWAP'}</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Run Count</span>
+                            <span class="value">${status.scheduler?.run_count || 0}</span>
+                        </div>
+                    </div>
+                `;
+
+                // === Account & Equity ===
+                const balance = paperTrader.balance || account?.available_balance || 0;
+                const equity = paperTrader.equity || account?.total_equity || balance;
+                const totalPnL = equity - 10000; // Assuming $10,000 initial balance
+                const totalPnLPercent = ((equity / 10000) - 1) * 100;
+                const pnlClass = totalPnL >= 0 ? 'positive' : 'negative';
+
+                html += `
+                    <div class="card pnl-card">
+                        <div class="pnl-label">Total P&L (Paper)</div>
+                        <div class="pnl-value ${pnlClass}">
+                            ${totalPnL >= 0 ? '+' : ''}$${formatNumber(totalPnL)}
+                        </div>
+                        <div class="pnl-percent ${pnlClass}">
+                            ${totalPnLPercent >= 0 ? '+' : ''}${formatNumber(totalPnLPercent)}%
+                        </div>
+                    </div>
+                `;
+
+                // === Stats Grid ===
+                const winRate = paperTrader.win_rate || '0%';
+                const totalTrades = paperTrader.total_trades || 0;
+                const realizedPnL = paperTrader.realized_pnl || 0;
+
+                html += `
+                    <div class="card">
+                        <div class="card-title">📊 Paper Trading Stats</div>
+                        <div class="stats-grid">
+                            <div class="stat-box">
+                                <div class="stat-value">$${formatNumber(balance)}</div>
+                                <div class="stat-label">Balance</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-value">$${formatNumber(equity)}</div>
+                                <div class="stat-label">Equity</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-value">${totalTrades}</div>
+                                <div class="stat-label">Total Trades</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-value">${winRate}</div>
+                                <div class="stat-label">Win Rate</div>
+                            </div>
+                        </div>
+                        <div class="row" style="margin-top: 10px;">
+                            <span class="label">Realized P&L</span>
+                            <span class="value ${realizedPnL >= 0 ? 'positive' : 'negative'}">
+                                ${realizedPnL >= 0 ? '+' : ''}$${formatNumber(realizedPnL)}
+                            </span>
+                        </div>
+                    </div>
+                `;
+
+                // === Current Position ===
+                const hasPosition = position?.has_position || paperTrader.has_position;
+                const posDirection = position?.direction || paperTrader.position_direction || 'none';
+                const unrealizedPnL = position?.unrealized_pnl || 0;
+                const unrealizedPnLFloat = typeof unrealizedPnL === 'string'
+                    ? parseFloat(unrealizedPnL.replace(/[$,]/g, ''))
+                    : unrealizedPnL;
+
+                html += `
+                    <div class="card position-card">
+                        <div class="card-title">📈 Current Position</div>
+                        <div class="position-direction ${hasPosition ? posDirection : 'none'}">
+                            ${hasPosition ? posDirection.toUpperCase() : 'NO POSITION'}
+                        </div>
+                `;
+
+                if (hasPosition) {
+                    const entryPrice = position?.entry_price || 0;
+                    const currentPrice = position?.current_price || paperTrader.current_price || 0;
+                    const leverage = position?.leverage || '3x';
+                    const size = position?.size || 0;
+                    const tp = position?.take_profit || 0;
+                    const sl = position?.stop_loss || 0;
+
+                    html += `
+                        <div class="row">
+                            <span class="label">Entry Price</span>
+                            <span class="value">$${formatNumber(entryPrice)}</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Current Price</span>
+                            <span class="value">$${formatNumber(currentPrice)}</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Size</span>
+                            <span class="value">${formatNumber(size, 4)} BTC</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Leverage</span>
+                            <span class="value">${leverage}</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Unrealized P&L</span>
+                            <span class="value ${unrealizedPnLFloat >= 0 ? 'positive' : 'negative'}">
+                                ${unrealizedPnLFloat >= 0 ? '+' : ''}$${formatNumber(unrealizedPnLFloat)}
+                            </span>
+                        </div>
+                    `;
+
+                    if (tp && sl) {
+                        html += `
+                            <div class="row">
+                                <span class="label">TP / SL</span>
+                                <span class="value">
+                                    <span class="positive">$${formatNumber(tp)}</span> / 
+                                    <span class="negative">$${formatNumber(sl)}</span>
+                                </span>
+                            </div>
+                        `;
+                    }
+                }
+
+                html += `</div>`;
+
+                // === Trade History ===
+                if (history && history.length > 0) {
+                    html += `
+                        <div class="card">
+                            <div class="card-title">📜 Recent Trades</div>
+                            <div class="scrollable-list">
+                    `;
+
+                    history.forEach(trade => {
+                        const dir = trade.direction || trade.signal?.direction || 'hold';
+                        const pnl = trade.pnl || trade.trade_result?.pnl || 0;
+                        const time = formatTime(trade.timestamp || trade.close_time);
+                        const status = trade.status || trade.trade_result?.status || 'N/A';
+
+                        html += `
+                            <div class="trade-item ${dir}">
+                                <div class="trade-header">
+                                    <span class="trade-direction ${dir}">${dir.toUpperCase()}</span>
+                                    <span class="${pnl >= 0 ? 'positive' : 'negative'}">
+                                        ${pnl >= 0 ? '+' : ''}$${formatNumber(pnl)}
+                                    </span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 0.8em; color: #64748b;">
+                                    <span>${time}</span>
+                                    <span>${status}</span>
+                                </div>
+                            </div>
+                        `;
+                    });
+
+                    html += `</div></div>`;
+                }
+
+                content.innerHTML = html;
+                document.getElementById('lastUpdate').textContent =
+                    `Last updated: ${new Date().toLocaleTimeString()}`;
+
+            } catch (error) {
+                console.error('Refresh error:', error);
+                content.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        function toggleAutoRefresh() {
+            autoRefresh = !autoRefresh;
+            document.getElementById('autoRefreshStatus').textContent = autoRefresh ? 'ON' : 'OFF';
+
+            if (autoRefresh) {
+                refreshInterval = setInterval(refresh, 10000); // 10 seconds
+            } else {
+                clearInterval(refreshInterval);
+            }
+        }
+
+        async function triggerAnalysis() {
+            const btn = document.getElementById('analyzeBtn');
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Starting...';
+
+            try {
+                const response = await fetch(`${SERVER}/api/trading/trigger`, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' }
+                });
+                const result = await response.json();
+
+                if (result.triggered) {
+                    alert('🚀 Analysis Started!\n\nRefresh in a few minutes to see results.');
+                } else {
+                    alert('⚠️ Could not trigger analysis.\n\nMay already be running.');
+                }
+            } catch (e) {
+                alert(`❌ Error: ${e.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🚀 Analyze Now';
+            }
+        }
+
+        async function closePosition() {
+            if (!confirm('⚠️ Close Position?\n\nThis will close the current paper trading position.')) {
+                return;
+            }
+
+            const btn = document.getElementById('closeBtn');
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Closing...';
+
+            try {
+                const response = await fetch(`${SERVER}/api/trading/close`, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' }
+                });
+                const result = await response.json();
+
+                if (result.status === 'closed') {
+                    const pnl = result.pnl || 0;
+                    alert(`✅ Position Closed!\n\nP&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`);
+                    refresh();
+                } else if (result.error?.includes('No open position')) {
+                    alert('ℹ️ No position to close.');
+                } else {
+                    alert(`❌ Error: ${result.error || 'Unknown error'}`);
+                }
+            } catch (e) {
+                alert(`❌ Error: ${e.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '⚠️ Close Position';
+            }
+        }
+
+        // Initial load
+        refresh();
+    </script>
+</body>
+
+</html>
