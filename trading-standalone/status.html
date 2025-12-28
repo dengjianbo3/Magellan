@@ -429,7 +429,12 @@
         function formatLocalTime(isoString) {
             if (!isoString) return 'N/A';
             try {
-                const date = new Date(isoString);
+                // If timestamp has no timezone info (naive), treat as UTC
+                let dateStr = isoString;
+                if (!dateStr.includes('+') && !dateStr.includes('Z') && !dateStr.includes('-', 10)) {
+                    dateStr = dateStr + 'Z';  // Append UTC marker
+                }
+                const date = new Date(dateStr);
                 return date.toLocaleString('zh-CN', {
                     timeZone: 'Asia/Shanghai',
                     year: 'numeric',
