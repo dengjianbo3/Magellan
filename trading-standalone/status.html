@@ -425,12 +425,13 @@
             return `<span class="${cls}">${sign}$${formatNumber(pnl)}</span>`;
         }
 
-        // Format timestamp to user's local timezone
+        // Format timestamp to Beijing timezone (UTC+8)
         function formatLocalTime(isoString) {
             if (!isoString) return 'N/A';
             try {
                 const date = new Date(isoString);
-                return date.toLocaleString(undefined, {
+                return date.toLocaleString('zh-CN', {
+                    timeZone: 'Asia/Shanghai',
                     year: 'numeric',
                     month: '2-digit',
                     day: '2-digit',
@@ -438,7 +439,7 @@
                     minute: '2-digit',
                     second: '2-digit',
                     hour12: false
-                });
+                }) + ' (北京时间)';
             } catch (e) {
                 return isoString;
             }
