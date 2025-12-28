@@ -870,7 +870,7 @@ async def get_max_drawdown(start_date: Optional[str] = Query(default=None, descr
                 logger.warning(f"Invalid start_date format: {start_date}, using all trades. Error: {e}")
         
         if not trades:
-            initial_balance = getattr(system.paper_trader, 'initial_balance', 10000)
+            initial_balance = getattr(system.paper_trader, 'initial_balance', 5000)
             return {
                 'max_drawdown_pct': 0.0,
                 'max_drawdown_usd': 0.0,
@@ -883,7 +883,7 @@ async def get_max_drawdown(start_date: Optional[str] = Query(default=None, descr
             }
         
         # Calculate drawdown from trades
-        initial_balance = getattr(system.paper_trader, 'initial_balance', 10000)
+        initial_balance = getattr(system.paper_trader, 'initial_balance', 5000)
         equity_curve = [initial_balance]
         running_equity = initial_balance
         
@@ -1027,7 +1027,7 @@ async def get_performance_metrics(start_date: Optional[str] = Query(default=None
         gross_loss = abs(sum(losses)) if losses else 0
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0
         
-        initial = getattr(system.paper_trader, 'initial_balance', 10000)
+        initial = getattr(system.paper_trader, 'initial_balance', 5000)
         total_pnl = sum(pnl_list)
         total_return_pct = (total_pnl / initial) * 100 if initial > 0 else 0
         
