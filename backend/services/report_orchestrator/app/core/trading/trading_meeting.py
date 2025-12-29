@@ -192,8 +192,11 @@ class TradingMeeting(Meeting):
                 # Get an available agent as LLM client (for generating reflections)
                 llm_client = None
                 if self.agents:
-                    # self.agents is a Dict, get first value
-                    llm_client = next(iter(self.agents.values()), None)
+                    # Handle both dict and list types for self.agents
+                    if isinstance(self.agents, dict):
+                        llm_client = next(iter(self.agents.values()), None)
+                    elif isinstance(self.agents, list):
+                        llm_client = self.agents[0] if self.agents else None
 
                 reflections = await generate_trade_reflections(
                     trade_id=trade_id,
