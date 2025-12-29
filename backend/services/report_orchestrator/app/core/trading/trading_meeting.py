@@ -304,6 +304,9 @@ class TradingMeeting(Meeting):
         """
         logger.info(f"Starting trading meeting for {self.config.symbol}")
         
+        # 🛡️ Store context for safety checks (e.g., block auto-reverse during startup)
+        self._current_context = context
+        
         # 🆕 Context Engineering P0: Start cycle search cache
         # All agents in this cycle will share search results
         from app.core.trading.cycle_search_cache import get_cycle_search_cache
@@ -2156,13 +2159,22 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                     
                     # 📌 Scenario 2: Have short position (opposite direction) -> Close short -> Open long
                     elif current_direction == "short":
-                        logger.info(f"[TradeExecutor] 🔄 Reverse operation: close short -> open long (short unrealized PnL ${unrealized_pnl:.2f})")
-                        
-                        # Close short position first
-                        close_result = await toolkit.paper_trader.close_position(
-                            symbol="BTC-USDT-SWAP",
-                            reason="Reverse: short to long"
-                        )
+                        # 🛡️ SAFETY: Block auto-reverse during startup to prevent accidental closures
+                        trigger_context = getattr(self, '_current_context', None) or ''
+                        if trigger_context == 'startup':
+                            logger.warning(f"[TradeExecutor] ⚠️ BLOCKED: Cannot auto-reverse short to long during startup. Manual confirmation required.")
+                            trade_success = True  # Mark as handled
+                            action_taken = "blocked_reverse"
+                            entry_price = existing_entry
+                            final_reasoning = f"🛡️ Auto-reverse blocked during startup. Have short position (PnL ${unrealized_pnl:.2f}), received long signal. Please manually close and re-analyze. {reasoning}"
+                        else:
+                            logger.info(f"[TradeExecutor] 🔄 Reverse operation: close short -> open long (short unrealized PnL ${unrealized_pnl:.2f})")
+                            
+                            # Close short position first
+                            close_result = await toolkit.paper_trader.close_position(
+                                symbol="BTC-USDT-SWAP",
+                                reason="Reverse: short to long"
+                            )
                         
                         if close_result.get("success"):
                             pnl = close_result.get("pnl", 0)
@@ -2438,13 +2450,22 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                     
                     # 📌 Scenario 2: Have long position (opposite direction) -> Close long -> Open short
                     elif current_direction == "long":
-                        logger.info(f"[TradeExecutor] 🔄 Reverse operation: close long -> open short (long unrealized PnL ${unrealized_pnl:.2f})")
-                        
-                        # Close long position first
-                        close_result = await toolkit.paper_trader.close_position(
-                            symbol="BTC-USDT-SWAP",
-                            reason="Reverse: long to short"
-                        )
+                        # 🛡️ SAFETY: Block auto-reverse during startup to prevent accidental closures
+                        trigger_context = getattr(self, '_current_context', None) or ''
+                        if trigger_context == 'startup':
+                            logger.warning(f"[TradeExecutor] ⚠️ BLOCKED: Cannot auto-reverse long to short during startup. Manual confirmation required.")
+                            trade_success = True  # Mark as handled
+                            action_taken = "blocked_reverse"
+                            entry_price = existing_entry
+                            final_reasoning = f"🛡️ Auto-reverse blocked during startup. Have long position (PnL ${unrealized_pnl:.2f}), received short signal. Please manually close and re-analyze. {reasoning}"
+                        else:
+                            logger.info(f"[TradeExecutor] 🔄 Reverse operation: close long -> open short (long unrealized PnL ${unrealized_pnl:.2f})")
+                            
+                            # Close long position first
+                            close_result = await toolkit.paper_trader.close_position(
+                                symbol="BTC-USDT-SWAP",
+                                reason="Reverse: long to short"
+                            )
                         
                         if close_result.get("success"):
                             pnl = close_result.get("pnl", 0)
