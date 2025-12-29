@@ -24,6 +24,7 @@ from app.core.trading.agent_memory import (
 )
 from app.core.trading.price_service import get_current_btc_price
 from app.core.trading.position_context import PositionContext
+from app.core.trading.trading_logger import get_trading_logger
 
 # Import from new refactored modules
 from app.core.trading.trading_config import TradingMeetingConfig
@@ -369,6 +370,63 @@ class TradingMeeting(Meeting):
                 # Notify callback
                 if self.on_signal:
                     await self.on_signal(self._final_signal)
+
+            # 🆕 Log trading decision to Redis for debugging
+            try:
+                trading_logger = await get_trading_logger()
+                
+                # Build votes dict from agent_votes
+                votes_dict = {}
+                for agent_name, vote in self._agent_votes.items():
+                    votes_dict[agent_name] = {
+                        "direction": vote.direction if hasattr(vote, 'direction') else str(vote.get('direction', 'unknown')),
+                        "confidence": vote.confidence if hasattr(vote, 'confidence') else vote.get('confidence', 0),
+                        "leverage": vote.leverage if hasattr(vote, 'leverage') else vote.get('leverage', 1)
+                    }
+                
+                # Vote summary
+                vote_summary = {"long": 0, "short": 0, "hold": 0}
+                for vote in votes_dict.values():
+                    direction = vote.get("direction", "hold").lower()
+                    if "long" in direction:
+                        vote_summary["long"] += 1
+                    elif "short" in direction:
+                        vote_summary["short"] += 1
+                    else:
+                        vote_summary["hold"] += 1
+                
+                # Final decision from signal
+                final_decision = {}
+                if self._final_signal:
+                    final_decision = {
+                        "direction": self._final_signal.direction.value if hasattr(self._final_signal.direction, 'value') else str(self._final_signal.direction),
+                        "confidence": self._final_signal.confidence,
+                        "leverage": self._final_signal.leverage,
+                        "reasoning": self._final_signal.reasoning[:300] if self._final_signal.reasoning else ""
+                    }
+                
+                # Position context for logging
+                pos_ctx_dict = None
+                if position_context and position_context.has_position:
+                    pos_ctx_dict = {
+                        "has_position": True,
+                        "direction": position_context.direction,
+                        "entry_price": position_context.entry_price,
+                        "unrealized_pnl": position_context.unrealized_pnl
+                    }
+                
+                await trading_logger.log_decision(
+                    trigger_reason=context or "scheduled",
+                    symbol=self.config.symbol,
+                    market_price=position_context.current_price if position_context else 0.0,
+                    votes=votes_dict,
+                    vote_summary=vote_summary,
+                    final_decision=final_decision,
+                    position_context=pos_ctx_dict,
+                    leader_summary=self._final_signal.leader_summary if self._final_signal else ""
+                )
+            except Exception as e:
+                logger.warning(f"[TradingLogger] Failed to log decision: {e}")
 
             # 🆕 Context Engineering P0: End cycle and log statistics
             cache_stats = cycle_cache.end_cycle()

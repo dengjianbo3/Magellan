@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 import redis.asyncio as redis
 
 from app.core.trading.okx_client import OKXClient, get_okx_client
+from app.core.trading.trading_logger import get_trading_logger, TradingLogger
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,9 @@ class OKXTrader:
         self.on_sl_hit: Optional[Callable] = None
         self.on_pnl_update: Optional[Callable] = None
 
+        # 🆕 Trading Logger for Redis persistence
+        self._trading_logger: Optional[TradingLogger] = None
+
     async def initialize(self):
         """Initialize OKX client"""
         if self._initialized:
@@ -139,6 +143,9 @@ class OKXTrader:
             
             # Load saved state (trade history, daily PnL, halt status)
             await self._load_state()
+            
+            # 🆕 Initialize TradingLogger for position event persistence
+            self._trading_logger = await get_trading_logger(self.redis_url)
         except Exception as e:
             logger.warning(f"[Redis] Not available, using memory only: {e}")
             self._redis = None
@@ -718,6 +725,20 @@ class OKXTrader:
                         # This ensures correct TP/SL and direction are persisted to Redis
                         await self._save_state()
                         logger.info(f"[Redis] Saved new position state: dir={direction}, TP={tp_price}, SL={sl_price}")
+                        
+                        # 🆕 Log position event for debugging
+                        if self._trading_logger:
+                            await self._trading_logger.log_position_event(
+                                event_type="open",
+                                symbol=symbol,
+                                direction=direction,
+                                size=executed_amount,
+                                entry_price=executed_price,
+                                leverage=leverage,
+                                margin=amount_usdt,
+                                take_profit=tp_price,
+                                stop_loss=sl_price
+                            )
 
                     # Return format consistent with PaperTrader
                     return {
@@ -855,6 +876,25 @@ class OKXTrader:
 
                     # 🆕 Save state to Redis after trade
                     await self._save_state()
+                    
+                    # 🆕 Log position close event for debugging
+                    if self._trading_logger:
+                        duration_hours = (datetime.now() - closed_position.opened_at).total_seconds() / 3600
+                        await self._trading_logger.log_position_event(
+                            event_type="close",
+                            symbol=symbol,
+                            direction=closed_position.direction,
+                            size=closed_position.size,
+                            entry_price=closed_position.entry_price,
+                            leverage=closed_position.leverage,
+                            margin=closed_position.margin,
+                            take_profit=closed_position.take_profit_price,
+                            stop_loss=closed_position.stop_loss_price,
+                            exit_price=price,
+                            pnl=pnl,
+                            close_reason=reason,
+                            duration_hours=duration_hours
+                        )
 
                     # Trigger callback
                     if self.on_position_closed:
