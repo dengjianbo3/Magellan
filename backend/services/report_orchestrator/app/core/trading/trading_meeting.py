@@ -154,8 +154,18 @@ class TradingMeeting(Meeting):
             logger.debug("No paper_trader in toolkit, skipping callback registration")
             return
 
-        # Save original callback (if any)
-        original_callback = getattr(paper_trader, 'on_position_closed', None)
+        # 🔧 FIX: Check if reflection callback is already registered to prevent duplicate wrapping
+        # Each TradingMeeting was wrapping the existing callback, creating a chain of N callbacks
+        if getattr(paper_trader, '_reflection_callback_registered', False):
+            logger.debug("Reflection callback already registered, skipping to prevent duplicate")
+            return
+
+        # Save original callback (if any) - but only the base one, not a previously wrapped one
+        original_callback = getattr(paper_trader, '_original_position_closed_callback', None)
+        if original_callback is None:
+            # First time registration - save the current callback as original
+            original_callback = getattr(paper_trader, 'on_position_closed', None)
+            paper_trader._original_position_closed_callback = original_callback
 
         async def on_position_closed_with_reflection(position, pnl, reason="manual"):
             """Position closed callback: trigger Agent reflection generation"""
@@ -224,6 +234,7 @@ class TradingMeeting(Meeting):
 
         # Register callback
         paper_trader.on_position_closed = on_position_closed_with_reflection
+        paper_trader._reflection_callback_registered = True  # Mark as registered
         logger.info("✅ Registered position closed callback for agent reflection")
 
     async def _record_agent_predictions_for_trade(self, market_price: float = 0.0):
