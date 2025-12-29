@@ -375,14 +375,16 @@ class TradingMeeting(Meeting):
             try:
                 trading_logger = await get_trading_logger()
                 
-                # Build votes dict from agent_votes
+                # Build votes dict from agent_votes (which is a List of AgentVote)
                 votes_dict = {}
-                for agent_name, vote in self._agent_votes.items():
+                for vote in self._agent_votes:
+                    agent_name = vote.agent_name if hasattr(vote, 'agent_name') else 'unknown'
                     votes_dict[agent_name] = {
                         "direction": vote.direction if hasattr(vote, 'direction') else str(vote.get('direction', 'unknown')),
                         "confidence": vote.confidence if hasattr(vote, 'confidence') else vote.get('confidence', 0),
                         "leverage": vote.leverage if hasattr(vote, 'leverage') else vote.get('leverage', 1)
                     }
+
                 
                 # Vote summary
                 vote_summary = {"long": 0, "short": 0, "hold": 0}
