@@ -114,6 +114,9 @@ class OKXTrader:
         # 🆕 Trading Logger for Redis persistence
         self._trading_logger: Optional[TradingLogger] = None
 
+        # 🆕 Metrics baseline for resetting performance calculations
+        self._metrics_baseline: Optional[datetime] = None
+
     async def initialize(self):
         """Initialize OKX client"""
         if self._initialized:
@@ -278,6 +281,13 @@ class OKXTrader:
                     json.dumps(position_tp_sl)
                 )
 
+            # 🆕 Save metrics baseline for performance calculation reset
+            if self._metrics_baseline:
+                await self._redis.set(
+                    f"{self._key_prefix}metrics_baseline",
+                    self._metrics_baseline.isoformat()
+                )
+
             logger.debug("[Redis] State saved successfully")
 
         except Exception as e:
@@ -326,6 +336,12 @@ class OKXTrader:
                 self._saved_sl_price = tp_sl_state.get('stop_loss_price')
                 self._saved_direction = tp_sl_state.get('direction')  # 🆕 FIX: Load direction to prevent TP/SL mismatch
                 logger.info(f"[Redis] Loaded saved TP=${self._saved_tp_price}, SL=${self._saved_sl_price}, dir={self._saved_direction}")
+
+            # 🆕 Load metrics baseline for performance calculation reset
+            baseline_data = await self._redis.get(f"{self._key_prefix}metrics_baseline")
+            if baseline_data:
+                self._metrics_baseline = datetime.fromisoformat(baseline_data)
+                logger.info(f"[Redis] Loaded metrics baseline: {self._metrics_baseline.isoformat()}")
 
         except Exception as e:
             logger.error(f"[Redis] Error loading state: {e}")
@@ -820,6 +836,75 @@ class OKXTrader:
             "new_is_halted": False,
             "message": f"Daily PnL reset from ${old_pnl:.2f} to $0.00"
         }
+
+    async def reset_metrics_baseline(self) -> Dict[str, Any]:
+        """
+        Reset metrics baseline to current time.
+        
+        All performance metrics (Alpha, Sharpe, PnL stats, etc.) will be calculated
+        only from trades after this baseline, ignoring corrupted historical data.
+        
+        Use this when:
+        1. Trade history is corrupted/polluted
+        2. Starting fresh after system bugs
+        3. Beginning a new evaluation period
+        
+        Returns:
+            Dict with reset result
+        """
+        old_baseline = self._metrics_baseline
+        self._metrics_baseline = datetime.now()
+        
+        # Also reset daily PnL to complement the baseline reset
+        self._daily_pnl = 0.0
+        self._daily_pnl_reset_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        self._is_trading_halted = False
+        
+        # Save to Redis
+        await self._save_state()
+        
+        logger.info(f"[MetricsBaseline] ⚠️ RESET: Metrics baseline set to {self._metrics_baseline.isoformat()}")
+        logger.info(f"[MetricsBaseline] All performance metrics will ignore trades before this time")
+        
+        return {
+            "success": True,
+            "old_baseline": old_baseline.isoformat() if old_baseline else None,
+            "new_baseline": self._metrics_baseline.isoformat(),
+            "message": f"Metrics baseline reset to {self._metrics_baseline.isoformat()}. All future metrics will ignore older trades."
+        }
+
+    def get_filtered_trade_history(self) -> List[Dict]:
+        """
+        Get trade history filtered by metrics baseline.
+        
+        Returns only trades that occurred after the metrics baseline timestamp.
+        Use this for calculating performance metrics to exclude corrupted data.
+        
+        Returns:
+            List of trade records after baseline (or all if no baseline set)
+        """
+        if not self._metrics_baseline:
+            return self._trade_history
+        
+        filtered = []
+        for trade in self._trade_history:
+            # Parse trade close time
+            closed_at_str = trade.get('closed_at')
+            if closed_at_str:
+                try:
+                    closed_at = datetime.fromisoformat(closed_at_str)
+                    if closed_at > self._metrics_baseline:
+                        filtered.append(trade)
+                except (ValueError, TypeError):
+                    # If can't parse, include the trade to be safe
+                    filtered.append(trade)
+        
+        return filtered
+
+    @property
+    def metrics_baseline(self) -> Optional[datetime]:
+        """Get the current metrics baseline timestamp."""
+        return self._metrics_baseline
 
     async def close_position(self, symbol: str = "BTC-USDT-SWAP", reason: str = "manual") -> Optional[Dict]:
         """Close current position on OKX demo"""

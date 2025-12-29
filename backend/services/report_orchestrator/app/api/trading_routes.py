@@ -1128,6 +1128,31 @@ async def close_position():
         return {"error": str(e)}
 
 
+@router.post("/reset-metrics")
+async def reset_metrics_baseline():
+    """
+    Reset metrics baseline - all performance metrics will be calculated from this point.
+    
+    Use this when:
+    1. Trade history is corrupted/polluted by bugs
+    2. Starting fresh evaluation after system issues
+    3. Beginning a new performance tracking period
+    
+    Returns the new baseline timestamp.
+    """
+    system = await get_trading_system()
+    if not system.paper_trader:
+        return {"error": "Trader not initialized"}
+
+    try:
+        result = await system.paper_trader.reset_metrics_baseline()
+        logger.info(f"[API] Metrics baseline reset: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Error resetting metrics baseline: {e}")
+        return {"error": str(e)}
+
+
 @router.get("/agents")
 async def get_agents():
     """Get trading agent configuration"""
