@@ -1121,15 +1121,21 @@ class OKXTrader:
                         # Handle both ISO format and OKX timestamp format
                         if isinstance(closed_at_str, str):
                             if 'T' in closed_at_str:
-                                closed_at = datetime.fromisoformat(closed_at_str.replace('Z', '+00:00'))
+                                # ISO format - parse and convert to naive datetime (remove timezone)
+                                parsed = datetime.fromisoformat(closed_at_str.replace('Z', '+00:00'))
+                                # Make it naive for comparison with metrics_baseline
+                                closed_at = parsed.replace(tzinfo=None)
                             else:
                                 # OKX returns milliseconds timestamp as string
                                 closed_at = datetime.fromtimestamp(int(closed_at_str) / 1000)
                         else:
                             closed_at = datetime.fromtimestamp(int(closed_at_str) / 1000)
                         
+                        # Compare naive datetimes
                         if closed_at > self._metrics_baseline:
                             filtered.append(trade)
+                        else:
+                            logger.debug(f"[OKXTrader] Filtering out trade closed at {closed_at} (before baseline {self._metrics_baseline})")
                     except (ValueError, TypeError) as e:
                         # If can't parse, include the trade to be safe
                         logger.debug(f"[OKXTrader] Could not parse trade timestamp: {closed_at_str}, including trade")
@@ -1141,6 +1147,7 @@ class OKXTrader:
             return filtered
         
         return trades
+
     
     async def reset(self):
         """
