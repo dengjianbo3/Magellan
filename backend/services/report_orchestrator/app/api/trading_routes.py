@@ -801,7 +801,11 @@ async def get_trade_history(limit: int = Query(default=50, le=100)):
     # Get actual closed trades from paper trader
     actual_trades = []
     if system.paper_trader:
-        actual_trades = await system.paper_trader.get_trade_history(limit)
+        # 🆕 Use filtered trade history if metrics baseline is set
+        if hasattr(system.paper_trader, 'get_filtered_trade_history'):
+            actual_trades = system.paper_trader.get_filtered_trade_history()[-limit:]
+        else:
+            actual_trades = await system.paper_trader.get_trade_history(limit)
 
     return {
         "trades": actual_trades,  # Actual closed trades with real PnL
@@ -852,10 +856,13 @@ async def get_max_drawdown(start_date: Optional[str] = Query(default=None, descr
         }
     
     try:
-        # Get trades from the actual source (OKX API for OKXTrader, local for PaperTrader)
-        trades = await system.paper_trader.get_trade_history(limit=100)
+        # 🆕 Use filtered trade history if metrics baseline is set
+        if hasattr(system.paper_trader, 'get_filtered_trade_history'):
+            trades = system.paper_trader.get_filtered_trade_history()[-100:]
+        else:
+            trades = await system.paper_trader.get_trade_history(limit=100)
         
-        # Filter by start_date if provided
+        # Filter by start_date if provided (additional manual filter)
         if start_date and trades:
             try:
                 from datetime import datetime
@@ -868,6 +875,7 @@ async def get_max_drawdown(start_date: Optional[str] = Query(default=None, descr
                 ]
             except (ValueError, TypeError) as e:
                 logger.warning(f"Invalid start_date format: {start_date}, using all trades. Error: {e}")
+
         
         if not trades:
             initial_balance = getattr(system.paper_trader, 'initial_balance', 5000)
@@ -985,10 +993,14 @@ async def get_performance_metrics(start_date: Optional[str] = Query(default=None
         if hasattr(system.paper_trader, 'calculate_performance_metrics'):
             return await system.paper_trader.calculate_performance_metrics(start_date)
         
-        # Fallback: Calculate from trade history for PaperTrader
+        # 🆕 Use filtered trade history if metrics baseline is set
         import math
-        trades = await system.paper_trader.get_trade_history(limit=200)
+        if hasattr(system.paper_trader, 'get_filtered_trade_history'):
+            trades = system.paper_trader.get_filtered_trade_history()[-200:]
+        else:
+            trades = await system.paper_trader.get_trade_history(limit=200)
         
+        # Additional start_date filter if provided
         if start_date and trades:
             try:
                 from datetime import datetime
@@ -1001,6 +1013,7 @@ async def get_performance_metrics(start_date: Optional[str] = Query(default=None
                 ]
             except (ValueError, TypeError) as e:
                 logger.warning(f"Invalid start_date format: {start_date}. Error: {e}")
+
         
         if not trades or len(trades) < 2:
             return {
