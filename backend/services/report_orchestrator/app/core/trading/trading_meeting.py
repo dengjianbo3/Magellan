@@ -2932,6 +2932,10 @@ You MUST call a tool based on meeting results!""",
                 logger.warning("[TradeExecutor] ⚠️ DEPRECATED: Using text inference fallback. "
                               "This indicates LLM did not use native tool calling. "
                               "This fallback will be removed in future versions.")
+                
+                # 🛡️ CRITICAL SAFETY FIX: Do NOT execute trades based on keyword inference!
+                # Keyword matching is unreliable and can cause unintended trades.
+                # Always default to HOLD when proper function calling fails.
                 text_lower = text.lower()
 
                 # Count direction keywords to avoid first-match bias (ANTI-BIAS FIX)
@@ -2941,53 +2945,24 @@ You MUST call a tool based on meeting results!""",
                 long_count = sum(1 for kw in long_keywords if kw in text_lower)
                 short_count = sum(1 for kw in short_keywords if kw in text_lower)
                 
-                # Use majority vote to determine direction
+                # 🛡️ SAFETY: Only log the inferred direction, do NOT execute
+                inferred_direction = "hold"
                 if short_count > long_count:
-                    # SHORT direction wins
-                    leverage_match = re.search(r'(\d+)\s*[xX]', text)
-                    leverage = int(leverage_match.group(1)) if leverage_match else None
-
-                    amount_match = re.search(r'(\d+)\s*%', text)
-                    amount = (int(amount_match.group(1)) / 100) if amount_match else None
-
-                    confidence_match = re.search(r'[Cc]onfidence\s*[:：]?\s*(\d+)', text)
-                    confidence = int(confidence_match.group(1)) if confidence_match else None
-
-                    logger.info(f"[TradeExecutor] 📊 Inferred SHORT from text (short_count={short_count}, long_count={long_count})")
-                    await self.tools['open_short'](
-                        leverage=min(leverage, 20) if leverage else None,
-                        amount_percent=min(amount, 1.0) if amount else None,
-                        confidence=confidence,
-                        reasoning=text[:200]
-                    )
-
+                    inferred_direction = "short"
+                    logger.warning(f"[TradeExecutor] 🛡️ Would have inferred SHORT (short_count={short_count}, long_count={long_count}) "
+                                  f"but NOT executing due to safety policy. Returning HOLD.")
                 elif long_count > short_count:
-                    # LONG direction wins
-                    leverage_match = re.search(r'(\d+)\s*[xX]', text)
-                    leverage = int(leverage_match.group(1)) if leverage_match else None
-
-                    amount_match = re.search(r'(\d+)\s*%', text)
-                    amount = (int(amount_match.group(1)) / 100) if amount_match else None
-
-                    confidence_match = re.search(r'[Cc]onfidence\s*[:：]?\s*(\d+)', text)
-                    confidence = int(confidence_match.group(1)) if confidence_match else None
-
-                    logger.info(f"[TradeExecutor] 📊 Inferred LONG from text (long_count={long_count}, short_count={short_count})")
-                    await self.tools['open_long'](
-                        leverage=min(leverage, 20) if leverage else None,
-                        amount_percent=min(amount, 1.0) if amount else None,
-                        confidence=confidence,
-                        reasoning=text[:200]
-                    )
-                    
+                    inferred_direction = "long"
+                    logger.warning(f"[TradeExecutor] 🛡️ Would have inferred LONG (long_count={long_count}, short_count={short_count}) "
+                                  f"but NOT executing due to safety policy. Returning HOLD.")
                 elif any(kw in text_lower for kw in ['close']):
-                    logger.info("[TradeExecutor] 📊 Inferred close position from text")
-                    await self.tools['close_position'](reasoning=text[:200])
-                    
-                else:
-                    # Tie or no direction keywords - default to HOLD (safe)
-                    logger.info(f"[TradeExecutor] 📊 Inferred HOLD from text (long_count={long_count}, short_count={short_count})")
-                    await self.tools['hold'](reason=text[:200] or "Market unclear")
+                    inferred_direction = "close"
+                    logger.warning("[TradeExecutor] 🛡️ Would have inferred CLOSE from text "
+                                  "but NOT executing due to safety policy. Returning HOLD.")
+                
+                # Always execute HOLD for safety
+                logger.info("[TradeExecutor] 📊 Executing HOLD due to text inference safety policy")
+                await self.tools['hold'](reason=f"Safety: Text inference blocked. Would have been {inferred_direction}. {text[:100]}")
                 
                 # Return execution result
                 if self.result["signal"]:

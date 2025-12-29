@@ -301,9 +301,22 @@ class TradingSystem:
                                 "existing_position": existing_dir
                             }
                         else:
-                            # 没有持仓，作为备用方案尝试执行
-                            logger.info(f"[SIGNAL_DEBUG] No position found and TradeExecutor didn't execute, attempting _execute_signal as fallback")
-                            trade_result = await self._execute_signal(signal)
+                            # 🛡️ SAFETY FIX: Do NOT fallback to _execute_signal
+                            # If TradeExecutor didn't execute and no position exists, 
+                            # it means the trade was intentionally NOT executed (hold signal, blocked, etc.)
+                            # Attempting fallback execution could cause:
+                            # 1. Duplicate orders
+                            # 2. Orders without proper analysis
+                            # 3. Race conditions
+                            logger.warning(f"[SIGNAL_DEBUG] ⚠️ TradeExecutor did not execute {signal.direction} and no position exists. "
+                                         f"NOT executing fallback to prevent potential duplicate/unexpected orders. "
+                                         f"If this is unexpected, check TradeExecutor logs.")
+                            trade_result = {
+                                "success": False,
+                                "action": signal.direction,
+                                "message": "TradeExecutor未执行，跳过备用执行以避免重复下单",
+                                "reason": "no_fallback_execution"
+                            }
                     
                     self._trade_history.append({
                         "timestamp": datetime.now().isoformat(),
