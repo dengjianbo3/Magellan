@@ -381,12 +381,27 @@ class TradingMeeting(Meeting):
                 # Build votes dict from agent_votes (which is a List of AgentVote)
                 votes_dict = {}
                 for vote in self._agent_votes:
-                    agent_name = vote.agent_name if hasattr(vote, 'agent_name') else 'unknown'
-                    votes_dict[agent_name] = {
-                        "direction": vote.direction if hasattr(vote, 'direction') else str(vote.get('direction', 'unknown')),
-                        "confidence": vote.confidence if hasattr(vote, 'confidence') else vote.get('confidence', 0),
-                        "leverage": vote.leverage if hasattr(vote, 'leverage') else vote.get('leverage', 1)
-                    }
+                    # Use to_dict() if available (AgentVote from domain model)
+                    if hasattr(vote, 'to_dict'):
+                        vote_data = vote.to_dict()
+                        agent_name = vote_data.get('agent_name', 'unknown')
+                        votes_dict[agent_name] = {
+                            "direction": vote_data.get('direction', 'hold'),
+                            "confidence": vote_data.get('confidence', 0),
+                            "leverage": vote_data.get('leverage', 1)
+                        }
+                    else:
+                        # Fallback for dict-like votes
+                        agent_name = vote.get('agent_name', 'unknown') if isinstance(vote, dict) else getattr(vote, 'agent_name', 'unknown')
+                        direction = vote.get('direction', 'hold') if isinstance(vote, dict) else getattr(vote, 'direction', 'hold')
+                        # Handle VoteDirection enum
+                        if hasattr(direction, 'value'):
+                            direction = direction.value
+                        votes_dict[agent_name] = {
+                            "direction": str(direction),
+                            "confidence": vote.get('confidence', 0) if isinstance(vote, dict) else getattr(vote, 'confidence', 0),
+                            "leverage": vote.get('leverage', 1) if isinstance(vote, dict) else getattr(vote, 'leverage', 1)
+                        }
 
                 
                 # Vote summary
