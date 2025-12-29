@@ -1089,7 +1089,11 @@ class OKXTrader:
         realized PnL (including fees and funding).
         
         Falls back to local history if API fails.
+        
+        🆕 Applies metrics_baseline filter if set.
         """
+        trades = []
+        
         try:
             # 🆕 Get real trade history from OKX API
             if self._okx_client:
@@ -1097,15 +1101,46 @@ class OKXTrader:
                 
                 if okx_trades:
                     logger.info(f"[OKXTrader] Retrieved {len(okx_trades)} trades from OKX positions-history API")
-                    return okx_trades
+                    trades = okx_trades
             
-            logger.warning("[OKXTrader] OKX API unavailable, using local history (PnL may be inaccurate)")
+            if not trades:
+                logger.warning("[OKXTrader] OKX API unavailable, using local history (PnL may be inaccurate)")
+                trades = self._trade_history[-limit:]
             
         except Exception as e:
             logger.error(f"[OKXTrader] Error fetching OKX trade history: {e}")
+            trades = self._trade_history[-limit:]
         
-        # Fallback to local history
-        return self._trade_history[-limit:]
+        # 🆕 Apply metrics baseline filter if set
+        if self._metrics_baseline and trades:
+            filtered = []
+            for trade in trades:
+                closed_at_str = trade.get('closed_at', trade.get('uTime', ''))
+                if closed_at_str:
+                    try:
+                        # Handle both ISO format and OKX timestamp format
+                        if isinstance(closed_at_str, str):
+                            if 'T' in closed_at_str:
+                                closed_at = datetime.fromisoformat(closed_at_str.replace('Z', '+00:00'))
+                            else:
+                                # OKX returns milliseconds timestamp as string
+                                closed_at = datetime.fromtimestamp(int(closed_at_str) / 1000)
+                        else:
+                            closed_at = datetime.fromtimestamp(int(closed_at_str) / 1000)
+                        
+                        if closed_at > self._metrics_baseline:
+                            filtered.append(trade)
+                    except (ValueError, TypeError) as e:
+                        # If can't parse, include the trade to be safe
+                        logger.debug(f"[OKXTrader] Could not parse trade timestamp: {closed_at_str}, including trade")
+                        filtered.append(trade)
+                else:
+                    filtered.append(trade)
+            
+            logger.info(f"[OKXTrader] Baseline filter: {len(trades)} trades -> {len(filtered)} after {self._metrics_baseline.isoformat()}")
+            return filtered
+        
+        return trades
     
     async def reset(self):
         """
@@ -1153,15 +1188,18 @@ class OKXTrader:
             - start_date: Start date used for calculation
             - trades_analyzed: Number of trades analyzed
         """
-        # Filter trades by date if provided
-        trades = self._trade_history
+        # 🆕 Use filtered trade history (respects metrics_baseline)
+        trades = self.get_filtered_trade_history()
+        
+        # Additional filter by start_date if provided
         if start_date:
             try:
                 filter_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
                 trades = [
-                    t for t in self._trade_history 
+                    t for t in trades 
                     if datetime.fromisoformat(t.get('closed_at', t.get('timestamp', '2000-01-01')).replace('Z', '+00:00')) >= filter_date
                 ]
+
             except (ValueError, TypeError) as e:
                 logger.warning(f"Invalid start_date format: {start_date}, using all trades. Error: {e}")
         
