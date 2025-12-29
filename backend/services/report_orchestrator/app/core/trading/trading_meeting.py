@@ -2167,6 +2167,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                             action_taken = "blocked_reverse"
                             entry_price = existing_entry
                             final_reasoning = f"🛡️ Auto-reverse blocked during startup. Have short position (PnL ${unrealized_pnl:.2f}), received long signal. Please manually close and re-analyze. {reasoning}"
+                            # Skip the rest of reverse logic
                         else:
                             logger.info(f"[TradeExecutor] 🔄 Reverse operation: close short -> open long (short unrealized PnL ${unrealized_pnl:.2f})")
                             
@@ -2176,55 +2177,55 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                 reason="Reverse: short to long"
                             )
                         
-                        if close_result.get("success"):
-                            pnl = close_result.get("pnl", 0)
-                            logger.info(f"[TradeExecutor] ✅ Close short success, PnL=${pnl:.2f}")
-                            
-                            # 🔧 Re-get true available margin (balance changed after closing)
-                            account = await toolkit.paper_trader.get_account()
-                            new_true_available = account.get("true_available_margin", 0)
-                            if new_true_available <= 0:
-                                new_true_available = account.get("total_equity", 10000) - account.get("used_margin", 0)
-                            
-                            amount_usdt = min(
-                                new_true_available * amount_percent,
-                                new_true_available - SAFETY_BUFFER
-                            )
-                            amount_usdt = max(amount_usdt, 0)
-                            
-                            if amount_usdt >= MIN_ADD_AMOUNT:
-                                # 🔧 Validate stop loss safety
-                                is_safe, sl_msg, safe_sl = validate_stop_loss("long", current_price, stop_loss, leverage, amount_usdt)
-                                if not is_safe:
-                                    logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
-                                    stop_loss = safe_sl
+                            if close_result.get("success"):
+                                pnl = close_result.get("pnl", 0)
+                                logger.info(f"[TradeExecutor] ✅ Close short success, PnL=${pnl:.2f}")
                                 
-                                # Open long position
-                                result = await toolkit.paper_trader.open_long(
-                                    symbol="BTC-USDT-SWAP",
-                                    leverage=leverage,
-                                    amount_usdt=amount_usdt,
-                                    tp_price=take_profit,
-                                    sl_price=stop_loss
+                                # 🔧 Re-get true available margin (balance changed after closing)
+                                account = await toolkit.paper_trader.get_account()
+                                new_true_available = account.get("true_available_margin", 0)
+                                if new_true_available <= 0:
+                                    new_true_available = account.get("total_equity", 10000) - account.get("used_margin", 0)
+                                
+                                amount_usdt = min(
+                                    new_true_available * amount_percent,
+                                    new_true_available - SAFETY_BUFFER
                                 )
-                                if result.get("success"):
-                                    trade_success = True
-                                    action_taken = "reverse_short_to_long"
-                                    entry_price = result.get("executed_price", current_price)
-                                    final_reasoning = f"Reverse success: closed short (PnL=${pnl:.2f}) -> opened long ${amount_usdt:.2f}. {reasoning}"
-                                    logger.info(f"[TradeExecutor] ✅ Reverse to long success")
+                                amount_usdt = max(amount_usdt, 0)
+                                
+                                if amount_usdt >= MIN_ADD_AMOUNT:
+                                    # 🔧 Validate stop loss safety
+                                    is_safe, sl_msg, safe_sl = validate_stop_loss("long", current_price, stop_loss, leverage, amount_usdt)
+                                    if not is_safe:
+                                        logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
+                                        stop_loss = safe_sl
+                                    
+                                    # Open long position
+                                    result = await toolkit.paper_trader.open_long(
+                                        symbol="BTC-USDT-SWAP",
+                                        leverage=leverage,
+                                        amount_usdt=amount_usdt,
+                                        tp_price=take_profit,
+                                        sl_price=stop_loss
+                                    )
+                                    if result.get("success"):
+                                        trade_success = True
+                                        action_taken = "reverse_short_to_long"
+                                        entry_price = result.get("executed_price", current_price)
+                                        final_reasoning = f"Reverse success: closed short (PnL=${pnl:.2f}) -> opened long ${amount_usdt:.2f}. {reasoning}"
+                                        logger.info(f"[TradeExecutor] ✅ Reverse to long success")
+                                    else:
+                                        trade_success = True  # Close success counts as partial success
+                                        action_taken = "close_short_only"
+                                        entry_price = current_price
+                                        final_reasoning = f"Close short success (PnL=${pnl:.2f}), but open long failed ({result.get('error')}). {reasoning}"
                                 else:
-                                    trade_success = True  # Close success counts as partial success
-                                    action_taken = "close_short_only"
+                                    trade_success = True
+                                    action_taken = "close_short_insufficient"
                                     entry_price = current_price
-                                    final_reasoning = f"Close short success (PnL=${pnl:.2f}), but open long failed ({result.get('error')}). {reasoning}"
+                                    final_reasoning = f"Close short success (PnL=${pnl:.2f}), but insufficient balance for long (available ${new_true_available:.2f}). {reasoning}"
                             else:
-                                trade_success = True
-                                action_taken = "close_short_insufficient"
-                                entry_price = current_price
-                                final_reasoning = f"Close short success (PnL=${pnl:.2f}), but insufficient balance for long (available ${new_true_available:.2f}). {reasoning}"
-                        else:
-                            final_reasoning = f"Close short failed: {close_result.get('error')}. {reasoning}"
+                                final_reasoning = f"Close short failed: {close_result.get('error')}. {reasoning}"
                     
                     # 📌 Scenario 3: No position -> Normal open long
                     else:
@@ -2458,6 +2459,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                             action_taken = "blocked_reverse"
                             entry_price = existing_entry
                             final_reasoning = f"🛡️ Auto-reverse blocked during startup. Have long position (PnL ${unrealized_pnl:.2f}), received short signal. Please manually close and re-analyze. {reasoning}"
+                            # Skip the rest of reverse logic
                         else:
                             logger.info(f"[TradeExecutor] 🔄 Reverse operation: close long -> open short (long unrealized PnL ${unrealized_pnl:.2f})")
                             
@@ -2467,55 +2469,55 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                 reason="Reverse: long to short"
                             )
                         
-                        if close_result.get("success"):
-                            pnl = close_result.get("pnl", 0)
-                            logger.info(f"[TradeExecutor] ✅ Close long success, PnL=${pnl:.2f}")
-                            
-                            # 🔧 Re-get true available margin
-                            account = await toolkit.paper_trader.get_account()
-                            new_true_available = account.get("true_available_margin", 0)
-                            if new_true_available <= 0:
-                                new_true_available = account.get("total_equity", 10000) - account.get("used_margin", 0)
-                            
-                            amount_usdt = min(
-                                new_true_available * amount_percent,
-                                new_true_available - SAFETY_BUFFER
-                            )
-                            amount_usdt = max(amount_usdt, 0)
-                            
-                            if amount_usdt >= MIN_ADD_AMOUNT:
-                                # 🔧 Validate stop loss safety
-                                is_safe, sl_msg, safe_sl = validate_stop_loss("short", current_price, stop_loss, leverage, amount_usdt)
-                                if not is_safe:
-                                    logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
-                                    stop_loss = safe_sl
+                            if close_result.get("success"):
+                                pnl = close_result.get("pnl", 0)
+                                logger.info(f"[TradeExecutor] ✅ Close long success, PnL=${pnl:.2f}")
                                 
-                                # Open short position
-                                result = await toolkit.paper_trader.open_short(
-                                    symbol="BTC-USDT-SWAP",
-                                    leverage=leverage,
-                                    amount_usdt=amount_usdt,
-                                    tp_price=take_profit,
-                                    sl_price=stop_loss
+                                # 🔧 Re-get true available margin
+                                account = await toolkit.paper_trader.get_account()
+                                new_true_available = account.get("true_available_margin", 0)
+                                if new_true_available <= 0:
+                                    new_true_available = account.get("total_equity", 10000) - account.get("used_margin", 0)
+                                
+                                amount_usdt = min(
+                                    new_true_available * amount_percent,
+                                    new_true_available - SAFETY_BUFFER
                                 )
-                                if result.get("success"):
-                                    trade_success = True
-                                    action_taken = "reverse_long_to_short"
-                                    entry_price = result.get("executed_price", current_price)
-                                    final_reasoning = f"Reverse success: closed long (PnL=${pnl:.2f}) -> opened short ${amount_usdt:.2f}. {reasoning}"
-                                    logger.info(f"[TradeExecutor] ✅ Reverse to short success")
+                                amount_usdt = max(amount_usdt, 0)
+                                
+                                if amount_usdt >= MIN_ADD_AMOUNT:
+                                    # 🔧 Validate stop loss safety
+                                    is_safe, sl_msg, safe_sl = validate_stop_loss("short", current_price, stop_loss, leverage, amount_usdt)
+                                    if not is_safe:
+                                        logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
+                                        stop_loss = safe_sl
+                                    
+                                    # Open short position
+                                    result = await toolkit.paper_trader.open_short(
+                                        symbol="BTC-USDT-SWAP",
+                                        leverage=leverage,
+                                        amount_usdt=amount_usdt,
+                                        tp_price=take_profit,
+                                        sl_price=stop_loss
+                                    )
+                                    if result.get("success"):
+                                        trade_success = True
+                                        action_taken = "reverse_long_to_short"
+                                        entry_price = result.get("executed_price", current_price)
+                                        final_reasoning = f"Reverse success: closed long (PnL=${pnl:.2f}) -> opened short ${amount_usdt:.2f}. {reasoning}"
+                                        logger.info(f"[TradeExecutor] ✅ Reverse to short success")
+                                    else:
+                                        trade_success = True
+                                        action_taken = "close_long_only"
+                                        entry_price = current_price
+                                        final_reasoning = f"Close long success (PnL=${pnl:.2f}), but open short failed ({result.get('error')}). {reasoning}"
                                 else:
                                     trade_success = True
-                                    action_taken = "close_long_only"
+                                    action_taken = "close_long_insufficient"
                                     entry_price = current_price
-                                    final_reasoning = f"Close long success (PnL=${pnl:.2f}), but open short failed ({result.get('error')}). {reasoning}"
+                                    final_reasoning = f"Close long success (PnL=${pnl:.2f}), but insufficient balance for short (available ${new_true_available:.2f}). {reasoning}"
                             else:
-                                trade_success = True
-                                action_taken = "close_long_insufficient"
-                                entry_price = current_price
-                                final_reasoning = f"Close long success (PnL=${pnl:.2f}), but insufficient balance for short (available ${new_true_available:.2f}). {reasoning}"
-                        else:
-                            final_reasoning = f"Close long failed: {close_result.get('error')}. {reasoning}"
+                                final_reasoning = f"Close long failed: {close_result.get('error')}. {reasoning}"
                     
                     # 📌 Scenario 3: No position -> Normal open short
                     else:
