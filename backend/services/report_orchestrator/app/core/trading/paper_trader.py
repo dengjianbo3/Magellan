@@ -577,65 +577,69 @@ class PaperTrader(BaseTrader):
 
     async def close_position(self, symbol: str = "BTC-USDT-SWAP", reason: str = "manual") -> Dict:
         """Close position"""
-        if not self._position:
+        # CRITICAL: Use lock to prevent race conditions with open_position
+        async with self._trade_lock:
+            logger.info(f"[TRADE_LOCK] Acquired lock for close_position (reason: {reason})")
+            
+            if not self._position:
+                return {
+                    "success": False,
+                    "error": "No position to close"
+                }
+
+            current_price = await self.get_current_price(symbol)
+            pnl, pnl_percent = self._position.calculate_pnl(current_price)
+
+            # Create trade record
+            trade = PaperTrade(
+                id=str(uuid.uuid4()),
+                symbol=self._position.symbol,
+                direction=self._position.direction,
+                size=self._position.size,
+                entry_price=self._position.entry_price,
+                exit_price=current_price,
+                leverage=self._position.leverage,
+                pnl=pnl,
+                pnl_percent=pnl_percent,
+                close_reason=reason,
+                opened_at=self._position.opened_at,
+                closed_at=datetime.now()
+            )
+            self._trades.append(trade)
+
+            # Update account
+            self._account.balance += self._position.margin + pnl
+            self._account.used_margin -= self._position.margin
+            self._account.realized_pnl += pnl
+            self._account.total_trades += 1
+            if pnl > 0:
+                self._account.winning_trades += 1
+            else:
+                self._account.losing_trades += 1
+
+            old_position = self._position
+            self._position = None
+
+            await self._update_equity()
+            await self._save_state()
+
+            logger.info(
+                f"Position closed: {old_position.direction.upper()} @ ${current_price:.2f}, "
+                f"PnL: ${pnl:.2f} ({pnl_percent:.2f}%), reason: {reason}"
+            )
+
+            # Trigger callback
+            if self.on_position_closed:
+                await self.on_position_closed(old_position, pnl, reason)
+
             return {
-                "success": False,
-                "error": "No position to close"
+                "success": True,
+                "order_id": trade.id,
+                "closed_price": current_price,
+                "pnl": pnl,
+                "pnl_percent": pnl_percent,
+                "reason": reason
             }
-
-        current_price = await self.get_current_price(symbol)
-        pnl, pnl_percent = self._position.calculate_pnl(current_price)
-
-        # Create trade record
-        trade = PaperTrade(
-            id=str(uuid.uuid4()),
-            symbol=self._position.symbol,
-            direction=self._position.direction,
-            size=self._position.size,
-            entry_price=self._position.entry_price,
-            exit_price=current_price,
-            leverage=self._position.leverage,
-            pnl=pnl,
-            pnl_percent=pnl_percent,
-            close_reason=reason,
-            opened_at=self._position.opened_at,
-            closed_at=datetime.now()
-        )
-        self._trades.append(trade)
-
-        # Update account
-        self._account.balance += self._position.margin + pnl
-        self._account.used_margin -= self._position.margin
-        self._account.realized_pnl += pnl
-        self._account.total_trades += 1
-        if pnl > 0:
-            self._account.winning_trades += 1
-        else:
-            self._account.losing_trades += 1
-
-        old_position = self._position
-        self._position = None
-
-        await self._update_equity()
-        await self._save_state()
-
-        logger.info(
-            f"Position closed: {old_position.direction.upper()} @ ${current_price:.2f}, "
-            f"PnL: ${pnl:.2f} ({pnl_percent:.2f}%), reason: {reason}"
-        )
-
-        # Trigger callback
-        if self.on_position_closed:
-            await self.on_position_closed(old_position, pnl, reason)
-
-        return {
-            "success": True,
-            "order_id": trade.id,
-            "closed_price": current_price,
-            "pnl": pnl,
-            "pnl_percent": pnl_percent,
-            "reason": reason
-        }
 
     async def check_tp_sl(self) -> Optional[str]:
         """Check if TP/SL is triggered"""
@@ -643,42 +647,45 @@ class PaperTrader(BaseTrader):
             return None
 
         current_price = await self.get_current_price(self._position.symbol)
+        
+        # 🔧 FIX: Save position reference before close_position sets it to None
+        position = self._position
 
-        if self._position.direction == "long":
+        if position.direction == "long":
             # Long: price above TP or below SL
-            if self._position.take_profit_price and current_price >= self._position.take_profit_price:
+            if position.take_profit_price and current_price >= position.take_profit_price:
                 await self.close_position(reason="tp")
                 if self.on_tp_hit:
-                    await self.on_tp_hit(self._position, current_price)
+                    await self.on_tp_hit(position, current_price)
                 return "tp"
 
-            if self._position.stop_loss_price and current_price <= self._position.stop_loss_price:
+            if position.stop_loss_price and current_price <= position.stop_loss_price:
                 await self.close_position(reason="sl")
                 if self.on_sl_hit:
-                    await self.on_sl_hit(self._position, current_price)
+                    await self.on_sl_hit(position, current_price)
                 return "sl"
 
             # Check liquidation
-            if current_price <= self._position.calculate_liquidation_price():
+            if current_price <= position.calculate_liquidation_price():
                 await self.close_position(reason="liquidation")
                 return "liquidation"
 
         else:  # short
             # Short: price below TP or above SL
-            if self._position.take_profit_price and current_price <= self._position.take_profit_price:
+            if position.take_profit_price and current_price <= position.take_profit_price:
                 await self.close_position(reason="tp")
                 if self.on_tp_hit:
-                    await self.on_tp_hit(self._position, current_price)
+                    await self.on_tp_hit(position, current_price)
                 return "tp"
 
-            if self._position.stop_loss_price and current_price >= self._position.stop_loss_price:
+            if position.stop_loss_price and current_price >= position.stop_loss_price:
                 await self.close_position(reason="sl")
                 if self.on_sl_hit:
-                    await self.on_sl_hit(self._position, current_price)
+                    await self.on_sl_hit(position, current_price)
                 return "sl"
 
             # Check liquidation
-            if current_price >= self._position.calculate_liquidation_price():
+            if current_price >= position.calculate_liquidation_price():
                 await self.close_position(reason="liquidation")
                 return "liquidation"
 

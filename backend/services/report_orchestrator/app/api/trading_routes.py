@@ -2202,7 +2202,7 @@ async def execute_trade(request: Dict[str, Any]):
     
     This is called after user confirms or modifies the AI decision.
     """
-    system = get_trading_system()
+    system = await get_trading_system()
     if not system or not system.paper_trader:
         return {"success": False, "error": "Trading system not initialized"}
     
