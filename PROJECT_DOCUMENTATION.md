@@ -1,800 +1,288 @@
-# Magellan AI 投资分析与量化交易平台
+# Magellan AI 投资分析与量化交易平台文档
 
-## 完整技术文档
-
-**版本**: v1.0  
-**最后更新**: 2025-12-19
+**版本**: v2.0 (Refactored)  
+**更新日期**: 2025-12-30  
+**状态**: 正式发布
 
 ---
 
 ## 📋 目录
 
 1. [项目概述](#1-项目概述)
-2. [系统架构](#2-系统架构)
-3. [微服务架构](#3-微服务架构)
-4. [两大核心子系统](#4-两大核心子系统)
-5. [Agent 系统架构](#5-agent-系统架构)
-6. [信息流与数据流](#6-信息流与数据流)
-7. [技术栈详解](#7-技术栈详解)
-8. [能力矩阵](#8-能力矩阵)
-9. [部署架构](#9-部署架构)
-10. [API 参考](#10-api-参考)
+2. [核心价值与能力](#2-核心价值与能力)
+3. [v2.0 系统架构](#3-v20-系统架构)
+4. [两大核心引擎](#4-两大核心引擎)
+    * [4.1 DD 尽调分析引擎](#41-dd-尽调分析引擎)
+    * [4.2 量化交易引擎 (v2.0)](#42-量化交易引擎-v20)
+5. [Agent 智能体系统](#5-agent-智能体系统)
+6. [技术栈与基础设施](#6-技术栈与基础设施)
+7. [部署与运维](#7-部署与运维)
+8. [API 参考](#8-api-参考)
 
 ---
 
 ## 1. 项目概述
 
-### 1.1 项目身份
+**Magellan AI** 是一个企业级智能投资分析平台，融合了 **深度尽职调查 (Due Diligence)** 与 **自动化量化交易** 两大核心能力。平台利用最先进的大语言模型 (LLM) 技术，构建了一个由多个专家 Agent 组成的"虚拟分析师团队"，能够像人类专业团队一样进行多维度的市场分析、风险评估和交易决策。
 
-| 属性 | 描述 |
-|------|------|
-| **项目名称** | Magellan AI Investment Platform (麦哲伦智能投资平台) |
-| **项目类型** | AI驱动的多Agent协作投资分析与量化交易平台 |
-| **核心定位** | 面向投资机构的智能化尽调分析 + 24/7自动化量化交易 |
-| **代码库规模** | ~150,000 行代码 |
+在 **v2.0 版本** 中，系统完成了重大重构，引入了 **LangGraph** 编排、**Reflexion** 反思机制、**ReAct** 回退执行和统一的 **SafetyGuard** 安全体系，显著提升了系统的稳定性、决策质量和自我进化能力。
 
-### 1.2 双引擎架构
+### 核心定位
 
-Magellan 平台包含两个核心子系统：
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        MAGELLAN AI PLATFORM                                  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│   ┌─────────────────────────────────┐   ┌─────────────────────────────────┐ │
-│   │     📊 DD ANALYSIS ENGINE       │   │    🤖 TRADING ENGINE            │ │
-│   │                                 │   │                                 │ │
-│   │  • 5种投资场景尽调              │   │  • BTC-USDT永续合约交易         │ │
-│   │  • 多Agent协作分析              │   │  • 5+专家Agent投票共识          │ │
-│   │  • 智能报告生成                 │   │  • OKX交易所对接                │ │
-│   │  • 实时进度反馈                 │   │  • 7x24小时自动运行             │ │
-│   │                                 │   │                                 │ │
-│   │  目标用户: 投资机构分析师       │   │  目标用户: 量化交易操盘手       │ │
-│   └─────────────────────────────────┘   └─────────────────────────────────┘ │
-│                                                                              │
-│                         共享基础设施                                         │
-│   ┌─────────────────────────────────────────────────────────────────────┐   │
-│   │  LLM Gateway │ Redis │ PostgreSQL │ Kafka │ Agent Framework         │   │
-│   └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### 1.3 核心价值主张
-
-| 能力 | DD分析引擎 | 量化交易引擎 |
-|------|-----------|-------------|
-| **智能化** | 多Agent协同完成复杂投资分析 | AI专家团队投票决策交易方向 |
-| **场景化** | 5种投资阶段定制分析流程 | 技术面/宏观/情绪多维度分析 |
-| **实时性** | WebSocket实时推送分析进度 | 1小时周期自动触发分析 |
-| **风控** | 风险Agent独立评估 | TP/SL自动设置、日亏损熔断 |
-| **学习** | 历史报告积累行业洞察 | Agent记忆系统持续优化 |
+* **面向机构**: 自动化生成机构级深度的投研报告 (PDF/Markdown)。
+* **面向交易**: 7x24小时全自动量化交易，支持多策略融合与风险控制。
+* **面向开发者**: 模块化、可扩展的 Agent 框架，易于集成新策略。
 
 ---
 
-## 2. 系统架构
+## 2. 核心价值与能力
 
-### 2.1 高层架构图
+### 🛡️ 智能风控 (Safety First)
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                                   用户层                                             │
-├─────────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                      │
-│  ┌──────────────────────────────────┐    ┌──────────────────────────────────┐       │
-│  │       Vue 3 前端 (DD分析)         │    │    Vue 3 前端 (量化交易)          │       │
-│  │  • 分析向导界面                   │    │  • 实时仓位监控                   │       │
-│  │  • 报告展示                       │    │  • Agent投票可视化                │       │
-│  │  • Agent状态追踪                  │    │  • 权益曲线图表                   │       │
-│  └──────────────────────────────────┘    └──────────────────────────────────┘       │
-│                                                                                      │
-└────────────────────────────────────┬────────────────────────────────────────────────┘
-                                     │
-                                     ▼
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                              API 网关层                                              │
-├─────────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                      │
-│  ┌──────────────────────────────────────────────────────────────────────────────┐   │
-│  │                       Report Orchestrator (Port 8000)                         │   │
-│  │                                                                               │   │
-│  │   REST APIs        │    WebSocket APIs      │    Trading APIs                │   │
-│  │   /api/v2/analysis │    /ws/v2/analysis     │    /api/trading/*              │   │
-│  └──────────────────────────────────────────────────────────────────────────────┘   │
-│                                                                                      │
-└────────────────────────────────────┬────────────────────────────────────────────────┘
-                                     │
-                                     ▼
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                              业务逻辑层                                              │
-├─────────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                      │
-│  ┌────────────────────────────┐    ┌────────────────────────────────┐              │
-│  │     Orchestrator层         │    │      TradingMeeting层           │              │
-│  │  • EarlyStageOrchestrator │    │  • 5阶段决策流程                 │              │
-│  │  • GrowthOrchestrator     │    │  • 投票收集与共识                │              │
-│  │  • PublicMarketOrchestrator│   │  • 风险评估                      │              │
-│  │  • AlternativeOrchestrator│    │  • 交易执行                      │              │
-│  │  • IndustryResearchOrch   │    │                                  │              │
-│  └────────────────────────────┘    └────────────────────────────────┘              │
-│                                                                                      │
-│  ┌─────────────────────────────────────────────────────────────────────────────┐   │
-│  │                         Agent Framework (ReWOO)                              │   │
-│  │                                                                              │   │
-│  │   DD Agents:                    │    Trading Agents:                        │   │
-│  │   • MarketAnalyst               │    • TechnicalAnalyst                     │   │
-│  │   • TeamAnalyst                 │    • MacroEconomist                       │   │
-│  │   • FinancialExpert             │    • SentimentAnalyst                     │   │
-│  │   • RiskAnalyst                 │    • QuantStrategist                      │   │
-│  │   • TechSpecialist              │    • RiskAssessor                         │   │
-│  │   • IndustryResearcher          │    • Leader + TradeExecutor               │   │
-│  └─────────────────────────────────────────────────────────────────────────────┘   │
-│                                                                                      │
-└────────────────────────────────────┬────────────────────────────────────────────────┘
-                                     │
-                                     ▼
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                              基础设施层                                              │
-├─────────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                      │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐           │
-│  │   LLM   │ │  Redis  │ │Postgres │ │  Kafka  │ │  Qdrant │ │  OKX    │           │
-│  │ Gateway │ │  Cache  │ │   DB    │ │  Queue  │ │ Vector  │ │   API   │           │
-│  │(Gemini) │ │         │ │         │ │         │ │         │ │         │           │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘           │
-│                                                                                      │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐                        │
-│  │ Tavily  │ │Perplexi │ │SEC Edgar│ │Fear&Greed│ │ Yahoo  │                        │
-│  │ Search  │ │   ty    │ │  API    │ │  Index  │ │ Finance│                        │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘                        │
-│                                                                                      │
-└─────────────────────────────────────────────────────────────────────────────────────┘
-```
+* **多层级防护**: 所有的交易指令必须通过 **SafetyGuard** 的严格审查。
+* **全面检查**: 包括开机保护、日亏损熔断、Cooldown 冷却期、OKX 对冲模式检查、参数合理性校验。
+* **并发锁**: 确保高频环境下的数据一致性和资金安全。
+
+### 🧠 自我进化 (Self-Correction)
+
+* **Reflexion 引擎**: 每次交易结束后，系统会自动进行"复盘"。
+* **动态权重**: 根据历史表现自动调整各 Agent 的投票权重（表现好+5%，表现差-3%）。
+* **经验库**: 失败教训被写入长期记忆 (Redis)，防止重蹈覆辙。
+
+### ⚙️ 灵活编排 (Orchestration)
+
+* **LangGraph 工作流**: 交易流程被建模为有向无环图 (DAG)，状态流转清晰可见。
+* **ReAct 回退**: 当 LLM 执行工具失败时，自动进入 ReAct 思考模式尝试修复，最大重试 3 次。
+* **时间感知**: 所有分析强制注入 UTC+8 精确时间，杜绝"幻觉"引用过时数据。
 
 ---
 
-## 3. 微服务架构
+## 3. v2.0 系统架构
 
-### 3.1 服务列表
+系统采用微服务架构，核心由 **Report Orchestrator** 驱动，并通过 **Gateway** 统一对外服务。
 
-| 服务名称 | 端口 | 职责 | 依赖 |
-|---------|------|------|------|
-| **report_orchestrator** | 8000 | 核心业务服务，DD分析+量化交易 | Redis, LLM Gateway |
-| **llm_gateway** | 8003 | LLM调用统一网关 (Gemini/OpenAI/Claude) | - |
-| **auth_service** | 8007 | 用户认证与权限 | PostgreSQL |
-| **user_service** | 8008 | 用户配置管理 | - |
-| **file_service** | 8001 | 文件上传管理 | uploads_volume |
-| **excel_parser** | 8004 | Excel解析 | uploads_volume |
-| **word_parser** | 8005 | Word解析 | uploads_volume |
-| **external_data_service** | 8006 | 公开市场数据 (SEC等) | - |
-| **internal_knowledge_service** | 8009 | 内部知识库 | Chroma |
-| **web_search_service** | 8010 | 网络搜索 (Tavily) | - |
+### 3.1 顶层架构图
 
-### 3.2 基础设施服务
-
-| 服务 | 端口 | 用途 |
-|------|------|------|
-| **Redis** | 6379 | 会话缓存、交易状态持久化、Agent记忆 |
-| **PostgreSQL** | 5432 | 用户数据、报告存储 |
-| **Kafka** | 9092 | 服务间消息队列 |
-| **Zookeeper** | 2181 | Kafka协调 |
-| **Qdrant** | 6333 | 向量数据库 (知识库) |
-| **Chroma** | 8011 | 向量数据库 (备用) |
-| **Kafka UI** | 8080 | Kafka监控界面 |
-
-### 3.3 服务交互图
-
-```
-                                    ┌─────────────┐
-                                    │   Frontend  │
-                                    │   (Vue 3)   │
-                                    └──────┬──────┘
-                                           │
-                              HTTP/WebSocket│
-                                           ▼
-                          ┌─────────────────────────────┐
-                          │    report_orchestrator      │
-                          │         (8000)              │
-                          └──────────────┬──────────────┘
-                                         │
-            ┌────────────┬───────────────┼───────────────┬─────────────┐
-            │            │               │               │             │
-            ▼            ▼               ▼               ▼             ▼
-     ┌──────────┐ ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
-     │   LLM    │ │  Redis   │   │  Kafka   │   │ External │   │   OKX    │
-     │ Gateway  │ │          │   │          │   │   Data   │   │   API    │
-     │  (8003)  │ │  (6379)  │   │  (9092)  │   │  (8006)  │   │          │
-     └──────────┘ └──────────┘   └──────────┘   └──────────┘   └──────────┘
-           │                           │
-           │                           │
-           ▼                           ▼
-     ┌──────────┐              ┌──────────────┐
-     │  Gemini  │              │  web_search  │
-     │  OpenAI  │              │   (8010)     │
-     │  Claude  │              └──────────────┘
-     └──────────┘
-```
-
----
-
-## 4. 两大核心子系统
-
-### 4.1 DD分析引擎 (Due Diligence)
-
-#### 支持的5种投资场景
-
-| 场景 | 目标对象 | 主要Agent | 分析重点 |
-|------|---------|----------|---------|
-| **Early Stage** | 天使/A轮创业公司 | Team, Product, Market | 团队40%, 产品30%, 市场20% |
-| **Growth** | B轮+成长期公司 | Financial, Market, Risk | 财务表现, 增长趋势 |
-| **Public Market** | 上市公司 | Financial, Tech, Industry | 财报分析, 估值模型 |
-| **Alternative** | PE/信用/实物资产 | Risk, Legal, Market | 另类风险评估 |
-| **Industry Research** | 行业赛道 | Industry, Tech, Market | 市场规模, 竞争格局 |
-
-#### DD工作流程
-
-```
-用户选择场景 → 配置分析目标 → 创建Session
-                                    │
-                                    ▼
-                          ┌─────────────────┐
-                          │  Orchestrator   │
-                          │   协调执行       │
-                          └────────┬────────┘
-                                   │
-                  ┌────────────────┼────────────────┐
-                  │                │                │
-                  ▼                ▼                ▼
-           ┌──────────┐     ┌──────────┐     ┌──────────┐
-           │  Agent1  │     │  Agent2  │     │  Agent3  │
-           │ 市场分析  │     │ 团队评估  │     │ 风险扫描  │
-           └────┬─────┘     └────┬─────┘     └────┬─────┘
-                │                │                │
-                └────────────────┼────────────────┘
-                                 │
-                                 ▼
-                       ┌─────────────────┐
-                       │   报告合成       │
-                       │   PDF/Markdown  │
-                       └─────────────────┘
-```
-
----
-
-### 4.2 量化交易引擎
-
-#### 5阶段决策流程
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         TRADING MEETING 5-PHASE FLOW                         │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  Phase 1: MARKET ANALYSIS (4 Agents并行)                                    │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐       │
-│  │  Technical   │ │    Macro     │ │  Sentiment   │ │    Quant     │       │
-│  │   Analyst    │ │  Economist   │ │   Analyst    │ │  Strategist  │       │
-│  │ RSI/MACD/BB  │ │ Fed/CPI/DXY  │ │ Fear&Greed   │ │ 统计套利     │       │
-│  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘       │
-│                                                                              │
-│  Phase 2: SIGNAL GENERATION (投票)                                          │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │  Each Agent votes:                                               │       │
-│  │  {                                                               │       │
-│  │    "direction": "long/short/hold",                               │       │
-│  │    "confidence": 0-100,                                          │       │
-│  │    "leverage": 1-20,                                             │       │
-│  │    "take_profit_percent": 3-10%,                                 │       │
-│  │    "stop_loss_percent": 1-5%,                                    │       │
-│  │    "reasoning": "..."                                            │       │
-│  │  }                                                               │       │
-│  └─────────────────────────────────────────────────────────────────┘       │
-│                                                                              │
-│  Phase 3: RISK ASSESSMENT (RiskAssessor独立评估)                            │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │  • 杠杆合理性检查                                                │       │
-│  │  • TP/SL 距离验证                                                │       │
-│  │  • 强平价格计算                                                  │       │
-│  │  • 日亏损限额检查                                                │       │
-│  └─────────────────────────────────────────────────────────────────┘       │
-│                                                                              │
-│  Phase 4: CONSENSUS BUILDING (Leader汇总)                                   │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │  • 专家意见综合                                                  │       │
-│  │  • 投票结果分析 (e.g., 3 Long / 1 Hold)                         │       │
-│  │  • 风险评估结论                                                  │       │
-│  │  • 最终交易建议                                                  │       │
-│  └─────────────────────────────────────────────────────────────────┘       │
-│                                                                              │
-│  Phase 5: TRADE EXECUTION (TradeExecutor执行)                               │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │  高共识 → open_long() / open_short()                            │       │
-│  │  分歧大 → hold()                                                 │       │
-│  │  持有反向仓位 → close_position() first                          │       │
-│  └─────────────────────────────────────────────────────────────────┘       │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-#### 交易Agent角色
-
-| Agent | 专业领域 | 数据源 | 投票权重 |
-|-------|---------|--------|---------|
-| **TechnicalAnalyst** | K线形态、RSI、MACD、布林带 | OKX历史数据 | 1x |
-| **MacroEconomist** | 美联储政策、CPI、就业数据 | Tavily搜索 | 1x |
-| **SentimentAnalyst** | 恐惧贪婪指数、资金费率 | Alternative.me | 1x |
-| **QuantStrategist** | 统计分析、波动率、动量 | 历史数据计算 | 1x |
-| **RiskAssessor** | 仓位风险、杠杆评估 | - | 0x (顾问) |
-| **Leader** | 综合决策、共识构建 | - | 0x (主持) |
-| **TradeExecutor** | 订单执行 | OKX API | N/A |
-
----
-
-## 5. Agent 系统架构
-
-### 5.1 ReWOO 架构
-
-所有Agent基于 **ReWOO (Reasoning WithOut Observation)** 架构：
-
-```python
-class Agent:
-    """
-    ReWOO Agent Base Class
+```mermaid
+graph TD
+    User([用户/前端]) --> Gateway[API Gateway / Nginx]
     
-    特点:
-    - 先规划再执行 (Plan-then-Execute)
-    - 工具调用与推理分离
-    - 支持多轮对话
-    """
+    subgraph "Core Services"
+        Orchestrator[Report Orchestrator]
+        TradingEngine[Trading Engine v2.0]
+        AnalysisEngine[DD Analysis Engine]
+    end
     
-    async def think_and_act(self, prompt: str, context: Dict) -> AgentResponse:
-        # 1. 构建消息 (系统提示 + 上下文 + 用户输入)
-        messages = self._build_messages(prompt, context)
-        
-        # 2. 调用LLM
-        response = await self._call_llm(messages)
-        
-        # 3. 解析工具调用
-        tool_calls = self._parse_tool_calls(response)
-        
-        # 4. 执行工具
-        for tool_call in tool_calls:
-            result = await self._execute_tool(tool_call)
-            
-        # 5. 返回结果
-        return AgentResponse(...)
-```
-
-### 5.2 Agent注册中心
-
-```python
-# agent_registry.py
-REGISTERED_AGENTS = {
-    # DD分析Agents
-    "market_analyst": MarketAnalysisAgent,
-    "team_analyst": TeamAnalysisAgent,
-    "financial_expert": FinancialAnalysisAgent,
-    "risk_analyst": RiskAnalysisAgent,
-    "tech_specialist": TechAnalysisAgent,
-    "industry_researcher": IndustryResearchAgent,
+    subgraph "Agent Layer"
+        TechAgent[Technical Analyst]
+        MacroAgent[Macro Economist]
+        SentiAgent[Sentiment Analyst]
+        RiskAgent[Risk Assessor]
+        ExecAgent[Trade Executor]
+    end
     
-    # 量化交易Agents
-    "technical_analyst": TechnicalAnalyst,
-    "macro_economist": MacroEconomist,
-    "sentiment_analyst": SentimentAnalyst,
-    "quant_strategist": QuantStrategist,
-    "risk_assessor": RiskAssessor,
-    "leader": Leader,
-    "trade_executor": TradeExecutor,
-}
+    subgraph "Infrastructure"
+        Redis[(Redis Meta/Cache)]
+        PG[(Postgres DB)]
+        Kafka[Kafka Queue]
+        VectorDB[(Qdrant/Chroma)]
+    end
+    
+    Gateway --> Orchestrator
+    Orchestrator --> AnalysisEngine
+    Orchestrator --> TradingEngine
+    
+    TradingEngine --> TechAgent
+    TradingEngine --> MacroAgent
+    TradingEngine --> SentiAgent
+    
+    TradingEngine --> Redis
+    AnalysisEngine --> PG
 ```
 
-### 5.3 Agent记忆系统
-
-```
-┌───────────────────────────────────────────────────────────┐
-│                    AGENT MEMORY SYSTEM                     │
-├───────────────────────────────────────────────────────────┤
-│                                                            │
-│  ┌──────────────────┐    ┌──────────────────┐             │
-│  │   Short-Term     │    │    Long-Term     │             │
-│  │   (当前会话)      │    │   (Redis持久化)   │             │
-│  │                  │    │                  │             │
-│  │  • 当前分析上下文 │    │  • 历史交易记录   │             │
-│  │  • 本轮投票结果   │    │  • 胜率统计       │             │
-│  │  • 仓位状态      │    │  • 累计盈亏       │             │
-│  └──────────────────┘    │  • 教训总结       │             │
-│                          └──────────────────┘             │
-│                                                            │
-│  Reflection Mechanism (反思机制):                          │
-│  ┌────────────────────────────────────────────────────┐   │
-│  │  1. 仓位平仓后触发                                  │   │
-│  │  2. 每个Agent回顾自己的预测                         │   │
-│  │  3. 对比实际结果生成教训                            │   │
-│  │  4. 更新Agent记忆供下次决策参考                     │   │
-│  └────────────────────────────────────────────────────┘   │
-│                                                            │
-└───────────────────────────────────────────────────────────┘
-```
-
----
-
-## 6. 信息流与数据流
-
-### 6.1 DD分析信息流
-
-```
-┌─────────────┐
-│   用户请求   │
-│  (场景+目标) │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────────────────────────────────────────────────────┐
-│  1. 创建分析Session                                          │
-│     • 分配session_id                                         │
-│     • 初始化WebSocket连接                                    │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  2. Orchestrator协调Workflow                                 │
-│     • 获取场景对应的workflow定义                             │
-│     • 按顺序/并行执行各步骤                                  │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-          ┌────────────────┼────────────────┐
-          │                │                │
-          ▼                ▼                ▼
-    ┌───────────┐    ┌───────────┐    ┌───────────┐
-    │  Agent 1  │    │  Agent 2  │    │  Agent 3  │
-    │           │    │           │    │           │
-    │ 调用LLM   │    │ 调用工具   │    │ 搜索数据  │
-    └─────┬─────┘    └─────┬─────┘    └─────┬─────┘
-          │                │                │
-          └────────────────┼────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  3. 实时推送进度 (WebSocket)                                 │
-│     • workflow_start: 工作流开始                             │
-│     • step_start: 步骤开始                                   │
-│     • step_complete: 步骤完成 + 结果                         │
-│     • agent_event: Agent状态更新                             │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  4. 报告合成                                                 │
-│     • 汇总各Agent分析结果                                    │
-│     • 生成结构化报告                                         │
-│     • 返回JSON/Markdown                                      │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 6.2 量化交易信息流
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          TRADING INFORMATION FLOW                            │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-   Scheduler (每1小时)
-        │
-        │ 触发
-        ▼
-┌─────────────────┐
-│  TradingMeeting │
-│     初始化       │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  收集上下文信息                                              │
-│  • 当前BTC价格 (OKX API)                                    │
-│  • 账户余额和可用保证金                                      │
-│  • 当前仓位状态 (方向/杠杆/盈亏)                             │
-│  • 各Agent历史记忆                                          │
-└─────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Phase 1: 市场分析 (4 Agents并行)                            │
-│                                                              │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │ TechnicalAnalyst                                       │ │
-│  │ → get_btc_price()                                      │ │
-│  │ → get_technical_indicators() [RSI, MACD, BB]           │ │
-│  │ → "BTC站稳EMA20,RSI=55,MACD金叉"                       │ │
-│  └────────────────────────────────────────────────────────┘ │
-│                                                              │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │ MacroEconomist                                         │ │
-│  │ → tavily_search("Fed policy crypto")                   │ │
-│  │ → get_market_news()                                    │ │
-│  │ → "美联储暂停加息,DXY走弱,利好风险资产"                  │ │
-│  └────────────────────────────────────────────────────────┘ │
-│                                                              │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │ SentimentAnalyst                                       │ │
-│  │ → get_fear_greed_index()                               │ │
-│  │ → get_funding_rate()                                   │ │
-│  │ → "恐惧指数=25(极度恐惧),多空比偏空,逆向信号看涨"        │ │
-│  └────────────────────────────────────────────────────────┘ │
-│                                                              │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │ QuantStrategist                                        │ │
-│  │ → get_historical_data()                                │ │
-│  │ → get_volatility()                                     │ │
-│  │ → "波动率下降,突破阻力位概率增加"                        │ │
-│  └────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Phase 2: 投票收集                                           │
-│                                                              │
-│  ┌─────────────┬─────────────┬─────────────┬─────────────┐ │
-│  │  Technical  │    Macro    │  Sentiment  │    Quant    │ │
-│  │    LONG     │    LONG     │    LONG     │    HOLD     │ │
-│  │    75%      │    70%      │    80%      │    50%      │ │
-│  │    6x       │    5x       │    5x       │    3x       │ │
-│  │  TP:5%/SL:2%│  TP:6%/SL:3%│  TP:5%/SL:2%│  TP:4%/SL:2%│ │
-│  └─────────────┴─────────────┴─────────────┴─────────────┘ │
-│                                                              │
-│  Vote Summary: 3 Long / 0 Short / 1 Hold                    │
-│  Avg Confidence: 69%                                        │
-│  Avg Leverage: 5x                                           │
-└─────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Phase 3: 风险评估                                           │
-│                                                              │
-│  RiskAssessor分析:                                          │
-│  ✓ 杠杆5x合理 (对应69%信心度)                               │
-│  ✓ SL=-2%在强平价前触发                                     │
-│  ✓ 仓位20%符合风控限制                                      │
-│  ✓ 当日未触及亏损熔断                                       │
-│                                                              │
-│  结论: 风险可控,建议执行                                     │
-└─────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Phase 4: Leader共识总结                                     │
-│                                                              │
-│  "专家4人投票: 3票看多、1票观望                              │
-│   技术面:站稳均线支撑、MACD金叉                              │
-│   宏观面:美联储鸽派、美元指数走软                            │
-│   情绪面:极度恐惧时逆向做多                                  │
-│   综合建议: 开多5x杠杆,仓位20%,TP=5%,SL=2%"                 │
-└─────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Phase 5: 交易执行                                           │
-│                                                              │
-│  TradeExecutor:                                             │
-│  → open_long(leverage=5, amount_percent=0.2)                │
-│  → _set_tp_sl(tp=$92,000, sl=$85,000)                       │
-│                                                              │
-│  OKX API Response:                                          │
-│  {                                                          │
-│    "success": true,                                         │
-│    "order_id": "xxx123",                                    │
-│    "executed_price": 87654.32,                              │
-│    "executed_amount": 0.17 BTC                              │
-│  }                                                          │
-└─────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  返回 TradingSignal                                          │
-│  {                                                          │
-│    direction: "long",                                       │
-│    leverage: 5,                                             │
-│    entry_price: 87654.32,                                   │
-│    take_profit_price: 92037.04,                             │
-│    stop_loss_price: 85901.23,                               │
-│    confidence: 69,                                          │
-│    leader_summary: "...",                                   │
-│    agents_consensus: {Tech:long, Macro:long, Sent:long, Quant:hold}
-│  }                                                          │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 7. 技术栈详解
-
-### 7.1 后端技术栈
-
-| 类别 | 技术 | 用途 |
-|------|------|------|
-| **Web框架** | FastAPI | 高性能异步API |
-| **ASGI服务器** | Uvicorn | 异步HTTP服务 |
-| **LLM集成** | LangChain / 原生API | LLM调用封装 |
-| **向量数据库** | Qdrant, Chroma | 知识库向量存储 |
-| **缓存** | Redis | 会话/状态/缓存 |
-| **消息队列** | Kafka | 服务间通信 |
-| **数据库** | PostgreSQL | 持久化存储 |
-
-### 7.2 前端技术栈
-
-| 类别 | 技术 | 用途 |
-|------|------|------|
-| **框架** | Vue 3 (Composition API) | 响应式UI |
-| **构建工具** | Vite 4 | 快速开发构建 |
-| **样式** | TailwindCSS 3 | 原子化CSS |
-| **图标** | Material Symbols | 图标库 |
-| **通信** | WebSocket + Fetch | 实时+REST通信 |
-| **图表** | Chart.js | 权益曲线等 |
-| **Markdown** | marked | 报告渲染 |
-
-### 7.3 外部API集成
-
-| API | 用途 | 模块 |
-|-----|------|------|
-| **Gemini/OpenAI/Claude** | LLM推理 | llm_gateway |
-| **OKX API** | 交易执行 | okx_client.py |
-| **Tavily** | 网络搜索 | web_search_service |
-| **SEC Edgar** | 上市公司数据 | external_data_service |
-| **Alternative.me** | 恐惧贪婪指数 | trading_tools.py |
-| **Yahoo Finance** | 股票数据 | yahoo_finance_tool.py |
-
----
-
-## 8. 能力矩阵
-
-### 8.1 DD分析能力
-
-| 能力 | 描述 | 相关模块 |
-|------|------|---------|
-| **场景适配** | 5种投资场景自动选择分析框架 | orchestrators/ |
-| **多Agent协作** | 多个专家Agent并行/串行分析 | roundtable/agent.py |
-| **实时进度** | WebSocket实时推送分析进度 | websocket.py |
-| **工具调用** | SEC Edgar、Perplexity等数据获取 | tools/ |
-| **报告生成** | 结构化Markdown/JSON报告 | synthesize_report() |
-| **多语言** | 中英文双语支持 | i18n/ |
-
-### 8.2 量化交易能力
-
-| 能力 | 描述 | 相关模块 |
-|------|------|---------|
-| **自动化分析** | 定时触发市场分析 | scheduler.py |
-| **多维度决策** | 技术/宏观/情绪/量化四维分析 | trading_meeting.py |
-| **投票共识** | 民主投票机制避免单一偏见 | vote_calculator.py |
-| **风险控制** | 独立风险评估+日亏损熔断 | RiskAssessor |
-| **TP/SL管理** | 自动止盈止损设置 | okx_client.py |
-| **OKX对接** | 模拟盘/实盘交易执行 | okx_trader.py |
-| **Agent学习** | 交易后反思,持续优化 | agent_memory.py |
-| **仓位监控** | 实时盈亏追踪 | position_monitor.py |
-
-### 8.3 防偏见机制
-
-| 机制 | 位置 | 描述 |
-|------|------|------|
-| **中性投票提示** | trading_meeting.py | 使用占位符避免示例方向影响 |
-| **顺序平衡** | trading_meeting.py | Short选项排在Long之前 |
-| **文本推理评分** | _infer_from_text() | 同时计算多空关键词,平局=hold |
-| **无默认方向** | analyze_execution_conditions() | direction必填,无fallback |
-| **仓位上下文注入** | position_context.py | 所有Agent看到当前仓位状态 |
-| **投票计算对称** | vote_calculator.py | 多空逻辑完全对称 |
-
----
-
-## 9. 部署架构
-
-### 9.1 完整部署 (Full Platform)
-
-```bash
-# 启动所有服务
-cd /path/to/magellan
-docker compose up -d
-
-# 启动前端开发服务器
-cd frontend
-npm run dev
-```
-
-**资源需求**: ~8GB RAM, 17个容器
-
-### 9.2 轻量部署 (Trading Only)
-
-```bash
-# 使用trading-standalone配置
-cd trading-standalone
-./start.sh
-```
-
-**资源需求**: ~1.5GB RAM, 3个容器 (Redis + LLM Gateway + Report Orchestrator)
-
-### 9.3 端口映射
-
-| 服务 | 内部端口 | 外部端口 |
-|------|---------|---------|
-| Frontend (Vite) | 5173 | 5173 |
-| Report Orchestrator | 8000 | 8000 |
-| LLM Gateway | 8003 | 8003 |
-| Redis | 6379 | 6380 |
-| Kafka UI | 8080 | 8080 |
-
----
-
-## 10. API 参考
-
-### 10.1 DD分析API
-
-```
-POST /api/v2/analysis/start
-  → 启动分析会话
-
-WebSocket /ws/v2/analysis/{session_id}
-  → 实时进度推送
-
-GET /api/v2/analysis/{session_id}/status
-  → 获取分析状态
-
-GET /api/v2/analysis/{session_id}/report
-  → 获取分析报告
-```
-
-### 10.2 量化交易API
-
-```
-GET  /api/trading/status     → 系统状态
-GET  /api/trading/account    → 账户信息
-GET  /api/trading/position   → 当前仓位
-GET  /api/trading/history    → 交易历史
-GET  /api/trading/equity     → 权益曲线
-POST /api/trading/trigger    → 手动触发分析
-POST /api/trading/enable     → 启用交易
-POST /api/trading/disable    → 禁用交易
-POST /api/trading/close      → 平仓
-
-WebSocket /ws/trading        → 实时数据推送
-```
-
----
-
-## 附录
-
-### A. 目录结构概览
+### 3.2 目录结构
 
 ```
 magellan/
-├── backend/
-│   └── services/
-│       ├── report_orchestrator/   # 核心服务 (DD + Trading)
-│       ├── llm_gateway/           # LLM网关
-│       ├── auth_service/          # 认证服务
-│       ├── external_data_service/ # 外部数据
-│       ├── web_search_service/    # 搜索服务
-│       └── ...
-├── frontend/                      # Vue 3 前端
-├── trading-standalone/            # 独立交易部署包
-├── docs/                          # 项目文档
-├── docker-compose.yml             # 完整部署配置
-└── SYSTEM_ARCHITECTURE.md         # 系统架构文档
+├── backend/services/report_orchestrator/   # 核心服务
+│   ├── app/core/trading/
+│   │   ├── orchestration/    # LangGraph 编排 (v2.0)
+│   │   ├── reflection/       # 反思引擎 (v2.0)
+│   │   ├── safety/           # 安全守卫 (v2.0)
+│   │   ├── executor.py       # 交易执行器
+│   │   └── agents/           # Agent 定义
+│   └── ...
+├── frontend/                 # Vue 3 前端
+├── trading-standalone/       # 轻量级独立部署包
+└── docs/                     # 文档资源
 ```
-
-### B. 关键配置文件
-
-| 文件 | 用途 |
-|------|------|
-| `.env` | 环境变量 (API Keys, 配置) |
-| `docker-compose.yml` | 服务编排 |
-| `config/agents.yaml` | Agent配置 |
-| `trading-standalone/config.yaml` | 交易配置 |
-
-### C. 相关文档
-
-- [SYSTEM_ARCHITECTURE.md](./SYSTEM_ARCHITECTURE.md) - 详细系统架构
-- [trading-standalone/AGENT_INFORMATION_FLOW.md](./trading-standalone/AGENT_INFORMATION_FLOW.md) - 交易系统详细文档
-- [docs/README.md](./docs/README.md) - 版本说明
 
 ---
 
-*文档生成时间: 2025-12-19*
+## 4. 两大核心引擎
+
+### 4.1 DD 尽调分析引擎
+
+专注于一级/二级市场深度研究，生成长篇研报。
+
+* **5大场景**: Early Stage, Growth, Public Market, Alternative, Industry Research。
+* **ReWOO 架构**: Plan -> Work -> Orchestrate，适合处理复杂长流程任务。
+* **多模态输出**: 支持生成 Markdown、PDF 以及 Excel 财务模型。
+
+*(此处保持 v1.0 逻辑稳定，未做破坏性变更)*
+
+### 4.2 量化交易引擎 (v2.0) 👑
+
+**这是 v2.0 重构的核心部分**。不再使用线性的脚本流程，而是基于 **LangGraph** 的状态机流转。
+
+#### 4.2.1 工作流节点
+
+1. **Market Analysis Node**: 4个分析 Agent (技术/宏观/情绪/量化) 并行工作，生成市场观点。
+2. **Signal Generation Node**: 收集各 Agent 投票 (Long/Short/Hold) 及置信度。
+3. **Risk Assessment Node**: 风险官 (RiskAssessor) 独立评估，计算 VaR，检查杠杆率。
+4. **Consensus Node Leader**: 汇总意见，生成最终 Signal。
+5. **Execution Node**:
+    * **SafetyGuard** 预检
+    * **TradeExecutor** 执行 (支持 ReAct 回退)
+6. **Reflection Node**: (异步) 交易结束后触发反思，更新记忆权重。
+
+#### 4.2.2 状态管理 (Unified State)
+
+系统维护一个全局 `TradingState`，在各节点间传递：
+
+```python
+class TradingState(TypedDict):
+    trigger_reason: str          # 触发原因
+    market_data: Dict            # 原始行情
+    analysis_results: Dict       # 各Agent分析结果
+    agent_votes: List[AgentVote] # 投票集合
+    risk_assessment: Dict        # 风险评估结果
+    consensus: TradingSignal     # 最终共识
+    execution_result: Dict       # 执行结果
+    reflection: Dict             # 反思记录
+```
+
+---
+
+## 5. Agent 智能体系统
+
+### 5.1 角色矩阵
+
+| Agent | 职责 | v2.0 增强特性 |
+|-------|------|--------------|
+| **TechnicalAnalyst** | K线/指标分析 | 内置 RSI/MACD/BB 计算工具 |
+| **MacroEconomist** | 宏观/新闻分析 | **Time-Awareness** 强制时间感知 |
+| **SentimentAnalyst** | 情绪/舆情分析 | FGI 指数与资金费率结合 |
+| **QuantStrategist** | 统计套利分析 | 波动率与动量追踪 |
+| **RiskAssessor** | 独立风控 | 不参与投票，拥有 **一票否决权** |
+| **TradeExecutor** | 交易执行 | **ReAct Fallback** 自动纠错能力 |
+| **ReflectionEngine** | 学习与反思 | **Redis Memory** 长期记忆存储 |
+
+### 5.2 交易执行器 (TradeExecutor)
+
+独立的执行模块，负责将自然语言决策转化为交易所 API 调用。
+
+* **工具调用 (Function Calling)**: 原生支持 OpenAI 格式工具调用。
+* **安全解析**: 对 LLM 输出进行严格正则校验。
+* **ReAct 模式**:
+    > *思考*: 订单因余额不足失败。
+    > *行动*: 查询当前余额。
+    > *观察*: 余额为 500 USDT。
+    > *思考*: 重新计算仓位大小。
+    > *行动*: 下单 450 USDT。
+
+### 5.3 反思引擎 (ReflectionEngine)
+
+实现了 **Reflexion** 模式：
+
+1. **Trigger**: 仓位平仓 (TP/SL/Manual)。
+2. **Analyze**: 对比 `Entry Reason` (入场理由) 与 `Exit Result` (最终结果)。
+3. **Learn**: 识别哪些 Agent 预测正确，哪些错误。
+4. **Adjust**:
+    * 正确 Agent 权重 **+5%** (Max 2.0)
+    * 错误 Agent 权重 **-3%** (Min 0.5)
+
+---
+
+## 6. 技术栈与基础设施
+
+| 层级 | 技术组件 | 说明 |
+|------|---------|------|
+| **Language** | Python 3.11+ | 全面异步 (AsyncIO) |
+| **Web Framework** | FastAPI | 高性能 API 服务 |
+| **Orchestration** | **LangGraph** | (v2.0 新增) 状态机编排 |
+| **LLM Gateway** | LangChain / Custom | 支持 Google Gemini, OpenAI, Claude |
+| **Database** | PostgreSQL | 业务数据持久化 |
+| **Cache/Memory** | **Redis** | (v2.0 关键) 会话状态、反思记忆、分布式锁 |
+| **Vector DB** | Qdrant | RAG 知识库检索 |
+| **Frontend** | Vue 3 + Vite | 现代化实时仪表盘 |
+| **Container** | Docker Compose | 一键编排部署 |
+
+---
+
+## 7. 部署与运维
+
+### 7.1 环境要求
+
+* Unbuntu 22.04+ (推荐)
+* Docker & Docker Compose
+* CPU: 2 Core+, RAM: 4GB+ (Standalone模式)
+
+### 7.2 快速启动 (Standalone 模式)
+
+适合专注于量化交易的场景，资源占用极低。
+
+```bash
+# 1. 克隆代码
+git clone https://github.com/dengjianbo3/Magellan.git
+cd Magellan/trading-standalone
+
+# 2. 配置环境变量
+cp ../.env.example .env
+vim .env  # 填入 OKX_API_KEY, GOOGLE_API_KEY 等
+
+# 3. 启动服务 (v2.0 需要 --build 参数构建新依赖)
+./start.sh
+
+# 4. 查看状态
+./status.sh
+```
+
+### 7.3 验证部署
+
+访问 Dashboard: `http://localhost:8888`
+
+或者通过命令行检查：
+
+```bash
+# 检查交易服务日志，确认 LangGraph 初始化
+docker compose logs trading_service | grep "TradingGraph"
+
+# 检查 Redis 连接
+docker compose logs trading_service | grep "Redis"
+```
+
+---
+
+## 8. API 参考
+
+### 8.1 交易控制
+
+* **GET** `/api/trading/status`: 获取当前系统状态（仓位、余额、调度器状态）。
+* **POST** `/api/trading/start`: 启动自动交易调度器。
+* **POST** `/api/trading/stop`: 停止自动交易。
+* **POST** `/api/trading/trigger`: 手动触发一次完整分析流程。
+
+### 8.2 仓位管理
+
+* **GET** `/api/trading/position`: 获取当前持仓详情。
+* **POST** `/api/trading/close`: 强行市价平仓。
+
+### 8.3 历史数据
+
+* **GET** `/api/trading/history`: 获取交易历史记录 (Reflexion 数据)。
+* **GET** `/api/trading/equity`: 获取权益曲线数据。
+
+---
+
+*Magellan Project - Designed for the Future of Intelligent Trading.*
