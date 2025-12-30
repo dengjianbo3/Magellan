@@ -77,7 +77,8 @@ class TradeExecutor:
         leader_summary: str,
         agent_votes: List[Dict],
         position_context: Dict,
-        trigger_reason: str = None
+        trigger_reason: str = None,
+        enable_react_fallback: bool = True
     ) -> TradingSignal:
         """
         Execute trading decision based on meeting results.
@@ -87,6 +88,7 @@ class TradeExecutor:
             agent_votes: List of agent votes with direction, confidence, reasoning
             position_context: Current position state
             trigger_reason: Why this analysis was triggered
+            enable_react_fallback: Enable ReAct fallback on failure
             
         Returns:
             TradingSignal with the final decision
@@ -119,13 +121,257 @@ class TradeExecutor:
                            f"Confidence: {signal.confidence}% | Leverage: {signal.leverage}x")
                 return signal
             
+            # No tool executed - try ReAct fallback if enabled
+            if enable_react_fallback:
+                logger.warning("[TradeExecutor] No tool executed, triggering ReAct fallback...")
+                return await self._react_fallback(
+                    error="No tool call detected in LLM response",
+                    agent_votes=agent_votes,
+                    position_context=position_context,
+                    tools_dict=tools_dict
+                )
+            
             # Fallback to HOLD if no tool was executed
             logger.warning("[TradeExecutor] No tool executed, defaulting to HOLD")
             return await self._generate_hold_signal("No trading tool executed")
             
         except Exception as e:
             logger.error(f"[TradeExecutor] Execution failed: {e}", exc_info=True)
+            
+            # Try ReAct fallback on exception
+            if enable_react_fallback:
+                logger.info("[TradeExecutor] Triggering ReAct fallback after exception...")
+                return await self._react_fallback(
+                    error=str(e),
+                    agent_votes=agent_votes,
+                    position_context=position_context,
+                    tools_dict=tools_dict
+                )
+            
             return await self._generate_hold_signal(f"Execution error: {e}")
+    
+    async def _react_fallback(
+        self,
+        error: str,
+        agent_votes: List[Dict],
+        position_context: Dict,
+        tools_dict: Dict,
+        max_iterations: int = 3
+    ) -> TradingSignal:
+        """
+        ReAct fallback: Reasoning-Action-Observation loop.
+        
+        When primary tool calling fails, use ReAct pattern to recover:
+        1. REASON: Analyze the situation and error
+        2. ACT: Choose and execute an action
+        3. OBSERVE: Check the result
+        4. Repeat until success or max iterations
+        
+        Args:
+            error: The error that triggered fallback
+            agent_votes: Agent votes for context
+            position_context: Current position
+            tools_dict: Available tools
+            max_iterations: Max ReAct iterations
+            
+        Returns:
+            TradingSignal from successful action or HOLD
+        """
+        logger.info(f"[ReAct] Starting fallback (max {max_iterations} iterations)")
+        
+        observations = [f"Previous execution failed: {error}"]
+        
+        for iteration in range(max_iterations):
+            logger.info(f"[ReAct] Iteration {iteration + 1}/{max_iterations}")
+            
+            try:
+                # Step 1: REASON - Analyze current state and decide action
+                thought = await self._react_reason(observations, agent_votes, position_context)
+                logger.info(f"[ReAct] Thought: {thought[:100]}...")
+                
+                # Step 2: ACT - Parse thought and execute action
+                action, params = self._react_parse_action(thought)
+                logger.info(f"[ReAct] Action: {action}({params})")
+                
+                if action and action in tools_dict:
+                    # Execute the action
+                    await tools_dict[action](**params)
+                    
+                    # Step 3: OBSERVE - Check result
+                    if self._result.get("signal"):
+                        signal = self._result["signal"]
+                        logger.info(f"[ReAct] ✅ Success: {signal.direction.upper()}")
+                        return signal
+                    else:
+                        observations.append(f"Action {action} executed but no signal generated")
+                else:
+                    observations.append(f"Invalid action: {action}")
+                    
+            except Exception as e:
+                logger.warning(f"[ReAct] Iteration {iteration + 1} failed: {e}")
+                observations.append(f"Error: {str(e)}")
+        
+        # Max iterations reached - return safe HOLD
+        logger.warning(f"[ReAct] Max iterations ({max_iterations}) reached, defaulting to HOLD")
+        return await self._generate_hold_signal(
+            f"ReAct fallback exhausted after {max_iterations} iterations. Last observations: {observations[-1]}"
+        )
+    
+    async def _react_reason(
+        self,
+        observations: List[str],
+        agent_votes: List[Dict],
+        position_context: Dict
+    ) -> str:
+        """
+        ReAct REASON step: Generate thought about what action to take.
+        """
+        # Analyze votes to determine majority direction
+        vote_summary = self._analyze_votes(agent_votes)
+        
+        prompt = f"""You are in ReAct fallback mode. The normal execution failed.
+
+## Previous Observations
+{chr(10).join(f"- {obs}" for obs in observations[-3:])}
+
+## Vote Summary
+{vote_summary}
+
+## Current Position
+{self._format_position_context(position_context)}
+
+## Available Actions
+- open_long(leverage=5, amount_percent=0.2, tp_percent=8.0, sl_percent=3.0, reasoning="...")
+- open_short(leverage=5, amount_percent=0.2, tp_percent=8.0, sl_percent=3.0, reasoning="...")
+- hold(reason="...")
+- close_position(reason="...")
+
+## Your Task
+Think step by step:
+1. What do the votes suggest?
+2. What is the current position state?
+3. What action should I take?
+
+Then output your decision in this exact format:
+ACTION: <action_name>(<param1>=<value1>, <param2>=<value2>, ...)
+
+Example:
+ACTION: hold(reason="Low confidence from experts, waiting for clearer signals")
+"""
+        
+        try:
+            response = await self.llm.generate(prompt)
+            return response if isinstance(response, str) else str(response)
+        except Exception as e:
+            logger.error(f"[ReAct] Reason step failed: {e}")
+            return "ACTION: hold(reason=\"ReAct reasoning failed\")"
+    
+    def _react_parse_action(self, thought: str) -> tuple:
+        """
+        Parse ACTION from ReAct thought.
+        
+        Returns:
+            Tuple of (action_name, params_dict)
+        """
+        # Look for ACTION: pattern
+        action_pattern = r'ACTION:\s*(\w+)\s*\((.*?)\)'
+        match = re.search(action_pattern, thought, re.IGNORECASE | re.DOTALL)
+        
+        if not match:
+            # Fallback: look for tool names directly
+            for tool_name in ['open_long', 'open_short', 'hold', 'close_position']:
+                if tool_name in thought.lower():
+                    if tool_name == 'hold':
+                        return ('hold', {'reason': 'Inferred from ReAct response'})
+                    elif tool_name in ('open_long', 'open_short'):
+                        return (tool_name, {
+                            'leverage': 5,
+                            'amount_percent': 0.2,
+                            'tp_percent': 8.0,
+                            'sl_percent': 3.0,
+                            'reasoning': 'Inferred from ReAct response'
+                        })
+                    elif tool_name == 'close_position':
+                        return ('close_position', {'reason': 'Inferred from ReAct response'})
+            
+            # Default to hold
+            return ('hold', {'reason': 'Could not parse action from response'})
+        
+        action_name = match.group(1).lower()
+        params_str = match.group(2)
+        
+        # Parse parameters
+        params = {}
+        
+        # Handle different parameter formats
+        # Format: key=value, key="value", key='value'
+        param_patterns = [
+            r'(\w+)\s*=\s*"([^"]*)"',  # key="value"
+            r"(\w+)\s*=\s*'([^']*)'",   # key='value'
+            r'(\w+)\s*=\s*([0-9.]+)',   # key=number
+        ]
+        
+        for pattern in param_patterns:
+            for key, value in re.findall(pattern, params_str):
+                key = key.lower()
+                # Type conversion
+                if value.replace('.', '').replace('-', '').isdigit():
+                    value = float(value) if '.' in value else int(value)
+                params[key] = value
+        
+        # Set defaults for missing params
+        if action_name in ('open_long', 'open_short'):
+            params.setdefault('leverage', 5)
+            params.setdefault('amount_percent', 0.2)
+            params.setdefault('tp_percent', 8.0)
+            params.setdefault('sl_percent', 3.0)
+            params.setdefault('reasoning', params.get('reason', 'ReAct decision'))
+        elif action_name == 'hold':
+            params.setdefault('reason', 'ReAct decision')
+        elif action_name == 'close_position':
+            params.setdefault('reason', 'ReAct decision')
+        
+        return (action_name, params)
+    
+    def _analyze_votes(self, votes: List[Dict]) -> str:
+        """Analyze votes and return summary."""
+        if not votes:
+            return "No votes available."
+        
+        long_votes = []
+        short_votes = []
+        hold_votes = []
+        
+        for vote in votes:
+            direction = vote.get("direction", "").lower()
+            if hasattr(direction, 'value'):
+                direction = direction.value.lower()
+            
+            confidence = vote.get("confidence", 0)
+            agent = vote.get("agent_name", vote.get("agent_id", "Unknown"))
+            
+            if direction in ("long", "buy", "bullish"):
+                long_votes.append((agent, confidence))
+            elif direction in ("short", "sell", "bearish"):
+                short_votes.append((agent, confidence))
+            else:
+                hold_votes.append((agent, confidence))
+        
+        lines = [
+            f"LONG votes: {len(long_votes)} (avg conf: {sum(c for _, c in long_votes) / len(long_votes):.0f}%)" if long_votes else "LONG votes: 0",
+            f"SHORT votes: {len(short_votes)} (avg conf: {sum(c for _, c in short_votes) / len(short_votes):.0f}%)" if short_votes else "SHORT votes: 0",
+            f"HOLD votes: {len(hold_votes)}" if hold_votes else "HOLD votes: 0"
+        ]
+        
+        # Determine recommendation
+        if len(long_votes) >= 3 and sum(c for _, c in long_votes) / len(long_votes) >= 70:
+            lines.append("RECOMMENDATION: LONG (strong consensus)")
+        elif len(short_votes) >= 3 and sum(c for _, c in short_votes) / len(short_votes) >= 70:
+            lines.append("RECOMMENDATION: SHORT (strong consensus)")
+        else:
+            lines.append("RECOMMENDATION: HOLD (no clear consensus)")
+        
+        return "\n".join(lines)
     
     def _build_execution_prompt(
         self,
