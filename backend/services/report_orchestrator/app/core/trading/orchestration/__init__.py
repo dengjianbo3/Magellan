@@ -4,7 +4,7 @@ Trading Orchestration Module
 LangGraph-based workflow orchestration for trading decisions.
 """
 
-from .state import TradingState, NodeResult
+from .state import TradingState, NodeResult, create_initial_state
 from .graph import TradingGraph, build_trading_graph
 from .nodes import (
     market_analysis_node,
@@ -20,6 +20,7 @@ __all__ = [
     # State
     "TradingState",
     "NodeResult",
+    "create_initial_state",
     # Graph
     "TradingGraph",
     "build_trading_graph",
