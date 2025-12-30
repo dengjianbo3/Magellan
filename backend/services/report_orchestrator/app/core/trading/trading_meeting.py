@@ -35,6 +35,11 @@ from app.core.trading.vote_calculator import (
     DynamicWeightCalculator,
 )
 
+# 🆕 Phase 1-2 Refactored Modules
+from app.core.trading.safety.guards import SafetyGuard, SafetyCheckResult, BlockReason
+from app.core.trading.executor import TradeExecutor
+from app.core.trading.reflection.engine import ReflectionEngine, TradeReflection
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,8 +101,61 @@ class TradingMeeting(Meeting):
         self._current_predictions: Dict[str, Dict[str, Any]] = {}
         self._current_trade_id: Optional[str] = None
 
+        # 🆕 Phase 1-2: Initialize new refactored modules
+        self._safety_guard: Optional[SafetyGuard] = None
+        self._trade_executor: Optional[TradeExecutor] = None
+        self._reflection_engine: Optional[ReflectionEngine] = None
+        self._init_refactored_modules()
+
         # Register position closed callback (for triggering Agent reflection)
         self._register_position_closed_callback()
+
+    def _init_refactored_modules(self):
+        """
+        Initialize Phase 1-2 refactored modules.
+        
+        Sets up:
+        - SafetyGuard: Centralized safety checks
+        - TradeExecutor: Execution with ReAct fallback
+        - ReflectionEngine: Post-trade reflection
+        """
+        try:
+            # Get paper_trader from toolkit if available
+            paper_trader = getattr(self.toolkit, 'paper_trader', None) if self.toolkit else None
+            
+            # Initialize SafetyGuard
+            if paper_trader:
+                self._safety_guard = SafetyGuard(
+                    trader=paper_trader,
+                    cooldown_manager=getattr(self.toolkit, 'cooldown_manager', None),
+                    config=self.config,
+                    min_confidence=getattr(self.config, 'min_confidence', 60)
+                )
+                logger.info("[TradingMeeting] ✅ SafetyGuard initialized")
+            
+            # Initialize TradeExecutor
+            if paper_trader and self.llm_service:
+                self._trade_executor = TradeExecutor(
+                    llm_service=self.llm_service,
+                    toolkit=self.toolkit,
+                    paper_trader=paper_trader,
+                    safety_guard=self._safety_guard,
+                    on_message=self.on_message,
+                    symbol=getattr(self.config, 'symbol', 'BTC-USDT-SWAP')
+                )
+                logger.info("[TradingMeeting] ✅ TradeExecutor initialized")
+            
+            # Initialize ReflectionEngine
+            if self.llm_service:
+                self._reflection_engine = ReflectionEngine(
+                    llm_service=self.llm_service,
+                    redis_url="redis://redis:6379"  # Default Redis URL
+                )
+                logger.info("[TradingMeeting] ✅ ReflectionEngine initialized")
+                
+        except Exception as e:
+            logger.warning(f"[TradingMeeting] Failed to initialize refactored modules: {e}")
+            # Non-fatal - the original code paths will still work
 
     async def _calculate_agent_weights(self) -> Dict[str, float]:
         """
@@ -199,6 +257,37 @@ class TradingMeeting(Meeting):
 
                 # Generate Agent reflections
                 logger.info(f"📝 Generating agent reflections for trade {trade_id}...")
+
+                # 🆕 Use new ReflectionEngine if available (Phase 1-2 integration)
+                if self._reflection_engine:
+                    try:
+                        # Get agent votes from current predictions
+                        agent_votes = []
+                        for agent_id, pred in self._current_predictions.items():
+                            agent_votes.append({
+                                "agent_id": agent_id,
+                                "agent_name": pred.get("agent_name", agent_id),
+                                "direction": pred.get("direction"),
+                                "confidence": pred.get("confidence", 0),
+                                "reasoning": pred.get("reasoning", "")
+                            })
+                        
+                        reflection = await self._reflection_engine.reflect_on_trade(
+                            trade_id=trade_id,
+                            direction=trade_result['direction'],
+                            entry_price=trade_result['entry_price'],
+                            exit_price=trade_result['exit_price'],
+                            leverage=getattr(position, 'leverage', 1),
+                            pnl=pnl,
+                            pnl_percent=pnl / getattr(position, 'margin', 1) * 100 if getattr(position, 'margin', 0) else 0,
+                            close_reason=reason,
+                            agent_votes=agent_votes
+                        )
+                        logger.info(f"✅ [ReflectionEngine] Generated reflection: {'WIN' if reflection.is_win else 'LOSS'}")
+                        logger.info(f"   Correct predictions: {reflection.correct_predictions}")
+                        logger.info(f"   Incorrect predictions: {reflection.incorrect_predictions}")
+                    except Exception as re_error:
+                        logger.warning(f"ReflectionEngine failed, falling back to legacy: {re_error}")
 
                 # Get an available agent as LLM client (for generating reflections)
                 llm_client = None
