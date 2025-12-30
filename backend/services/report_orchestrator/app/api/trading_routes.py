@@ -811,17 +811,15 @@ async def get_trade_history(limit: int = Query(default=50, le=100)):
     """Get trade history including signals and actual closed trades"""
     system = await get_trading_system()
 
-    # Get actual closed trades from paper trader
+    # 🔧 CRITICAL FIX: Always use async get_trade_history() for REAL OKX data
+    # The old get_filtered_trade_history() returned local estimates without fees
     actual_trades = []
     if system.paper_trader:
-        # 🆕 Use filtered trade history if metrics baseline is set
-        if hasattr(system.paper_trader, 'get_filtered_trade_history'):
-            actual_trades = system.paper_trader.get_filtered_trade_history()[-limit:]
-        else:
-            actual_trades = await system.paper_trader.get_trade_history(limit)
+        # Call the async method that fetches from OKX API
+        actual_trades = await system.paper_trader.get_trade_history(limit)
 
     return {
-        "trades": actual_trades,  # Actual closed trades with real PnL
+        "trades": actual_trades,  # REAL closed trades with actual PnL from OKX
         "signals": system._trade_history[-limit:]  # Signal history for reference
     }
 
