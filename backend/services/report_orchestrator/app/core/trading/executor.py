@@ -737,15 +737,15 @@ Choose ONE action and execute it. Be decisive but cautious.
                 logger.error(f"[TradeExecutor] Close position failed: {e}")
         
         self._result["signal"] = TradingSignal(
-            direction="hold",  # After closing, we're in hold state
+            direction="close_position",  # CRITICAL FIX: was "hold", should be "close_position"
             symbol=self.symbol,
             leverage=1,
             amount_percent=0.0,
             entry_price=current_price,
             take_profit_price=current_price,
             stop_loss_price=current_price,
-            confidence=50,
-            reasoning=f"Position closed: {reason}",
+            confidence=100,  # High confidence - this is a deliberate close decision
+            reasoning=f"[Close position] {reason}",
             agents_consensus={},
             timestamp=datetime.now()
         )
