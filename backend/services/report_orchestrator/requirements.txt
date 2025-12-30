@@ -60,3 +60,6 @@ ccxt>=4.0.0  # Unified exchange API (OKX, Binance, etc.)
 apscheduler>=3.10.0  # Task scheduling
 duckduckgo-search==7.3.2
 google-genai>=0.3.0
+
+# For LangGraph workflow orchestration (Phase 4 refactoring)
+langgraph>=0.2.0
