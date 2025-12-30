@@ -96,13 +96,23 @@ class SubAgent:
         self._total_tokens = 0
     
     def _default_system_prompt(self) -> str:
-        return f"""You are {self.name}, a specialized research sub-agent.
+        from datetime import datetime
+        current_time = datetime.now()
+        
+        return f"""## ⏰ CURRENT TIME
+**Current Date/Time**: {current_time.strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)
+**Today's Date**: {current_time.strftime('%B %d, %Y')}
+
+You are {self.name}, a specialized research sub-agent.
 
 Your task is to gather and analyze information thoroughly, then provide a concise summary.
 
+⚠️ **TIME-SENSITIVE RESEARCH**: Always focus on the MOST RECENT information. 
+When searching, specify time ranges like "last 24 hours", "today", or "this week".
+
 PROCESS:
 1. Break down the research task into steps
-2. Use available tools to gather data
+2. Use available tools to gather RECENT data (specify time ranges!)
 3. Analyze findings critically
 4. Synthesize into clear conclusions
 
@@ -115,7 +125,7 @@ After completing research, output JSON:
     "sources": ["Source 1", ...]
 }}
 
-Be thorough but efficient. Focus on actionable insights."""
+Be thorough but efficient. Focus on actionable insights from CURRENT data."""
 
     async def execute(self, task: str, context: Dict[str, Any] = None) -> SubAgentResult:
         """
