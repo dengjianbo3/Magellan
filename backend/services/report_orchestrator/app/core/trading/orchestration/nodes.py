@@ -601,14 +601,16 @@ async def _generate_llm_leader_summary(leader_agent: Any, votes: List[Dict], pos
     try:
         # 1. Format Position Summary
         has_pos = position_context.get("has_position", False)
-        direction = position_context.get("direction", "none")
+        direction = position_context.get("direction")
+        # Handle None direction safely
+        direction_str = str(direction).upper() if direction else "NONE"
         entry_price = position_context.get("entry_price", 0)
         current_price = market_data.get("current_price", 0)
         pnl_percent = position_context.get("unrealized_pnl_percent", 0)
         
         pos_summary = f"""## Current Position Status
 - Status: {"Has Position" if has_pos else "No Position"}
-- Direction: {direction.upper()}
+- Direction: {direction_str}
 - Current Price: ${current_price:,.2f}
 """
         if has_pos:
@@ -635,7 +637,9 @@ async def _generate_llm_leader_summary(leader_agent: Any, votes: List[Dict], pos
         votes_text = "## Expert Opinion Summary\n"
         for vote in votes:
             agent_name = vote.get("agent_name", "Unknown")
-            v_dir = vote.get("direction", "hold").upper()
+            v_dir_raw = vote.get("direction")
+            # Handle None direction safely
+            v_dir = str(v_dir_raw).upper() if v_dir_raw else "HOLD"
             v_conf = vote.get("confidence", 0)
             v_reason = vote.get("reasoning", "No reasoning provided")
             votes_text += f"- **{agent_name}** ({v_dir}, {v_conf}%): {v_reason[:200]}...\n"
