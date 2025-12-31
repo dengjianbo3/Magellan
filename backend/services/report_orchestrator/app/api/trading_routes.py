@@ -739,7 +739,7 @@ class TradingSystem:
             del self._ws_clients[client_id]
             logger.info(f"WebSocket client unregistered: {client_id}")
 
-    def get_status(self) -> Dict[str, Any]:
+    async def get_status(self) -> Dict[str, Any]:
         """Get system status"""
         # Determine actual running state based on scheduler state
         # enabled should reflect if the system is actually running, not just configured
@@ -749,7 +749,7 @@ class TradingSystem:
             # Consider running if scheduler is in RUNNING, ANALYZING, or EXECUTING state
             is_running = scheduler_state in ["running", "analyzing", "executing"]
 
-        trader_status = self.paper_trader.get_status() if self.paper_trader else None
+        trader_status = await self.paper_trader.get_status() if self.paper_trader else None
 
         return {
             "initialized": self._initialized,
@@ -781,7 +781,7 @@ async def get_trading_system(llm_service=None) -> TradingSystem:
 async def get_status():
     """Get trading system status"""
     system = await get_trading_system()
-    return system.get_status()
+    return await system.get_status()
 
 
 @router.get("/account")

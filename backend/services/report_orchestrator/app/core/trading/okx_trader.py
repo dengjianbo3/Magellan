@@ -1068,10 +1068,25 @@ class OKXTrader:
 
         return self._equity_history[-limit:]
 
-    def get_status(self) -> Dict:
-        """Get trader status (PaperTrader compatible)"""
+    async def get_status(self) -> Dict:
+        """Get trader status (PaperTrader compatible)
+        
+        🆕 CRITICAL FIX: Now returns REAL trade count from OKX API after baseline
+        """
         # Calculate daily loss percentage
         daily_loss_percent = (abs(self._daily_pnl) / self.initial_balance * 100) if self.initial_balance > 0 and self._daily_pnl < 0 else 0
+        
+        # 🔧 FIX: Get real trade count from OKX API (respects metrics_baseline)
+        try:
+            real_trades = await self.get_trade_history(limit=100)
+            total_trades = len(real_trades)
+            realized_pnl = sum(t.get('pnl', 0) for t in real_trades)
+            win_rate_calc = self._calculate_win_rate_from_trades(real_trades)
+        except Exception as e:
+            logger.warning(f"[OKXTrader] Failed to get real trade history: {e}, using local fallback")
+            total_trades = len(self._trade_history)
+            realized_pnl = sum(t.get('pnl', 0) for t in self._trade_history)
+            win_rate_calc = self._calculate_win_rate()
         
         return {
             'initialized': self._initialized,
@@ -1082,15 +1097,23 @@ class OKXTrader:
             'current_price': self._last_price,
             'balance': self.initial_balance,
             'equity': self.initial_balance,
-            'total_trades': len(self._trade_history),
-            'win_rate': self._calculate_win_rate(),
-            'realized_pnl': sum(t.get('pnl', 0) for t in self._trade_history),
+            'total_trades': total_trades,  # 🔧 FIXED: Real count from OKX
+            'win_rate': win_rate_calc,      # 🔧 FIXED: Based on real trades
+            'realized_pnl': realized_pnl,   # 🔧 FIXED: Real PnL from OKX
             # 🆕 Daily loss tracking
             'daily_pnl': self._daily_pnl,
             'daily_loss_percent': daily_loss_percent,
             'max_daily_loss_percent': self._max_daily_loss_percent,
             'is_trading_halted': self._is_trading_halted
         }
+
+    def _calculate_win_rate_from_trades(self, trades: List[Dict]) -> str:
+        """Calculate win rate from trade list"""
+        if not trades:
+            return "0.0%"
+        wins = sum(1 for t in trades if t.get('pnl', 0) > 0)
+        return f"{(wins / len(trades) * 100):.1f}%"
+
 
     def _calculate_win_rate(self) -> str:
         if not self._trade_history:
