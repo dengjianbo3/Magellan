@@ -265,58 +265,28 @@ class TradingSystem:
                     })
                     logger.info(f"[SIGNAL_DEBUG] History now has {len(self._trade_history)} entries")
                 else:
-                    # 🆕 交易已在TradingMeeting.TradeExecutor中执行
-                    # 这里只记录结果，不再重复执行
-                    logger.info(f"[SIGNAL_DEBUG] Recording {signal.direction} signal to history")
+                    # 🔧 FIX: LangGraph execution_node only PREPARES the signal, 
+                    # it does NOT actually execute trades via the trader.
+                    # We MUST call _execute_signal to actually open the position.
+                    logger.info(f"[SIGNAL_DEBUG] Executing {signal.direction} signal via _execute_signal")
                     
-                    # 🔧 FIX Issue #1: 更可靠的检测 - TradeExecutor执行成功后会设置entry_price
-                    # 如果signal.entry_price已设置，说明交易已执行
-                    trade_already_executed = signal.entry_price is not None and signal.entry_price > 0
+                    # Check if position already exists to prevent duplicates
+                    current_position = await self.paper_trader.get_position() if self.paper_trader else None
+                    has_existing_position = current_position and current_position.get("has_position")
+                    existing_direction = current_position.get("direction") if has_existing_position else None
                     
-                    if trade_already_executed:
-                        # TradeExecutor已成功执行，直接使用signal中的信息
-                        logger.info(f"[SIGNAL_DEBUG] Trade already executed by TradeExecutor (entry_price=${signal.entry_price:.2f}), skipping _execute_signal")
+                    if has_existing_position and existing_direction == signal.direction:
+                        # Already have same-direction position, skip
+                        logger.info(f"[SIGNAL_DEBUG] Already have {existing_direction} position, skipping execution")
                         trade_result = {
                             "success": True,
-                            "action": signal.direction,
-                            "message": "交易已由TradeExecutor执行",
-                            "entry_price": signal.entry_price,
-                            "leverage": signal.leverage,
-                            "tp_price": signal.take_profit_price,
-                            "sl_price": signal.stop_loss_price
+                            "action": "skip",
+                            "message": f"已存在{existing_direction}仓位，无需重复开仓"
                         }
                     else:
-                        # TradeExecutor可能执行失败，检查当前持仓状态作为备用
-                        current_position = await self.paper_trader.get_position() if self.paper_trader else None
-                        has_any_position = current_position and current_position.get("has_position")
-                        
-                        if has_any_position:
-                            # 有持仓存在，不要尝试再次执行以避免冲突
-                            existing_dir = current_position.get("direction")
-                            logger.info(f"[SIGNAL_DEBUG] Position exists ({existing_dir}), not calling _execute_signal to avoid conflict")
-                            trade_result = {
-                                "success": False,
-                                "action": signal.direction,
-                                "message": f"跳过执行: 已存在{existing_dir}持仓",
-                                "existing_position": existing_dir
-                            }
-                        else:
-                            # 🛡️ SAFETY FIX: Do NOT fallback to _execute_signal
-                            # If TradeExecutor didn't execute and no position exists, 
-                            # it means the trade was intentionally NOT executed (hold signal, blocked, etc.)
-                            # Attempting fallback execution could cause:
-                            # 1. Duplicate orders
-                            # 2. Orders without proper analysis
-                            # 3. Race conditions
-                            logger.warning(f"[SIGNAL_DEBUG] ⚠️ TradeExecutor did not execute {signal.direction} and no position exists. "
-                                         f"NOT executing fallback to prevent potential duplicate/unexpected orders. "
-                                         f"If this is unexpected, check TradeExecutor logs.")
-                            trade_result = {
-                                "success": False,
-                                "action": signal.direction,
-                                "message": "TradeExecutor未执行，跳过备用执行以避免重复下单",
-                                "reason": "no_fallback_execution"
-                            }
+                        # Execute the trade
+                        trade_result = await self._execute_signal(signal)
+                        logger.info(f"[SIGNAL_DEBUG] Trade execution result: {trade_result}")
                     
                     self._trade_history.append({
                         "timestamp": datetime.now().isoformat(),
