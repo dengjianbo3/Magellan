@@ -1395,7 +1395,7 @@ async def trading_websocket(websocket: WebSocket, session_id: str):
     # Send initial status
     await websocket.send_json({
         "type": "connected",
-        "status": system.get_status()
+        "status": await system.get_status()
     })
 
     try:
