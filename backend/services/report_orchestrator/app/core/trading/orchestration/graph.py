@@ -174,7 +174,8 @@ class TradingGraph:
         position_context: Dict = None,
         agent_votes: list = None,
         agent_weights: Dict = None,
-        thread_id: str = None
+        thread_id: str = None,
+        leader_agent: Any = None
     ) -> TradingState:
         """
         Run the trading workflow.
@@ -187,6 +188,7 @@ class TradingGraph:
             agent_votes: Pre-computed agent votes (optional)
             agent_weights: Agent weight multipliers (optional)
             thread_id: Thread ID for checkpointing
+            leader_agent: Leader agent instance for summary generation
             
         Returns:
             Final TradingState with results
@@ -206,6 +208,8 @@ class TradingGraph:
             initial_state["agent_votes"] = agent_votes
         if agent_weights:
             initial_state["agent_weights"] = agent_weights
+        if leader_agent:
+            initial_state["leader_agent"] = leader_agent
         
         # Run the graph
         config = {"configurable": {"thread_id": thread_id or "default"}}

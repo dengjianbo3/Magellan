@@ -9,6 +9,7 @@ import logging
 import time
 from datetime import datetime
 from typing import Dict, Any, List
+import json
 
 from .state import TradingState, NodeResult, TradeDirection
 
@@ -200,9 +201,25 @@ async def consensus_node(state: TradingState) -> Dict[str, Any]:
             consensus_confidence = 0
             leader_summary = "No agent votes available - defaulting to HOLD"
         else:
-            # Calculate weighted consensus
+        # Calculate weighted consensus
             consensus_direction, consensus_confidence, weighted_conf = _calculate_weighted_consensus(votes, weights)
-            leader_summary = _generate_leader_summary(votes, consensus_direction, consensus_confidence)
+            
+            # 🔧 RESTORE: Use Leader Agent to generate comprehensive summary if available
+            leader_agent = state.get("leader_agent")
+            if leader_agent:
+                try:
+                    logger.info("[Node: consensus] 🧠 Generating comprehensive Leader summary via LLM...")
+                    leader_summary = await _generate_llm_leader_summary(
+                        leader_agent, 
+                        votes, 
+                        state.get("position_context", {}),
+                        state.get("market_data", {})
+                    )
+                except Exception as e:
+                    logger.error(f"[Node: consensus] ❌ Failed to generate LLM summary: {e}")
+                    leader_summary = _generate_leader_summary(votes, consensus_direction, consensus_confidence)
+            else:
+                leader_summary = _generate_leader_summary(votes, consensus_direction, consensus_confidence)
         
         elapsed = (time.time() - start_time) * 1000
         logger.info(f"[Node: consensus] ✅ Complete in {elapsed:.0f}ms - {consensus_direction.upper()} ({consensus_confidence}%)")
@@ -570,3 +587,146 @@ def _calculate_amount(confidence: int) -> float:
         return 0.20
     else:
         return 0.15
+
+
+async def _generate_llm_leader_summary(leader_agent: Any, votes: List[Dict], position_context: Dict, market_data: Dict) -> str:
+    """
+    Generate a comprehensive leader summary using the Leader agent LLM.
+    Replicates the functionality of the original run_leader_phase.
+    """
+    try:
+        # 1. Format Position Summary
+        has_pos = position_context.get("has_position", False)
+        direction = position_context.get("direction", "none")
+        entry_price = position_context.get("entry_price", 0)
+        current_price = market_data.get("current_price", 0)
+        pnl_percent = position_context.get("unrealized_pnl_percent", 0)
+        
+        pos_summary = f\"\"\"## Current Position Status
+- Status: {"Has Position" if has_pos else "No Position"}
+- Direction: {direction.upper()}
+- Current Price: ${current_price:,.2f}
+\"\"\"
+        if has_pos:
+            pos_summary += f\"\"\"- Entry Price: ${entry_price:,.2f}
+- PnL: {pnl_percent:+.2f}%
+\"\"\"
+
+        # 2. Generate Decision Guidance
+        decision_guidance = "## Decision Guidance\n"
+        if has_pos:
+            if pnl_percent > 5:
+                decision_guidance += f"- Current position has good profit ({pnl_percent:+.2f}%). Consider securing profits or trailing stop.\n"
+            elif pnl_percent < -3:
+                decision_guidance += f"- Current position is in loss ({pnl_percent:+.2f}%). Evaluate if thesis is still valid or stop loss needed.\n"
+            
+            if direction == "long":
+                decision_guidance += "- HOLD LONG if bullish trend continues. CLOSE if trend reversal confirmed.\n"
+            elif direction == "short":
+                decision_guidance += "- HOLD SHORT if bearish trend continues. CLOSE if support holds or reversal likely.\n"
+        else:
+            decision_guidance += "- No position. Look for high-confidence setup to enter.\n"
+
+        # 3. Format Expert Votes
+        votes_text = "## Expert Opinion Summary\n"
+        for vote in votes:
+            agent_name = vote.get("agent_name", "Unknown")
+            v_dir = vote.get("direction", "hold").upper()
+            v_conf = vote.get("confidence", 0)
+            v_reason = vote.get("reasoning", "No reasoning provided")
+            votes_text += f"- **{agent_name}** ({v_dir}, {v_conf}%): {v_reason[:200]}...\n"
+
+        # 4. Construct Prompt
+        prompt = f\"\"\"As the roundtable moderator, please comprehensively summarize the meeting discussions and expert opinions.
+
+{pos_summary}
+
+{decision_guidance}
+
+{votes_text}
+
+## Your Task
+
+As moderator, please:
+
+1. **Summarize Expert Consensus**:
+   - How many experts are bullish? Bearish? Neutral?
+   - What are the core reasons for each expert's opinion?
+   - What are the agreements and disagreements among experts?
+
+2. **Comprehensive Market Judgment**:
+   - Based on all discussions, your overall view of the current market
+   - Comprehensive evaluation of technical, fundamental, and sentiment aspects
+   - Factors to consider given the current position status
+
+3. **Risk and Opportunity Assessment**:
+   - What are the main risks currently?
+   - Where are the potential trading opportunities?
+   - Recommendations for current position (if any)
+
+4. **⚠️ CRITICAL - Final Risk Parameters Decision**:
+   Based on expert TP/SL recommendations and current market volatility:
+   - **Take Profit %**: Average expert recommendation, adjust for volatility
+   - **Stop Loss %**: Average expert recommendation, adjust for protection
+   - These are MARGIN-based (not price-based)!
+   
+   Example: "Given 4% volatility, I recommend TP 10%, SL 4% on margin"
+
+5. **Provide Meeting Conclusions**:
+   - Based on all analysis, what strategy should be adopted?
+   - Recommended leverage, position size, **TP% and SL%**
+   - How confident are you?
+
+## 📋 Output Format
+
+Please express your summary and recommendations freely, **no strict format required**.
+
+You can express naturally, for example:
+
+"Based on all expert opinions, I believe...
+- TechnicalAnalyst and SentimentAnalyst are bullish because...
+- However, MacroEconomist advises caution due to...
+- Considering the current {('no position' if not has_pos else f'{direction} position')} status...
+I recommend... strategy because...
+Suggested leverage is..., position size is...
+**For risk management, I recommend TP at X% and SL at Y% (margin-based)**
+My confidence is approximately...%"
+
+⚠️ **Important Reminders**:
+- ✅ Express your summary and recommendations in natural language
+- ✅ Include expert opinions, your judgment, recommended strategy
+- ✅ **ALWAYS include your recommended TP% and SL% values**
+- ✅ No need for markers like "【Final Decision】"
+- ✅ Your summary will be passed to the Trade Executor
+
+Please begin your summary!
+\"\"\"
+
+        # 5. Call LLM
+        # Use _call_llm directly
+        messages = [
+            {"role": "system", "content": leader_agent.system_prompt or leader_agent.role_prompt},
+            {"role": "user", "content": prompt}
+        ]
+        
+        response = await leader_agent._call_llm(messages)
+        
+        # 6. Extract content
+        content = ""
+        if isinstance(response, dict):
+            if "choices" in response:
+                try:
+                    content = response["choices"][0]["message"]["content"]
+                except (KeyError, IndexError):
+                    pass
+            if not content:
+                content = response.get("content", response.get("response", ""))
+        else:
+            content = str(response)
+            
+        return content if content else "Failed to generate leader summary."
+        
+    except Exception as e:
+        logger.error(f"[_generate_llm_leader_summary] Error: {e}")
+        return f"Error generating summary: {str(e)}"
+

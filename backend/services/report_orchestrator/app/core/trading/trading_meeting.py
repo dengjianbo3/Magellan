@@ -342,7 +342,8 @@ Based on your expertise, provide your trading recommendation.
                 market_data=market_data,
                 position_context=position_context,
                 agent_votes=votes,
-                agent_weights=agent_weights
+                agent_weights=agent_weights,
+                leader_agent=self._get_agent_by_id("Leader")  # 🔧 FIX: Pass Leader agent for summary generation
             )
             
             # Extract final signal from graph state
