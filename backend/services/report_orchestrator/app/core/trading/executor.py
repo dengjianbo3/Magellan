@@ -26,29 +26,16 @@ logger = logging.getLogger(__name__)
 
 class TradeExecutor:
     """
-    TradeExecutor - Makes final trading decisions.
-    
-    Extracted from TradingMeeting for better modularity and testability.
-    
-    Responsibilities:
-    1. Analyze leader summary and agent votes
-    2. Build execution prompt for LLM
-    3. Execute LLM with tool calling
-    4. Handle tool execution (open_long, open_short, hold, close_position)
-    5. Return TradingSignal with execution result
-    
-    Usage:
-        executor = TradeExecutor(
-            llm_service=llm,
-            toolkit=toolkit,
-            paper_trader=trader
-        )
         signal = await executor.execute(
             leader_summary=summary,
             agent_votes=votes,
             position_context=context
         )
     """
+    
+    # Safety thresholds for confidence validation
+    MIN_CONFIDENCE_OPEN = 65    # Minimum confidence to open new position  
+    MIN_CONFIDENCE_CLOSE = 50   # Minimum confidence to close position
     
     def __init__(
         self,
@@ -656,6 +643,17 @@ Choose ONE action and execute it. Be decisive but cautious.
         confidence: int = 70
     ):
         """Execute position opening."""
+        # ✅ Confidence validation
+        if confidence < self.MIN_CONFIDENCE_OPEN:
+            logger.warning(
+                f"[SafetyGuard] Confidence {confidence}% below minimum {self.MIN_CONFIDENCE_OPEN}% - "
+                f"Blocking {direction} trade"
+            )
+            self._result["signal"] = await self._generate_hold_signal(
+                f"Blocked - Confidence {confidence}% too low for opening position"
+            )
+            return
+        
         try:
             current_price = await get_current_btc_price()
             
@@ -734,6 +732,17 @@ Choose ONE action and execute it. Be decisive but cautious.
     
     async def _tool_close_position(self, reason: str = "", confidence: int = 100):
         """Close position tool."""
+        # ✅ Confidence validation        
+        if confidence < self.MIN_CONFIDENCE_CLOSE:
+            logger.warning(
+                f"[SafetyGuard] Confidence {confidence}% below minimum {self.MIN_CONFIDENCE_CLOSE}% - "
+                f"Blocking close"
+            )
+            self._result["signal"] = await self._generate_hold_signal(
+                f"Blocked - Confidence {confidence}% too low for closing position"
+            )
+            return
+        
         current_price = await get_current_btc_price()
         
         if self.paper_trader:
