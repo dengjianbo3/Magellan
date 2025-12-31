@@ -174,7 +174,9 @@ async def risk_assessment_node(state: TradingState) -> Dict[str, Any]:
         }
 
 
-async def consensus_node(state: TradingState) -> Dict[str, Any]:
+from langchain_core.runnables import RunnableConfig
+
+async def consensus_node(state: TradingState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Node 4: Consensus Building
     
@@ -205,7 +207,9 @@ async def consensus_node(state: TradingState) -> Dict[str, Any]:
             consensus_direction, consensus_confidence, weighted_conf = _calculate_weighted_consensus(votes, weights)
             
             # 🔧 RESTORE: Use Leader Agent to generate comprehensive summary if available
-            leader_agent = state.get("leader_agent")
+            # Retrieve leader_agent from config (not state, to avoid serialization issues)
+            leader_agent = config.get("configurable", {}).get("leader_agent")
+            
             if leader_agent:
                 try:
                     logger.info("[Node: consensus] 🧠 Generating comprehensive Leader summary via LLM...")

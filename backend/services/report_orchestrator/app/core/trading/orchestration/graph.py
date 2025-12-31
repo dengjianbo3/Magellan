@@ -208,11 +208,14 @@ class TradingGraph:
             initial_state["agent_votes"] = agent_votes
         if agent_weights:
             initial_state["agent_weights"] = agent_weights
-        if leader_agent:
-            initial_state["leader_agent"] = leader_agent
         
         # Run the graph
-        config = {"configurable": {"thread_id": thread_id or "default"}}
+        config = {
+            "configurable": {
+                "thread_id": thread_id or "default",
+                "leader_agent": leader_agent
+            }
+        }
         
         try:
             # Stream through nodes

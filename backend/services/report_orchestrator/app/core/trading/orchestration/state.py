@@ -148,9 +148,6 @@ class TradingState(TypedDict, total=False):
     current_node: str
     completed_nodes: List[str]
     node_timings: Dict[str, float]  # Node execution times in ms
-    
-    # === Runtime Resources ===
-    leader_agent: Any  # Leader Agent instance for summary generation
 
 
 def create_initial_state(
