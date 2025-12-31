@@ -37,13 +37,13 @@ from app.core.trading.vote_calculator import (
 
 # 🆕 Phase 1-2 Refactored Modules
 from app.core.trading.safety.guards import SafetyGuard
-from app.core.trading.executor import TradeExecutor
+from app.core.trading.executor import TradeExecutor  # Legacy (kept for backward compatibility)
+from app.core.trading.executor_agent import ExecutorAgent  # 🆕 New unified agent-based executor
 from app.core.trading.reflection.engine import ReflectionEngine
 
 # 🆕 LangGraph orchestration imports
 from app.core.trading.orchestration.graph import TradingGraph
 from app.core.trading.orchestration.state import create_initial_state
-import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -392,42 +392,23 @@ Based on your expertise, provide your trading recommendation.
             
             logger.info(f"[LangGraph] Collected {len(votes)} votes")
             
-            # 🔧 FIX: Lazy initialization of TradeExecutor if not already initialized
-            # This handles cases where llm_service was not available during __init__
+            # 🆕 ExecutorAgent: inherits from Agent, uses native HTTP calls, no llm_service needed
             if not self._trade_executor:
                 paper_trader = getattr(self.toolkit, 'paper_trader', None) if self.toolkit else None
                 
-                # Try to get llm_service: 1) from self, 2) from agent, 3) create LLMGatewayClient
-                llm_service = self.llm_service
-                if not llm_service and self.agents:
-                    # Try extracting from an existing agent
-                    for agent in self.agents:
-                        if hasattr(agent, 'llm_service') and agent.llm_service:
-                            llm_service = agent.llm_service
-                            logger.info(f"[LangGraph] Got llm_service from agent: {agent.name}")
-                            break
-                        elif hasattr(agent, '_llm') and agent._llm:
-                            llm_service = agent._llm
-                            logger.info(f"[LangGraph] Got _llm from agent: {agent.name}")
-                            break
-                
-                # 🔧 NEW: Fallback to LLMGatewayClient - our wrapper class
-                if not llm_service:
-                    llm_service = LLMGatewayClient("http://llm_gateway:8003")
-                    logger.info("[LangGraph] Created LLMGatewayClient as llm_service fallback")
-                
-                if paper_trader and llm_service:
-                    self._trade_executor = TradeExecutor(
-                        llm_service=llm_service,
+                if paper_trader:
+                    # Use new ExecutorAgent - self-contained, no llm_service injection needed
+                    self._trade_executor = ExecutorAgent(
                         toolkit=self.toolkit,
                         paper_trader=paper_trader,
                         safety_guard=self._safety_guard,
                         on_message=self.on_message,
-                        symbol=getattr(self.config, 'symbol', 'BTC-USDT-SWAP')
+                        symbol=getattr(self.config, 'symbol', 'BTC-USDT-SWAP'),
+                        llm_gateway_url="http://llm_gateway:8003"
                     )
-                    logger.info("[LangGraph] ✅ TradeExecutor lazily initialized")
+                    logger.info("[LangGraph] ✅ ExecutorAgent initialized (unified agent architecture)")
                 else:
-                    logger.warning(f"[LangGraph] ⚠️ Cannot init TradeExecutor: paper_trader={paper_trader is not None}, llm_service={llm_service is not None}")
+                    logger.warning("[LangGraph] ⚠️ Cannot init ExecutorAgent: paper_trader not available")
 
             # Run the graph
             result_state = await self._trading_graph.run(

@@ -252,9 +252,9 @@ async def consensus_node(state: TradingState, config: RunnableConfig) -> Dict[st
 
 async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[str, Any]:
     """
-    Node 5: Execution (🔧 RESTORED: Uses TradeExecutor Agent)
+    Node 5: Execution (🆕 Uses ExecutorAgent - unified Agent architecture)
     
-    Uses TradeExecutor LLM Agent to make intelligent trading decisions.
+    Uses ExecutorAgent (inherits from Agent) to make intelligent trading decisions.
     The agent considers:
     - Leader's meeting summary
     - All agent votes
@@ -262,20 +262,21 @@ async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[st
     - Risk assessment
     
     Input: leader_summary, agent_votes, position_context, consensus_*
-    Output: final_signal (from TradeExecutor), execution_result, execution_success
+    Output: final_signal, execution_result, execution_success
     """
     start_time = time.time()
-    logger.info("[Node: execution] 🤖 Starting TradeExecutor Agent...")
+    logger.info("[Node: execution] 🤖 Starting ExecutorAgent...")
     
     try:
-        # Get TradeExecutor from config (passed from TradingMeeting)
-        trade_executor: TradeExecutor = config.get("configurable", {}).get("trade_executor")
+        # Get ExecutorAgent from config (passed from TradingMeeting)
+        # Note: variable still named trade_executor for backward compatibility
+        trade_executor = config.get("configurable", {}).get("trade_executor")
         
         if not trade_executor:
-            logger.error("[Node: execution] ❌ TradeExecutor not found in config!")
-            return _fallback_execution(state, start_time, "TradeExecutor not available")
+            logger.error("[Node: execution] ❌ ExecutorAgent not found in config!")
+            return _fallback_execution(state, start_time, "ExecutorAgent not available")
         
-        # Prepare inputs for TradeExecutor
+        # Prepare inputs for ExecutorAgent
         leader_summary = state.get("leader_summary", "")
         agent_votes = state.get("agent_votes", [])
         position_context = state.get("position_context", {})
@@ -284,13 +285,12 @@ async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[st
         logger.info(f"[Node: execution] Inputs: {len(agent_votes)} votes, "
                    f"has_position={position_context.get('has_position', False)}")
         
-        # Call TradeExecutor.execute() - LLM decides: open_long/open_short/hold/close
+        # Call ExecutorAgent.execute() - LLM decides: open_long/open_short/hold/close
         signal = await trade_executor.execute(
             leader_summary=leader_summary,
             agent_votes=agent_votes,
             position_context=position_context,
-            trigger_reason=trigger_reason,
-            enable_react_fallback=True  # Enable ReAct recovery on errors
+            trigger_reason=trigger_reason
         )
         
         # Convert TradingSignal to dict for state
