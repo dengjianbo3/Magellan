@@ -271,9 +271,45 @@ class TradingMeeting(Meeting):
                     "direction": pos.get("side") if pos else None
                 }
             
-            # For now, use empty votes - graph will generate signals internally
+            
+            # Collect real agent votes for LangGraph
+            logger.info("[LangGraph] Collecting agent votes...")
             votes = []
             
+            # Get analysis agents (exclude Leader and RiskAssessor)
+            analysis_agents = [agent for agent in self.agents 
+                             if agent.id in ['TechnicalAnalyst', 'MacroEconomist', 
+                                           'SentimentAnalyst', 'OnchainAnalyst', 
+                                           'QuantStrategist']]
+            
+            # Collect votes in parallel
+            import asyncio
+            vote_tasks = []
+            for agent in analysis_agents:
+                # Create agent context
+                context_str = f"Market: BTC at ${market_data['current_price']:,.2f}\n"
+                context_str += f"Trigger: {trigger_reason}\n"
+                if position_context.get('has_position'):
+                    context_str += f"Current Position: {position_context.get('direction', 'unknown')}\n"
+                
+                # Create vote task
+                task = self._get_agent_vote(agent, context_str, position_context)
+                vote_tasks.append(task)
+            
+            # Execute all votes in parallel
+            vote_results = await asyncio.gather(*vote_tasks, return_exceptions=True)
+            
+            # Process results
+            for i, result in enumerate(vote_results):
+                if isinstance(result, Exception):
+                    logger.warning(f"[LangGraph] Agent {analysis_agents[i].name} vote failed: {result}")
+                elif result:
+                    votes.append(result)
+                    logger.info(f"[LangGraph] Got vote from {analysis_agents[i].name}: {result.get('direction', 'unknown')}")
+            
+            logger.info(f"[LangGraph] Collected {len(votes)} votes from {len(analysis_agents)} agents")
+            
+
             # Run the graph
             result_state = await self._trading_graph.run(
                 trigger_reason=trigger_reason,
