@@ -317,12 +317,15 @@ Based on your expertise, provide your trading recommendation.
                         vote = self._parse_vote_json(agent_id, agent.name, response)
                         if vote:
                             # Convert AgentVote object to dict for graph compatibility
+                            # Use getattr with defaults to handle missing attributes safely
                             vote_dict = vote.to_dict() if hasattr(vote, 'to_dict') else {
-                                'agent_name': vote.agent_name,
-                                'direction': vote.direction,
-                                'confidence': vote.confidence,
-                                'leverage': vote.leverage,
-                                'reasoning': vote.reasoning
+                                'agent_name': getattr(vote, 'agent_name', 'unknown'),
+                                'direction': getattr(vote, 'direction', 'hold'),
+                                'confidence': getattr(vote, 'confidence', 50),
+                                'leverage': getattr(vote, 'leverage', 1),
+                                'reasoning': getattr(vote, 'reasoning', ''),
+                                'take_profit_percent': getattr(vote, 'take_profit_percent', 8.0),
+                                'stop_loss_percent': getattr(vote, 'stop_loss_percent', 3.0)
                             }
                             votes.append(vote_dict)
                             logger.info(f"[LangGraph] ✅ {agent.name}: {vote_dict.get('direction', 'unknown')} ({vote_dict.get('confidence', 0)}%)")
