@@ -241,6 +241,8 @@ async def execution_node(state: TradingState) -> Dict[str, Any]:
         direction = state.get("consensus_direction", "hold")
         confidence = state.get("consensus_confidence", 0)
         risk_blocked = state.get("risk_blocked", False)
+        market_data = state.get("market_data", {})
+        current_price = market_data.get("current_price", 0)
         
         if risk_blocked or direction == "hold" or confidence < 60:
             # Don't execute - stay in hold
@@ -249,6 +251,9 @@ async def execution_node(state: TradingState) -> Dict[str, Any]:
                 "confidence": confidence,
                 "leverage": 0,
                 "amount_percent": 0,
+                "entry_price": current_price,
+                "tp_price": current_price,
+                "sl_price": current_price,
                 "reasoning": state.get("leader_summary", "No action required"),
                 "timestamp": datetime.now().isoformat()
             }
@@ -258,15 +263,28 @@ async def execution_node(state: TradingState) -> Dict[str, Any]:
             # Calculate execution parameters
             leverage = _calculate_leverage(confidence)
             amount_percent = _calculate_amount(confidence)
+            tp_percent = 8.0  # Default TP
+            sl_percent = 3.0  # Default SL
+            
+            # 🔧 FIX: Calculate actual TP/SL prices
+            if direction == "long":
+                tp_price = current_price * (1 + tp_percent / 100)
+                sl_price = current_price * (1 - sl_percent / 100)
+            else:  # short
+                tp_price = current_price * (1 - tp_percent / 100)
+                sl_price = current_price * (1 + sl_percent / 100)
             
             final_signal = {
                 "direction": direction,
                 "confidence": confidence,
                 "leverage": leverage,
                 "amount_percent": amount_percent,
-                "tp_percent": 8.0,  # Default TP
-                "sl_percent": 3.0,  # Default SL
-                "reasoning": state.get("leader_summary", ""),
+                "entry_price": current_price,  # 🔧 FIX: Include entry price
+                "tp_price": tp_price,  # 🔧 FIX: Calculated TP price
+                "sl_price": sl_price,  # 🔧 FIX: Calculated SL price
+                "tp_percent": tp_percent,
+                "sl_percent": sl_percent,
+                "reasoning": state.get("leader_summary", ""),  # 🔧 FIX: Include leader summary
                 "timestamp": datetime.now().isoformat()
             }
             

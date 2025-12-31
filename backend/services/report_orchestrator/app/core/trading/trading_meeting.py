@@ -348,6 +348,9 @@ Based on your expertise, provide your trading recommendation.
             # Extract final signal from graph state
             signal_dict = result_state.get("final_signal")
             if signal_dict:
+                # 🔧 FIX: Extract leader_summary from result_state
+                leader_summary = result_state.get("leader_summary", "")
+                
                 signal = TradingSignal(
                     direction=signal_dict["direction"],
                     symbol=self.config.symbol,
@@ -358,6 +361,7 @@ Based on your expertise, provide your trading recommendation.
                     stop_loss_price=signal_dict.get("sl_price", market_data["current_price"]),
                     confidence=signal_dict.get("confidence", 50),
                     reasoning=signal_dict.get("reasoning", ""),
+                    leader_summary=leader_summary,  # 🔧 FIX: Include leader_summary
                     agents_consensus={"graph_state": "langgraph_execution"},
                     timestamp=datetime.now()
                 )
