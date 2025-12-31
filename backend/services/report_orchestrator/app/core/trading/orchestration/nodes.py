@@ -10,6 +10,7 @@ import time
 from datetime import datetime
 from typing import Dict, Any, List
 import json
+import traceback
 
 from .state import TradingState, NodeResult, TradeDirection
 
@@ -736,5 +737,6 @@ Please begin your summary!
         
     except Exception as e:
         logger.error(f"[_generate_llm_leader_summary] Error: {e}")
+        logger.error(traceback.format_exc())
         return f"Error generating summary: {str(e)}"
 
