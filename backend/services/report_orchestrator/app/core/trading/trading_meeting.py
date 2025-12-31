@@ -36,7 +36,7 @@ from app.core.trading.vote_calculator import (
 )
 
 # 🆕 Phase 1-2 Refactored Modules
-from app.core.trading.safety_guard import SafetyGuard
+from app.core.trading.safety.guards import SafetyGuard
 from app.core.trading.executor import TradeExecutor
 from app.core.trading.reflection.engine import ReflectionEngine
 
@@ -290,7 +290,7 @@ class TradingMeeting(Meeting):
                 signal = TradingSignal(
                     direction=signal_dict["direction"],
                     symbol=self.config.symbol,
-                    leverage=signal_dict.get("leverage", 1),
+                    leverage=max(signal_dict.get("leverage", 1), 1),
                     amount_percent=signal_dict.get("amount_percent", 0.2),
                     entry_price=signal_dict.get("entry_price", market_data["current_price"]),
                     take_profit_price=signal_dict.get("tp_price", market_data["current_price"]),
