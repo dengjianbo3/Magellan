@@ -43,8 +43,52 @@ from app.core.trading.reflection.engine import ReflectionEngine
 # 🆕 LangGraph orchestration imports
 from app.core.trading.orchestration.graph import TradingGraph
 from app.core.trading.orchestration.state import create_initial_state
+import httpx
 
 logger = logging.getLogger(__name__)
+
+
+class LLMGatewayClient:
+    """
+    Simple wrapper that calls llm_gateway HTTP endpoints.
+    Provides the interface TradeExecutor expects: chat(), generate().
+    """
+    
+    def __init__(self, gateway_url: str = "http://llm_gateway:8003"):
+        self.gateway_url = gateway_url
+    
+    async def chat(self, messages: list, tools: list = None, **kwargs) -> dict:
+        """Call llm_gateway /v1/chat/completions endpoint with tools."""
+        request_data = {
+            "messages": messages,
+            "temperature": kwargs.get("temperature", 0.7)
+        }
+        
+        if tools:
+            request_data["tools"] = tools
+            request_data["tool_choice"] = "auto"
+        
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            response = await client.post(
+                f"{self.gateway_url}/v1/chat/completions",
+                json=request_data
+            )
+            response.raise_for_status()
+            return response.json()
+    
+    async def generate(self, prompt: str, **kwargs) -> str:
+        """Simple generate without tools - returns just the text content."""
+        messages = [{"role": "user", "content": prompt}]
+        result = await self.chat(messages)
+        
+        # Extract text content from response
+        if "choices" in result and result["choices"]:
+            return result["choices"][0].get("message", {}).get("content", "")
+        return ""
+    
+    async def generate_with_tools(self, messages: list, tools: list) -> dict:
+        """Alias for chat with tools."""
+        return await self.chat(messages, tools=tools)
 
 
 # Note: The following are now imported from modular files:
@@ -353,10 +397,10 @@ Based on your expertise, provide your trading recommendation.
             if not self._trade_executor:
                 paper_trader = getattr(self.toolkit, 'paper_trader', None) if self.toolkit else None
                 
-                # Try to get llm_service from self first, then from an agent
+                # Try to get llm_service: 1) from self, 2) from agent, 3) create LLMGatewayClient
                 llm_service = self.llm_service
                 if not llm_service and self.agents:
-                    # Extract llm_service from an existing agent
+                    # Try extracting from an existing agent
                     for agent in self.agents:
                         if hasattr(agent, 'llm_service') and agent.llm_service:
                             llm_service = agent.llm_service
@@ -366,6 +410,11 @@ Based on your expertise, provide your trading recommendation.
                             llm_service = agent._llm
                             logger.info(f"[LangGraph] Got _llm from agent: {agent.name}")
                             break
+                
+                # 🔧 NEW: Fallback to LLMGatewayClient - our wrapper class
+                if not llm_service:
+                    llm_service = LLMGatewayClient("http://llm_gateway:8003")
+                    logger.info("[LangGraph] Created LLMGatewayClient as llm_service fallback")
                 
                 if paper_trader and llm_service:
                     self._trade_executor = TradeExecutor(
