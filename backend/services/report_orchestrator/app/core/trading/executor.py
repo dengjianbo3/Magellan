@@ -459,7 +459,8 @@ Choose ONE action and execute it. Be decisive but cautious.
                             "amount_percent": {"type": "number", "description": "Position size as % of account (0.1-0.3)", "default": 0.2},
                             "tp_percent": {"type": "number", "description": "Take profit % from entry", "default": 8.0},
                             "sl_percent": {"type": "number", "description": "Stop loss % from entry", "default": 3.0},
-                            "reasoning": {"type": "string", "description": "Reason for this trade"}
+                            "reasoning": {"type": "string", "description": "Reason for this trade"},
+                            "confidence": {"type": "integer", "description": "Confidence level 0-100", "minimum": 0, "maximum": 100, "default": 70}
                         },
                         "required": ["reasoning"]
                     }
@@ -477,7 +478,8 @@ Choose ONE action and execute it. Be decisive but cautious.
                             "amount_percent": {"type": "number", "description": "Position size as % of account (0.1-0.3)", "default": 0.2},
                             "tp_percent": {"type": "number", "description": "Take profit % from entry", "default": 8.0},
                             "sl_percent": {"type": "number", "description": "Stop loss % from entry", "default": 3.0},
-                            "reasoning": {"type": "string", "description": "Reason for this trade"}
+                            "reasoning": {"type": "string", "description": "Reason for this trade"},
+                            "confidence": {"type": "integer", "description": "Confidence level 0-100", "minimum": 0, "maximum": 100, "default": 70}
                         },
                         "required": ["reasoning"]
                     }
@@ -491,7 +493,8 @@ Choose ONE action and execute it. Be decisive but cautious.
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "reason": {"type": "string", "description": "Reason for holding"}
+                            "reason": {"type": "string", "description": "Reason for holding"},
+                            "confidence": {"type": "integer", "description": "Confidence level 0-100", "minimum": 0, "maximum": 100, "default": 50}
                         },
                         "required": ["reason"]
                     }
@@ -505,7 +508,8 @@ Choose ONE action and execute it. Be decisive but cautious.
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "reason": {"type": "string", "description": "Reason for closing"}
+                            "reason": {"type": "string", "description": "Reason for closing"},
+                            "confidence": {"type": "integer", "description": "Confidence level 0-100", "minimum": 0, "maximum": 100, "default": 100}
                         },
                         "required": ["reason"]
                     }
@@ -623,10 +627,11 @@ Choose ONE action and execute it. Be decisive but cautious.
         amount_percent: float = 0.2,
         tp_percent: float = 8.0,
         sl_percent: float = 3.0,
-        reasoning: str = ""
+        reasoning: str = "",
+        confidence: int = 70
     ):
         """Open long position tool."""
-        await self._execute_open_position("long", leverage, amount_percent, tp_percent, sl_percent, reasoning)
+        await self._execute_open_position("long", leverage, amount_percent, tp_percent, sl_percent, reasoning, confidence)
     
     async def _tool_open_short(
         self,
@@ -634,10 +639,11 @@ Choose ONE action and execute it. Be decisive but cautious.
         amount_percent: float = 0.2,
         tp_percent: float = 8.0,
         sl_percent: float = 3.0,
-        reasoning: str = ""
+        reasoning: str = "",
+        confidence: int = 70
     ):
         """Open short position tool."""
-        await self._execute_open_position("short", leverage, amount_percent, tp_percent, sl_percent, reasoning)
+        await self._execute_open_position("short", leverage, amount_percent, tp_percent, sl_percent, reasoning, confidence)
     
     async def _execute_open_position(
         self,
@@ -646,7 +652,8 @@ Choose ONE action and execute it. Be decisive but cautious.
         amount_percent: float,
         tp_percent: float,
         sl_percent: float,
-        reasoning: str
+        reasoning: str,
+        confidence: int = 70
     ):
         """Execute position opening."""
         try:
@@ -695,7 +702,7 @@ Choose ONE action and execute it. Be decisive but cautious.
                 entry_price=current_price,
                 take_profit_price=tp_price,
                 stop_loss_price=sl_price,
-                confidence=70,  # Default confidence
+                confidence=confidence,  # From LLM or default
                 reasoning=reasoning,
                 agents_consensus={},
                 timestamp=datetime.now()
@@ -705,7 +712,7 @@ Choose ONE action and execute it. Be decisive but cautious.
             logger.error(f"[TradeExecutor] Open position failed: {e}")
             raise
     
-    async def _tool_hold(self, reason: str = ""):
+    async def _tool_hold(self, reason: str = "", confidence: int = 50):
         """Hold tool - do not trade."""
         current_price = await get_current_btc_price()
         
@@ -717,7 +724,7 @@ Choose ONE action and execute it. Be decisive but cautious.
             entry_price=current_price,
             take_profit_price=current_price,
             stop_loss_price=current_price,
-            confidence=50,
+            confidence=confidence,  # From LLM or default
             reasoning=reason,
             agents_consensus={},
             timestamp=datetime.now()
@@ -725,7 +732,7 @@ Choose ONE action and execute it. Be decisive but cautious.
         
         logger.info(f"[TradeExecutor] HOLD: {reason}")
     
-    async def _tool_close_position(self, reason: str = ""):
+    async def _tool_close_position(self, reason: str = "", confidence: int = 100):
         """Close position tool."""
         current_price = await get_current_btc_price()
         
@@ -744,14 +751,14 @@ Choose ONE action and execute it. Be decisive but cautious.
             entry_price=current_price,
             take_profit_price=current_price,
             stop_loss_price=current_price,
-            confidence=100,  # High confidence - this is a deliberate close decision
+            confidence=confidence,  # From LLM, default 100 for deliberate close
             reasoning=f"[Close position] {reason}",
             agents_consensus={},
             timestamp=datetime.now()
         )
     
-    async def _generate_hold_signal(self, reason: str) -> TradingSignal:
-        """Generate a HOLD signal."""
+    async def _generate_hold_signal(self, reason: str, confidence: int = 50) -> TradingSignal:
+        """Generate a HOLD signal (fallback path)."""
         current_price = await get_current_btc_price()
         
         return TradingSignal(
@@ -762,7 +769,7 @@ Choose ONE action and execute it. Be decisive but cautious.
             entry_price=current_price,
             take_profit_price=current_price,
             stop_loss_price=current_price,
-            confidence=0,
+            confidence=confidence,  # Configurable, default 50
             reasoning=reason,
             agents_consensus={},
             timestamp=datetime.now()
