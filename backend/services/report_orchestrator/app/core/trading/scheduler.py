@@ -162,10 +162,10 @@ class TradingScheduler:
         try:
             await asyncio.wait_for(
                 self._execute_cycle(reason="startup"),
-                timeout=1500  # 25 minute timeout for analysis (API may be slow)
+                timeout=3600  # 1 hour timeout for analysis (reasoning models may be slow)
             )
         except asyncio.TimeoutError:
-            logger.error("First analysis cycle timed out after 25 minutes")
+            logger.error("First analysis cycle timed out after 1 hour")
         except Exception as e:
             logger.error(f"Error in first analysis cycle: {e}", exc_info=True)
 
@@ -211,10 +211,10 @@ class TradingScheduler:
                 try:
                     await asyncio.wait_for(
                         self._execute_cycle(reason="scheduled"),
-                        timeout=1500  # 25 minute timeout (API may be slow)
+                        timeout=3600  # 1 hour timeout (reasoning models may be slow)
                     )
                 except asyncio.TimeoutError:
-                    logger.error("Scheduled analysis cycle timed out after 25 minutes")
+                    logger.error("Scheduled analysis cycle timed out after 1 hour")
 
             except asyncio.CancelledError:
                 logger.info("Scheduler loop cancelled")
