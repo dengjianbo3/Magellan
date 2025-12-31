@@ -12,7 +12,9 @@ from typing import Dict, Any, List
 import json
 import traceback
 
+from langchain_core.runnables import RunnableConfig
 from .state import TradingState, NodeResult, TradeDirection
+from app.core.trading.executor import TradeExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -248,81 +250,78 @@ async def consensus_node(state: TradingState, config: RunnableConfig) -> Dict[st
         }
 
 
-async def execution_node(state: TradingState) -> Dict[str, Any]:
+async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[str, Any]:
     """
-    Node 5: Execution
+    Node 5: Execution (🔧 RESTORED: Uses TradeExecutor Agent)
     
-    Executes the trading decision.
-    Input: consensus_direction, consensus_confidence, position_context
-    Output: final_signal, execution_result, execution_success
+    Uses TradeExecutor LLM Agent to make intelligent trading decisions.
+    The agent considers:
+    - Leader's meeting summary
+    - All agent votes
+    - Current position context
+    - Risk assessment
+    
+    Input: leader_summary, agent_votes, position_context, consensus_*
+    Output: final_signal (from TradeExecutor), execution_result, execution_success
     """
     start_time = time.time()
-    logger.info("[Node: execution] Executing decision...")
+    logger.info("[Node: execution] 🤖 Starting TradeExecutor Agent...")
     
     try:
-        direction = state.get("consensus_direction", "hold")
-        confidence = state.get("consensus_confidence", 0)
-        risk_blocked = state.get("risk_blocked", False)
-        market_data = state.get("market_data", {})
-        current_price = market_data.get("current_price", 0)
+        # Get TradeExecutor from config (passed from TradingMeeting)
+        trade_executor: TradeExecutor = config.get("configurable", {}).get("trade_executor")
         
-        if risk_blocked or direction == "hold" or confidence < 60:
-            # Don't execute - stay in hold
+        if not trade_executor:
+            logger.error("[Node: execution] ❌ TradeExecutor not found in config!")
+            return _fallback_execution(state, start_time, "TradeExecutor not available")
+        
+        # Prepare inputs for TradeExecutor
+        leader_summary = state.get("leader_summary", "")
+        agent_votes = state.get("agent_votes", [])
+        position_context = state.get("position_context", {})
+        trigger_reason = state.get("trigger_reason", "scheduled")
+        
+        logger.info(f"[Node: execution] Inputs: {len(agent_votes)} votes, "
+                   f"has_position={position_context.get('has_position', False)}")
+        
+        # Call TradeExecutor.execute() - LLM decides: open_long/open_short/hold/close
+        signal = await trade_executor.execute(
+            leader_summary=leader_summary,
+            agent_votes=agent_votes,
+            position_context=position_context,
+            trigger_reason=trigger_reason,
+            enable_react_fallback=True  # Enable ReAct recovery on errors
+        )
+        
+        # Convert TradingSignal to dict for state
+        if signal:
             final_signal = {
-                "direction": "hold",
-                "confidence": confidence,
-                "leverage": 0,
-                "amount_percent": 0,
-                "entry_price": current_price,
-                "tp_price": current_price,
-                "sl_price": current_price,
-                "reasoning": state.get("leader_summary", "No action required"),
-                "timestamp": datetime.now().isoformat()
+                "direction": signal.direction,
+                "confidence": signal.confidence,
+                "leverage": signal.leverage,
+                "amount_percent": signal.amount_percent,
+                "entry_price": signal.entry_price,
+                "tp_price": signal.take_profit_price,
+                "sl_price": signal.stop_loss_price,
+                "reasoning": signal.reasoning,
+                "timestamp": signal.timestamp.isoformat() if signal.timestamp else datetime.now().isoformat()
             }
-            execution_result = {"action": "hold", "success": True}
-            execution_success = True
-        else:
-            # Calculate execution parameters
-            leverage = _calculate_leverage(confidence)
-            amount_percent = _calculate_amount(confidence)
-            tp_percent = 8.0  # Default TP
-            sl_percent = 3.0  # Default SL
-            
-            # 🔧 FIX: Calculate actual TP/SL prices
-            if direction == "long":
-                tp_price = current_price * (1 + tp_percent / 100)
-                sl_price = current_price * (1 - sl_percent / 100)
-            else:  # short
-                tp_price = current_price * (1 - tp_percent / 100)
-                sl_price = current_price * (1 + sl_percent / 100)
-            
-            final_signal = {
-                "direction": direction,
-                "confidence": confidence,
-                "leverage": leverage,
-                "amount_percent": amount_percent,
-                "entry_price": current_price,  # 🔧 FIX: Include entry price
-                "tp_price": tp_price,  # 🔧 FIX: Calculated TP price
-                "sl_price": sl_price,  # 🔧 FIX: Calculated SL price
-                "tp_percent": tp_percent,
-                "sl_percent": sl_percent,
-                "reasoning": state.get("leader_summary", ""),  # 🔧 FIX: Include leader summary
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            # Note: Actual trade execution happens through TradeExecutor
-            # This node prepares the signal; integration layer handles execution
             execution_result = {
-                "action": direction,
-                "leverage": leverage,
-                "amount_percent": amount_percent,
+                "action": signal.direction,
                 "success": True,
-                "message": "Signal prepared for execution"
+                "message": f"TradeExecutor decided: {signal.direction.upper()}"
             }
             execution_success = True
+            
+            logger.info(f"[Node: execution] 🎯 TradeExecutor Decision: {signal.direction.upper()} "
+                       f"(Confidence: {signal.confidence}%)")
+        else:
+            # TradeExecutor returned None - fallback to HOLD
+            logger.warning("[Node: execution] TradeExecutor returned None, defaulting to HOLD")
+            return _fallback_execution(state, start_time, "TradeExecutor returned no signal")
         
         elapsed = (time.time() - start_time) * 1000
-        logger.info(f"[Node: execution] ✅ Complete in {elapsed:.0f}ms - {direction.upper()}")
+        logger.info(f"[Node: execution] ✅ Complete in {elapsed:.0f}ms - {signal.direction.upper()}")
         
         return {
             "final_signal": final_signal,
@@ -335,12 +334,43 @@ async def execution_node(state: TradingState) -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"[Node: execution] ❌ Failed: {e}")
+        logger.error(traceback.format_exc())
         return {
             "error": str(e),
             "error_node": "execution",
             "should_fallback": True,
             "execution_success": False
         }
+
+
+def _fallback_execution(state: TradingState, start_time: float, reason: str) -> Dict[str, Any]:
+    """Fallback to HOLD when TradeExecutor is not available."""
+    market_data = state.get("market_data", {})
+    current_price = market_data.get("current_price", 0)
+    
+    final_signal = {
+        "direction": "hold",
+        "confidence": 0,
+        "leverage": 0,
+        "amount_percent": 0,
+        "entry_price": current_price,
+        "tp_price": current_price,
+        "sl_price": current_price,
+        "reasoning": f"Fallback HOLD: {reason}",
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    elapsed = (time.time() - start_time) * 1000
+    logger.warning(f"[Node: execution] ⚠️ Fallback HOLD in {elapsed:.0f}ms - {reason}")
+    
+    return {
+        "final_signal": final_signal,
+        "execution_result": {"action": "hold", "success": True, "message": reason},
+        "execution_success": True,
+        "current_node": "execution",
+        "completed_nodes": state.get("completed_nodes", []) + ["execution"],
+        "node_timings": {**state.get("node_timings", {}), "execution": elapsed}
+    }
 
 
 async def react_fallback_node(state: TradingState) -> Dict[str, Any]:

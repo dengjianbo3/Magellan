@@ -275,18 +275,13 @@ class TradingSystem:
                     has_existing_position = current_position and current_position.get("has_position")
                     existing_direction = current_position.get("direction") if has_existing_position else None
                     
-                    if has_existing_position and existing_direction == signal.direction:
-                        # Already have same-direction position, skip
-                        logger.info(f"[SIGNAL_DEBUG] Already have {existing_direction} position, skipping execution")
-                        trade_result = {
-                            "success": True,
-                            "action": "skip",
-                            "message": f"已存在{existing_direction}仓位，无需重复开仓"
-                        }
-                    else:
-                        # Execute the trade
-                        trade_result = await self._execute_signal(signal)
-                        logger.info(f"[SIGNAL_DEBUG] Trade execution result: {trade_result}")
+                    # 🔧 FIX: Do not skip execution if position exists.
+                    # Allow "adding to position" if the strategy dictates.
+                    # The underlying trader (Paper/OKX) will handle checks/merging.
+                    
+                    # Execute the trade
+                    trade_result = await self._execute_signal(signal)
+                    logger.info(f"[SIGNAL_DEBUG] Trade execution result: {trade_result}")
                     
                     self._trade_history.append({
                         "timestamp": datetime.now().isoformat(),

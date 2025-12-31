@@ -268,7 +268,7 @@ class TradingMeeting(Meeting):
                 pos = await self.toolkit.paper_trader.get_position(self.config.symbol)
                 position_context = {
                     "has_position": pos is not None,
-                    "direction": pos.get("side") if pos else None
+                    "direction": pos.get("direction") if pos else None
                 }
             
             
@@ -343,7 +343,8 @@ Based on your expertise, provide your trading recommendation.
                 position_context=position_context,
                 agent_votes=votes,
                 agent_weights=agent_weights,
-                leader_agent=self._get_agent_by_id("Leader")  # 🔧 FIX: Pass Leader agent for summary generation
+                leader_agent=self._get_agent_by_id("Leader"),  # 🔧 Pass Leader agent for summary generation
+                trade_executor=self._trade_executor  # 🔧 NEW: Pass TradeExecutor for execution decisions
             )
             
             # Extract final signal from graph state

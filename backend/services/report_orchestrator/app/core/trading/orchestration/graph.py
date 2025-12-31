@@ -175,7 +175,8 @@ class TradingGraph:
         agent_votes: list = None,
         agent_weights: Dict = None,
         thread_id: str = None,
-        leader_agent: Any = None
+        leader_agent: Any = None,
+        trade_executor: Any = None  # 🔧 NEW: TradeExecutor instance for execution_node
     ) -> TradingState:
         """
         Run the trading workflow.
@@ -189,6 +190,7 @@ class TradingGraph:
             agent_weights: Agent weight multipliers (optional)
             thread_id: Thread ID for checkpointing
             leader_agent: Leader agent instance for summary generation
+            trade_executor: TradeExecutor instance for execution decisions
             
         Returns:
             Final TradingState with results
@@ -209,11 +211,12 @@ class TradingGraph:
         if agent_weights:
             initial_state["agent_weights"] = agent_weights
         
-        # Run the graph
+        # Run the graph - pass agents via config (non-serializable, ephemeral)
         config = {
             "configurable": {
                 "thread_id": thread_id or "default",
-                "leader_agent": leader_agent
+                "leader_agent": leader_agent,
+                "trade_executor": trade_executor  # 🔧 NEW: Pass to execution_node
             }
         }
         
