@@ -316,8 +316,16 @@ Based on your expertise, provide your trading recommendation.
                         response = await self._run_agent_turn(agent, vote_prompt)
                         vote = self._parse_vote_json(agent_id, agent.name, response)
                         if vote:
-                            votes.append(vote)
-                            logger.info(f"[LangGraph] ✅ {agent.name}: {vote.get('direction', 'unknown')} ({vote.get('confidence', 0)}%)")
+                            # Convert AgentVote object to dict for graph compatibility
+                            vote_dict = vote.to_dict() if hasattr(vote, 'to_dict') else {
+                                'agent_name': vote.agent_name,
+                                'direction': vote.direction,
+                                'confidence': vote.confidence,
+                                'leverage': vote.leverage,
+                                'reasoning': vote.reasoning
+                            }
+                            votes.append(vote_dict)
+                            logger.info(f"[LangGraph] ✅ {agent.name}: {vote_dict.get('direction', 'unknown')} ({vote_dict.get('confidence', 0)}%)")
                     except Exception as e:
                         logger.warning(f"[LangGraph] ❌ {agent.name} vote failed: {e}")
             
