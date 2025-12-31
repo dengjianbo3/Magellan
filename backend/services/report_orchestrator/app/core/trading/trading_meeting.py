@@ -36,9 +36,13 @@ from app.core.trading.vote_calculator import (
 )
 
 # 🆕 Phase 1-2 Refactored Modules
-from app.core.trading.safety.guards import SafetyGuard, SafetyCheckResult, BlockReason
+from app.core.trading.safety_guard import SafetyGuard
 from app.core.trading.executor import TradeExecutor
-from app.core.trading.reflection.engine import ReflectionEngine, TradeReflection
+from app.core.trading.reflection.engine import ReflectionEngine
+
+# 🆕 LangGraph orchestration imports
+from app.core.trading.orchestration.graph import TradingGraph
+from app.core.trading.orchestration.state import create_initial_state
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +110,15 @@ class TradingMeeting(Meeting):
         self._trade_executor: Optional[TradeExecutor] = None
         self._reflection_engine: Optional[ReflectionEngine] = None
         self._init_refactored_modules()
+        
+        # 🆕 Phase 4: LangGraph workflow (feature flag)
+        self._trading_graph: Optional[TradingGraph] = None
+        if self.config.use_langgraph:
+            try:
+                self._trading_graph = TradingGraph()
+                logger.info("[TradingMeeting] ✅ LangGraph workflow enabled")
+            except Exception as e:
+                logger.warning(f"[TradingMeeting] LangGraph initialization failed: {e}")
 
         # Register position closed callback (for triggering Agent reflection)
         self._register_position_closed_callback()

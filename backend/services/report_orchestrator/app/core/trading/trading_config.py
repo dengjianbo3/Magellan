@@ -74,6 +74,9 @@ class TradingMeetingConfig:
     
     # Fallback price (only used when unable to get real-time price)
     fallback_price: float = 95000.0
+    
+    # 🆕 LangGraph workflow feature flag
+    use_langgraph: bool = field(default_factory=lambda: os.getenv("USE_LANGGRAPH", "false").lower() == "true")
 
     def __post_init__(self):
         """Log the configuration after initialization"""
