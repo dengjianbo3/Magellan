@@ -602,15 +602,15 @@ async def _generate_llm_leader_summary(leader_agent: Any, votes: List[Dict], pos
         current_price = market_data.get("current_price", 0)
         pnl_percent = position_context.get("unrealized_pnl_percent", 0)
         
-        pos_summary = f\"\"\"## Current Position Status
+        pos_summary = f"""## Current Position Status
 - Status: {"Has Position" if has_pos else "No Position"}
 - Direction: {direction.upper()}
 - Current Price: ${current_price:,.2f}
-\"\"\"
+"""
         if has_pos:
-            pos_summary += f\"\"\"- Entry Price: ${entry_price:,.2f}
+            pos_summary += f"""- Entry Price: ${entry_price:,.2f}
 - PnL: {pnl_percent:+.2f}%
-\"\"\"
+"""
 
         # 2. Generate Decision Guidance
         decision_guidance = "## Decision Guidance\n"
@@ -637,7 +637,7 @@ async def _generate_llm_leader_summary(leader_agent: Any, votes: List[Dict], pos
             votes_text += f"- **{agent_name}** ({v_dir}, {v_conf}%): {v_reason[:200]}...\n"
 
         # 4. Construct Prompt
-        prompt = f\"\"\"As the roundtable moderator, please comprehensively summarize the meeting discussions and expert opinions.
+        prompt = f"""As the roundtable moderator, please comprehensively summarize the meeting discussions and expert opinions.
 
 {pos_summary}
 
@@ -700,7 +700,7 @@ My confidence is approximately...%"
 - ✅ Your summary will be passed to the Trade Executor
 
 Please begin your summary!
-\"\"\"
+"""
 
         # 5. Call LLM
         # Use _call_llm directly
