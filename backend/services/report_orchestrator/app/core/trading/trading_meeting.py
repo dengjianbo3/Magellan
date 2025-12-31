@@ -272,42 +272,55 @@ class TradingMeeting(Meeting):
                 }
             
             
-            # Collect real agent votes for LangGraph
+            # Collect real agent votes for LangGraph  
             logger.info("[LangGraph] Collecting agent votes...")
             votes = []
             
-            # Get analysis agents (exclude Leader and RiskAssessor)
-            analysis_agents = [agent for agent in self.agents 
-                             if agent.id in ['TechnicalAnalyst', 'MacroEconomist', 
-                                           'SentimentAnalyst', 'OnchainAnalyst', 
-                                           'QuantStrategist']]
+            # Get analysis agents (same as traditional flow)
+            vote_agent_ids = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "OnchainAnalyst", "QuantStrategist"]
             
-            # Collect votes in parallel
-            import asyncio
-            vote_tasks = []
-            for agent in analysis_agents:
-                # Create agent context
-                context_str = f"Market: BTC at ${market_data['current_price']:,.2f}\n"
-                context_str += f"Trigger: {trigger_reason}\n"
-                if position_context.get('has_position'):
-                    context_str += f"Current Position: {position_context.get('direction', 'unknown')}\n"
-                
-                # Create vote task
-                task = self._get_agent_vote(agent, context_str, position_context)
-                vote_tasks.append(task)
+            # Build vote prompt with position context
+            position_info = ""
+            if position_context.get('has_position'):
+                position_info = f"\n**Current Position**: {position_context.get('direction', 'unknown').upper()}\n"
             
-            # Execute all votes in parallel
-            vote_results = await asyncio.gather(*vote_tasks, return_exceptions=True)
+            vote_prompt = f"""You are participating in a trading strategy meeting.
+
+**Market Context**:
+- Symbol: BTC-USDT-SWAP
+- Current Price: ${market_data['current_price']:,.2f}
+- Trigger: {trigger_reason}{position_info}
+
+Based on your expertise, provide your trading recommendation.
+
+**Output your vote as JSON** at the END of your response:
+
+```json
+{{
+  "direction": "<long|short|hold|close>",
+  "confidence": 75,
+  "leverage": 6,
+  "take_profit_percent": 8.0,
+  "stop_loss_percent": 3.0,
+  "reasoning": "Your analysis here"
+}}
+```
+"""
             
-            # Process results
-            for i, result in enumerate(vote_results):
-                if isinstance(result, Exception):
-                    logger.warning(f"[LangGraph] Agent {analysis_agents[i].name} vote failed: {result}")
-                elif result:
-                    votes.append(result)
-                    logger.info(f"[LangGraph] Got vote from {analysis_agents[i].name}: {result.get('direction', 'unknown')}")
+            # Collect votes sequentially (simpler than parallel for now)
+            for agent_id in vote_agent_ids:
+                agent = self._get_agent_by_id(agent_id)
+                if agent:
+                    try:
+                        response = await self._run_agent_turn(agent, vote_prompt)
+                        vote = self._parse_vote_json(agent_id, agent.name, response)
+                        if vote:
+                            votes.append(vote)
+                            logger.info(f"[LangGraph] ✅ {agent.name}: {vote.get('direction', 'unknown')} ({vote.get('confidence', 0)}%)")
+                    except Exception as e:
+                        logger.warning(f"[LangGraph] ❌ {agent.name} vote failed: {e}")
             
-            logger.info(f"[LangGraph] Collected {len(votes)} votes from {len(analysis_agents)} agents")
+            logger.info(f"[LangGraph] Collected {len(votes)} votes")
             
 
             # Run the graph
