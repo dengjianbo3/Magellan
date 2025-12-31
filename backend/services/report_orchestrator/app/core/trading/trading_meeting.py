@@ -282,7 +282,8 @@ class TradingMeeting(Meeting):
             # Build vote prompt with position context
             position_info = ""
             if position_context.get('has_position'):
-                position_info = f"\n**Current Position**: {position_context.get('direction', 'unknown').upper()}\n"
+                direction = position_context.get('direction') or 'unknown'
+                position_info = f"\n**Current Position**: {direction.upper()}\n"
             
             vote_prompt = f"""You are participating in a trading strategy meeting.
 
