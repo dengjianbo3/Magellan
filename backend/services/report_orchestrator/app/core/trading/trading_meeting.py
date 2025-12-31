@@ -352,9 +352,24 @@ Based on your expertise, provide your trading recommendation.
             # This handles cases where llm_service was not available during __init__
             if not self._trade_executor:
                 paper_trader = getattr(self.toolkit, 'paper_trader', None) if self.toolkit else None
-                if paper_trader and self.llm_service:
+                
+                # Try to get llm_service from self first, then from an agent
+                llm_service = self.llm_service
+                if not llm_service and self.agents:
+                    # Extract llm_service from an existing agent
+                    for agent in self.agents:
+                        if hasattr(agent, 'llm_service') and agent.llm_service:
+                            llm_service = agent.llm_service
+                            logger.info(f"[LangGraph] Got llm_service from agent: {agent.name}")
+                            break
+                        elif hasattr(agent, '_llm') and agent._llm:
+                            llm_service = agent._llm
+                            logger.info(f"[LangGraph] Got _llm from agent: {agent.name}")
+                            break
+                
+                if paper_trader and llm_service:
                     self._trade_executor = TradeExecutor(
-                        llm_service=self.llm_service,
+                        llm_service=llm_service,
                         toolkit=self.toolkit,
                         paper_trader=paper_trader,
                         safety_guard=self._safety_guard,
@@ -363,7 +378,7 @@ Based on your expertise, provide your trading recommendation.
                     )
                     logger.info("[LangGraph] ✅ TradeExecutor lazily initialized")
                 else:
-                    logger.warning(f"[LangGraph] ⚠️ Cannot init TradeExecutor: paper_trader={paper_trader is not None}, llm_service={self.llm_service is not None}")
+                    logger.warning(f"[LangGraph] ⚠️ Cannot init TradeExecutor: paper_trader={paper_trader is not None}, llm_service={llm_service is not None}")
 
             # Run the graph
             result_state = await self._trading_graph.run(
