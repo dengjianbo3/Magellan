@@ -404,6 +404,15 @@ class TradingMeeting(Meeting):
         Returns:
             TradingSignal if a trade decision is made, None otherwise
         """
+        # 🆕 Phase 4: Use LangGraph workflow if enabled
+        if self._trading_graph is not None and self.config.use_langgraph:
+            logger.info("[TradingMeeting] 🔄 Using LangGraph workflow")
+            return await self.run_with_graph(
+                trigger_reason=context or "scheduled",
+                context=context
+            )
+        
+        # Traditional flow continues below
         logger.info(f"Starting trading meeting for {self.config.symbol}")
         
         # 🛡️ Store context for safety checks (e.g., block auto-reverse during startup)
