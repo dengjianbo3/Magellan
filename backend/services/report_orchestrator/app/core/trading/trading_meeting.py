@@ -262,14 +262,28 @@ class TradingMeeting(Meeting):
                 "trigger_reason": trigger_reason
             }
             
-            # Get position context
+            # Get position context (FULL data for TradeExecutor)
             position_context = {}
             if self.toolkit and hasattr(self.toolkit, 'paper_trader'):
                 pos = await self.toolkit.paper_trader.get_position(self.config.symbol)
-                position_context = {
-                    "has_position": pos is not None,
-                    "direction": pos.get("direction") if pos else None
-                }
+                if pos:
+                    # Pass full position data for TradeExecutor's intelligent decision
+                    position_context = {
+                        "has_position": True,
+                        "direction": pos.get("direction"),
+                        "entry_price": pos.get("entry_price", 0),
+                        "current_price": pos.get("current_price", 0),
+                        "unrealized_pnl": pos.get("unrealized_pnl", 0),
+                        "unrealized_pnl_percent": pos.get("unrealized_pnl_percent", 0),
+                        "leverage": pos.get("leverage", 1),
+                        "margin": pos.get("margin", 0),
+                        "size": pos.get("size", 0),
+                        "take_profit_price": pos.get("take_profit_price"),
+                        "stop_loss_price": pos.get("stop_loss_price"),
+                        "liquidation_price": pos.get("liquidation_price"),
+                    }
+                else:
+                    position_context = {"has_position": False}
             
             
             # Collect real agent votes for LangGraph  
