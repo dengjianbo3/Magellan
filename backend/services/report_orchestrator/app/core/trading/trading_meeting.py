@@ -334,8 +334,9 @@ Based on your expertise, provide your trading recommendation.
             
             logger.info(f"[LangGraph] Collected {len(votes)} votes")
             
-            # 🔧 FIX: Lazy initialization of TradeExecutor if not already created
-            if self._trade_executor is None:
+            # 🔧 FIX: Lazy initialization of TradeExecutor if not already initialized
+            # This handles cases where llm_service was not available during __init__
+            if not self._trade_executor:
                 paper_trader = getattr(self.toolkit, 'paper_trader', None) if self.toolkit else None
                 if paper_trader and self.llm_service:
                     self._trade_executor = TradeExecutor(
@@ -344,11 +345,11 @@ Based on your expertise, provide your trading recommendation.
                         paper_trader=paper_trader,
                         safety_guard=self._safety_guard,
                         on_message=self.on_message,
-                        symbol=self.config.symbol
+                        symbol=getattr(self.config, 'symbol', 'BTC-USDT-SWAP')
                     )
-                    logger.info("[LangGraph] ✅ TradeExecutor lazy-initialized")
+                    logger.info("[LangGraph] ✅ TradeExecutor lazily initialized")
                 else:
-                    logger.warning(f"[LangGraph] ⚠️ Cannot create TradeExecutor: paper_trader={paper_trader is not None}, llm_service={self.llm_service is not None}")
+                    logger.warning(f"[LangGraph] ⚠️ Cannot init TradeExecutor: paper_trader={paper_trader is not None}, llm_service={self.llm_service is not None}")
 
             # Run the graph
             result_state = await self._trading_graph.run(
@@ -359,7 +360,7 @@ Based on your expertise, provide your trading recommendation.
                 agent_votes=votes,
                 agent_weights=agent_weights,
                 leader_agent=self._get_agent_by_id("Leader"),  # 🔧 Pass Leader agent for summary generation
-                trade_executor=self._trade_executor  # 🔧 Pass TradeExecutor for execution decisions
+                trade_executor=self._trade_executor  # 🔧 NEW: Pass TradeExecutor for execution decisions
             )
             
             # Extract final signal from graph state
