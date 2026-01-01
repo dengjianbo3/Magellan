@@ -303,6 +303,314 @@ def run_vote_calculator_tests():
     test("high confidence wins", result["direction"] == "long")
 
 
+def run_safety_guard_tests():
+    """Run SafetyGuard component tests"""
+    import asyncio
+    
+    print(f"\n{BOLD}{'=' * 60}{RESET}")
+    print(f"{BOLD}SafetyGuard 组件测试{RESET}")
+    print(f"{'=' * 60}")
+    
+    # Create event loop for Python 3.14+ compatibility
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    def run_async(coro):
+        """Helper to run async functions"""
+        return loop.run_until_complete(coro)
+    
+    # Load SafetyGuard module
+    with open('app/core/trading/safety/guards.py', 'r') as f:
+        content = f.read()
+    exec(content, globals())
+    
+    # Mock trader
+    class MockTrader:
+        def __init__(self):
+            self._daily_loss_exceeded = False
+            self.is_hedge_mode = False
+        
+        def _check_daily_loss_limit(self):
+            if self._daily_loss_exceeded:
+                return (False, "Daily loss limit exceeded")
+            return (True, "OK")
+        
+        async def get_account(self):
+            return {"available_balance": 10000.0}
+    
+    # Mock cooldown manager
+    class MockCooldown:
+        def __init__(self, is_active=False):
+            self._is_active = is_active
+        
+        def check_cooldown(self):
+            return not self._is_active
+    
+    # Mock config
+    class MockConfig:
+        max_leverage = 20
+        max_position_percent = 0.3
+    
+    # SG-001: Concurrent execution lock
+    section("SG-001 并发执行锁")
+    
+    async def test_concurrent_lock():
+        trader = MockTrader()
+        guard = SafetyGuard(trader, min_confidence=60)
+        
+        # Acquire lock
+        await guard.acquire_execution_lock()
+        
+        # Check should block
+        result = await guard.pre_execution_check(
+            votes=[],
+            position_context={"has_position": False}
+        )
+        test("concurrent blocked", not result.allowed)
+        test("reason is CONCURRENT_EXECUTION", result.reason == BlockReason.CONCURRENT_EXECUTION)
+        
+        guard.release_execution_lock()
+    
+    run_async(test_concurrent_lock())
+    
+    # SG-002: Startup protection
+    section("SG-002 启动保护")
+    
+    async def test_startup_protection():
+        trader = MockTrader()
+        guard = SafetyGuard(trader, min_confidence=60)
+        
+        # Startup with existing position, trying to reverse
+        result = await guard.pre_execution_check(
+            votes=[{"direction": "short", "confidence": 70}],
+            position_context={"has_position": True, "direction": "long"},
+            trigger_reason="startup"
+        )
+        test("startup reverse blocked", not result.allowed)
+        test("reason is STARTUP_PROTECTION", result.reason == BlockReason.STARTUP_PROTECTION)
+    
+    run_async(test_startup_protection())
+    
+    # SG-003: Daily loss limit
+    section("SG-003 日亏损限制")
+    
+    async def test_daily_loss():
+        trader = MockTrader()
+        trader._daily_loss_exceeded = True
+        guard = SafetyGuard(trader, min_confidence=60)
+        
+        result = await guard.pre_execution_check(
+            votes=[],
+            position_context={"has_position": False}
+        )
+        test("daily loss blocked", not result.allowed)
+        test("reason is DAILY_LOSS_LIMIT", result.reason == BlockReason.DAILY_LOSS_LIMIT)
+    
+    run_async(test_daily_loss())
+    
+    # SG-004: Cooldown active
+    section("SG-004 冷却期检查")
+    
+    async def test_cooldown():
+        trader = MockTrader()
+        cooldown = MockCooldown(is_active=True)
+        guard = SafetyGuard(trader, cooldown_manager=cooldown, min_confidence=60)
+        
+        result = await guard.pre_execution_check(
+            votes=[],
+            position_context={"has_position": False}
+        )
+        test("cooldown blocked", not result.allowed)
+        test("reason is COOLDOWN_ACTIVE", result.reason == BlockReason.COOLDOWN_ACTIVE)
+    
+    run_async(test_cooldown())
+    
+    # SG-005: Cooldown expired - should allow
+    section("SG-005 冷却期结束")
+    
+    async def test_cooldown_expired():
+        trader = MockTrader()
+        cooldown = MockCooldown(is_active=False)
+        guard = SafetyGuard(trader, cooldown_manager=cooldown, min_confidence=60)
+        
+        result = await guard.pre_execution_check(
+            votes=[],
+            position_context={"has_position": False},
+            confidence=70
+        )
+        test("cooldown expired allows", result.allowed)
+    
+    run_async(test_cooldown_expired())
+    
+    # SG-006: Leverage validation
+    section("SG-006 杠杆验证")
+    
+    async def test_leverage():
+        trader = MockTrader()
+        config = MockConfig()
+        guard = SafetyGuard(trader, config=config, min_confidence=60)
+        
+        # Valid leverage
+        result = await guard.validate_trade_params("long", 10, 1000.0)
+        test("valid leverage allowed", result.allowed)
+        
+        # Exceeds max
+        result = await guard.validate_trade_params("long", 25, 1000.0)
+        test("excessive leverage blocked", not result.allowed)
+        test("reason is INVALID_PARAMS", result.reason == BlockReason.INVALID_PARAMS)
+        
+        # Zero leverage
+        result = await guard.validate_trade_params("long", 0, 1000.0)
+        test("zero leverage blocked", not result.allowed)
+    
+    run_async(test_leverage())
+    
+    # SG-007: Position size validation
+    section("SG-007 仓位比例验证")
+    
+    async def test_position_size():
+        trader = MockTrader()
+        config = MockConfig()
+        guard = SafetyGuard(trader, config=config, min_confidence=60)
+        
+        # Exceeds max position
+        result = await guard.validate_trade_params("long", 3, 5000.0)  # 5000 > 10000 * 0.3
+        test("excessive position blocked", not result.allowed)
+    
+    run_async(test_position_size())
+    
+    # SG-008: Minimum confidence
+    section("SG-008 最低置信度")
+    
+    async def test_min_confidence():
+        trader = MockTrader()
+        guard = SafetyGuard(trader, min_confidence=60)
+        
+        result = await guard.pre_execution_check(
+            votes=[],
+            position_context={"has_position": False},
+            confidence=50  # Below 60
+        )
+        test("low confidence blocked", not result.allowed)
+        test("reason is LOW_CONFIDENCE", result.reason == BlockReason.LOW_CONFIDENCE)
+    
+    run_async(test_min_confidence())
+    
+    # SG-009: OKX Hedge mode check
+    section("SG-009 OKX 对冲模式")
+    
+    async def test_hedge_mode():
+        trader = MockTrader()
+        trader.is_hedge_mode = True
+        guard = SafetyGuard(trader, min_confidence=60)
+        
+        # Try to reverse position in hedge mode
+        result = await guard.pre_execution_check(
+            votes=[{"direction": "short", "confidence": 70}],
+            position_context={"has_position": True, "direction": "long"},
+            confidence=70
+        )
+        test("hedge mode reverse blocked", not result.allowed)
+        test("reason is OKX_HEDGE_MODE", result.reason == BlockReason.OKX_HEDGE_MODE)
+    
+    run_async(test_hedge_mode())
+    
+    # SG-010: TP/SL validation for long
+    section("SG-010 TP/SL 验证 (多头)")
+    
+    async def test_tp_sl_long():
+        trader = MockTrader()
+        guard = SafetyGuard(trader, min_confidence=60)
+        
+        # Valid TP/SL for long
+        result = await guard.validate_trade_params(
+            "long", 3, 1000.0, 
+            tp_price=105000.0, sl_price=95000.0, 
+            current_price=100000.0
+        )
+        test("valid TP/SL long allowed", result.allowed)
+        
+        # Invalid TP for long (below current)
+        result = await guard.validate_trade_params(
+            "long", 3, 1000.0, 
+            tp_price=95000.0, sl_price=90000.0, 
+            current_price=100000.0
+        )
+        test("TP below current blocked", not result.allowed)
+        
+        # Invalid SL for long (above current)
+        result = await guard.validate_trade_params(
+            "long", 3, 1000.0, 
+            tp_price=110000.0, sl_price=105000.0, 
+            current_price=100000.0
+        )
+        test("SL above current blocked", not result.allowed)
+    
+    run_async(test_tp_sl_long())
+    
+    # SG-011: TP/SL validation for short
+    section("SG-011 TP/SL 验证 (空头)")
+    
+    async def test_tp_sl_short():
+        trader = MockTrader()
+        guard = SafetyGuard(trader, min_confidence=60)
+        
+        # Valid TP/SL for short
+        result = await guard.validate_trade_params(
+            "short", 3, 1000.0, 
+            tp_price=95000.0, sl_price=105000.0, 
+            current_price=100000.0
+        )
+        test("valid TP/SL short allowed", result.allowed)
+        
+        # Invalid TP for short (above current)
+        result = await guard.validate_trade_params(
+            "short", 3, 1000.0, 
+            tp_price=105000.0, sl_price=110000.0, 
+            current_price=100000.0
+        )
+        test("TP above current blocked", not result.allowed)
+    
+    run_async(test_tp_sl_short())
+    
+    # SG-012: Execution lock acquire/release
+    section("SG-012 执行锁获取/释放")
+    
+    async def test_lock():
+        trader = MockTrader()
+        guard = SafetyGuard(trader, min_confidence=60)
+        
+        # Acquire lock
+        acquired = await guard.acquire_execution_lock(timeout=1.0)
+        test("lock acquired", acquired)
+        test("lock is locked", guard._execution_lock.locked())
+        
+        # Release lock
+        guard.release_execution_lock()
+        test("lock released", not guard._execution_lock.locked())
+    
+    run_async(test_lock())
+    
+    # SG-Extra: Allowed execution
+    section("SG-Extra 允许执行")
+    
+    async def test_allowed():
+        trader = MockTrader()
+        guard = SafetyGuard(trader, min_confidence=60)
+        
+        result = await guard.pre_execution_check(
+            votes=[{"direction": "long", "confidence": 75}],
+            position_context={"has_position": False},
+            confidence=75
+        )
+        test("normal execution allowed", result.allowed)
+    
+    run_async(test_allowed())
+
+
 def main():
     global passed, failed, errors
     
@@ -312,7 +620,7 @@ def main():
         module = sys.argv[1]
     
     print(f"\n{BOLD}{'=' * 60}{RESET}")
-    print(f"{BOLD}Magellan 交易系统单元测试{RESET}")
+    print(f"{BOLD}Magellan 交易系统测试{RESET}")
     print(f"{'=' * 60}")
     print(f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
@@ -322,6 +630,9 @@ def main():
         
         if module is None or module == "vote_calculator":
             run_vote_calculator_tests()
+        
+        if module is None or module == "safety_guard":
+            run_safety_guard_tests()
         
     except Exception as e:
         print(f"\n{RED}❌ 测试执行错误: {e}{RESET}")
@@ -345,3 +656,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
