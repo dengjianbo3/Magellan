@@ -21,6 +21,7 @@ from app.core.trading.trading_tools import TradingToolkit
 from app.core.trading.trading_agents import create_trading_agents, get_trading_agent_config
 from app.core.trading.trading_meeting import TradingMeeting, TradingMeetingConfig
 from app.core.trading.agent_memory import get_memory_store
+from app.core.trading.decision_store import get_decision_store  # Redis persistence for signals
 from app.core.trading.scheduler import TradingScheduler, CooldownManager
 from app.models.trading_models import TradingConfig, TradingSignal
 
@@ -783,9 +784,25 @@ async def get_trade_history(limit: int = Query(default=50, le=100)):
         # Call the async method that fetches from OKX API
         actual_trades = await system.paper_trader.get_trade_history(limit)
 
+    # 🆕 Get signals from Redis for persistence across restarts
+    signals = []
+    try:
+        decision_store = await get_decision_store()
+        redis_signals = await decision_store.get_recent_decisions_for_frontend(limit)
+        if redis_signals:
+            signals = redis_signals
+            logger.info(f"[get_trade_history] Loaded {len(signals)} signals from Redis")
+    except Exception as e:
+        logger.warning(f"[get_trade_history] Redis failed, using memory: {e}")
+    
+    # Fallback to memory if Redis is empty
+    if not signals and system._trade_history:
+        signals = system._trade_history[-limit:]
+        logger.info(f"[get_trade_history] Using {len(signals)} signals from memory")
+
     return {
         "trades": actual_trades,  # REAL closed trades with actual PnL from OKX
-        "signals": system._trade_history[-limit:]  # Signal history for reference
+        "signals": signals  # Signal history from Redis (persisted) or memory (fallback)
     }
 
 
