@@ -37,9 +37,11 @@ pnpm-debug.log*
 # Adding it here is good practice for local development.
 uploads/
 
-# Test files
+# Test files (ignore stray test files, but allow in tests/ directories)
 test_*.py
 test_*.html
+!**/tests/test_*.py
+!**/tests/**/test_*.py
 *.bak
 
 # ChromaDB data
