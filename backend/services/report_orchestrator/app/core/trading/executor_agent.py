@@ -1,14 +1,14 @@
 """
 Executor Agent
 
-Trade execution agent that inherits from Agent, providing unified LLM calling approach.
-This replaces the old TradeExecutor class that required external llm_service injection.
+Trade execution agent that inherits from ReWOOAgent, using the same 3-phase
+(Plan → Execute → Solve) workflow as other analysis agents.
 
 Key Features:
-- Inherits from Agent base class (uses HTTP to llm_gateway, self-contained)
+- Inherits from ReWOOAgent (unified architecture with other agents)
 - Registers trading tools: open_long, open_short, hold, close_position
-- Uses Agent's native tool calling via /v1/chat/completions endpoint
-- Eliminates need for LLMGatewayClient adapter
+- Uses same LLM calling pattern as TechnicalAnalyst, MacroEconomist, etc.
+- No special tool_choice param - follows standard ReWOO planning
 """
 
 import logging
@@ -16,7 +16,7 @@ import json
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Callable
 
-from app.core.roundtable.agent import Agent
+from app.core.roundtable.rewoo_agent import ReWOOAgent
 from app.core.roundtable.tool import FunctionTool
 from app.models.trading_models import TradingSignal
 from app.core.trading.price_service import get_current_btc_price
@@ -24,20 +24,17 @@ from app.core.trading.price_service import get_current_btc_price
 logger = logging.getLogger(__name__)
 
 
-class ExecutorAgent(Agent):
+class ExecutorAgent(ReWOOAgent):
     """
-    Trading Execution Agent - inherits from Agent for unified LLM calling.
+    Trading Execution Agent - inherits from ReWOOAgent for unified architecture.
     
-    Replaces TradeExecutor. Uses Agent's _call_llm() which makes HTTP calls
-    directly to llm_gateway, avoiding the need for llm_service injection.
+    Uses the same 3-phase workflow as other analysis agents:
+    1. Plan: LLM decides which trading action to take
+    2. Execute: Run the selected trading tool
+    3. Solve: Generate final trading signal
     
-    Usage:
-        executor = ExecutorAgent(
-            toolkit=toolkit,
-            paper_trader=paper_trader,
-            symbol="BTC-USDT-SWAP"
-        )
-        signal = await executor.execute(leader_summary, agent_votes, position_context)
+    This ensures ExecutorAgent uses the same LLM calling pattern that works
+    for other agents, avoiding tool_choice incompatibility issues.
     """
     
     # Safety thresholds
@@ -85,7 +82,7 @@ class ExecutorAgent(Agent):
         # Register trading tools
         self._register_trading_tools()
         
-        logger.info(f"[ExecutorAgent] Initialized with {len(self.tools)} tools")
+        logger.info(f"[ExecutorAgent] Initialized with {len(self.tools)} tools (ReWOOAgent pattern)")
     
     def _get_executor_role_prompt(self) -> str:
         """Get the role prompt for executor agent."""
@@ -94,7 +91,13 @@ class ExecutorAgent(Agent):
 Your job is to:
 1. Review the leader's summary and agent consensus
 2. Consider the current position context
-3. Make a decisive trading action by calling ONE of the available tools
+3. Decide on a trading action: open_long, open_short, hold, or close_position
+
+You have access to trading tools. Based on the analysis, you MUST use exactly ONE of these tools:
+- open_long: Open a LONG position (buy, expecting price to rise)
+- open_short: Open a SHORT position (sell, expecting price to fall)
+- hold: Maintain current state, no action
+- close_position: Close existing position
 
 IMPORTANT RULES:
 - You MUST call exactly ONE tool to express your decision
@@ -109,7 +112,7 @@ IMPORTANT RULES:
         # open_long tool
         self.register_tool(FunctionTool(
             name="open_long",
-            description="Open a LONG position (buy, expecting price to rise)",
+            description="Open a LONG position (buy, expecting price to rise). Parameters: leverage (1-20), amount_percent (0.1-0.3), tp_percent (take profit %), sl_percent (stop loss %), reasoning (string), confidence (0-100)",
             func=self._execute_open_long,
             parameters_schema={
                 "type": "object",
@@ -128,7 +131,7 @@ IMPORTANT RULES:
         # open_short tool
         self.register_tool(FunctionTool(
             name="open_short",
-            description="Open a SHORT position (sell, expecting price to fall)",
+            description="Open a SHORT position (sell, expecting price to fall). Parameters: leverage (1-20), amount_percent (0.1-0.3), tp_percent (take profit %), sl_percent (stop loss %), reasoning (string), confidence (0-100)",
             func=self._execute_open_short,
             parameters_schema={
                 "type": "object",
@@ -147,7 +150,7 @@ IMPORTANT RULES:
         # hold tool
         self.register_tool(FunctionTool(
             name="hold",
-            description="Do not trade, maintain current position or wait for better opportunity",
+            description="Do not trade, maintain current position or wait for better opportunity. Parameters: reason (string), confidence (0-100)",
             func=self._execute_hold,
             parameters_schema={
                 "type": "object",
@@ -162,7 +165,7 @@ IMPORTANT RULES:
         # close_position tool
         self.register_tool(FunctionTool(
             name="close_position",
-            description="Close the current position completely",
+            description="Close the current position completely. Parameters: reason (string), confidence (0-100)",
             func=self._execute_close_position,
             parameters_schema={
                 "type": "object",
@@ -184,7 +187,8 @@ IMPORTANT RULES:
         """
         Execute trading decision based on meeting results.
         
-        This is the main entry point, called by LangGraph execution_node.
+        Uses ReWOOAgent's analyze_with_rewoo for the same 3-phase workflow
+        as other analysis agents.
         
         Args:
             leader_summary: Leader's summary of the meeting discussion
@@ -198,43 +202,56 @@ IMPORTANT RULES:
         self._result = {"signal": None}
         self._executed_tools = []
         
-        logger.info("[ExecutorAgent] Starting execution phase...")
+        logger.info("[ExecutorAgent] Starting execution phase (ReWOO pattern)...")
         
-        # Build execution prompt
-        prompt = self._build_execution_prompt(
+        # Build query for ReWOO analysis
+        query = self._build_execution_query(
             leader_summary=leader_summary,
             agent_votes=agent_votes,
             position_context=position_context
         )
         
+        # Build context
+        context = {
+            "leader_summary": leader_summary,
+            "agent_votes": agent_votes,
+            "position_context": position_context,
+            "trigger_reason": trigger_reason or "scheduled"
+        }
+        
         try:
-            # Call LLM with tools using Agent's native method
-            messages = [{"role": "user", "content": prompt}]
-            response = await self._call_llm_with_tools(messages)
+            # Use ReWOO 3-phase analysis (inherited from ReWOOAgent)
+            result = await self.analyze_with_rewoo(query, context)
             
-            # Process tool calls from response
-            await self._process_tool_calls(response)
-            
-            # Check if we got a signal
+            # Check if we got a signal from tool execution
             if self._result.get("signal"):
                 signal = self._result["signal"]
                 logger.info(f"[ExecutorAgent] ✅ Execution complete: {signal.direction.upper()}")
                 return signal
-            else:
-                logger.warning("[ExecutorAgent] No signal generated, defaulting to HOLD")
-                return await self._generate_hold_signal("No tool call made, defaulting to HOLD")
+            
+            # If no tool was called, try to parse decision from result text
+            if result:
+                signal = self._parse_decision_from_text(result, position_context)
+                if signal:
+                    return signal
+            
+            # Fallback to HOLD
+            logger.warning("[ExecutorAgent] No signal generated, defaulting to HOLD")
+            return await self._generate_hold_signal("No tool call made, defaulting to HOLD")
                 
         except Exception as e:
             logger.error(f"[ExecutorAgent] Execution failed: {e}")
+            import traceback
+            traceback.print_exc()
             return await self._generate_hold_signal(f"Execution error: {str(e)}")
     
-    def _build_execution_prompt(
+    def _build_execution_query(
         self,
         leader_summary: str,
         agent_votes: List[Dict],
         position_context: Dict
     ) -> str:
-        """Build the execution prompt with all context."""
+        """Build the execution query for ReWOO analysis."""
         
         # Format votes
         votes_text = self._format_votes(agent_votes)
@@ -255,12 +272,12 @@ IMPORTANT RULES:
 
 ## Your Task
 Based on the above information, make a trading decision by calling ONE of the available tools:
-- open_long() - Open a LONG position
-- open_short() - Open a SHORT position
-- hold() - Maintain current state, no action
-- close_position() - Close existing position
+- open_long: Open a LONG position
+- open_short: Open a SHORT position
+- hold: Maintain current state, no action
+- close_position: Close existing position
 
-IMPORTANT: You MUST call exactly one tool to make your decision."""
+You MUST call exactly one tool to make your decision. Analyze the consensus and make a decisive action."""
     
     def _format_votes(self, agent_votes: List[Dict]) -> str:
         """Format agent votes for the prompt."""
@@ -289,98 +306,16 @@ IMPORTANT: You MUST call exactly one tool to make your decision."""
 - Unrealized PnL: ${context.get('unrealized_pnl', 0):,.2f} ({context.get('unrealized_pnl_percent', 0):+.1f}%)
 - Leverage: {context.get('leverage', 1)}x"""
     
-    async def _call_llm_with_tools(self, messages: List[Dict]) -> Dict:
-        """Call LLM with tool definitions using Agent's native HTTP approach."""
-        import httpx
+    def _parse_decision_from_text(self, result: str, position_context: Dict) -> Optional[TradingSignal]:
+        """Try to parse trading decision from text if no tool was called."""
+        result_lower = result.lower()
         
-        # Get tools in OpenAI format
-        tools_schema = self._get_tools_openai_format()
+        # Look for clear decision indicators
+        if "hold" in result_lower and ("recommend" in result_lower or "decision" in result_lower):
+            return None  # Let it fall through to fallback HOLD
         
-        request_data = {
-            "messages": messages,
-            "tools": tools_schema,
-            "tool_choice": "required",  # Force tool call
-            "temperature": self.temperature
-        }
-        
-        logger.info(f"[ExecutorAgent] Calling LLM with {len(tools_schema)} tools")
-        
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            response = await client.post(
-                f"{self.llm_gateway_url}/v1/chat/completions",
-                json=request_data
-            )
-            response.raise_for_status()
-            result = response.json()
-            
-            logger.debug(f"[ExecutorAgent] LLM response received")
-            return result
-    
-    def _get_tools_openai_format(self) -> List[Dict]:
-        """Convert registered tools to OpenAI function calling format."""
-        tools = []
-        for tool in self.tools.values():
-            schema = tool.to_schema()
-            tools.append({
-                "type": "function",
-                "function": {
-                    "name": schema["name"],
-                    "description": schema["description"],
-                    "parameters": schema.get("parameters", {"type": "object", "properties": {}})
-                }
-            })
-        return tools
-    
-    async def _process_tool_calls(self, response: Dict):
-        """Process tool calls from LLM response."""
-        if "choices" not in response or not response["choices"]:
-            logger.warning("[ExecutorAgent] No choices in LLM response")
-            return
-        
-        message = response["choices"][0].get("message", {})
-        tool_calls = message.get("tool_calls", [])
-        
-        if not tool_calls:
-            # Check if there's content that might indicate a decision
-            content = message.get("content", "")
-            if content:
-                logger.info(f"[ExecutorAgent] LLM returned text instead of tool call: {content[:100]}")
-            return
-        
-        # Execute each tool call
-        for tool_call in tool_calls:
-            function = tool_call.get("function", {})
-            tool_name = function.get("name", "")
-            arguments_str = function.get("arguments", "{}")
-            
-            logger.info(f"[ExecutorAgent] Executing tool: {tool_name}")
-            
-            try:
-                arguments = json.loads(arguments_str)
-            except json.JSONDecodeError:
-                logger.error(f"[ExecutorAgent] Failed to parse arguments: {arguments_str}")
-                continue
-            
-            # Get the registered tool and execute it
-            tool = self.tools.get(tool_name)
-            if tool:
-                try:
-                    await tool.execute(**arguments)
-                    self._executed_tools.append({
-                        "tool": tool_name,
-                        "params": arguments,
-                        "success": True
-                    })
-                except Exception as e:
-                    logger.error(f"[ExecutorAgent] Tool execution failed: {e}")
-                    self._executed_tools.append({
-                        "tool": tool_name,
-                        "params": arguments,
-                        "success": False,
-                        "error": str(e)
-                    })
-            else:
-                logger.warning(f"[ExecutorAgent] Unknown tool: {tool_name}")
+        # More complex parsing could be added here
+        return None
     
     # ==================== Tool Implementation Methods ====================
     
@@ -392,7 +327,7 @@ IMPORTANT: You MUST call exactly one tool to make your decision."""
         sl_percent: float = 3.0,
         reasoning: str = "",
         confidence: int = 70
-    ):
+    ) -> Dict[str, Any]:
         """Execute open_long tool."""
         logger.info(f"[ExecutorAgent] Executing: open_long(leverage={leverage}, confidence={confidence})")
         
@@ -414,6 +349,15 @@ IMPORTANT: You MUST call exactly one tool to make your decision."""
         )
         
         self._result["signal"] = signal
+        
+        return {
+            "success": True,
+            "action": "open_long",
+            "price": current_price,
+            "leverage": leverage,
+            "confidence": confidence,
+            "reasoning": reasoning
+        }
     
     async def _execute_open_short(
         self,
@@ -423,7 +367,7 @@ IMPORTANT: You MUST call exactly one tool to make your decision."""
         sl_percent: float = 3.0,
         reasoning: str = "",
         confidence: int = 70
-    ):
+    ) -> Dict[str, Any]:
         """Execute open_short tool."""
         logger.info(f"[ExecutorAgent] Executing: open_short(leverage={leverage}, confidence={confidence})")
         
@@ -445,12 +389,21 @@ IMPORTANT: You MUST call exactly one tool to make your decision."""
         )
         
         self._result["signal"] = signal
+        
+        return {
+            "success": True,
+            "action": "open_short",
+            "price": current_price,
+            "leverage": leverage,
+            "confidence": confidence,
+            "reasoning": reasoning
+        }
     
     async def _execute_hold(
         self,
         reason: str = "",
         confidence: int = 50
-    ):
+    ) -> Dict[str, Any]:
         """Execute hold tool."""
         logger.info(f"[ExecutorAgent] Executing: hold(reason={reason[:50]}...)")
         
@@ -470,12 +423,20 @@ IMPORTANT: You MUST call exactly one tool to make your decision."""
         )
         
         self._result["signal"] = signal
+        
+        return {
+            "success": True,
+            "action": "hold",
+            "price": current_price,
+            "confidence": confidence,
+            "reasoning": reason
+        }
     
     async def _execute_close_position(
         self,
         reason: str = "",
         confidence: int = 100
-    ):
+    ) -> Dict[str, Any]:
         """Execute close_position tool."""
         logger.info(f"[ExecutorAgent] Executing: close_position(reason={reason[:50]}...)")
         
@@ -495,6 +456,14 @@ IMPORTANT: You MUST call exactly one tool to make your decision."""
         )
         
         self._result["signal"] = signal
+        
+        return {
+            "success": True,
+            "action": "close_position",
+            "price": current_price,
+            "confidence": confidence,
+            "reasoning": reason
+        }
     
     async def _generate_hold_signal(self, reason: str) -> TradingSignal:
         """Generate a fallback HOLD signal."""
