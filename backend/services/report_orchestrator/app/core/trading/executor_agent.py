@@ -68,7 +68,7 @@ class ExecutorAgent(ReWOOAgent):
             role_prompt=self._get_executor_role_prompt(),
             llm_gateway_url=llm_gateway_url,
             model="gpt-4",
-            temperature=0.3  # Lower temperature for trading decisions
+            temperature=1.0  # Match other ReWOO agents - low temp (0.3) caused instability
         )
         
         self.toolkit = toolkit
