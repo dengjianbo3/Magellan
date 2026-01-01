@@ -106,6 +106,60 @@ IMPORTANT RULES:
 - If opening a position, use appropriate leverage (3-10x) and risk parameters
 - Always provide clear reasoning for your decision"""
     
+    def _create_planning_prompt(self) -> str:
+        """
+        Override ReWOOAgent's planning prompt to use trading-specific examples.
+        
+        This prevents the LLM from generating analysis tool calls (like crypto_price,
+        technical_analysis) which ExecutorAgent doesn't have. Instead, it provides
+        examples of trading tools (hold, open_long, etc.).
+        """
+        tools_desc = self._format_tools_description()
+        
+        return f"""You are {self.name}, making a trading execution decision.
+
+{self.role_prompt}
+
+## Available Tools (ONLY THESE):
+{tools_desc}
+
+## Your Task:
+Based on the trading analysis already completed, you need to:
+1. Review the leader's summary and agent consensus
+2. Consider current position context
+3. Make ONE decisive trading action
+
+## OUTPUT FORMAT (CRITICAL - MUST FOLLOW EXACTLY):
+
+You MUST output ONLY a JSON array with EXACTLY ONE tool call. NO other text, NO explanation.
+
+Valid output examples:
+
+Example 1 (HOLD decision - most common):
+[
+  {{"step": 1, "tool": "hold", "params": {{"reason": "Majority of analysts recommend holding. Extreme Fear sentiment provides contrarian support but technical signals are mixed.", "confidence": 65}}, "purpose": "Maintain current position as per consensus"}}
+]
+
+Example 2 (OPEN LONG - bullish consensus):
+[
+  {{"step": 1, "tool": "open_long", "params": {{"leverage": 5, "amount_percent": 0.2, "tp_percent": 8.0, "sl_percent": 3.0, "reasoning": "Strong bullish consensus with 4/5 experts recommending LONG. Technical breakout confirmed.", "confidence": 75}}, "purpose": "Open long position based on bullish consensus"}}
+]
+
+Example 3 (CLOSE POSITION - risk management):
+[
+  {{"step": 1, "tool": "close_position", "params": {{"reason": "Stop loss threshold reached. Risk management dictates exit.", "confidence": 90}}, "purpose": "Close existing position to protect capital"}}
+]
+
+## CRITICAL RULES:
+1. Output ONLY the JSON array - nothing before, nothing after
+2. You can ONLY use these tools: hold, open_long, open_short, close_position
+3. Call EXACTLY ONE tool - not zero, not two, just one
+4. DO NOT try to call analysis tools like crypto_price, technical_analysis, etc.
+5. The analysis is already done - your job is to DECIDE and EXECUTE
+
+DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON array with ONE tool call.
+"""
+    
     def _register_trading_tools(self):
         """Register trading tools for LLM tool calling."""
         
