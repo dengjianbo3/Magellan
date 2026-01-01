@@ -176,7 +176,7 @@ class TradingGraph:
         agent_weights: Dict = None,
         thread_id: str = None,
         leader_agent: Any = None,
-        trade_executor: Any = None  # 🔧 NEW: TradeExecutor instance for execution_node
+        trade_executor: Any = None  # ExecutorAgent instance for execution_node
     ) -> TradingState:
         """
         Run the trading workflow.
@@ -190,7 +190,7 @@ class TradingGraph:
             agent_weights: Agent weight multipliers (optional)
             thread_id: Thread ID for checkpointing
             leader_agent: Leader agent instance for summary generation
-            trade_executor: TradeExecutor instance for execution decisions
+            trade_executor: ExecutorAgent instance for execution decisions
             
         Returns:
             Final TradingState with results

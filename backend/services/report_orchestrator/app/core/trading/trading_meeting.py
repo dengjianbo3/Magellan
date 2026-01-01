@@ -48,48 +48,9 @@ from app.core.trading.orchestration.state import create_initial_state
 logger = logging.getLogger(__name__)
 
 
-class LLMGatewayClient:
-    """
-    Simple wrapper that calls llm_gateway HTTP endpoints.
-    Provides the interface TradeExecutor expects: chat(), generate().
-    """
-    
-    def __init__(self, gateway_url: str = "http://llm_gateway:8003"):
-        self.gateway_url = gateway_url
-    
-    async def chat(self, messages: list, tools: list = None, **kwargs) -> dict:
-        """Call llm_gateway /v1/chat/completions endpoint with tools."""
-        request_data = {
-            "messages": messages,
-            "temperature": kwargs.get("temperature", 0.7)
-        }
-        
-        if tools:
-            request_data["tools"] = tools
-            request_data["tool_choice"] = "auto"
-        
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            response = await client.post(
-                f"{self.gateway_url}/v1/chat/completions",
-                json=request_data
-            )
-            response.raise_for_status()
-            return response.json()
-    
-    async def generate(self, prompt: str, **kwargs) -> str:
-        """Simple generate without tools - returns just the text content."""
-        messages = [{"role": "user", "content": prompt}]
-        result = await self.chat(messages)
-        
-        # Extract text content from response
-        if "choices" in result and result["choices"]:
-            return result["choices"][0].get("message", {}).get("content", "")
-        return ""
-    
-    async def generate_with_tools(self, messages: list, tools: list) -> dict:
-        """Alias for chat with tools."""
-        return await self.chat(messages, tools=tools)
-
+# Note: LLMGatewayClient class has been removed (2026-01-01)
+# ExecutorAgent now inherits from ReWOOAgent and calls LLM gateway directly via HTTP.
+# See: executor_agent.py
 
 # Note: The following are now imported from modular files:
 # - TradingMeetingConfig from trading_config.py

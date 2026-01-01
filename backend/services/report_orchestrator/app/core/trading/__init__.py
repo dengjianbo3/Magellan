@@ -12,7 +12,7 @@ Refactored Architecture (v2.0):
 - Domain: Unified Position model
 - Safety: Centralized SafetyGuard
 - Reflection: ReflectionEngine for learning from trades
-- Executor: TradeExecutor with ReAct fallback
+- Executor: ExecutorAgent (ReWOOAgent-based, replaces TradeExecutor)
 - Orchestration: LangGraph workflow (TradingGraph)
 """
 
@@ -31,7 +31,8 @@ from .scheduler import TradingScheduler
 from .domain import Position, PositionSource
 from .safety import SafetyGuard, SafetyCheckResult, BlockReason
 from .reflection import ReflectionEngine, TradeReflection, ReflectionMemory, AgentWeightAdjuster
-from .executor import TradeExecutor
+from .executor import TradeExecutor  # DEPRECATED: Use ExecutorAgent instead
+from .executor_agent import ExecutorAgent  # NEW: ReWOOAgent-based executor
 from .orchestration import TradingGraph, TradingState, create_initial_state
 
 __all__ = [
@@ -65,7 +66,8 @@ __all__ = [
     'AgentWeightAdjuster',
     
     # Executor (v2.0)
-    'TradeExecutor',
+    'ExecutorAgent',  # NEW: Recommended
+    'TradeExecutor',  # DEPRECATED: Will be removed after 2026-01-15
     
     # Orchestration (v2.0)
     'TradingGraph',

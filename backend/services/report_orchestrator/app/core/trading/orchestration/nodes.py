@@ -14,7 +14,7 @@ import traceback
 
 from langchain_core.runnables import RunnableConfig
 from .state import TradingState, NodeResult, TradeDirection
-from app.core.trading.executor import TradeExecutor
+from app.core.trading.executor_agent import ExecutorAgent  # Unified ReWOOAgent-based executor
 
 logger = logging.getLogger(__name__)
 
@@ -309,16 +309,16 @@ async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[st
             execution_result = {
                 "action": signal.direction,
                 "success": True,
-                "message": f"TradeExecutor decided: {signal.direction.upper()}"
+                "message": f"ExecutorAgent decided: {signal.direction.upper()}"
             }
             execution_success = True
             
-            logger.info(f"[Node: execution] 🎯 TradeExecutor Decision: {signal.direction.upper()} "
+            logger.info(f"[Node: execution] 🎯 ExecutorAgent Decision: {signal.direction.upper()} "
                        f"(Confidence: {signal.confidence}%)")
         else:
-            # TradeExecutor returned None - fallback to HOLD
-            logger.warning("[Node: execution] TradeExecutor returned None, defaulting to HOLD")
-            return _fallback_execution(state, start_time, "TradeExecutor returned no signal")
+            # ExecutorAgent returned None - fallback to HOLD
+            logger.warning("[Node: execution] ExecutorAgent returned None, defaulting to HOLD")
+            return _fallback_execution(state, start_time, "ExecutorAgent returned no signal")
         
         elapsed = (time.time() - start_time) * 1000
         logger.info(f"[Node: execution] ✅ Complete in {elapsed:.0f}ms - {signal.direction.upper()}")
@@ -344,7 +344,7 @@ async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[st
 
 
 def _fallback_execution(state: TradingState, start_time: float, reason: str) -> Dict[str, Any]:
-    """Fallback to HOLD when TradeExecutor is not available."""
+    """Fallback to HOLD when ExecutorAgent is not available."""
     market_data = state.get("market_data", {})
     current_price = market_data.get("current_price", 0)
     
@@ -392,7 +392,7 @@ async def react_fallback_node(state: TradingState) -> Dict[str, Any]:
         error_node = state.get("error_node", "unknown")
         
         # For safety, ReAct fallback always returns HOLD in production
-        # The actual ReAct logic is in TradeExecutor for more controlled execution
+        # The actual ReAct logic is in ExecutorAgent for more controlled execution
         
         if iterations >= max_iterations:
             logger.warning(f"[Node: react_fallback] Max iterations reached, returning HOLD")

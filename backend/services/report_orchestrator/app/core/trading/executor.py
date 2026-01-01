@@ -1,6 +1,15 @@
 """
-Trade Executor Module
+Trade Executor Module (DEPRECATED)
 
+⚠️ DEPRECATION WARNING (2026-01-01):
+This module is deprecated. Use ExecutorAgent instead:
+    from app.core.trading.executor_agent import ExecutorAgent
+
+ExecutorAgent inherits from ReWOOAgent and provides the same functionality
+with a unified architecture. This file will be removed after 2026-01-15.
+
+---
+Original Description:
 Standalone TradeExecutor class extracted from trading_meeting.py.
 Responsible for making final trading decisions based on agent votes and market analysis.
 
@@ -10,6 +19,14 @@ Key Features:
 - Safety-first: text inference defaults to HOLD
 - ReAct fallback capability
 """
+
+import warnings
+warnings.warn(
+    "TradeExecutor is deprecated. Use ExecutorAgent from executor_agent.py instead. "
+    "This module will be removed after 2026-01-15.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 import logging
 import json
