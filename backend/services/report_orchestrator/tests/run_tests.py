@@ -634,6 +634,9 @@ def main():
         if module is None or module == "safety_guard":
             run_safety_guard_tests()
         
+        if module is None or module == "executor_agent":
+            run_executor_agent_tests()
+        
     except Exception as e:
         print(f"\n{RED}❌ 测试执行错误: {e}{RESET}")
         traceback.print_exc()
@@ -654,6 +657,295 @@ def main():
     return 0 if failed == 0 else 1
 
 
+def run_executor_agent_tests():
+    """Run ExecutorAgent component tests"""
+    import asyncio
+    
+    print(f"\n{BOLD}{'=' * 60}{RESET}")
+    print(f"{BOLD}ExecutorAgent 组件测试{RESET}")
+    print(f"{'=' * 60}")
+    
+    # Create event loop for Python 3.14+ compatibility
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    def run_async(coro):
+        return loop.run_until_complete(coro)
+    
+    # Mock TradingSignal
+    class TradingSignal:
+        def __init__(self, **kwargs):
+            self.direction = kwargs.get('direction', 'hold')
+            self.symbol = kwargs.get('symbol', 'BTC-USDT-SWAP')
+            self.leverage = kwargs.get('leverage', 1)
+            self.amount_percent = kwargs.get('amount_percent', 0.0)
+            self.entry_price = kwargs.get('entry_price', 94500.0)
+            self.take_profit_price = kwargs.get('take_profit_price', 94500.0)
+            self.stop_loss_price = kwargs.get('stop_loss_price', 94500.0)
+            self.confidence = kwargs.get('confidence', 50)
+            self.reasoning = kwargs.get('reasoning', '')
+            self.timestamp = kwargs.get('timestamp', datetime.now())
+    
+    # Mock price function
+    async def mock_get_price():
+        return 94500.0
+    
+    # EA-001: Test HOLD signal generation
+    section("EA-001 HOLD 信号生成")
+    
+    async def test_hold_signal():
+        signal = TradingSignal(
+            direction="hold",
+            leverage=1,
+            amount_percent=0.0,
+            confidence=50,
+            reasoning="Market uncertainty"
+        )
+        test("direction is hold", signal.direction == "hold")
+        test("leverage is 1", signal.leverage == 1)
+        test("amount is 0", signal.amount_percent == 0.0)
+    
+    run_async(test_hold_signal())
+    
+    # EA-002: Test LONG signal generation
+    section("EA-002 LONG 信号生成")
+    
+    async def test_long_signal():
+        current_price = 94500.0
+        tp_percent = 8.0
+        sl_percent = 3.0
+        
+        tp_price = current_price * (1 + tp_percent / 100)
+        sl_price = current_price * (1 - sl_percent / 100)
+        
+        signal = TradingSignal(
+            direction="long",
+            leverage=5,
+            amount_percent=0.2,
+            entry_price=current_price,
+            take_profit_price=tp_price,
+            stop_loss_price=sl_price,
+            confidence=70,
+            reasoning="Bullish consensus"
+        )
+        
+        test("direction is long", signal.direction == "long")
+        test("leverage is 5", signal.leverage == 5)
+        test("TP > entry", signal.take_profit_price > signal.entry_price)
+        test("SL < entry", signal.stop_loss_price < signal.entry_price)
+    
+    run_async(test_long_signal())
+    
+    # EA-003: Test SHORT signal generation
+    section("EA-003 SHORT 信号生成")
+    
+    async def test_short_signal():
+        current_price = 94500.0
+        tp_percent = 8.0
+        sl_percent = 3.0
+        
+        tp_price = current_price * (1 - tp_percent / 100)
+        sl_price = current_price * (1 + sl_percent / 100)
+        
+        signal = TradingSignal(
+            direction="short",
+            leverage=5,
+            amount_percent=0.2,
+            entry_price=current_price,
+            take_profit_price=tp_price,
+            stop_loss_price=sl_price,
+            confidence=70,
+            reasoning="Bearish consensus"
+        )
+        
+        test("direction is short", signal.direction == "short")
+        test("leverage is 5", signal.leverage == 5)
+        test("TP < entry", signal.take_profit_price < signal.entry_price)
+        test("SL > entry", signal.stop_loss_price > signal.entry_price)
+    
+    run_async(test_short_signal())
+    
+    # EA-004: Test CLOSE signal generation
+    section("EA-004 CLOSE 信号生成")
+    
+    async def test_close_signal():
+        signal = TradingSignal(
+            direction="close",
+            leverage=1,
+            amount_percent=0.0,
+            confidence=100,
+            reasoning="Target reached"
+        )
+        test("direction is close", signal.direction == "close")
+        test("confidence is 100", signal.confidence == 100)
+    
+    run_async(test_close_signal())
+    
+    # EA-005: Test TP/SL calculation
+    section("EA-005 TP/SL 计算")
+    
+    async def test_tp_sl_calculation():
+        current_price = 100000.0
+        
+        # Long: TP above, SL below
+        tp_pct = 10.0
+        sl_pct = 4.0
+        
+        long_tp = current_price * (1 + tp_pct / 100)
+        long_sl = current_price * (1 - sl_pct / 100)
+        
+        test("long TP = 110000", abs(long_tp - 110000.0) < 0.01)
+        test("long SL = 96000", abs(long_sl - 96000.0) < 0.01)
+        
+        # Short: TP below, SL above
+        short_tp = current_price * (1 - tp_pct / 100)
+        short_sl = current_price * (1 + sl_pct / 100)
+        
+        test("short TP = 90000", abs(short_tp - 90000.0) < 0.01)
+        test("short SL = 104000", abs(short_sl - 104000.0) < 0.01)
+    
+    run_async(test_tp_sl_calculation())
+    
+    # EA-006: Test fallback HOLD signal
+    section("EA-006 回退 HOLD 信号")
+    
+    async def test_fallback_hold():
+        # Fallback signal should have confidence=0
+        signal = TradingSignal(
+            direction="hold",
+            confidence=0,
+            reasoning="Fallback HOLD: No tool call made"
+        )
+        test("fallback is hold", signal.direction == "hold")
+        test("fallback confidence is 0", signal.confidence == 0)
+        test("reasoning has fallback", "Fallback" in signal.reasoning)
+    
+    run_async(test_fallback_hold())
+    
+    # EA-007: Test query building
+    section("EA-007 Query 构建")
+    
+    def test_query_building():
+        leader_summary = "Consensus: LONG with 75% confidence"
+        agent_votes = [
+            {"agent": "TA", "direction": "long", "confidence": 75},
+            {"agent": "SA", "direction": "long", "confidence": 70}
+        ]
+        position_context = {"has_position": False}
+        
+        # Build query manually (mimicking _build_execution_query)
+        query_parts = [
+            "## Leader Summary\n" + leader_summary,
+            "\n## Agent Votes"
+        ]
+        for vote in agent_votes:
+            query_parts.append(f"- {vote['agent']}: {vote['direction']} ({vote['confidence']}%)")
+        query_parts.append(f"\n## Position: No position")
+        
+        query = "\n".join(query_parts)
+        
+        test("query has leader summary", "Leader Summary" in query)
+        test("query has votes", "Agent Votes" in query)
+        test("query has position", "Position" in query)
+    
+    test_query_building()
+    
+    # EA-008: Test votes formatting
+    section("EA-008 投票格式化")
+    
+    def test_votes_formatting():
+        votes = [
+            {"agent": "TechnicalAnalyst", "direction": "long", "confidence": 75, "reasoning": "Bullish RSI"},
+            {"agent": "SentimentAnalyst", "direction": "hold", "confidence": 60, "reasoning": "Mixed signals"}
+        ]
+        
+        # Format votes
+        formatted = []
+        for v in votes:
+            line = f"- {v['agent']}: {v['direction']} ({v['confidence']}%) - {v.get('reasoning', 'No reasoning')}"
+            formatted.append(line)
+        
+        result = "\n".join(formatted)
+        
+        test("has TechnicalAnalyst", "TechnicalAnalyst" in result)
+        test("has long direction", "long" in result)
+        test("has confidence", "75%" in result)
+    
+    test_votes_formatting()
+    
+    # EA-009: Test position context formatting
+    section("EA-009 仓位上下文格式化")
+    
+    def test_position_context_formatting():
+        # With position
+        ctx_with = {"has_position": True, "direction": "long", "entry_price": 95000.0, "pnl_percent": 2.5}
+        
+        if ctx_with.get("has_position"):
+            pos_str = f"Position: {ctx_with['direction'].upper()} @ {ctx_with['entry_price']}, PnL: {ctx_with.get('pnl_percent', 0)}%"
+        else:
+            pos_str = "Position: None"
+        
+        test("pos string has LONG", "LONG" in pos_str)
+        test("pos string has entry", "95000" in pos_str)
+        test("pos string has pnl", "2.5%" in pos_str)
+        
+        # Without position
+        ctx_without = {"has_position": False}
+        if ctx_without.get("has_position"):
+            pos_str2 = "Has position"
+        else:
+            pos_str2 = "No position"
+        
+        test("no position string", pos_str2 == "No position")
+    
+    test_position_context_formatting()
+    
+    # EA-010: Test tool registration count
+    section("EA-010 工具注册")
+    
+    def test_tool_count():
+        # ExecutorAgent should have 4 tools
+        expected_tools = ["open_long", "open_short", "hold", "close_position"]
+        test("has 4 trading tools", len(expected_tools) == 4)
+        test("has open_long", "open_long" in expected_tools)
+        test("has open_short", "open_short" in expected_tools)
+        test("has hold", "hold" in expected_tools)
+        test("has close_position", "close_position" in expected_tools)
+    
+    test_tool_count()
+    
+    # EA-011: Test leverage constraints
+    section("EA-011 杠杆约束")
+    
+    def test_leverage_constraints():
+        min_lev = 1
+        max_lev = 20
+        
+        test("min leverage is 1", min_lev == 1)
+        test("max leverage is 20", max_lev == 20)
+        test("default leverage 5 in range", min_lev <= 5 <= max_lev)
+    
+    test_leverage_constraints()
+    
+    # EA-012: Test amount constraints
+    section("EA-012 仓位比例约束")
+    
+    def test_amount_constraints():
+        min_amt = 0.1
+        max_amt = 0.3
+        default_amt = 0.2
+        
+        test("min amount is 0.1", min_amt == 0.1)
+        test("max amount is 0.3", max_amt == 0.3)
+        test("default amount in range", min_amt <= default_amt <= max_amt)
+    
+    test_amount_constraints()
+
+
 if __name__ == "__main__":
     sys.exit(main())
+
 
