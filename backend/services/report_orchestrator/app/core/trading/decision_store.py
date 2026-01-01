@@ -62,21 +62,41 @@ class TradingDecision:
         return cls(**data)
     
     def to_frontend_format(self) -> Dict[str, Any]:
-        """Format for frontend display (Signal Details modal)"""
+        """
+        Format for frontend display (Signal Details modal).
+        
+        Frontend expects:
+        {
+            timestamp: "ISO string",
+            status: "success/error",
+            signal: {
+                direction: "hold",
+                confidence: 65,
+                leverage: 3,
+                reasoning: "...",
+                entry_price: 94500,
+                take_profit_price: 103950,
+                stop_loss_price: 90720,
+                leader_summary: "..."
+            }
+        }
+        """
         return {
             "trade_id": self.trade_id,
             "timestamp": self.timestamp.isoformat(),
-            "direction": self.direction.upper(),
-            "confidence": self.confidence,
-            "leverage": self.leverage,
-            "reasoning": self.reasoning,
-            "entry_price": self.entry_price,
-            "tp_price": self.tp_price,
-            "sl_price": self.sl_price,
-            "leader_summary": self.leader_summary,
+            "status": "executed" if self.was_executed else "pending",
+            "signal": {
+                "direction": self.direction,  # keep lowercase for frontend getDirectionClass()
+                "confidence": self.confidence,
+                "leverage": self.leverage,
+                "reasoning": self.reasoning,
+                "entry_price": self.entry_price,
+                "take_profit_price": self.tp_price,  # Frontend uses take_profit_price
+                "stop_loss_price": self.sl_price,    # Frontend uses stop_loss_price
+                "leader_summary": self.leader_summary,
+            },
             "agent_votes": self.agent_votes,
-            "position": self.position_context,
-            "was_executed": self.was_executed,
+            "position_context": self.position_context,
         }
 
 
