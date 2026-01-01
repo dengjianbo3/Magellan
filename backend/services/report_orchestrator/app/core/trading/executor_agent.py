@@ -279,38 +279,63 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
             position_context=position_context
         )
         
-        try:
-            # Use ReWOO 3-phase analysis (inherited from ReWOOAgent)
-            result = await self.analyze_with_rewoo(query, self._current_context)
-            
-            # Check if we got a signal from tool execution
-            if self._result.get("signal"):
-                signal = self._result["signal"]
-                logger.info(f"[ExecutorAgent] ✅ Execution complete: {signal.direction.upper()}")
-                # Save decision to Redis
-                await self._save_decision(signal)
-                return signal
-            
-            # If no tool was called, try to parse decision from result text
-            if result:
-                signal = self._parse_decision_from_text(result, position_context)
-                if signal:
+        # Retry parameters for LLM instability
+        max_attempts = 2
+        
+        for attempt in range(1, max_attempts + 1):
+            try:
+                # Reset result for each attempt
+                self._result = {"signal": None}
+                self._executed_tools = []
+                
+                if attempt > 1:
+                    logger.info(f"[ExecutorAgent] ⟳ Retry attempt {attempt}/{max_attempts}...")
+                
+                # Use ReWOO 3-phase analysis (inherited from ReWOOAgent)
+                result = await self.analyze_with_rewoo(query, self._current_context)
+                
+                # Check if we got a signal from tool execution
+                if self._result.get("signal"):
+                    signal = self._result["signal"]
+                    logger.info(f"[ExecutorAgent] ✅ Execution complete: {signal.direction.upper()}")
+                    # Save decision to Redis
                     await self._save_decision(signal)
                     return signal
-            
-            # Fallback to HOLD
-            logger.warning("[ExecutorAgent] No signal generated, defaulting to HOLD")
-            signal = await self._generate_hold_signal("No tool call made, defaulting to HOLD")
-            await self._save_decision(signal)
-            return signal
                 
-        except Exception as e:
-            logger.error(f"[ExecutorAgent] Execution failed: {e}")
-            import traceback
-            traceback.print_exc()
-            signal = await self._generate_hold_signal(f"Execution error: {str(e)}")
-            await self._save_decision(signal)
-            return signal
+                # If no tool was called, try to parse decision from result text
+                if result:
+                    signal = self._parse_decision_from_text(result, position_context)
+                    if signal:
+                        await self._save_decision(signal)
+                        return signal
+                
+                # No signal generated - retry if attempts remaining
+                if attempt < max_attempts:
+                    logger.warning(f"[ExecutorAgent] No signal on attempt {attempt}, retrying...")
+                    continue
+                
+                # All retries exhausted - fallback to HOLD
+                logger.warning("[ExecutorAgent] No signal generated after all attempts, defaulting to HOLD")
+                signal = await self._generate_hold_signal("No tool call made after retries, defaulting to HOLD")
+                await self._save_decision(signal)
+                return signal
+                    
+            except Exception as e:
+                logger.error(f"[ExecutorAgent] Execution failed on attempt {attempt}: {e}")
+                if attempt < max_attempts:
+                    logger.info(f"[ExecutorAgent] Retrying after exception...")
+                    continue
+                    
+                import traceback
+                traceback.print_exc()
+                signal = await self._generate_hold_signal(f"Execution error: {str(e)}")
+                await self._save_decision(signal)
+                return signal
+        
+        # Should not reach here, but fallback just in case
+        signal = await self._generate_hold_signal("Unexpected fallback")
+        await self._save_decision(signal)
+        return signal
     
     async def _save_decision(self, signal: TradingSignal):
         """
