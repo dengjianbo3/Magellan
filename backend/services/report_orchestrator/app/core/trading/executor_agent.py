@@ -270,9 +270,9 @@ IMPORTANT: You MUST call exactly one tool to make your decision."""
         lines = []
         for vote in agent_votes:
             agent = vote.get('agent_id', 'Unknown')
-            direction = vote.get('direction', 'unknown')
+            direction = vote.get('direction') or 'unknown'  # Defensive check for None
             confidence = vote.get('confidence', 0)
-            reasoning = vote.get('reasoning', '')[:100]
+            reasoning = (vote.get('reasoning') or '')[:100]
             lines.append(f"- {agent}: {direction.upper()} ({confidence}%) - {reasoning}")
         
         return "\n".join(lines)
@@ -282,7 +282,8 @@ IMPORTANT: You MUST call exactly one tool to make your decision."""
         if not context or not context.get("has_position"):
             return "No active position."
         
-        return f"""- Direction: {context.get('direction', 'unknown').upper()}
+        direction = context.get('direction') or 'unknown'  # Defensive check for None
+        return f"""- Direction: {direction.upper()}
 - Entry Price: ${context.get('entry_price', 0):,.2f}
 - Current Price: ${context.get('current_price', 0):,.2f}
 - Unrealized PnL: ${context.get('unrealized_pnl', 0):,.2f} ({context.get('unrealized_pnl_percent', 0):+.1f}%)
