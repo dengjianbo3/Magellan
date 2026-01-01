@@ -1440,6 +1440,13 @@ def main():
         if module is None or module == "integration":
             run_integration_scenario_tests()
         
+        # Phase 5: Parser and Validator Tests
+        if module is None or module == "parsers":
+            run_parser_tests()
+        
+        if module is None or module == "validators":
+            run_validator_tests()
+        
     except Exception as e:
         print(f"\n{RED}❌ 测试执行错误: {e}{RESET}")
         traceback.print_exc()
@@ -1458,6 +1465,225 @@ def main():
     print(f"{'=' * 60}\n")
     
     return 0 if failed == 0 else 1
+
+
+def run_parser_tests():
+    """Run DirectionNormalizer tests"""
+    print(f"\n{BOLD}{'=' * 60}{RESET}")
+    print(f"{BOLD}DirectionNormalizer 解析器测试{RESET}")
+    print(f"{'=' * 60}")
+    
+    # Load the module
+    with open('app/core/trading/domain/vote.py', 'r') as f:
+        vote_content = f.read()
+    exec(vote_content, globals())
+    
+    with open('app/core/trading/parsers/direction_normalizer.py', 'r') as f:
+        content = f.read().replace('from ..domain.vote import VoteDirection', '')
+    exec(content, globals())
+    
+    # DN-001: English LONG keywords
+    section("DN-001 英文 LONG 关键词")
+    
+    def test_long_english():
+        long_keywords = ["long", "buy", "bullish", "bull", "up", "upward", "positive", "l"]
+        for kw in long_keywords:
+            result = DirectionNormalizer.normalize(kw)
+            test(f"'{kw}' -> LONG", result == VoteDirection.LONG)
+    
+    test_long_english()
+    
+    # DN-002: Chinese LONG keywords
+    section("DN-002 中文 LONG 关键词")
+    
+    def test_long_chinese():
+        long_keywords = ["做多", "开多", "多", "看多", "看涨", "买入"]
+        for kw in long_keywords:
+            result = DirectionNormalizer.normalize(kw)
+            test(f"'{kw}' -> LONG", result == VoteDirection.LONG)
+    
+    test_long_chinese()
+    
+    # DN-003: English SHORT keywords
+    section("DN-003 英文 SHORT 关键词")
+    
+    def test_short_english():
+        short_keywords = ["short", "sell", "bearish", "bear", "down", "downward", "negative", "s"]
+        for kw in short_keywords:
+            result = DirectionNormalizer.normalize(kw)
+            test(f"'{kw}' -> SHORT", result == VoteDirection.SHORT)
+    
+    test_short_english()
+    
+    # DN-004: Chinese SHORT keywords
+    section("DN-004 中文 SHORT 关键词")
+    
+    def test_short_chinese():
+        short_keywords = ["做空", "开空", "空", "看空", "看跌", "卖出"]
+        for kw in short_keywords:
+            result = DirectionNormalizer.normalize(kw)
+            test(f"'{kw}' -> SHORT", result == VoteDirection.SHORT)
+    
+    test_short_chinese()
+    
+    # DN-005: HOLD keywords
+    section("DN-005 HOLD 关键词")
+    
+    def test_hold():
+        hold_keywords = ["hold", "wait", "neutral", "flat", "观望", "持有", "等待"]
+        for kw in hold_keywords:
+            result = DirectionNormalizer.normalize(kw)
+            test(f"'{kw}' -> HOLD", result == VoteDirection.HOLD)
+    
+    test_hold()
+    
+    # DN-006: CLOSE keywords
+    section("DN-006 CLOSE 关键词")
+    
+    def test_close():
+        close_keywords = ["close", "exit", "close_position", "平仓", "清仓", "离场"]
+        for kw in close_keywords:
+            result = DirectionNormalizer.normalize(kw)
+            test(f"'{kw}' -> CLOSE", result == VoteDirection.CLOSE)
+    
+    test_close()
+    
+    # DN-007: Edge cases
+    section("DN-007 边界情况")
+    
+    def test_edge_cases():
+        # Empty/None
+        test("empty -> HOLD", DirectionNormalizer.normalize("") == VoteDirection.HOLD)
+        
+        # Case insensitive
+        test("LONG uppercase", DirectionNormalizer.normalize("LONG") == VoteDirection.LONG)
+        test("Short mixed case", DirectionNormalizer.normalize("Short") == VoteDirection.SHORT)
+        
+        # With prefixes
+        test("direction: long", DirectionNormalizer.normalize("direction: long") == VoteDirection.LONG)
+        
+        # Unknown defaults to HOLD
+        test("unknown -> HOLD", DirectionNormalizer.normalize("xyz123") == VoteDirection.HOLD)
+    
+    test_edge_cases()
+    
+    # DN-008: is_valid_direction
+    section("DN-008 is_valid_direction")
+    
+    def test_is_valid():
+        test("'long' is valid", DirectionNormalizer.is_valid_direction("long"))
+        test("'short' is valid", DirectionNormalizer.is_valid_direction("short"))
+        test("empty is not valid", not DirectionNormalizer.is_valid_direction(""))
+        test("random is not valid", not DirectionNormalizer.is_valid_direction("xyz"))
+    
+    test_is_valid()
+
+
+def run_validator_tests():
+    """Run ConfidenceValidator tests"""
+    print(f"\n{BOLD}{'=' * 60}{RESET}")
+    print(f"{BOLD}ConfidenceValidator 验证器测试{RESET}")
+    print(f"{'=' * 60}")
+    
+    # Load the module
+    with open('app/core/trading/confidence_validator.py', 'r') as f:
+        content = f.read()
+    exec(content, globals())
+    
+    # CV-001: Default thresholds
+    section("CV-001 默认阈值")
+    
+    def test_default_thresholds():
+        validator = ConfidenceValidator()
+        test("min_open = 65", validator.min_open == 65)
+        test("min_close = 50", validator.min_close == 50)
+    
+    test_default_thresholds()
+    
+    # CV-002: Custom thresholds
+    section("CV-002 自定义阈值")
+    
+    def test_custom_thresholds():
+        validator = ConfidenceValidator(min_open=70, min_close=55)
+        test("custom min_open = 70", validator.min_open == 70)
+        test("custom min_close = 55", validator.min_close == 55)
+    
+    test_custom_thresholds()
+    
+    # CV-003: open_long validation
+    section("CV-003 open_long 验证")
+    
+    def test_open_long_validation():
+        validator = ConfidenceValidator(min_open=65)
+        
+        # Below threshold
+        valid, msg = validator.validate("open_long", 60)
+        test("60% blocked for open_long", not valid)
+        test("has error message", "below minimum" in msg.lower())
+        
+        # At threshold
+        valid, msg = validator.validate("open_long", 65)
+        test("65% allowed for open_long", valid)
+        
+        # Above threshold
+        valid, msg = validator.validate("open_long", 80)
+        test("80% allowed for open_long", valid)
+    
+    test_open_long_validation()
+    
+    # CV-004: open_short validation
+    section("CV-004 open_short 验证")
+    
+    def test_open_short_validation():
+        validator = ConfidenceValidator(min_open=65)
+        
+        valid, _ = validator.validate("open_short", 50)
+        test("50% blocked for open_short", not valid)
+        
+        valid, _ = validator.validate("open_short", 70)
+        test("70% allowed for open_short", valid)
+    
+    test_open_short_validation()
+    
+    # CV-005: close_position validation
+    section("CV-005 close_position 验证")
+    
+    def test_close_validation():
+        validator = ConfidenceValidator(min_close=50)
+        
+        valid, _ = validator.validate("close_position", 40)
+        test("40% blocked for close", not valid)
+        
+        valid, _ = validator.validate("close_position", 55)
+        test("55% allowed for close", valid)
+    
+    test_close_validation()
+    
+    # CV-006: hold always allowed
+    section("CV-006 hold 总是允许")
+    
+    def test_hold_validation():
+        validator = ConfidenceValidator()
+        
+        valid, _ = validator.validate("hold", 0)
+        test("0% allowed for hold", valid)
+        
+        valid, _ = validator.validate("hold", 10)
+        test("10% allowed for hold", valid)
+    
+    test_hold_validation()
+    
+    # CV-007: should_block
+    section("CV-007 should_block")
+    
+    def test_should_block():
+        validator = ConfidenceValidator(min_open=65)
+        
+        test("should block 50% open_long", validator.should_block("open_long", 50))
+        test("should not block 70% open_long", not validator.should_block("open_long", 70))
+        test("should not block any hold", not validator.should_block("hold", 0))
+    
+    test_should_block()
 
 
 if __name__ == "__main__":
