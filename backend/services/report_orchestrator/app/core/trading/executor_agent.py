@@ -13,6 +13,7 @@ Key Features:
 
 import logging
 import json
+import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Callable
 
@@ -20,6 +21,7 @@ from app.core.roundtable.rewoo_agent import ReWOOAgent
 from app.core.roundtable.tool import FunctionTool
 from app.models.trading_models import TradingSignal
 from app.core.trading.price_service import get_current_btc_price
+from app.core.trading.decision_store import TradingDecision, TradingDecisionStore
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +80,10 @@ class ExecutorAgent(ReWOOAgent):
         # Result container for tool execution
         self._result: Dict[str, Any] = {"signal": None}
         self._executed_tools: List[Dict[str, Any]] = []
+        
+        # Decision store for Redis persistence
+        self._decision_store = TradingDecisionStore()
+        self._current_context: Optional[Dict[str, Any]] = None  # For saving with decision
         
         # Register trading tools
         self._register_trading_tools()
@@ -258,6 +264,14 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
         
         logger.info("[ExecutorAgent] Starting execution phase (ReWOO pattern)...")
         
+        # Store context for decision saving
+        self._current_context = {
+            "leader_summary": leader_summary,
+            "agent_votes": agent_votes,
+            "position_context": position_context,
+            "trigger_reason": trigger_reason or "scheduled"
+        }
+        
         # Build query for ReWOO analysis
         query = self._build_execution_query(
             leader_summary=leader_summary,
@@ -265,39 +279,74 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
             position_context=position_context
         )
         
-        # Build context
-        context = {
-            "leader_summary": leader_summary,
-            "agent_votes": agent_votes,
-            "position_context": position_context,
-            "trigger_reason": trigger_reason or "scheduled"
-        }
-        
         try:
             # Use ReWOO 3-phase analysis (inherited from ReWOOAgent)
-            result = await self.analyze_with_rewoo(query, context)
+            result = await self.analyze_with_rewoo(query, self._current_context)
             
             # Check if we got a signal from tool execution
             if self._result.get("signal"):
                 signal = self._result["signal"]
                 logger.info(f"[ExecutorAgent] ✅ Execution complete: {signal.direction.upper()}")
+                # Save decision to Redis
+                await self._save_decision(signal)
                 return signal
             
             # If no tool was called, try to parse decision from result text
             if result:
                 signal = self._parse_decision_from_text(result, position_context)
                 if signal:
+                    await self._save_decision(signal)
                     return signal
             
             # Fallback to HOLD
             logger.warning("[ExecutorAgent] No signal generated, defaulting to HOLD")
-            return await self._generate_hold_signal("No tool call made, defaulting to HOLD")
+            signal = await self._generate_hold_signal("No tool call made, defaulting to HOLD")
+            await self._save_decision(signal)
+            return signal
                 
         except Exception as e:
             logger.error(f"[ExecutorAgent] Execution failed: {e}")
             import traceback
             traceback.print_exc()
-            return await self._generate_hold_signal(f"Execution error: {str(e)}")
+            signal = await self._generate_hold_signal(f"Execution error: {str(e)}")
+            await self._save_decision(signal)
+            return signal
+    
+    async def _save_decision(self, signal: TradingSignal):
+        """
+        Save trading decision to Redis for frontend persistence.
+        
+        This allows the frontend to display recent decisions after page refresh.
+        """
+        try:
+            if not self._current_context:
+                logger.warning("[ExecutorAgent] No context available for saving decision")
+                return
+            
+            decision = TradingDecision(
+                trade_id=str(uuid.uuid4()),
+                timestamp=signal.timestamp or datetime.now(),
+                trigger_reason=self._current_context.get("trigger_reason", "scheduled"),
+                direction=signal.direction,
+                confidence=signal.confidence or 0,
+                leverage=signal.leverage or 1,
+                reasoning=signal.reasoning or "",
+                entry_price=signal.entry_price or 0.0,
+                tp_price=signal.take_profit_price or 0.0,
+                sl_price=signal.stop_loss_price or 0.0,
+                amount_percent=signal.amount_percent or 0.0,
+                leader_summary=self._current_context.get("leader_summary", ""),
+                agent_votes=self._current_context.get("agent_votes", []),
+                position_context=self._current_context.get("position_context", {}),
+                was_executed=True,
+            )
+            
+            await self._decision_store.save_decision(decision)
+            logger.info(f"[ExecutorAgent] 💾 Decision saved to Redis: {decision.trade_id[:8]}...")
+            
+        except Exception as e:
+            logger.error(f"[ExecutorAgent] Failed to save decision: {e}")
+            # Non-fatal - continue even if save fails
     
     def _build_execution_query(
         self,

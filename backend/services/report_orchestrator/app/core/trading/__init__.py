@@ -34,6 +34,7 @@ from .reflection import ReflectionEngine, TradeReflection, ReflectionMemory, Age
 from .executor import TradeExecutor  # DEPRECATED: Use ExecutorAgent instead
 from .executor_agent import ExecutorAgent  # NEW: ReWOOAgent-based executor
 from .orchestration import TradingGraph, TradingState, create_initial_state
+from .decision_store import TradingDecision, TradingDecisionStore, get_decision_store
 
 __all__ = [
     # Trading Backends
@@ -69,8 +70,14 @@ __all__ = [
     'ExecutorAgent',  # NEW: Recommended
     'TradeExecutor',  # DEPRECATED: Will be removed after 2026-01-15
     
+    # Decision Storage (v2.0)
+    'TradingDecision',
+    'TradingDecisionStore',
+    'get_decision_store',
+    
     # Orchestration (v2.0)
     'TradingGraph',
     'TradingState',
     'create_initial_state',
 ]
+
