@@ -56,10 +56,32 @@ class TradingDecision:
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'TradingDecision':
-        """Create from dictionary"""
-        if 'timestamp' in data and isinstance(data['timestamp'], str):
-            data['timestamp'] = datetime.fromisoformat(data['timestamp'])
-        return cls(**data)
+        """
+        Create from dictionary.
+        
+        Handles:
+        - Missing fields (uses dataclass defaults)
+        - Extra fields (ignores for forward compatibility)
+        - String timestamp conversion
+        - None timestamp (uses datetime.now())
+        """
+        from dataclasses import fields as dataclass_fields
+        
+        # Get known field names
+        known_fields = {f.name for f in dataclass_fields(cls)}
+        
+        # Filter to only known fields
+        filtered_data = {k: v for k, v in data.items() if k in known_fields}
+        
+        # Handle timestamp
+        if 'timestamp' in filtered_data:
+            ts = filtered_data['timestamp']
+            if isinstance(ts, str):
+                filtered_data['timestamp'] = datetime.fromisoformat(ts)
+            elif ts is None:
+                filtered_data['timestamp'] = datetime.now()
+        
+        return cls(**filtered_data)
     
     def to_frontend_format(self) -> Dict[str, Any]:
         """
