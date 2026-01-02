@@ -72,6 +72,26 @@ class TriggerLock:
             self._state = "idle"
             logger.debug("[Lock] Check released, state -> idle")
 
+    def can_trigger(self) -> Tuple[bool, str]:
+        """
+        检查是否可以触发
+        
+        Returns:
+            (can_trigger, reason)
+        """
+        current_state = self.state  # 触发自动过期检查
+        
+        if current_state == "analyzing":
+            return False, "Main analysis in progress"
+        
+        if current_state == "cooldown":
+            remaining = int((self._cooldown_until - datetime.now()).total_seconds())
+            mins = remaining // 60
+            secs = remaining % 60
+            return False, f"Cooldown ({mins}m {secs}s remaining)"
+        
+        return True, ""
+
     async def acquire(self, timeout: int = 60) -> bool:
         """
         获取主分析锁，进入 ANALYZING 状态
@@ -109,6 +129,20 @@ class TriggerLock:
             
             # 在锁外等待，避免死锁
             await asyncio.sleep(2)
+    
+    def release(self, cooldown_minutes: Optional[int] = None):
+        """
+        释放锁，进入 COOLDOWN 状态
+        
+        Args:
+            cooldown_minutes: 冷却时间（分钟），None 使用默认值
+        """
+        if cooldown_minutes is None:
+            cooldown_minutes = self.cooldown_minutes
+        
+        self._state = "cooldown"
+        self._cooldown_until = datetime.now() + timedelta(minutes=cooldown_minutes)
+        logger.info(f"[Lock] Released, state -> cooldown ({cooldown_minutes}min)")
     
     def force_release(self):
         """强制释放锁，直接进入 IDLE 状态"""
