@@ -386,16 +386,17 @@
     </div>
 
     <script>
-        const SERVER = 'http://45.76.159.149:9000';
+        // Use relative path for API - Nginx reverse proxy handles CORS and routing
+        const ENPOINT_BASE = '/api/trading';
         let autoRefresh = false;
         let refreshInterval = null;
         let signalCache = []; // Cache signals for modal
 
         async function fetchData(endpoint) {
             try {
-                const response = await fetch(`${SERVER}/api/trading/${endpoint}`, {
+                // Use relative path (reverse proxy) instead of cross-origin request
+                const response = await fetch(`${ENPOINT_BASE}/${endpoint}`, {
                     method: 'GET',
-                    mode: 'cors',
                     headers: { 'Accept': 'application/json' }
                 });
                 if (!response.ok) {
