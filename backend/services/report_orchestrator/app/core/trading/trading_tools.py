@@ -1268,7 +1268,6 @@ class TradingToolkit:
             JSON string with search results
         """
         try:
-        try:
             # Direct search without caching
             # The user explicitly requested to remove embedding search cache
             search_result = await self._execute_tavily_search(query, max_results, time_range, topic, days, **kwargs)
