@@ -775,7 +775,7 @@ class PaperTrader(BaseTrader):
         await self._save_state()
         logger.info(f"Paper trader reset. Balance: ${self.initial_balance:.2f}")
 
-    def get_status(self) -> Dict:
+    async def get_status(self) -> Dict:
         """Get Paper Trader status"""
         return {
             "initialized": self._initialized,
@@ -789,7 +789,7 @@ class PaperTrader(BaseTrader):
             "realized_pnl": self._account.realized_pnl
         }
 
-    def calculate_max_drawdown(self, start_date: Optional[str] = None) -> Dict[str, Any]:
+    async def calculate_max_drawdown(self, start_date: Optional[str] = None) -> Dict[str, Any]:
         """
         Calculate maximum drawdown from trade history.
         
