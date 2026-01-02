@@ -37,7 +37,7 @@ class TriggerLock:
     
     def __init__(self, cooldown_minutes: int = 30):
         self.cooldown_minutes = cooldown_minutes
-        self._state: Literal["idle", "analyzing", "cooldown"] = "idle"
+        self._state: Literal["idle", "checking", "analyzing", "cooldown"] = "idle"
         self._lock = asyncio.Lock()
         self._cooldown_until: Optional[datetime] = None
         self._last_analysis_time: Optional[datetime] = None
@@ -52,55 +52,63 @@ class TriggerLock:
                 logger.info("[Lock] Cooldown expired, state -> idle")
         return self._state
     
-    def can_trigger(self) -> Tuple[bool, str]:
+    async def acquire_check(self) -> bool:
         """
-        检查是否可以触发
-        
-        Returns:
-            (can_trigger, reason)
-        """
-        current_state = self.state  # 触发自动过期检查
-        
-        if current_state == "analyzing":
-            return False, "Main analysis in progress"
-        
-        if current_state == "cooldown":
-            remaining = int((self._cooldown_until - datetime.now()).total_seconds())
-            mins = remaining // 60
-            secs = remaining % 60
-            return False, f"Cooldown ({mins}m {secs}s remaining)"
-        
-        return True, ""
-    
-    async def acquire(self) -> bool:
-        """
-        获取锁，进入 ANALYZING 状态
-        
-        Returns:
-            是否成功获取
+        尝试获取 Trigger Check 锁 (Transient)
+        只在 IDLE 状态下成功
         """
         async with self._lock:
+            # 必须 check self.state property 以触发过期
             if self.state != "idle":
                 return False
             
-            self._state = "analyzing"
-            self._last_analysis_time = datetime.now()
-            logger.info("[Lock] Acquired, state -> analyzing")
+            self._state = "checking"
+            logger.debug("[Lock] Check acquired, state -> checking")
             return True
-    
-    def release(self, cooldown_minutes: Optional[int] = None):
+
+    def release_check(self):
+        """释放 Trigger Check 锁"""
+        if self._state == "checking":
+            self._state = "idle"
+            logger.debug("[Lock] Check released, state -> idle")
+
+    async def acquire(self, timeout: int = 60) -> bool:
         """
-        释放锁，进入 COOLDOWN 状态
+        获取主分析锁，进入 ANALYZING 状态
         
-        Args:
-            cooldown_minutes: 冷却时间（分钟），None 使用默认值
+        如果当前是 Trigger Check (checking)，会等待其结束。
+        如果当前是 Cooldown，会强制打断冷却。
         """
-        if cooldown_minutes is None:
-            cooldown_minutes = self.cooldown_minutes
+        start_time = datetime.now()
         
-        self._state = "cooldown"
-        self._cooldown_until = datetime.now() + timedelta(minutes=cooldown_minutes)
-        logger.info(f"[Lock] Released, state -> cooldown ({cooldown_minutes}min)")
+        while True:
+            async with self._lock:
+                current_state = self.state
+                
+                # 1. 如果是 Checking，等待
+                if current_state == "checking":
+                    if (datetime.now() - start_time).total_seconds() > timeout:
+                        logger.warning("[Lock] Wait for checking timed out, forcing acquire")
+                        # 超时强制获取
+                    else:
+                        logger.info("[Lock] Waiting for trigger check to finish...")
+                        # 释放锁并等待一小段时间再重试
+                        pass 
+                
+                # 2. 正常获取逻辑
+                elif current_state == "analyzing":
+                    return False  # 已经在运行
+                
+                # 3. IDLE 或 COOLDOWN (强制覆盖)
+                else:
+                    self._state = "analyzing"
+                    self._last_analysis_time = datetime.now()
+                    self._cooldown_until = None # 清除冷却
+                    logger.info(f"[Lock] Acquired (from {current_state}), state -> analyzing")
+                    return True
+            
+            # 在锁外等待，避免死锁
+            await asyncio.sleep(2)
     
     def force_release(self):
         """强制释放锁，直接进入 IDLE 状态"""

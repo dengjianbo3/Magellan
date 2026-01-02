@@ -90,13 +90,7 @@ class TriggerScheduler:
         """调度循环"""
         while self._state == SchedulerState.RUNNING:
             try:
-                # 1. 检查锁状态（处理主分析互斥）
-                can_trigger, reason = self.trigger_lock.can_trigger()
-                if not can_trigger:
-                    logger.debug(f"[TriggerScheduler] Skipped check: {reason}")
-                else:
-                    # 2. 如果允许触发，执行检查
-                    await self.run_check()
+                await self.run_check()
                     
             except Exception as e:
                 logger.error(f"[TriggerScheduler] Check error: {e}")
