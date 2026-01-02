@@ -665,9 +665,13 @@ Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄
         # 🛡️ Store context for safety checks (e.g., block auto-reverse during startup)
         self._current_context = context
         
-        # Note: Search cache removed - news content varies by time, each search fetches fresh results
+        # 🆕 Context Engineering P0: Start cycle search cache
+        # All agents in this cycle will share search results
+        from app.core.trading.cycle_search_cache import get_cycle_search_cache
+        cycle_cache = get_cycle_search_cache()
         cycle_id = f"meeting_{self.config.symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        logger.info(f"[Meeting] Started cycle: {cycle_id}")
+        cycle_cache.start_cycle(cycle_id)
+        logger.info(f"[Context Engineering] Started search cache for cycle: {cycle_id}")
         
         # 🆕 Context Engineering P1: Create shared market data snapshot
         # Fetch market data once, share across all agents
