@@ -88,6 +88,10 @@ class TriggerScheduler:
     
     async def _run_loop(self):
         """调度循环"""
+        # 初次启动时等待一个周期，因为系统启动时默认会执行一次全量分析
+        logger.info(f"[TriggerScheduler] Waiting {self.interval_minutes}min before first check...")
+        await asyncio.sleep(self.interval_minutes * 60)
+
         while self._state == SchedulerState.RUNNING:
             try:
                 await self.run_check()
