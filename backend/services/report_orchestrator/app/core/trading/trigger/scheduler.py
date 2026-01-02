@@ -110,9 +110,10 @@ class TriggerScheduler:
         
         logger.info(f"[TriggerScheduler] Running check #{self._check_count}")
         
-        # 1. 检查锁状态
-        can_trigger, reason = self.trigger_lock.can_trigger()
-        if not can_trigger:
+        # 1. 尝试获取 CHECK 锁 (原子操作，包含了状态检查)
+        if not await self.trigger_lock.acquire_check():
+            # 获取失败说明：Lock busy (analyzing / cooldown)
+            reason = f"Lock busy (State: {self.trigger_lock.state})"
             logger.info(f"[TriggerScheduler] Skipped: {reason}")
             return {
                 "skipped": True,
@@ -120,47 +121,50 @@ class TriggerScheduler:
                 "check_number": self._check_count
             }
         
-        # 2. 运行 TriggerAgent (无 LLM, <5s)
-        should_trigger, context = await self.trigger_agent.check()
-        
-        result = {
-            "skipped": False,
-            "should_trigger": should_trigger,
-            "confidence": context.confidence,
-            "urgency": context.urgency,
-            "check_number": self._check_count,
-            "context": context.to_dict()
-        }
-        
-        if not should_trigger:
-            logger.info(f"[TriggerScheduler] No trigger, confidence={context.confidence}%")
-            return result
-        
-        # 3. 触发！
-        self._trigger_count += 1
-        logger.info(f"[TriggerScheduler] TRIGGER! Confidence={context.confidence}%, Urgency={context.urgency}")
-        
-        # 4. 获取锁
-        acquired = await self.trigger_lock.acquire()
-        if not acquired:
-            logger.warning("[TriggerScheduler] Failed to acquire lock")
-            result["lock_failed"] = True
-            return result
-        
         try:
-            # 5. 调用回调 (如果有)
+            # 2. 运行 TriggerAgent
+            should_trigger, context = await self.trigger_agent.check()
+            
+            result = {
+                "skipped": False,
+                "should_trigger": should_trigger,
+                "confidence": context.confidence,
+                "urgency": context.urgency,
+                "check_number": self._check_count,
+                "context": context.to_dict()
+            }
+            
+            if not should_trigger:
+                logger.info(f"[TriggerScheduler] No trigger, confidence={context.confidence}%")
+                return result
+            
+            # 3. 触发！需要升级锁 (Check -> Analyzing)
+            # 注意：这里我们先释放 Check 锁，然后由 Main Analysis (通过回调触发) 去获取 Analyze 锁
+            # 或者我们在这里直接调用回调，回调里会触发 Main Scheduler，Main Scheduler 会尝试获取 Analyze 锁
+            
+            logger.info(f"[TriggerScheduler] TRIGGER! Confidence={context.confidence}%, Urgency={context.urgency}")
+            
+            # 释放 Check 锁，以便主分析可以获取 Analyze 锁
+            self.trigger_lock.release_check()
+            
             if self.on_trigger:
                 await self.on_trigger(context)
                 result["callback_executed"] = True
             else:
-                logger.info("[TriggerScheduler] No callback configured, skipping main analysis")
+                logger.info("[TriggerScheduler] No callback configured")
                 result["callback_executed"] = False
-                
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"[TriggerScheduler] Error during check: {e}")
+            # 确保释放锁
+            self.trigger_lock.release_check()
+            raise e
         finally:
-            # 6. 释放锁 + 冷却
-            self.trigger_lock.release()
-        
-        return result
+             # 再次确保释放 Check 锁 (如果还在持有)
+             # release_check 内部会检查状态，所以多次调用是安全的
+            self.trigger_lock.release_check()
     
     def get_status(self) -> Dict:
         """获取调度器状态"""
