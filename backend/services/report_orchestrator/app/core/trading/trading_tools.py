@@ -1268,36 +1268,11 @@ class TradingToolkit:
             JSON string with search results
         """
         try:
-            # 🆕 Context Engineering P0: Check cycle cache first
-            from app.core.trading.cycle_search_cache import get_cycle_search_cache
-            
-            cycle_cache = get_cycle_search_cache()
-            
-            # Build cache key with all parameters for exact matching
-            cache_key = f"{query}|{max_results}|{time_range}|{topic}"
-            
-            # Check for cached result (exact or semantic match)
-            async def _do_search(q, **params):
-                return await self._execute_tavily_search(q, max_results, time_range, topic, days, **kwargs)
-            
-            cached_result = await cycle_cache.get_or_search(
-                query=query,
-                search_fn=_do_search,
-                max_results=max_results,
-                time_range=time_range,
-                topic=topic,
-                days=days
-            )
-            
-            if cached_result:
-                # Check if it was a cache hit
-                cache_status = cached_result.get("_cache_status", "fresh")
-                if cache_status in ["exact_hit", "semantic_hit"]:
-                    logger.info(f"[TradingTools] 🎯 Cycle cache {cache_status}: '{query[:50]}...'")
-                return json.dumps(cached_result, ensure_ascii=False)
-            
-            # Fallback to direct search (should not reach here normally)
-            return await self._execute_tavily_search_raw(query, max_results, time_range, topic, days, **kwargs)
+        try:
+            # Direct search without caching
+            # The user explicitly requested to remove embedding search cache
+            search_result = await self._execute_tavily_search(query, max_results, time_range, topic, days, **kwargs)
+            return json.dumps(search_result, ensure_ascii=False)
             
         except Exception as e:
             logger.error(f"[TradingTools] Tavily search error: {e}")
