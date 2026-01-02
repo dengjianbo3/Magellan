@@ -1253,9 +1253,8 @@ class TradingToolkit:
         """
         Search for cryptocurrency news and market information using MCP.
         
-        🆕 Context Engineering P0: Uses CycleSearchCache for cross-agent sharing.
-        Within a single analysis cycle, if Agent 1 searches "Bitcoin news",
-        Agent 2 can reuse that result instead of calling the API again.
+        ⚠️ Note: Cache removed - news content varies by time, so each search
+        must fetch fresh results to ensure accuracy.
 
         Args:
             query: Search query string
@@ -1268,36 +1267,9 @@ class TradingToolkit:
             JSON string with search results
         """
         try:
-            # 🆕 Context Engineering P0: Check cycle cache first
-            from app.core.trading.cycle_search_cache import get_cycle_search_cache
-            
-            cycle_cache = get_cycle_search_cache()
-            
-            # Build cache key with all parameters for exact matching
-            cache_key = f"{query}|{max_results}|{time_range}|{topic}"
-            
-            # Check for cached result (exact or semantic match)
-            async def _do_search(q, **params):
-                return await self._execute_tavily_search(q, max_results, time_range, topic, days, **kwargs)
-            
-            cached_result = await cycle_cache.get_or_search(
-                query=query,
-                search_fn=_do_search,
-                max_results=max_results,
-                time_range=time_range,
-                topic=topic,
-                days=days
-            )
-            
-            if cached_result:
-                # Check if it was a cache hit
-                cache_status = cached_result.get("_cache_status", "fresh")
-                if cache_status in ["exact_hit", "semantic_hit"]:
-                    logger.info(f"[TradingTools] 🎯 Cycle cache {cache_status}: '{query[:50]}...'")
-                return json.dumps(cached_result, ensure_ascii=False)
-            
-            # Fallback to direct search (should not reach here normally)
-            return await self._execute_tavily_search_raw(query, max_results, time_range, topic, days, **kwargs)
+            # Execute search directly - no caching (news varies by time)
+            result = await self._execute_tavily_search(query, max_results, time_range, topic, days, **kwargs)
+            return json.dumps(result, ensure_ascii=False)
             
         except Exception as e:
             logger.error(f"[TradingTools] Tavily search error: {e}")

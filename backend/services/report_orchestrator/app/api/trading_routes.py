@@ -23,6 +23,7 @@ from app.core.trading.trading_meeting import TradingMeeting, TradingMeetingConfi
 from app.core.trading.agent_memory import get_memory_store
 from app.core.trading.decision_store import get_decision_store  # Redis persistence for signals
 from app.core.trading.scheduler import TradingScheduler, CooldownManager
+from app.core.trading.trigger import TriggerScheduler, TriggerAgent
 from app.models.trading_models import TradingConfig, TradingSignal
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ class TradingSystem:
 
         self.toolkit: Optional[TradingToolkit] = None
         self.scheduler: Optional[TradingScheduler] = None
+        self.trigger_scheduler: Optional[TriggerScheduler] = None  # Event-driven trigger
         self.cooldown_manager = CooldownManager()
 
         self._ws_clients: Dict[str, WebSocket] = {}
@@ -115,6 +117,16 @@ class TradingSystem:
             on_state_change=self._on_scheduler_state_change
         )
 
+        # Initialize event-driven trigger scheduler
+        # Runs every 15 minutes, uses LLM to decide if immediate analysis needed
+        self.trigger_scheduler = TriggerScheduler(
+            trigger_agent=TriggerAgent(),
+            on_trigger=self._on_trigger_event,
+            interval_minutes=15,
+            cooldown_minutes=30
+        )
+        logger.info("✅ TriggerScheduler initialized (15min interval, LLM-driven)")
+
         self._initialized = True
         logger.info(f"Trading system initialized with {self.trader_type} trader")
 
@@ -146,6 +158,11 @@ class TradingSystem:
         
         await self.scheduler.start()
 
+        # Start event-driven trigger scheduler
+        if self.trigger_scheduler:
+            await self.trigger_scheduler.start()
+            logger.info("🎯 Trigger scheduler started (event-driven analysis)")
+
         # Start position monitoring task
         self._monitor_task = asyncio.create_task(self._monitor_loop())
         logger.info("📊 Monitor task created")
@@ -163,6 +180,11 @@ class TradingSystem:
 
         if self.scheduler:
             await self.scheduler.stop()
+
+        # Stop trigger scheduler
+        if self.trigger_scheduler:
+            await self.trigger_scheduler.stop()
+            logger.info("🛑 Trigger scheduler stopped")
 
         if self._monitor_task:
             self._monitor_task.cancel()
@@ -207,6 +229,38 @@ class TradingSystem:
             except Exception as e:
                 logger.error(f"Error in monitor loop: {e}")
                 await asyncio.sleep(30)
+
+    async def _on_trigger_event(self, context):
+        """
+        Handle LLM-driven trigger event.
+        
+        Called by TriggerScheduler when significant market events are detected.
+        Triggers an immediate analysis cycle via the main scheduler.
+        """
+        logger.info(f"🎯 Trigger event received! Urgency: {context.urgency}, Confidence: {context.confidence}%")
+        logger.info(f"   Reason: {context.reasoning}")
+        logger.info(f"   Key events: {context.key_events}")
+        
+        # Broadcast trigger event to WebSocket clients
+        await self._broadcast({
+            "type": "trigger_event",
+            "urgency": context.urgency,
+            "confidence": context.confidence,
+            "reasoning": context.reasoning,
+            "key_events": context.key_events,
+            "current_price": context.current_price,
+            "news_count": context.news_count,
+            "timestamp": context.trigger_time
+        })
+        
+        # Trigger immediate analysis via main scheduler
+        if self.scheduler:
+            reason = f"trigger_event: {context.urgency} urgency, {context.confidence}% confidence"
+            triggered = await self.scheduler.trigger_now(reason=reason)
+            if triggered:
+                logger.info("✅ Immediate analysis triggered successfully")
+            else:
+                logger.warning("⚠️ Could not trigger immediate analysis (scheduler busy or cooldown)")
 
     async def _on_analysis_cycle(self, cycle_number: int, reason: str, timestamp: datetime):
         """Handle analysis cycle"""
