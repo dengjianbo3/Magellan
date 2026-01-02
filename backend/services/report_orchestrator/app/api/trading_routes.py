@@ -262,6 +262,7 @@ class TradingSystem:
             else:
                 logger.warning("⚠️ Could not trigger immediate analysis (scheduler busy or cooldown)")
 
+
     async def _on_analysis_cycle(self, cycle_number: int, reason: str, timestamp: datetime):
         """Handle analysis cycle"""
         logger.info(f"Starting analysis cycle #{cycle_number}, reason: {reason}")
@@ -508,11 +509,32 @@ class TradingSystem:
 
     def _on_scheduler_state_change(self, old_state, new_state):
         """Handle scheduler state change"""
+        # Broadcast state change
         asyncio.create_task(self._broadcast({
             "type": "scheduler_state",
             "old_state": old_state.value,
             "new_state": new_state.value
         }))
+
+        # Sync TriggerLock state with main scheduler
+        async def _sync_lock():
+            if self.trigger_scheduler and self.trigger_scheduler.trigger_lock:
+                lock = self.trigger_scheduler.trigger_lock
+                
+                # Check enum values directly
+                if new_state.value == "analyzing":
+                     # Main analysis started -> Acquire lock
+                    await lock.acquire()
+                    logger.info("🔒 TriggerLock acquired (Main Analysis Started)")
+                
+                elif (old_state.value == "analyzing") and (new_state.value != "analyzing"):
+                    # Main analysis finished -> Release lock (enter cooldown)
+                    # Only release if we effectively hold the lock
+                    if lock.state == "analyzing":
+                        lock.release()
+                        logger.info("🔓 TriggerLock released (Main Analysis Finished) -> Cooldown started")
+        
+        asyncio.create_task(_sync_lock())
 
     async def _on_position_closed(self, position, pnl: float, reason: str = None):
         """Handle position closed"""
