@@ -93,7 +93,7 @@ class TriggerAgent:
         if llm_helper:
             self.llm_helper = llm_helper
         elif LLMHelper:
-            self.llm_helper = LLMHelper(llm_gateway_url=llm_gateway_url, timeout=30)
+            self.llm_helper = LLMHelper(llm_gateway_url=llm_gateway_url, timeout=60)
         else:
             self.llm_helper = None  # 独立运行模式
         
