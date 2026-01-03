@@ -43,6 +43,10 @@ class ExecutorAgent(ReWOOAgent):
     MIN_CONFIDENCE_OPEN = 65
     MIN_CONFIDENCE_CLOSE = 50
     
+    # Position management constants (from old trading_meeting.py)
+    MIN_ADD_AMOUNT = 10.0  # Minimum USDT to add to position
+    SAFETY_BUFFER = 50.0   # Reserve this much USDT in margin
+    
     def __init__(
         self,
         toolkit=None,
@@ -84,6 +88,9 @@ class ExecutorAgent(ReWOOAgent):
         # Decision store for Redis persistence
         self._decision_store = TradingDecisionStore()
         self._current_context: Optional[Dict[str, Any]] = None  # For saving with decision
+        
+        # Position context (updated before each execution)
+        self._position_context: Dict[str, Any] = {}
         
         # Register trading tools
         self._register_trading_tools()
@@ -508,6 +515,74 @@ You MUST call exactly one tool to make your decision. Analyze the consensus and 
     
     # ==================== Tool Implementation Methods ====================
     
+    async def _get_position_info(self) -> Dict[str, Any]:
+        """Get current position information from paper_trader."""
+        if not self.paper_trader:
+            return {"has_position": False}
+        
+        try:
+            position = await self.paper_trader.get_position(self.symbol)
+            if position and position.get("direction") and position.get("direction") != "none":
+                return {
+                    "has_position": True,
+                    "direction": position.get("direction", "none"),
+                    "entry_price": position.get("entry_price", 0),
+                    "size": position.get("size", 0),
+                    "margin": position.get("margin", 0),
+                    "unrealized_pnl": position.get("unrealized_pnl", 0),
+                    "leverage": position.get("leverage", 1),
+                    "liquidation_price": position.get("liquidation_price", 0),
+                }
+            return {"has_position": False}
+        except Exception as e:
+            logger.warning(f"[ExecutorAgent] Failed to get position: {e}")
+            return {"has_position": False}
+    
+    async def _get_available_margin(self) -> float:
+        """Get available margin for trading (considers unrealized PnL)."""
+        if not self.paper_trader:
+            return 0.0
+        
+        try:
+            status = await self.paper_trader.get_status()
+            available = status.get("available_balance", 0)
+            unrealized_pnl = status.get("unrealized_pnl", 0)
+            # True available = available + unrealized (since closing would realize it)
+            true_available = available + max(unrealized_pnl, 0)
+            return true_available
+        except Exception as e:
+            logger.warning(f"[ExecutorAgent] Failed to get margin: {e}")
+            return 0.0
+    
+    def _validate_stop_loss(self, direction: str, entry_price: float, sl_price: float,
+                            leverage: int, margin: float) -> tuple:
+        """
+        Validate stop loss is safe (triggers before liquidation).
+        Returns (is_safe, message, safe_sl_price)
+        """
+        if entry_price <= 0 or margin <= 0 or leverage <= 0:
+            return True, "", sl_price
+        
+        size = (margin * leverage) / entry_price
+        if size <= 0:
+            return True, "", sl_price
+        
+        liquidation_loss = margin * 0.8  # 80% margin loss = liquidation
+        
+        if direction == "long":
+            liquidation_price = entry_price - (liquidation_loss / size)
+            if sl_price <= liquidation_price:
+                # Calculate safe SL (5% above liquidation)
+                safe_sl = liquidation_price * 1.05
+                return False, f"SL ${sl_price:.2f} below liquidation ${liquidation_price:.2f}", safe_sl
+        else:  # short
+            liquidation_price = entry_price + (liquidation_loss / size)
+            if sl_price >= liquidation_price:
+                safe_sl = liquidation_price * 0.95
+                return False, f"SL ${sl_price:.2f} above liquidation ${liquidation_price:.2f}", safe_sl
+        
+        return True, "", sl_price
+    
     async def _execute_open_long(
         self,
         leverage: int = 5,
@@ -517,35 +592,139 @@ You MUST call exactly one tool to make your decision. Analyze the consensus and 
         reasoning: str = "",
         confidence: int = 70
     ) -> Dict[str, Any]:
-        """Execute open_long tool."""
+        """
+        Execute open_long with full scenario logic:
+        - Scenario 1: Already LONG → add to position or maintain
+        - Scenario 2: Currently SHORT → close short, then open long
+        - Scenario 3: No position → open new long
+        """
         logger.info(f"[ExecutorAgent] Executing: open_long(leverage={leverage}, confidence={confidence})")
         
         current_price = await get_current_btc_price()
+        position = await self._get_position_info()
+        available_margin = await self._get_available_margin()
+        
         tp_price = current_price * (1 + tp_percent / 100)
         sl_price = current_price * (1 - sl_percent / 100)
         
+        action_taken = "open_long"
+        trade_result = None
+        
+        # Scenario 1: Already holding LONG
+        if position.get("has_position") and position.get("direction") == "long":
+            logger.info("[ExecutorAgent] Already holding LONG - will add to position if possible")
+            # This is essentially an add_to operation
+            can_add = available_margin > self.SAFETY_BUFFER + self.MIN_ADD_AMOUNT
+            
+            if can_add and self.paper_trader:
+                add_amount = min(
+                    available_margin * amount_percent,
+                    available_margin - self.SAFETY_BUFFER
+                )
+                add_amount = max(add_amount, 0)
+                
+                if add_amount >= self.MIN_ADD_AMOUNT:
+                    # Validate stop loss
+                    is_safe, msg, safe_sl = self._validate_stop_loss("long", current_price, sl_price, leverage, add_amount)
+                    if not is_safe:
+                        logger.warning(f"[ExecutorAgent] {msg}, adjusting SL to ${safe_sl:.2f}")
+                        sl_price = safe_sl
+                    
+                    trade_result = await self.paper_trader.open_long(
+                        symbol=self.symbol,
+                        leverage=leverage,
+                        amount_usdt=add_amount,
+                        tp_price=tp_price,
+                        sl_price=sl_price
+                    )
+                    action_taken = "add_to_long"
+                    logger.info(f"[ExecutorAgent] ✅ Added ${add_amount:.2f} to long position")
+                else:
+                    action_taken = "maintain_long_small_amount"
+                    logger.info("[ExecutorAgent] Add amount too small, maintaining position")
+            else:
+                action_taken = "maintain_long_full"
+                logger.info("[ExecutorAgent] Cannot add (margin limit), maintaining position")
+        
+        # Scenario 2: Currently SHORT → close then open long
+        elif position.get("has_position") and position.get("direction") == "short":
+            logger.info("[ExecutorAgent] 🔄 Reversing: close SHORT → open LONG")
+            if self.paper_trader:
+                # Close short first
+                close_result = await self.paper_trader.close_position(symbol=self.symbol)
+                if close_result.get("success"):
+                    logger.info("[ExecutorAgent] ✅ Closed short position")
+                    # Now open long
+                    amount_usdt = min(available_margin * amount_percent, available_margin - self.SAFETY_BUFFER)
+                    trade_result = await self.paper_trader.open_long(
+                        symbol=self.symbol,
+                        leverage=leverage,
+                        amount_usdt=amount_usdt,
+                        tp_price=tp_price,
+                        sl_price=sl_price
+                    )
+                    action_taken = "reverse_short_to_long"
+                else:
+                    action_taken = "close_short_failed"
+                    logger.error(f"[ExecutorAgent] Failed to close short: {close_result.get('error')}")
+        
+        # Scenario 3: No position → new long
+        else:
+            logger.info("[ExecutorAgent] No position, opening new LONG")
+            if self.paper_trader:
+                amount_usdt = min(available_margin * amount_percent, available_margin - self.SAFETY_BUFFER)
+                amount_usdt = max(amount_usdt, 0)
+                
+                if amount_usdt >= self.MIN_ADD_AMOUNT:
+                    # Validate stop loss
+                    is_safe, msg, safe_sl = self._validate_stop_loss("long", current_price, sl_price, leverage, amount_usdt)
+                    if not is_safe:
+                        logger.warning(f"[ExecutorAgent] {msg}, adjusting SL to ${safe_sl:.2f}")
+                        sl_price = safe_sl
+                    
+                    trade_result = await self.paper_trader.open_long(
+                        symbol=self.symbol,
+                        leverage=leverage,
+                        amount_usdt=amount_usdt,
+                        tp_price=tp_price,
+                        sl_price=sl_price
+                    )
+                    action_taken = "new_long"
+                else:
+                    action_taken = "insufficient_margin"
+                    logger.warning(f"[ExecutorAgent] Insufficient margin: ${amount_usdt:.2f}")
+        
+        # Create signal for record-keeping
+        entry_price = trade_result.get("executed_price", current_price) if trade_result else current_price
         signal = TradingSignal(
             direction="long",
             symbol=self.symbol,
             leverage=min(leverage, 20),
             amount_percent=min(amount_percent, 0.3),
-            entry_price=current_price,
+            entry_price=entry_price,
             take_profit_price=tp_price,
             stop_loss_price=sl_price,
             confidence=confidence,
-            reasoning=reasoning,
+            reasoning=f"[{action_taken}] {reasoning}",
             timestamp=datetime.now()
         )
         
         self._result["signal"] = signal
+        self._executed_tools.append({
+            "tool": "open_long",
+            "action_taken": action_taken,
+            "trade_result": trade_result,
+            "success": trade_result.get("success", False) if trade_result else ("maintain" in action_taken or "insufficient" in action_taken)
+        })
         
         return {
             "success": True,
-            "action": "open_long",
+            "action": action_taken,
             "price": current_price,
             "leverage": leverage,
             "confidence": confidence,
-            "reasoning": reasoning
+            "reasoning": reasoning,
+            "trade_result": trade_result
         }
     
     async def _execute_open_short(
@@ -557,35 +736,133 @@ You MUST call exactly one tool to make your decision. Analyze the consensus and 
         reasoning: str = "",
         confidence: int = 70
     ) -> Dict[str, Any]:
-        """Execute open_short tool."""
+        """
+        Execute open_short with full scenario logic:
+        - Scenario 1: Already SHORT → add to position or maintain
+        - Scenario 2: Currently LONG → close long, then open short
+        - Scenario 3: No position → open new short
+        """
         logger.info(f"[ExecutorAgent] Executing: open_short(leverage={leverage}, confidence={confidence})")
         
         current_price = await get_current_btc_price()
+        position = await self._get_position_info()
+        available_margin = await self._get_available_margin()
+        
         tp_price = current_price * (1 - tp_percent / 100)
         sl_price = current_price * (1 + sl_percent / 100)
         
+        action_taken = "open_short"
+        trade_result = None
+        
+        # Scenario 1: Already holding SHORT
+        if position.get("has_position") and position.get("direction") == "short":
+            logger.info("[ExecutorAgent] Already holding SHORT - will add to position if possible")
+            can_add = available_margin > self.SAFETY_BUFFER + self.MIN_ADD_AMOUNT
+            
+            if can_add and self.paper_trader:
+                add_amount = min(
+                    available_margin * amount_percent,
+                    available_margin - self.SAFETY_BUFFER
+                )
+                add_amount = max(add_amount, 0)
+                
+                if add_amount >= self.MIN_ADD_AMOUNT:
+                    is_safe, msg, safe_sl = self._validate_stop_loss("short", current_price, sl_price, leverage, add_amount)
+                    if not is_safe:
+                        logger.warning(f"[ExecutorAgent] {msg}, adjusting SL to ${safe_sl:.2f}")
+                        sl_price = safe_sl
+                    
+                    trade_result = await self.paper_trader.open_short(
+                        symbol=self.symbol,
+                        leverage=leverage,
+                        amount_usdt=add_amount,
+                        tp_price=tp_price,
+                        sl_price=sl_price
+                    )
+                    action_taken = "add_to_short"
+                    logger.info(f"[ExecutorAgent] ✅ Added ${add_amount:.2f} to short position")
+                else:
+                    action_taken = "maintain_short_small_amount"
+                    logger.info("[ExecutorAgent] Add amount too small, maintaining position")
+            else:
+                action_taken = "maintain_short_full"
+                logger.info("[ExecutorAgent] Cannot add (margin limit), maintaining position")
+        
+        # Scenario 2: Currently LONG → close then open short
+        elif position.get("has_position") and position.get("direction") == "long":
+            logger.info("[ExecutorAgent] 🔄 Reversing: close LONG → open SHORT")
+            if self.paper_trader:
+                close_result = await self.paper_trader.close_position(symbol=self.symbol)
+                if close_result.get("success"):
+                    logger.info("[ExecutorAgent] ✅ Closed long position")
+                    amount_usdt = min(available_margin * amount_percent, available_margin - self.SAFETY_BUFFER)
+                    trade_result = await self.paper_trader.open_short(
+                        symbol=self.symbol,
+                        leverage=leverage,
+                        amount_usdt=amount_usdt,
+                        tp_price=tp_price,
+                        sl_price=sl_price
+                    )
+                    action_taken = "reverse_long_to_short"
+                else:
+                    action_taken = "close_long_failed"
+                    logger.error(f"[ExecutorAgent] Failed to close long: {close_result.get('error')}")
+        
+        # Scenario 3: No position → new short
+        else:
+            logger.info("[ExecutorAgent] No position, opening new SHORT")
+            if self.paper_trader:
+                amount_usdt = min(available_margin * amount_percent, available_margin - self.SAFETY_BUFFER)
+                amount_usdt = max(amount_usdt, 0)
+                
+                if amount_usdt >= self.MIN_ADD_AMOUNT:
+                    is_safe, msg, safe_sl = self._validate_stop_loss("short", current_price, sl_price, leverage, amount_usdt)
+                    if not is_safe:
+                        logger.warning(f"[ExecutorAgent] {msg}, adjusting SL to ${safe_sl:.2f}")
+                        sl_price = safe_sl
+                    
+                    trade_result = await self.paper_trader.open_short(
+                        symbol=self.symbol,
+                        leverage=leverage,
+                        amount_usdt=amount_usdt,
+                        tp_price=tp_price,
+                        sl_price=sl_price
+                    )
+                    action_taken = "new_short"
+                else:
+                    action_taken = "insufficient_margin"
+                    logger.warning(f"[ExecutorAgent] Insufficient margin: ${amount_usdt:.2f}")
+        
+        entry_price = trade_result.get("executed_price", current_price) if trade_result else current_price
         signal = TradingSignal(
             direction="short",
             symbol=self.symbol,
             leverage=min(leverage, 20),
             amount_percent=min(amount_percent, 0.3),
-            entry_price=current_price,
+            entry_price=entry_price,
             take_profit_price=tp_price,
             stop_loss_price=sl_price,
             confidence=confidence,
-            reasoning=reasoning,
+            reasoning=f"[{action_taken}] {reasoning}",
             timestamp=datetime.now()
         )
         
         self._result["signal"] = signal
+        self._executed_tools.append({
+            "tool": "open_short",
+            "action_taken": action_taken,
+            "trade_result": trade_result,
+            "success": trade_result.get("success", False) if trade_result else ("maintain" in action_taken or "insufficient" in action_taken)
+        })
         
         return {
             "success": True,
-            "action": "open_short",
+            "action": action_taken,
             "price": current_price,
             "leverage": leverage,
             "confidence": confidence,
-            "reasoning": reasoning
+            "reasoning": reasoning,
+            "trade_result": trade_result
         }
     
     async def _execute_hold(
@@ -626,10 +903,27 @@ You MUST call exactly one tool to make your decision. Analyze the consensus and 
         reason: str = "",
         confidence: int = 100
     ) -> Dict[str, Any]:
-        """Execute close_position tool."""
+        """Execute close_position tool - directly calls paper_trader."""
         logger.info(f"[ExecutorAgent] Executing: close_position(reason={reason[:50]}...)")
         
         current_price = await get_current_btc_price()
+        trade_result = None
+        action_taken = "close_position"
+        
+        # Check if we have a position to close
+        position = await self._get_position_info()
+        
+        if position.get("has_position") and self.paper_trader:
+            trade_result = await self.paper_trader.close_position(symbol=self.symbol)
+            if trade_result.get("success"):
+                logger.info(f"[ExecutorAgent] ✅ Closed {position.get('direction')} position")
+                action_taken = f"closed_{position.get('direction')}"
+            else:
+                logger.error(f"[ExecutorAgent] ❌ Failed to close: {trade_result.get('error')}")
+                action_taken = "close_failed"
+        else:
+            logger.info("[ExecutorAgent] No position to close")
+            action_taken = "no_position"
         
         signal = TradingSignal(
             direction="close",
@@ -640,18 +934,25 @@ You MUST call exactly one tool to make your decision. Analyze the consensus and 
             take_profit_price=current_price,
             stop_loss_price=current_price,
             confidence=confidence,
-            reasoning=reason,
+            reasoning=f"[{action_taken}] {reason}",
             timestamp=datetime.now()
         )
         
         self._result["signal"] = signal
+        self._executed_tools.append({
+            "tool": "close_position",
+            "action_taken": action_taken,
+            "trade_result": trade_result,
+            "success": trade_result.get("success", False) if trade_result else action_taken == "no_position"
+        })
         
         return {
             "success": True,
-            "action": "close_position",
+            "action": action_taken,
             "price": current_price,
             "confidence": confidence,
-            "reasoning": reason
+            "reasoning": reason,
+            "trade_result": trade_result
         }
     
     async def _generate_hold_signal(self, reason: str) -> TradingSignal:
@@ -680,43 +981,99 @@ You MUST call exactly one tool to make your decision. Analyze the consensus and 
         confidence: int = 70
     ) -> Dict[str, Any]:
         """
-        Execute add_to_long tool - add to existing LONG position.
-        
-        This uses the existing open_long method of paper_trader with a smaller amount,
-        which adds to the current position.
+        Execute add_to_long tool - add to existing LONG position with safety checks.
+        Directly calls paper_trader.open_long() to add to position.
         """
         logger.info(f"[ExecutorAgent] Executing: add_to_long(amount_percent={amount_percent}, confidence={confidence})")
         
         current_price = await get_current_btc_price()
+        position = await self._get_position_info()
+        available_margin = await self._get_available_margin()
         
-        # Create signal with "add_long" direction
+        trade_result = None
+        action_taken = "add_to_long"
+        
+        # Verify we're holding a LONG position
+        if not position.get("has_position"):
+            logger.warning("[ExecutorAgent] add_to_long called but no position exists")
+            action_taken = "no_position_to_add"
+        elif position.get("direction") != "long":
+            logger.warning(f"[ExecutorAgent] add_to_long called but holding {position.get('direction')}")
+            action_taken = "wrong_direction"
+        elif not self.paper_trader:
+            logger.warning("[ExecutorAgent] No paper_trader available")
+            action_taken = "no_trader"
+        else:
+            # Check if we can add
+            can_add = available_margin > self.SAFETY_BUFFER + self.MIN_ADD_AMOUNT
+            
+            if can_add:
+                add_amount = min(
+                    available_margin * amount_percent,
+                    available_margin - self.SAFETY_BUFFER
+                )
+                add_amount = max(add_amount, 0)
+                
+                if add_amount >= self.MIN_ADD_AMOUNT:
+                    leverage = position.get("leverage", 5)
+                    tp_price = current_price * 1.08
+                    sl_price = current_price * 0.97
+                    
+                    # Validate stop loss
+                    is_safe, msg, safe_sl = self._validate_stop_loss("long", current_price, sl_price, leverage, add_amount)
+                    if not is_safe:
+                        logger.warning(f"[ExecutorAgent] {msg}")
+                        sl_price = safe_sl
+                    
+                    trade_result = await self.paper_trader.open_long(
+                        symbol=self.symbol,
+                        leverage=leverage,
+                        amount_usdt=add_amount,
+                        tp_price=tp_price,
+                        sl_price=sl_price
+                    )
+                    
+                    if trade_result.get("success"):
+                        logger.info(f"[ExecutorAgent] ✅ Added ${add_amount:.2f} to long position")
+                        action_taken = "added_to_long"
+                    else:
+                        logger.error(f"[ExecutorAgent] Add failed: {trade_result.get('error')}")
+                        action_taken = "add_failed"
+                else:
+                    action_taken = "amount_too_small"
+                    logger.info(f"[ExecutorAgent] Add amount ${add_amount:.2f} too small")
+            else:
+                action_taken = "insufficient_margin"
+                logger.info("[ExecutorAgent] Insufficient margin to add position")
+        
         signal = TradingSignal(
-            direction="add_long",  # Special direction for adding to long
+            direction="add_long",
             symbol=self.symbol,
-            leverage=5,  # Use default leverage for adding
-            amount_percent=min(amount_percent, 0.3),  # Cap at 30%
-            entry_price=current_price,
-            take_profit_price=current_price * 1.08,  # 8% TP default
-            stop_loss_price=current_price * 0.97,  # 3% SL default
+            leverage=position.get("leverage", 5) if position.get("has_position") else 5,
+            amount_percent=min(amount_percent, 0.3),
+            entry_price=trade_result.get("executed_price", current_price) if trade_result else current_price,
+            take_profit_price=current_price * 1.08,
+            stop_loss_price=current_price * 0.97,
             confidence=confidence,
-            reasoning=f"[ADD TO LONG] {reasoning}",
+            reasoning=f"[{action_taken}] {reasoning}",
             timestamp=datetime.now()
         )
         
         self._result["signal"] = signal
         self._executed_tools.append({
             "tool": "add_to_long",
-            "params": {"amount_percent": amount_percent, "reasoning": reasoning},
-            "success": True
+            "action_taken": action_taken,
+            "trade_result": trade_result,
+            "success": trade_result.get("success", False) if trade_result else False
         })
         
         return {
-            "success": True,
-            "action": "add_to_long",
-            "amount_percent": amount_percent,
+            "success": action_taken == "added_to_long",
+            "action": action_taken,
             "price": current_price,
             "confidence": confidence,
-            "reasoning": reasoning
+            "reasoning": reasoning,
+            "trade_result": trade_result
         }
     
     async def _execute_add_to_short(
@@ -726,43 +1083,95 @@ You MUST call exactly one tool to make your decision. Analyze the consensus and 
         confidence: int = 70
     ) -> Dict[str, Any]:
         """
-        Execute add_to_short tool - add to existing SHORT position.
-        
-        This uses the existing open_short method of paper_trader with a smaller amount,
-        which adds to the current position.
+        Execute add_to_short tool - add to existing SHORT position with safety checks.
+        Directly calls paper_trader.open_short() to add to position.
         """
         logger.info(f"[ExecutorAgent] Executing: add_to_short(amount_percent={amount_percent}, confidence={confidence})")
         
         current_price = await get_current_btc_price()
+        position = await self._get_position_info()
+        available_margin = await self._get_available_margin()
         
-        # Create signal with "add_short" direction
+        trade_result = None
+        action_taken = "add_to_short"
+        
+        # Verify we're holding a SHORT position
+        if not position.get("has_position"):
+            logger.warning("[ExecutorAgent] add_to_short called but no position exists")
+            action_taken = "no_position_to_add"
+        elif position.get("direction") != "short":
+            logger.warning(f"[ExecutorAgent] add_to_short called but holding {position.get('direction')}")
+            action_taken = "wrong_direction"
+        elif not self.paper_trader:
+            logger.warning("[ExecutorAgent] No paper_trader available")
+            action_taken = "no_trader"
+        else:
+            can_add = available_margin > self.SAFETY_BUFFER + self.MIN_ADD_AMOUNT
+            
+            if can_add:
+                add_amount = min(
+                    available_margin * amount_percent,
+                    available_margin - self.SAFETY_BUFFER
+                )
+                add_amount = max(add_amount, 0)
+                
+                if add_amount >= self.MIN_ADD_AMOUNT:
+                    leverage = position.get("leverage", 5)
+                    tp_price = current_price * 0.92
+                    sl_price = current_price * 1.03
+                    
+                    is_safe, msg, safe_sl = self._validate_stop_loss("short", current_price, sl_price, leverage, add_amount)
+                    if not is_safe:
+                        logger.warning(f"[ExecutorAgent] {msg}")
+                        sl_price = safe_sl
+                    
+                    trade_result = await self.paper_trader.open_short(
+                        symbol=self.symbol,
+                        leverage=leverage,
+                        amount_usdt=add_amount,
+                        tp_price=tp_price,
+                        sl_price=sl_price
+                    )
+                    
+                    if trade_result.get("success"):
+                        logger.info(f"[ExecutorAgent] ✅ Added ${add_amount:.2f} to short position")
+                        action_taken = "added_to_short"
+                    else:
+                        logger.error(f"[ExecutorAgent] Add failed: {trade_result.get('error')}")
+                        action_taken = "add_failed"
+                else:
+                    action_taken = "amount_too_small"
+            else:
+                action_taken = "insufficient_margin"
+        
         signal = TradingSignal(
-            direction="add_short",  # Special direction for adding to short
+            direction="add_short",
             symbol=self.symbol,
-            leverage=5,  # Use default leverage for adding
-            amount_percent=min(amount_percent, 0.3),  # Cap at 30%
-            entry_price=current_price,
-            take_profit_price=current_price * 0.92,  # 8% TP default (price going down)
-            stop_loss_price=current_price * 1.03,  # 3% SL default (price going up)
+            leverage=position.get("leverage", 5) if position.get("has_position") else 5,
+            amount_percent=min(amount_percent, 0.3),
+            entry_price=trade_result.get("executed_price", current_price) if trade_result else current_price,
+            take_profit_price=current_price * 0.92,
+            stop_loss_price=current_price * 1.03,
             confidence=confidence,
-            reasoning=f"[ADD TO SHORT] {reasoning}",
+            reasoning=f"[{action_taken}] {reasoning}",
             timestamp=datetime.now()
         )
         
         self._result["signal"] = signal
         self._executed_tools.append({
             "tool": "add_to_short",
-            "params": {"amount_percent": amount_percent, "reasoning": reasoning},
-            "success": True
+            "action_taken": action_taken,
+            "trade_result": trade_result,
+            "success": trade_result.get("success", False) if trade_result else False
         })
         
         return {
-            "success": True,
-            "action": "add_to_short",
-            "amount_percent": amount_percent,
+            "success": action_taken == "added_to_short",
+            "action": action_taken,
             "price": current_price,
             "confidence": confidence,
-            "reasoning": reasoning
+            "reasoning": reasoning,
+            "trade_result": trade_result
         }
     
     async def _execute_reduce_position(
@@ -773,43 +1182,76 @@ You MUST call exactly one tool to make your decision. Analyze the consensus and 
     ) -> Dict[str, Any]:
         """
         Execute reduce_position tool - partially close existing position.
-        
-        This creates a 'reduce' signal that the execution layer will interpret
-        as a partial close.
+        Directly calls paper_trader to reduce position size.
         """
         logger.info(f"[ExecutorAgent] Executing: reduce_position(reduce_percent={reduce_percent}, confidence={confidence})")
         
         current_price = await get_current_btc_price()
+        position = await self._get_position_info()
         
-        # Clamp reduce_percent to valid range
         reduce_percent = max(0.25, min(reduce_percent, 0.75))
+        trade_result = None
+        action_taken = "reduce_position"
         
-        # Create signal with "reduce" direction
+        if not position.get("has_position"):
+            logger.warning("[ExecutorAgent] No position to reduce")
+            action_taken = "no_position"
+        elif not self.paper_trader:
+            logger.warning("[ExecutorAgent] No paper_trader available")
+            action_taken = "no_trader"
+        else:
+            # Calculate amount to close
+            current_margin = position.get("margin", 0)
+            reduce_amount = current_margin * reduce_percent
+            
+            if reduce_amount > 0:
+                # Close partial position
+                trade_result = await self.paper_trader.close_position(
+                    symbol=self.symbol,
+                    partial=True,
+                    reduce_percent=reduce_percent
+                )
+                
+                if trade_result.get("success"):
+                    logger.info(f"[ExecutorAgent] ✅ Reduced position by {reduce_percent*100:.0f}%")
+                    action_taken = f"reduced_{position.get('direction')}_{reduce_percent*100:.0f}p"
+                else:
+                    # Fallback to full close if partial not supported
+                    logger.warning("[ExecutorAgent] Partial close not supported, closing full position")
+                    trade_result = await self.paper_trader.close_position(symbol=self.symbol)
+                    action_taken = "closed_full"
+            else:
+                action_taken = "nothing_to_reduce"
+        
         signal = TradingSignal(
-            direction="reduce",  # Special direction for partial close
+            direction="reduce",
             symbol=self.symbol,
             leverage=1,
-            amount_percent=reduce_percent,  # Use amount_percent to store reduce %
+            amount_percent=reduce_percent,
             entry_price=current_price,
             take_profit_price=current_price,
             stop_loss_price=current_price,
             confidence=confidence,
-            reasoning=f"[REDUCE POSITION {reduce_percent*100:.0f}%] {reasoning}",
+            reasoning=f"[{action_taken}] {reasoning}",
             timestamp=datetime.now()
         )
         
         self._result["signal"] = signal
         self._executed_tools.append({
             "tool": "reduce_position",
-            "params": {"reduce_percent": reduce_percent, "reasoning": reasoning},
-            "success": True
+            "action_taken": action_taken,
+            "reduce_percent": reduce_percent,
+            "trade_result": trade_result,
+            "success": trade_result.get("success", False) if trade_result else action_taken == "no_position"
         })
         
         return {
-            "success": True,
-            "action": "reduce_position",
+            "success": "reduced" in action_taken or "closed" in action_taken,
+            "action": action_taken,
             "reduce_percent": reduce_percent,
             "price": current_price,
             "confidence": confidence,
-            "reasoning": reasoning
+            "reasoning": reasoning,
+            "trade_result": trade_result
         }
+
