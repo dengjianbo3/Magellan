@@ -461,24 +461,89 @@ class TradingState(TypedDict):
 
 ## 改进建议与未来规划
 
+### ⚡ 优先级 P0: Agent 并行执行 (下一阶段重点)
+
+**当前问题**:
+
+- `signal_generation_node` 使用占位符投票
+- Agents 顺序执行，总时间 = Σ(各Agent时间)
+- 实际并行注释: "In real implementation, call agents here"
+
+**改进方案**:
+
+```python
+# 改进后的 signal_generation_node
+async def signal_generation_node(state: TradingState) -> Dict[str, Any]:
+    """并行执行所有分析 Agents"""
+    agent_configs = [
+        ("technical_analyst", TAConfig),
+        ("fundamental_analyst", FundConfig),
+        ("onchain_analyst", ChainConfig),
+        ("macro_analyst", MacroConfig),
+        ("sentiment_analyst", SentimentConfig),
+    ]
+    
+    # 并行创建和执行所有 Agents
+    tasks = []
+    for agent_id, config in agent_configs:
+        agent = create_agent(agent_id, config)
+        tasks.append(agent.analyze(state.get("market_data")))
+    
+    # 等待所有 Agents 完成
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # 收集有效投票
+    votes = []
+    for result in results:
+        if isinstance(result, Exception):
+            logger.error(f"Agent failed: {result}")
+        else:
+            votes.append(result)
+    
+    return {"agent_votes": votes}
+```
+
+**预期收益**:
+
+- 5 个 Agents × 10s 每个 → 从 50s 降到 ~15s
+- 更快的交易决策响应
+- 更好的市场机会捕捉
+
+**实现步骤**:
+
+1. 将 Agent 初始化移到 LangGraph 外部
+2. 在 `signal_generation_node` 使用 `asyncio.gather()`
+3. 添加超时控制 (单 Agent timeout 30s)
+4. 添加错误隔离 (单 Agent 失败不影响其他)
+
+---
+
 ### 短期 (1-2 周)
 
-1. **集成测试** - 端到端测试 LangGraph 工作流
-2. **日志增强** - 添加结构化日志便于追踪
-3. **错误恢复** - react_fallback_node 完善
+| 任务 | 优先级 | 说明 |
+|------|--------|------|
+| **Agent 并行执行** | P0 | asyncio.gather 并发调用 |
+| 集成测试 | P1 | 端到端测试 LangGraph 工作流 |
+| 超时处理 | P1 | 单 Agent 超时不阻塞整体 |
+| 日志增强 | P2 | 结构化日志 + 追踪 ID |
 
 ### 中期 (1-2 月)
 
-1. **ATR 动态止损** - 基于波动率调整止损距离
-2. **多时间框架分析** - 1h + 4h + 1d 综合判断
-3. **事件驱动触发** - 监听链上大额转账
+| 任务 | 优先级 | 说明 |
+|------|--------|------|
+| ATR 动态止损 | P1 | 基于波动率调整止损距离 |
+| 多时间框架分析 | P2 | 1h + 4h + 1d 综合判断 |
+| 事件驱动触发 | P2 | 监听链上大额转账 |
+| Agent 权重自学习 | P2 | 基于历史表现自动调整 |
 
 ### 长期 (3-6 月)
 
-1. **多交易对支持** - ETH, BNB 等主流币
-2. **策略框架** - 可配置的交易策略
-3. **回测系统** - 历史数据回测验证
-4. **风控仪表板** - 可视化监控
+| 任务 | 优先级 | 说明 |
+|------|--------|------|
+| 多交易对支持 | P1 | ETH, BNB 等主流币 |
+| 策略框架 | P2 | 可配置的交易策略模板 |
+| 回测系统 | P2 | 历史数据回测验证 |
+| 风控仪表板 | P3 | 可视化监控面板 |
 
 ---
 
