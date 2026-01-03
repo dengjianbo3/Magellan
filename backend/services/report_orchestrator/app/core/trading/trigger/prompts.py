@@ -1,98 +1,98 @@
 """
-Trigger Prompts - LLM 提示词模板
+Trigger Prompts - LLM Prompt Templates
 
-用于 TriggerAgent 的 LLM 分析。
+Used by TriggerAgent for LLM analysis.
 """
 
-TRIGGER_ANALYSIS_PROMPT = \"\"\"你是一个专业的加密货币市场分析师。你的任务是判断当前市场状况是否需要立即进行深度交易分析。
+TRIGGER_ANALYSIS_PROMPT = """You are a professional cryptocurrency market analyst. Your task is to determine whether the current market conditions require an immediate in-depth trading analysis.
 
-## 当前市场数据
+## Current Market Data
 
-### 最新新闻 (过去1小时)
+### Latest News (past 1 hour)
 {news_list}
 
-### 技术指标
-- BTC 当前价格: ${current_price:,.2f}
-- 15分钟价格变化: {price_change_15m}%
-- 1小时价格变化: {price_change_1h}%
-- RSI (15分钟): {rsi_15m}
-- MACD 交叉: {macd_crossover}
-- 成交量异常: {volume_spike}
-- 趋势 (15m/1h/4h): {trend_15m}/{trend_1h}/{trend_4h}
+### Technical Indicators
+- BTC Current Price: ${current_price:,.2f}
+- 15-minute Price Change: {price_change_15m}%
+- 1-hour Price Change: {price_change_1h}%
+- RSI (15-minute): {rsi_15m}
+- MACD Crossover: {macd_crossover}
+- Volume Spike: {volume_spike}
+- Trend (15m/1h/4h): {trend_15m}/{trend_1h}/{trend_4h}
 
-### 当前仓位
+### Current Position
 {position_info}
 
-## 你的任务
+## Your Task
 
-分析以上信息，判断是否需要**立即**触发深度交易分析。
+Analyze the above information and determine whether to **immediately** trigger an in-depth trading analysis.
 
-触发条件参考 (但不限于):
-1. 重大监管新闻 (SEC、ETF、法规变化) - 可能导致大幅价格波动
-2. 交易所安全事件 (黑客攻击、资产冻结) - 市场恐慌
-3. 宏观经济事件 (美联储决策、通胀数据) - 影响整体市场情绪
-4. 技术面剧烈变化 (RSI极值<25或>75、MACD强交叉、成交量异常) 
-5. 价格快速波动 (15分钟内变化>2%，或1小时内变化>3%)
-6. 重要人物言论 (政要、CEO发表关于加密货币的重要声明)
-7. 地缘政治事件 (战争、制裁等可能影响市场的事件)
-8. **仓位风险** - 如果持有仓位且市场出现不利信号，需要更敏感地触发分析
+Trigger conditions (reference, not exhaustive):
+1. Major regulatory news (SEC, ETF, regulatory changes) - may cause significant price volatility
+2. Exchange security incidents (hacks, asset freezes) - market panic
+3. Macroeconomic events (Fed decisions, inflation data) - affects overall market sentiment
+4. Dramatic technical changes (RSI extremes <25 or >75, strong MACD crossover, volume anomaly)
+5. Rapid price movements (>2% in 15 minutes, or >3% in 1 hour)
+6. Important statements (politicians, CEOs making significant crypto-related announcements)
+7. Geopolitical events (wars, sanctions, etc. that may impact the market)
+8. **Position Risk** - if holding a position and adverse market signals appear, be more sensitive to trigger analysis
 
-不触发的情况:
-- 普通的市场分析文章
-- 价格小幅波动 (<1%)
-- 技术指标在正常范围内 (RSI 30-70)
-- 没有重大新闻事件
+Do NOT trigger for:
+- Regular market analysis articles
+- Minor price fluctuations (<1%)
+- Technical indicators in normal range (RSI 30-70)
+- No significant news events
 
-## 输出格式 (必须是有效的JSON)
+## Output Format (must be valid JSON)
 
-请严格按照以下JSON格式输出，不要输出其他任何内容:
+Please output ONLY in the following JSON format, no other content:
 ```json
 {{
-  "should_trigger": true或false,
-  "urgency": "high"或"medium"或"low",
-  "confidence": 0到100的数字,
-  "reasoning": "你的分析理由，2-3句话说明为什么触发或不触发",
-  "key_events": ["关键事件1", "关键事件2"]
+  "should_trigger": true or false,
+  "urgency": "high" or "medium" or "low",
+  "confidence": number from 0 to 100,
+  "reasoning": "Your analysis reasoning, 2-3 sentences explaining why to trigger or not",
+  "key_events": ["key event 1", "key event 2"]
 }}
 ```
 
-只输出JSON，不要其他内容。\"\"\"
+Output only JSON, nothing else."""
 
 
 def build_trigger_prompt(news_items: list, ta_data: dict, position_data: dict = None) -> str:
-    \"\"\"构建触发器分析 Prompt\"\"\"
+    """Build trigger analysis prompt"""
     
-    # 格式化新闻列表
+    # Format news list
     if news_items:
-        news_list = "\\n".join([
+        news_list = "\n".join([
             f"- [{item.get('source', 'Unknown')}] {item.get('title', '')}"
-            for item in news_items[:10]  # 最多10条
+            for item in news_items[:10]  # Max 10 items
         ])
     else:
-        news_list = "- 没有获取到新闻"
+        news_list = "- No news fetched"
     
-    # 格式化仓位信息 (新增)
+    # Format position info
     if position_data and position_data.get("has_position"):
         direction = position_data.get("direction", "none")
         pnl = position_data.get("pnl_percent", 0)
         size = position_data.get("size_usd", 0)
-        pnl_status = "盈利" if pnl >= 0 else "亏损"
-        position_info = f\"\"\"- 持仓方向: {direction.upper()}
-- 当前盈亏: {pnl_status} {abs(pnl):.2f}%
-- 仓位规模: ${size:,.2f}
-⚠️ 注意: 有仓位时，对不利信号需要更敏感\"\"\"
+        pnl_status = "Profit" if pnl >= 0 else "Loss"
+        position_info = f"""- Position Direction: {direction.upper()}
+- Current PnL: {pnl_status} {abs(pnl):.2f}%
+- Position Size: ${size:,.2f}
+⚠️ Note: When holding a position, be more sensitive to adverse signals"""
     else:
-        position_info = "- 当前无仓位"
+        position_info = "- No current position"
     
-    # 格式化技术指标
+    # Format technical indicators
     prompt = TRIGGER_ANALYSIS_PROMPT.format(
         news_list=news_list,
         current_price=ta_data.get('current_price', 0),
         price_change_15m=ta_data.get('price_change_15m', 0),
         price_change_1h=ta_data.get('price_change_1h', 0),
         rsi_15m=ta_data.get('rsi_15m', 50),
-        macd_crossover="是" if ta_data.get('macd_crossover') else "否",
-        volume_spike="是" if ta_data.get('volume_spike') else "否",
+        macd_crossover="Yes" if ta_data.get('macd_crossover') else "No",
+        volume_spike="Yes" if ta_data.get('volume_spike') else "No",
         trend_15m=ta_data.get('trend_15m', 'neutral'),
         trend_1h=ta_data.get('trend_1h', 'neutral'),
         trend_4h=ta_data.get('trend_4h', 'neutral'),

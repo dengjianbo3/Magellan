@@ -136,12 +136,12 @@ class TriggerScheduler:
             
             if not should_trigger:
                 logger.info(f"[TriggerScheduler] No trigger, confidence={context.confidence}%")
+                # 未触发时释放 check 锁
+                self.trigger_lock.release_check()
                 return result
             
-            # 3. 触发！需要升级锁 (Check -> Analyzing)
-            # 注意：这里我们先释放 Check 锁，然后由 Main Analysis (通过回调触发) 去获取 Analyze 锁
-            # 或者我们在这里直接调用回调，回调里会触发 Main Scheduler，Main Scheduler 会尝试获取 Analyze 锁
-            
+            # 3. 触发！
+            self._trigger_count += 1  # 统计触发次数
             logger.info(f"[TriggerScheduler] TRIGGER! Confidence={context.confidence}%, Urgency={context.urgency}")
             
             # 释放 Check 锁，以便主分析可以获取 Analyze 锁
@@ -161,10 +161,6 @@ class TriggerScheduler:
             # 确保释放锁
             self.trigger_lock.release_check()
             raise e
-        finally:
-             # 再次确保释放 Check 锁 (如果还在持有)
-             # release_check 内部会检查状态，所以多次调用是安全的
-            self.trigger_lock.release_check()
     
     def get_status(self) -> Dict:
         """获取调度器状态"""

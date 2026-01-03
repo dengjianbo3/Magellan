@@ -105,17 +105,21 @@ class TriggerLock:
             async with self._lock:
                 current_state = self.state
                 
-                # 1. 如果是 Checking，等待
+                # 1. 如果是 Checking，等待或超时强制获取
                 if current_state == "checking":
-                    if (datetime.now() - start_time).total_seconds() > timeout:
+                    elapsed = (datetime.now() - start_time).total_seconds()
+                    if elapsed > timeout:
                         logger.warning("[Lock] Wait for checking timed out, forcing acquire")
-                        # 超时强制获取
+                        # 超时强制获取 - 直接覆盖 checking 状态
+                        self._state = "analyzing"
+                        self._last_analysis_time = datetime.now()
+                        self._cooldown_until = None
+                        return True
                     else:
                         logger.info("[Lock] Waiting for trigger check to finish...")
                         # 释放锁并等待一小段时间再重试
-                        pass 
                 
-                # 2. 正常获取逻辑
+                # 2. 正常获取逻辑 - 已经在分析中
                 elif current_state == "analyzing":
                     return False  # 已经在运行
                 
@@ -123,7 +127,7 @@ class TriggerLock:
                 else:
                     self._state = "analyzing"
                     self._last_analysis_time = datetime.now()
-                    self._cooldown_until = None # 清除冷却
+                    self._cooldown_until = None  # 清除冷却
                     logger.info(f"[Lock] Acquired (from {current_state}), state -> analyzing")
                     return True
             
