@@ -96,21 +96,34 @@ class ExecutorAgent(ReWOOAgent):
 
 Your job is to:
 1. Review the leader's summary and agent consensus
-2. Consider the current position context
-3. Decide on a trading action: open_long, open_short, hold, or close_position
+2. Consider the current position context (IMPORTANT!)
+3. Decide on a trading action based on BOTH consensus AND position state
 
-You have access to trading tools. Based on the analysis, you MUST use exactly ONE of these tools:
-- open_long: Open a LONG position (buy, expecting price to rise)
-- open_short: Open a SHORT position (sell, expecting price to fall)
-- hold: Maintain current state, no action
-- close_position: Close existing position
+You have access to these trading tools:
+
+BASIC ACTIONS:
+- open_long: Open a new LONG position (when NO position or CLOSING SHORT to go LONG)
+- open_short: Open a new SHORT position (when NO position or CLOSING LONG to go SHORT)
+- hold: Do nothing, wait for better opportunity
+- close_position: Close existing position completely
+
+POSITION MANAGEMENT (use when already holding a position):
+- add_to_long: Add to existing LONG position (when already LONG and trend strengthens)
+- add_to_short: Add to existing SHORT position (when already SHORT and trend strengthens)
+- reduce_position: Partially close position (to lock in profits or reduce risk)
+
+DECISION LOGIC:
+1. If NO position: use open_long, open_short, or hold
+2. If holding LONG and bullish consensus: use add_to_long or hold
+3. If holding LONG and bearish consensus: use close_position or reduce_position
+4. If holding SHORT and bearish consensus: use add_to_short or hold
+5. If holding SHORT and bullish consensus: use close_position or reduce_position
 
 IMPORTANT RULES:
 - You MUST call exactly ONE tool to express your decision
-- Be decisive - choose the action that best matches the consensus
-- If experts recommend HOLD, call the hold() tool
-- If opening a position, use appropriate leverage (3-10x) and risk parameters
-- Always provide clear reasoning for your decision"""
+- ALWAYS consider current position before acting
+- When in profit, consider reduce_position to lock in gains
+- If already holding same direction as consensus, prefer add_to or hold over new open"""
     
     def _create_planning_prompt(self) -> str:
         """
@@ -234,6 +247,54 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
                     "confidence": {"type": "integer", "description": "Confidence level 0-100", "default": 100}
                 },
                 "required": ["reason"]
+            }
+        ))
+        
+        # add_to_long tool (NEW - position management)
+        self.register_tool(FunctionTool(
+            name="add_to_long",
+            description="Add to existing LONG position when trend continues upward. Use when already holding LONG and bullish consensus. Parameters: amount_percent (0.1-0.3), reasoning (string), confidence (0-100)",
+            func=self._execute_add_to_long,
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "amount_percent": {"type": "number", "description": "Additional position size as % of available margin (0.1-0.3)", "default": 0.15},
+                    "reasoning": {"type": "string", "description": "Reason for adding to position"},
+                    "confidence": {"type": "integer", "description": "Confidence level 0-100", "default": 70}
+                },
+                "required": ["reasoning"]
+            }
+        ))
+        
+        # add_to_short tool (NEW - position management)
+        self.register_tool(FunctionTool(
+            name="add_to_short",
+            description="Add to existing SHORT position when trend continues downward. Use when already holding SHORT and bearish consensus. Parameters: amount_percent (0.1-0.3), reasoning (string), confidence (0-100)",
+            func=self._execute_add_to_short,
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "amount_percent": {"type": "number", "description": "Additional position size as % of available margin (0.1-0.3)", "default": 0.15},
+                    "reasoning": {"type": "string", "description": "Reason for adding to position"},
+                    "confidence": {"type": "integer", "description": "Confidence level 0-100", "default": 70}
+                },
+                "required": ["reasoning"]
+            }
+        ))
+        
+        # reduce_position tool (NEW - position management)
+        self.register_tool(FunctionTool(
+            name="reduce_position",
+            description="Partially close existing position to lock in profits or reduce risk. Parameters: reduce_percent (0.25-0.75), reasoning (string), confidence (0-100)",
+            func=self._execute_reduce_position,
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "reduce_percent": {"type": "number", "description": "Percentage of position to close (0.25-0.75)", "default": 0.5},
+                    "reasoning": {"type": "string", "description": "Reason for reducing position"},
+                    "confidence": {"type": "integer", "description": "Confidence level 0-100", "default": 75}
+                },
+                "required": ["reasoning"]
             }
         ))
     
@@ -609,3 +670,146 @@ You MUST call exactly one tool to make your decision. Analyze the consensus and 
             reasoning=f"Fallback HOLD: {reason}",
             timestamp=datetime.now()
         )
+    
+    # ==================== New Position Management Methods ====================
+    
+    async def _execute_add_to_long(
+        self,
+        amount_percent: float = 0.15,
+        reasoning: str = "",
+        confidence: int = 70
+    ) -> Dict[str, Any]:
+        """
+        Execute add_to_long tool - add to existing LONG position.
+        
+        This uses the existing open_long method of paper_trader with a smaller amount,
+        which adds to the current position.
+        """
+        logger.info(f"[ExecutorAgent] Executing: add_to_long(amount_percent={amount_percent}, confidence={confidence})")
+        
+        current_price = await get_current_btc_price()
+        
+        # Create signal with "add_long" direction
+        signal = TradingSignal(
+            direction="add_long",  # Special direction for adding to long
+            symbol=self.symbol,
+            leverage=5,  # Use default leverage for adding
+            amount_percent=min(amount_percent, 0.3),  # Cap at 30%
+            entry_price=current_price,
+            take_profit_price=current_price * 1.08,  # 8% TP default
+            stop_loss_price=current_price * 0.97,  # 3% SL default
+            confidence=confidence,
+            reasoning=f"[ADD TO LONG] {reasoning}",
+            timestamp=datetime.now()
+        )
+        
+        self._result["signal"] = signal
+        self._executed_tools.append({
+            "tool": "add_to_long",
+            "params": {"amount_percent": amount_percent, "reasoning": reasoning},
+            "success": True
+        })
+        
+        return {
+            "success": True,
+            "action": "add_to_long",
+            "amount_percent": amount_percent,
+            "price": current_price,
+            "confidence": confidence,
+            "reasoning": reasoning
+        }
+    
+    async def _execute_add_to_short(
+        self,
+        amount_percent: float = 0.15,
+        reasoning: str = "",
+        confidence: int = 70
+    ) -> Dict[str, Any]:
+        """
+        Execute add_to_short tool - add to existing SHORT position.
+        
+        This uses the existing open_short method of paper_trader with a smaller amount,
+        which adds to the current position.
+        """
+        logger.info(f"[ExecutorAgent] Executing: add_to_short(amount_percent={amount_percent}, confidence={confidence})")
+        
+        current_price = await get_current_btc_price()
+        
+        # Create signal with "add_short" direction
+        signal = TradingSignal(
+            direction="add_short",  # Special direction for adding to short
+            symbol=self.symbol,
+            leverage=5,  # Use default leverage for adding
+            amount_percent=min(amount_percent, 0.3),  # Cap at 30%
+            entry_price=current_price,
+            take_profit_price=current_price * 0.92,  # 8% TP default (price going down)
+            stop_loss_price=current_price * 1.03,  # 3% SL default (price going up)
+            confidence=confidence,
+            reasoning=f"[ADD TO SHORT] {reasoning}",
+            timestamp=datetime.now()
+        )
+        
+        self._result["signal"] = signal
+        self._executed_tools.append({
+            "tool": "add_to_short",
+            "params": {"amount_percent": amount_percent, "reasoning": reasoning},
+            "success": True
+        })
+        
+        return {
+            "success": True,
+            "action": "add_to_short",
+            "amount_percent": amount_percent,
+            "price": current_price,
+            "confidence": confidence,
+            "reasoning": reasoning
+        }
+    
+    async def _execute_reduce_position(
+        self,
+        reduce_percent: float = 0.5,
+        reasoning: str = "",
+        confidence: int = 75
+    ) -> Dict[str, Any]:
+        """
+        Execute reduce_position tool - partially close existing position.
+        
+        This creates a 'reduce' signal that the execution layer will interpret
+        as a partial close.
+        """
+        logger.info(f"[ExecutorAgent] Executing: reduce_position(reduce_percent={reduce_percent}, confidence={confidence})")
+        
+        current_price = await get_current_btc_price()
+        
+        # Clamp reduce_percent to valid range
+        reduce_percent = max(0.25, min(reduce_percent, 0.75))
+        
+        # Create signal with "reduce" direction
+        signal = TradingSignal(
+            direction="reduce",  # Special direction for partial close
+            symbol=self.symbol,
+            leverage=1,
+            amount_percent=reduce_percent,  # Use amount_percent to store reduce %
+            entry_price=current_price,
+            take_profit_price=current_price,
+            stop_loss_price=current_price,
+            confidence=confidence,
+            reasoning=f"[REDUCE POSITION {reduce_percent*100:.0f}%] {reasoning}",
+            timestamp=datetime.now()
+        )
+        
+        self._result["signal"] = signal
+        self._executed_tools.append({
+            "tool": "reduce_position",
+            "params": {"reduce_percent": reduce_percent, "reasoning": reasoning},
+            "success": True
+        })
+        
+        return {
+            "success": True,
+            "action": "reduce_position",
+            "reduce_percent": reduce_percent,
+            "price": current_price,
+            "confidence": confidence,
+            "reasoning": reasoning
+        }
