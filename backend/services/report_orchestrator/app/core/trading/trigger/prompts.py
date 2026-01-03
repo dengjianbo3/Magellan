@@ -4,7 +4,7 @@ Trigger Prompts - LLM 提示词模板
 用于 TriggerAgent 的 LLM 分析。
 """
 
-TRIGGER_ANALYSIS_PROMPT = """你是一个专业的加密货币市场分析师。你的任务是判断当前市场状况是否需要立即进行深度交易分析。
+TRIGGER_ANALYSIS_PROMPT = \"\"\"你是一个专业的加密货币市场分析师。你的任务是判断当前市场状况是否需要立即进行深度交易分析。
 
 ## 当前市场数据
 
@@ -20,6 +20,9 @@ TRIGGER_ANALYSIS_PROMPT = """你是一个专业的加密货币市场分析师。
 - 成交量异常: {volume_spike}
 - 趋势 (15m/1h/4h): {trend_15m}/{trend_1h}/{trend_4h}
 
+### 当前仓位
+{position_info}
+
 ## 你的任务
 
 分析以上信息，判断是否需要**立即**触发深度交易分析。
@@ -32,6 +35,7 @@ TRIGGER_ANALYSIS_PROMPT = """你是一个专业的加密货币市场分析师。
 5. 价格快速波动 (15分钟内变化>2%，或1小时内变化>3%)
 6. 重要人物言论 (政要、CEO发表关于加密货币的重要声明)
 7. 地缘政治事件 (战争、制裁等可能影响市场的事件)
+8. **仓位风险** - 如果持有仓位且市场出现不利信号，需要更敏感地触发分析
 
 不触发的情况:
 - 普通的市场分析文章
@@ -52,20 +56,33 @@ TRIGGER_ANALYSIS_PROMPT = """你是一个专业的加密货币市场分析师。
 }}
 ```
 
-只输出JSON，不要其他内容。"""
+只输出JSON，不要其他内容。\"\"\"
 
 
-def build_trigger_prompt(news_items: list, ta_data: dict) -> str:
-    """构建触发器分析 Prompt"""
+def build_trigger_prompt(news_items: list, ta_data: dict, position_data: dict = None) -> str:
+    \"\"\"构建触发器分析 Prompt\"\"\"
     
     # 格式化新闻列表
     if news_items:
-        news_list = "\n".join([
+        news_list = "\\n".join([
             f"- [{item.get('source', 'Unknown')}] {item.get('title', '')}"
             for item in news_items[:10]  # 最多10条
         ])
     else:
         news_list = "- 没有获取到新闻"
+    
+    # 格式化仓位信息 (新增)
+    if position_data and position_data.get("has_position"):
+        direction = position_data.get("direction", "none")
+        pnl = position_data.get("pnl_percent", 0)
+        size = position_data.get("size_usd", 0)
+        pnl_status = "盈利" if pnl >= 0 else "亏损"
+        position_info = f\"\"\"- 持仓方向: {direction.upper()}
+- 当前盈亏: {pnl_status} {abs(pnl):.2f}%
+- 仓位规模: ${size:,.2f}
+⚠️ 注意: 有仓位时，对不利信号需要更敏感\"\"\"
+    else:
+        position_info = "- 当前无仓位"
     
     # 格式化技术指标
     prompt = TRIGGER_ANALYSIS_PROMPT.format(
@@ -78,7 +95,8 @@ def build_trigger_prompt(news_items: list, ta_data: dict) -> str:
         volume_spike="是" if ta_data.get('volume_spike') else "否",
         trend_15m=ta_data.get('trend_15m', 'neutral'),
         trend_1h=ta_data.get('trend_1h', 'neutral'),
-        trend_4h=ta_data.get('trend_4h', 'neutral')
+        trend_4h=ta_data.get('trend_4h', 'neutral'),
+        position_info=position_info
     )
     
     return prompt

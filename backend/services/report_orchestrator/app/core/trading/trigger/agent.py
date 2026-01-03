@@ -51,6 +51,12 @@ class TriggerContext:
     rsi_15m: float = 50.0
     news_count: int = 0
     
+    # 仓位数据 (新增)
+    has_position: bool = False
+    position_direction: str = "none"  # long / short / none
+    position_pnl_percent: float = 0.0
+    position_size_usd: float = 0.0
+    
     # 原始 LLM 响应
     llm_response: Dict = field(default_factory=dict)
     
@@ -66,7 +72,10 @@ class TriggerContext:
             "price_change_15m": self.price_change_15m,
             "price_change_1h": self.price_change_1h,
             "rsi_15m": self.rsi_15m,
-            "news_count": self.news_count
+            "news_count": self.news_count,
+            "has_position": self.has_position,
+            "position_direction": self.position_direction,
+            "position_pnl_percent": self.position_pnl_percent
         }
 
 
@@ -83,11 +92,13 @@ class TriggerAgent:
         news_crawler: Optional[NewsCrawler] = None,
         ta_calculator: Optional[TACalculator] = None,
         llm_helper: Optional["LLMHelper"] = None,
+        paper_trader = None,  # 新增: 用于获取仓位信息
         llm_gateway_url: str = "http://llm_gateway:8003",
         confidence_threshold: int = None
     ):
         self.news_crawler = news_crawler or NewsCrawler()
         self.ta_calculator = ta_calculator or TACalculator()
+        self.paper_trader = paper_trader  # 新增
         
         # 复用现有的 LLMHelper
         if llm_helper:
@@ -135,6 +146,27 @@ class TriggerAgent:
                 logger.warning(f"[TriggerAgent] TA calculation failed: {ta_data}")
                 ta_data = TAData()
             
+            # 1.5 获取仓位数据 (新增)
+            position_data = {
+                "has_position": False,
+                "direction": "none",
+                "pnl_percent": 0.0,
+                "size_usd": 0.0
+            }
+            if self.paper_trader:
+                try:
+                    position = await self.paper_trader.get_position()
+                    if position and position.get("direction") and position.get("direction") != "none":
+                        position_data = {
+                            "has_position": True,
+                            "direction": position.get("direction", "none"),
+                            "pnl_percent": position.get("profit_loss_percent", 0.0),
+                            "size_usd": position.get("position_value", 0.0)
+                        }
+                        logger.info(f"[TriggerAgent] Position: {position_data['direction']}, PnL: {position_data['pnl_percent']:.2f}%")
+                except Exception as e:
+                    logger.warning(f"[TriggerAgent] Position fetch failed: {e}")
+            
             # 2. 构建 Prompt
             news_dicts = [{"source": n.source, "title": n.title} for n in news_items]
             ta_dict = ta_data.to_dict() if hasattr(ta_data, 'to_dict') else {
@@ -149,7 +181,7 @@ class TriggerAgent:
                 "trend_4h": ta_data.trend_4h
             }
             
-            prompt = build_trigger_prompt(news_dicts, ta_dict)
+            prompt = build_trigger_prompt(news_dicts, ta_dict, position_data)
             
             # 3. 调用 LLM (使用现有的 LLMHelper)
             logger.info("[TriggerAgent] Calling LLM for analysis...")
@@ -196,6 +228,10 @@ class TriggerAgent:
                 price_change_1h=ta_data.price_change_1h,
                 rsi_15m=ta_data.rsi_15m,
                 news_count=len(news_items),
+                has_position=position_data.get("has_position", False),
+                position_direction=position_data.get("direction", "none"),
+                position_pnl_percent=position_data.get("pnl_percent", 0.0),
+                position_size_usd=position_data.get("size_usd", 0.0),
                 llm_response=llm_result
             )
             

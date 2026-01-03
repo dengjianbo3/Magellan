@@ -120,12 +120,12 @@ class TradingSystem:
         # Initialize event-driven trigger scheduler
         # Runs every 15 minutes, uses LLM to decide if immediate analysis needed
         self.trigger_scheduler = TriggerScheduler(
-            trigger_agent=TriggerAgent(),
+            trigger_agent=TriggerAgent(paper_trader=self.paper_trader),
             on_trigger=self._on_trigger_event,
             interval_minutes=15,
             cooldown_minutes=30
         )
-        logger.info("✅ TriggerScheduler initialized (15min interval, LLM-driven)")
+        logger.info("✅ TriggerScheduler initialized (15min interval, LLM-driven, position-aware)")
 
         self._initialized = True
         logger.info(f"Trading system initialized with {self.trader_type} trader")
