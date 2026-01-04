@@ -128,9 +128,10 @@ backend/services/report_orchestrator/app/core/trading/
 ├── executor_agent.py           # ⭐ 执行器 Agent (7 工具 + 安全逻辑)
 ├── executor.py                 # 旧版 TradeExecutor
 │
-├── trigger/                    # ⭐ 触发器系统 (新增)
+├── trigger/                    # ⭐ 触发器系统 (三层架构)
 │   ├── __init__.py
-│   ├── agent.py               # TriggerAgent (LLM 驱动)
+│   ├── fast_monitor.py        # 🆕 Layer 1: 硬条件检测 (无 LLM)
+│   ├── agent.py               # Layer 2: TriggerAgent (LLM 驱动)
 │   ├── scheduler.py           # TriggerScheduler (定时检查)
 │   ├── lock.py                # TriggerLock (状态机)
 │   ├── news_crawler.py        # 新闻抓取
@@ -265,6 +266,105 @@ position_size_usd: float = 0.0
 
 - 持仓浮亏 >10%? → 可能需要止损分析
 - 持仓浮盈 >15%? → 考虑是否锁定利润
+
+### 三层触发器架构 (FastMonitor + TriggerAgent)
+
+为了更高效地响应市场变化，系统采用三层触发架构：
+
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     三层触发器架构                                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  Layer 1: FastMonitor (每 5 分钟，无 LLM 调用)                          │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │  硬条件检测 - 纯规则计算，零 API 成本                               │ │
+│  │  - 价格急涨急跌 (1m/5m/15m)                                        │ │
+│  │  - 成交量异常放大                                                  │ │
+│  │  - 资金费率极端/突变                                               │ │
+│  │  - 持仓量异常变化                                                  │ │
+│  │  - RSI 极端超买/超卖                                               │ │
+│  │  - EMA 价格偏离                                                    │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+│                            │ 任一条件触发                               │
+│                            ▼                                            │
+│  Layer 2: TriggerAgent (条件触发时，LLM 分析)                           │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │  LLM 深度分析                                                      │ │
+│  │  - 综合新闻 + 技术指标                                             │ │
+│  │  - 考虑当前仓位状态                                                │ │
+│  │  - 输出 should_trigger + confidence                                │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+│                            │ should_trigger=True && confidence>60       │
+│                            ▼                                            │
+│  Layer 3: Full Analysis (完整多 Agent 分析)                             │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │  5 Agent 投票 → Leader 共识 → ExecutorAgent 执行                   │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### FastMonitor 硬条件指标 (6 类)
+
+| 指标 | 阈值 | 紧急度 | OKX API |
+|------|------|--------|---------|
+| 价格急变 (1m) | ±1.5% | high | `/market/candles` |
+| 价格急变 (5m) | ±2.5% | high | `/market/candles` |
+| 价格急变 (15m) | ±4.0% | critical | `/market/candles` |
+| 成交量异常 (1m) | >5x 均值 | high | `/market/candles` |
+| 成交量异常 (5m) | >3x 均值 | medium | `/market/candles` |
+| 资金费率极端 | >0.1% | high | `/public/funding-rate` |
+| 资金费率突变 | >0.05% | medium | `/public/funding-rate` |
+| 持仓量变化 | >3% (15min) | medium | `/public/open-interest` |
+| RSI 超买 | >85 | medium | 计算自 K 线 |
+| RSI 超卖 | <15 | medium | 计算自 K 线 |
+| EMA 偏离 | >5% vs EMA20 | medium | 计算自 K 线 |
+
+### FastMonitor 配置
+
+```python
+class FastMonitorConfig:
+    # 价格急变
+    PRICE_SPIKE_1M = 1.5       # 1分钟变动 ±1.5%
+    PRICE_SPIKE_5M = 2.5       # 5分钟变动 ±2.5%
+    PRICE_SPIKE_15M = 4.0      # 15分钟变动 ±4.0%
+    
+    # 成交量异常
+    VOLUME_SPIKE_5M = 3.0      # 5分钟成交量 > 3x 均值
+    VOLUME_SPIKE_1M = 5.0      # 1分钟成交量 > 5x 均值
+    
+    # 资金费率
+    FUNDING_RATE_EXTREME = 0.1     # 资金费率 > 0.1%
+    FUNDING_RATE_CHANGE = 0.05     # 资金费率变化 > 0.05%
+    
+    # 持仓量
+    OI_CHANGE_15M = 3.0        # 15分钟 OI 变化 > 3%
+    
+    # 技术指标
+    RSI_OVERBOUGHT = 85        # RSI > 85 极端超买
+    RSI_OVERSOLD = 15          # RSI < 15 极端超卖
+    EMA_DEVIATION = 5.0        # 价格 vs EMA20 偏离 > 5%
+```
+
+### 环境变量
+
+```bash
+# 启用/禁用 FastMonitor
+FAST_MONITOR_ENABLED=true   # 默认启用
+
+# 检查间隔 (分钟)
+TRIGGER_INTERVAL_MINUTES=5  # 默认 5 分钟
+```
+
+### 成本节省效果
+
+| 场景 | 原架构 | 三层架构 |
+|------|--------|----------|
+| 市场平静 | 每次调用 LLM | 仅 FastMonitor (0 API 调用) |
+| 轻微波动 | 调用 LLM | FastMonitor + TriggerAgent |
+| 剧烈波动 | 调用完整分析 | 3 层全部执行 |
+| 预估节省 | - | 60-80% LLM 调用 |
 
 ---
 
