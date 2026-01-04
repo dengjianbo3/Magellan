@@ -826,6 +826,93 @@ async def get_status():
     return await system.get_status()
 
 
+@router.get("/funding")
+async def get_funding_rate():
+    """Get current funding rate and cost analysis"""
+    try:
+        from app.core.trading.funding import (
+            get_funding_data_service,
+            get_funding_calculator,
+            get_funding_config
+        )
+        
+        # Get funding rate data
+        data_service = await get_funding_data_service()
+        funding_rate = await data_service.get_current_rate("BTC-USDT-SWAP")
+        
+        if not funding_rate:
+            return {
+                "available": False,
+                "error": "Unable to fetch funding rate from OKX"
+            }
+        
+        # Get config
+        config = get_funding_config()
+        calculator = get_funding_calculator()
+        
+        # Calculate cost estimates for standard position
+        # Assume $1000 position with 3x leverage
+        position_value = 1000
+        margin = position_value / 3
+        leverage = 3
+        
+        estimate_8h = calculator.estimate_holding_cost(
+            position_value=position_value,
+            margin=margin,
+            leverage=leverage,
+            holding_hours=8,
+            current_rate=funding_rate.rate,
+            direction="long"
+        )
+        
+        estimate_24h = calculator.estimate_holding_cost(
+            position_value=position_value,
+            margin=margin,
+            leverage=leverage,
+            holding_hours=24,
+            current_rate=funding_rate.rate,
+            direction="long"
+        )
+        
+        return {
+            "available": True,
+            "symbol": funding_rate.symbol,
+            "rate": funding_rate.rate,
+            "rate_percent": round(funding_rate.rate_percent, 4),
+            "avg_24h": round(funding_rate.avg_24h * 100, 4) if funding_rate.avg_24h else None,
+            "avg_7d": round(funding_rate.avg_7d * 100, 4) if funding_rate.avg_7d else None,
+            "trend": funding_rate.trend.value if funding_rate.trend else "stable",
+            "is_extreme": funding_rate.is_extreme,
+            "minutes_to_settlement": funding_rate.minutes_to_settlement,
+            "next_settlement_time": funding_rate.next_settlement_time.isoformat() if funding_rate.next_settlement_time else None,
+            
+            # Cost analysis (per $1000 position at 3x)
+            "cost_analysis": {
+                "position_value": position_value,
+                "leverage": leverage,
+                "cost_8h": round(estimate_8h.estimated_cost, 4),
+                "cost_24h": round(estimate_24h.estimated_cost, 4),
+                "cost_8h_percent": round(estimate_8h.cost_percent_of_margin, 3),
+                "cost_24h_percent": round(estimate_24h.cost_percent_of_margin, 3),
+                "break_even_24h": round(estimate_24h.break_even_price_move, 3)
+            },
+            
+            # Config thresholds
+            "thresholds": {
+                "force_close_percent": config.force_close_threshold,
+                "warning_percent": config.warning_threshold,
+                "pre_settlement_buffer_min": config.pre_settlement_buffer_minutes,
+                "max_holding_hours": config.default_max_holding_hours
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error fetching funding rate: {e}")
+        return {
+            "available": False,
+            "error": str(e)
+        }
+
+
 @router.get("/account")
 async def get_account():
     """Get account information"""

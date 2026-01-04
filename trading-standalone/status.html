@@ -646,13 +646,14 @@
                     ? `performance?start_date=${drawdownStartDate}`
                     : 'performance';
 
-                const [status, account, position, history, drawdown, performance] = await Promise.all([
+                const [status, account, position, history, drawdown, performance, funding] = await Promise.all([
                     fetchData('status'),
                     fetchData('account'),
                     fetchData('position'),
                     fetchData('history?limit=50'),
                     fetchData(drawdownEndpoint),
-                    fetchData(performanceEndpoint)
+                    fetchData(performanceEndpoint),
+                    fetchData('funding')
                 ]);
 
                 if (!status) {
@@ -663,6 +664,7 @@
                 console.log('[DEBUG] Position data:', position);
                 console.log('[DEBUG] has_position:', position?.has_position);
                 console.log('[DEBUG] Performance data:', performance);
+                console.log('[DEBUG] Funding data:', funding);
 
                 let html = '';
 
@@ -712,6 +714,59 @@
                         </div>
                     `;
                 }
+
+                // Funding Rate Card
+                if (funding && funding.available) {
+                    const rateClass = funding.rate > 0 ? 'positive' : (funding.rate < 0 ? 'negative' : '');
+                    const extremeWarning = funding.is_extreme ? '⚠️ EXTREME' : '';
+                    const trendIcon = funding.trend === 'rising' ? '📈' : (funding.trend === 'falling' ? '📉' : '➡️');
+                    const minsToSettlement = funding.minutes_to_settlement || 0;
+                    const hoursToSettlement = Math.floor(minsToSettlement / 60);
+                    const minsRemaining = minsToSettlement % 60;
+                    const settlementText = `${hoursToSettlement}h ${minsRemaining}m`;
+
+                    html += `
+                        <div class="card">
+                            <div class="card-title">💰 Funding Rate ${extremeWarning}</div>
+                            <div class="row">
+                                <span class="label">Current Rate</span>
+                                <span class="value ${rateClass}">${funding.rate_percent}% ${trendIcon}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">24h Average</span>
+                                <span class="value">${funding.avg_24h ? funding.avg_24h + '%' : 'N/A'}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Next Settlement</span>
+                                <span class="value">${settlementText}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Cost/8h (per $1k)</span>
+                                <span class="value ${funding.cost_analysis.cost_8h > 0 ? 'negative' : 'positive'}">
+                                    $${Math.abs(funding.cost_analysis.cost_8h).toFixed(3)}
+                                </span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Break-even (24h)</span>
+                                <span class="value">${funding.cost_analysis.break_even_24h}%</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Force Close @</span>
+                                <span class="value">${funding.thresholds.force_close_percent}% impact</span>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    html += `
+                        <div class="card">
+                            <div class="card-title">💰 Funding Rate</div>
+                            <div class="row">
+                                <span class="label" style="color: #666;">Unable to fetch funding data</span>
+                            </div>
+                        </div>
+                    `;
+                }
+
 
                 // Maximum Drawdown - Always show this card
                 {
