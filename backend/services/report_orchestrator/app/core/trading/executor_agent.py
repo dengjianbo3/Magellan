@@ -213,7 +213,7 @@ Example 1 (HOLD decision - most common):
 
 Example 2 (OPEN LONG - bullish consensus):
 [
-  {{"step": 1, "tool": "open_long", "params": {{"leverage": 5, "amount_percent": 0.2, "tp_percent": 8.0, "sl_percent": 3.0, "reasoning": "Strong bullish consensus with 4/5 experts recommending LONG. Technical breakout confirmed.", "confidence": 75}}, "purpose": "Open long position based on bullish consensus"}}
+  {{"step": 1, "tool": "open_long", "params": {{"leverage": 5, "amount_percent": {EXECUTOR_CONFIG['default_percent']}, "tp_percent": {EXECUTOR_CONFIG['default_tp']}, "sl_percent": {EXECUTOR_CONFIG['default_sl']}, "reasoning": "Strong bullish consensus with 4/5 experts recommending LONG. Technical breakout confirmed.", "confidence": 75}}, "purpose": "Open long position based on bullish consensus"}}
 ]
 
 Example 3 (CLOSE POSITION - risk management):
