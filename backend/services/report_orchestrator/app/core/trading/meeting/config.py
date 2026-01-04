@@ -4,8 +4,29 @@ Meeting Configuration
 Configuration dataclass for TradingMeeting.
 """
 
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
+
+
+# ========== Environment helpers ==========
+def _get_env_float(key: str, default: float) -> float:
+    val = os.getenv(key)
+    if val:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    return default
+
+def _get_env_int(key: str, default: int) -> int:
+    val = os.getenv(key)
+    if val:
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    return default
 
 
 @dataclass
@@ -13,26 +34,26 @@ class MeetingConfig:
     """
     Configuration for trading meeting execution.
     
-    Centralizes all configurable parameters for the meeting process.
+    Reads from environment variables for consistency with TradingMeetingConfig.
     """
     # Symbol to trade
-    symbol: str = "BTC-USDT-SWAP"
+    symbol: str = field(default_factory=lambda: os.getenv("TRADING_SYMBOL", "BTC-USDT-SWAP"))
     
-    # Execution parameters
-    max_leverage: int = 10
-    default_leverage: int = 3
-    min_position_percent: float = 0.1
-    max_position_percent: float = 0.5
+    # Execution parameters - read from env
+    max_leverage: int = field(default_factory=lambda: _get_env_int("MAX_LEVERAGE", 20))
+    default_leverage: int = 5
+    min_position_percent: float = field(default_factory=lambda: _get_env_float("MIN_POSITION_PERCENT", 10) / 100)
+    max_position_percent: float = field(default_factory=lambda: _get_env_float("MAX_POSITION_PERCENT", 30) / 100)
     
-    # Risk parameters
-    default_take_profit_percent: float = 5.0
-    default_stop_loss_percent: float = 2.0
+    # Risk parameters - read from env
+    default_take_profit_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_TP_PERCENT", 5.0))
+    default_stop_loss_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_SL_PERCENT", 2.0))
     min_stop_loss_percent: float = 0.5
     max_stop_loss_percent: float = 10.0
     
-    # Consensus parameters
+    # Consensus parameters - read from env
     min_consensus_votes: int = 2  # Minimum agreeing votes for action
-    min_confidence: int = 40  # Minimum average confidence for action
+    min_confidence: int = field(default_factory=lambda: _get_env_int("MIN_CONFIDENCE", 60))
     
     # Timeouts (seconds)
     phase_timeout: int = 180

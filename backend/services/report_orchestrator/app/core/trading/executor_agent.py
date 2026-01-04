@@ -26,8 +26,7 @@ from app.core.trading.decision_store import TradingDecision, TradingDecisionStor
 
 logger = logging.getLogger(__name__)
 
-
-# ========== Position Config from Environment ==========
+# ========== Config from Environment ==========
 def _get_env_float(key: str, default: float) -> float:
     val = os.getenv(key)
     if val:
@@ -37,14 +36,35 @@ def _get_env_float(key: str, default: float) -> float:
             pass
     return default
 
-# Read position limits from environment (same as TradingMeetingConfig)
-POSITION_CONFIG = {
-    "min_percent": _get_env_float("MIN_POSITION_PERCENT", 10) / 100,  # e.g. 0.4 = 40%
-    "max_percent": _get_env_float("MAX_POSITION_PERCENT", 30) / 100,  # e.g. 1.0 = 100%
-    "default_percent": _get_env_float("DEFAULT_POSITION_PERCENT", 20) / 100,  # e.g. 0.6 = 60%
+def _get_env_int(key: str, default: int) -> int:
+    val = os.getenv(key)
+    if val:
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    return default
+
+# Read trading config from environment (same as TradingMeetingConfig)
+EXECUTOR_CONFIG = {
+    # Position sizing
+    "min_percent": _get_env_float("MIN_POSITION_PERCENT", 10) / 100,
+    "max_percent": _get_env_float("MAX_POSITION_PERCENT", 30) / 100,
+    "default_percent": _get_env_float("DEFAULT_POSITION_PERCENT", 20) / 100,
+    # TP/SL defaults
     "default_tp": _get_env_float("DEFAULT_TP_PERCENT", 5.0),
     "default_sl": _get_env_float("DEFAULT_SL_PERCENT", 2.0),
+    # Leverage
+    "max_leverage": _get_env_int("MAX_LEVERAGE", 20),
+    "default_leverage": 5,  # Default for LLM when not specified
+    # Confidence thresholds
+    "min_confidence": _get_env_int("MIN_CONFIDENCE", 60),
+    "min_confidence_open": _get_env_int("MIN_CONFIDENCE_OPEN", 65),  # For opening positions
+    "min_confidence_close": _get_env_int("MIN_CONFIDENCE_CLOSE", 50),  # For closing positions
 }
+
+# Backward compatibility alias
+POSITION_CONFIG = EXECUTOR_CONFIG
 
 
 class ExecutorAgent(ReWOOAgent):
@@ -60,11 +80,11 @@ class ExecutorAgent(ReWOOAgent):
     for other agents, avoiding tool_choice incompatibility issues.
     """
     
-    # Safety thresholds
-    MIN_CONFIDENCE_OPEN = 65
-    MIN_CONFIDENCE_CLOSE = 50
+    # Safety thresholds - now read from environment
+    MIN_CONFIDENCE_OPEN = EXECUTOR_CONFIG['min_confidence_open']
+    MIN_CONFIDENCE_CLOSE = EXECUTOR_CONFIG['min_confidence_close']
     
-    # Position management constants (from old trading_meeting.py)
+    # Position management constants
     MIN_ADD_AMOUNT = 10.0  # Minimum USDT to add to position
     SAFETY_BUFFER = 50.0   # Reserve this much USDT in margin
     
