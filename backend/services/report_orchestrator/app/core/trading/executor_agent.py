@@ -13,6 +13,7 @@ Key Features:
 
 import logging
 import json
+import os
 import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Callable
@@ -24,6 +25,26 @@ from app.core.trading.price_service import get_current_btc_price
 from app.core.trading.decision_store import TradingDecision, TradingDecisionStore
 
 logger = logging.getLogger(__name__)
+
+
+# ========== Position Config from Environment ==========
+def _get_env_float(key: str, default: float) -> float:
+    val = os.getenv(key)
+    if val:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    return default
+
+# Read position limits from environment (same as TradingMeetingConfig)
+POSITION_CONFIG = {
+    "min_percent": _get_env_float("MIN_POSITION_PERCENT", 10) / 100,  # e.g. 0.4 = 40%
+    "max_percent": _get_env_float("MAX_POSITION_PERCENT", 30) / 100,  # e.g. 1.0 = 100%
+    "default_percent": _get_env_float("DEFAULT_POSITION_PERCENT", 20) / 100,  # e.g. 0.6 = 60%
+    "default_tp": _get_env_float("DEFAULT_TP_PERCENT", 5.0),
+    "default_sl": _get_env_float("DEFAULT_SL_PERCENT", 2.0),
+}
 
 
 class ExecutorAgent(ReWOOAgent):
@@ -95,7 +116,11 @@ class ExecutorAgent(ReWOOAgent):
         # Register trading tools
         self._register_trading_tools()
         
-        logger.info(f"[ExecutorAgent] Initialized with {len(self.tools)} tools (ReWOOAgent pattern)")
+        logger.info(
+            f"[ExecutorAgent] Initialized with {len(self.tools)} tools - "
+            f"Position range: {POSITION_CONFIG['min_percent']*100:.0f}%-{POSITION_CONFIG['max_percent']*100:.0f}%, "
+            f"Default: {POSITION_CONFIG['default_percent']*100:.0f}%"
+        )
     
     def _get_executor_role_prompt(self) -> str:
         """Get the role prompt for executor agent."""
@@ -189,18 +214,25 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
     def _register_trading_tools(self):
         """Register trading tools for LLM tool calling."""
         
+        # Dynamic position sizing from config
+        min_pct = POSITION_CONFIG['min_percent']
+        max_pct = POSITION_CONFIG['max_percent']
+        default_pct = POSITION_CONFIG['default_percent']
+        default_tp = POSITION_CONFIG['default_tp']
+        default_sl = POSITION_CONFIG['default_sl']
+        
         # open_long tool
         self.register_tool(FunctionTool(
             name="open_long",
-            description="Open a LONG position (buy, expecting price to rise). Parameters: leverage (1-20), amount_percent (0.1-0.3), tp_percent (take profit %), sl_percent (stop loss %), reasoning (string), confidence (0-100)",
+            description=f"Open a LONG position (buy, expecting price to rise). Parameters: leverage (1-20), amount_percent ({min_pct:.1f}-{max_pct:.1f}, default {default_pct:.1f}), tp_percent (default {default_tp}%), sl_percent (default {default_sl}%), reasoning (string), confidence (0-100)",
             func=self._execute_open_long,
             parameters_schema={
                 "type": "object",
                 "properties": {
                     "leverage": {"type": "integer", "description": "Leverage (1-20)", "default": 5},
-                    "amount_percent": {"type": "number", "description": "Position size as % of account (0.1-0.3)", "default": 0.2},
-                    "tp_percent": {"type": "number", "description": "Take profit % from entry", "default": 8.0},
-                    "sl_percent": {"type": "number", "description": "Stop loss % from entry", "default": 3.0},
+                    "amount_percent": {"type": "number", "description": f"Position size as % of account ({min_pct:.1f}-{max_pct:.1f})", "default": default_pct},
+                    "tp_percent": {"type": "number", "description": "Take profit % from entry", "default": default_tp},
+                    "sl_percent": {"type": "number", "description": "Stop loss % from entry", "default": default_sl},
                     "reasoning": {"type": "string", "description": "Reason for this trade"},
                     "confidence": {"type": "integer", "description": "Confidence level 0-100", "default": 70}
                 },
@@ -211,15 +243,15 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
         # open_short tool
         self.register_tool(FunctionTool(
             name="open_short",
-            description="Open a SHORT position (sell, expecting price to fall). Parameters: leverage (1-20), amount_percent (0.1-0.3), tp_percent (take profit %), sl_percent (stop loss %), reasoning (string), confidence (0-100)",
+            description=f"Open a SHORT position (sell, expecting price to fall). Parameters: leverage (1-20), amount_percent ({min_pct:.1f}-{max_pct:.1f}, default {default_pct:.1f}), tp_percent (default {default_tp}%), sl_percent (default {default_sl}%), reasoning (string), confidence (0-100)",
             func=self._execute_open_short,
             parameters_schema={
                 "type": "object",
                 "properties": {
                     "leverage": {"type": "integer", "description": "Leverage (1-20)", "default": 5},
-                    "amount_percent": {"type": "number", "description": "Position size as % of account (0.1-0.3)", "default": 0.2},
-                    "tp_percent": {"type": "number", "description": "Take profit % from entry", "default": 8.0},
-                    "sl_percent": {"type": "number", "description": "Stop loss % from entry", "default": 3.0},
+                    "amount_percent": {"type": "number", "description": f"Position size as % of account ({min_pct:.1f}-{max_pct:.1f})", "default": default_pct},
+                    "tp_percent": {"type": "number", "description": "Take profit % from entry", "default": default_tp},
+                    "sl_percent": {"type": "number", "description": "Stop loss % from entry", "default": default_sl},
                     "reasoning": {"type": "string", "description": "Reason for this trade"},
                     "confidence": {"type": "integer", "description": "Confidence level 0-100", "default": 70}
                 },
