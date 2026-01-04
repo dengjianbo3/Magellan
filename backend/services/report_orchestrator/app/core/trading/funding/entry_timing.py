@@ -67,10 +67,10 @@ class EntryTimingController:
         
         if should_delay:
             reason = (
-                f"距离下次结算仅 {minutes_to_settlement} 分钟，"
-                f"当前费率 {funding_rate.rate_percent:.3f}%，"
-                f"作为{direction}方需支付资金费。"
-                f"建议等待结算后入场，节省一次费用。"
+                f"Settlement in {minutes_to_settlement} mins, "
+                f"current rate {funding_rate.rate_percent:.3f}%. "
+                f"As {direction} position you will PAY funding fees. "
+                f"Recommended to wait until after settlement to save costs."
             )
             
             logger.info(
@@ -89,10 +89,10 @@ class EntryTimingController:
         # Check if should enter now for receiving
         if not is_paying and minutes_to_settlement <= 30:
             reason = (
-                f"距离下次结算仅 {minutes_to_settlement} 分钟，"
-                f"当前费率 {funding_rate.rate_percent:.3f}%，"
-                f"作为{direction}方将收取资金费。"
-                f"建议立即入场，白拿一次费用！"
+                f"Settlement in {minutes_to_settlement} mins, "
+                f"current rate {funding_rate.rate_percent:.3f}%. "
+                f"As {direction} position you will RECEIVE funding fees. "
+                f"Recommended to enter NOW to collect fees!"
             )
             
             logger.info(
@@ -108,10 +108,10 @@ class EntryTimingController:
             )
         
         # Normal entry
-        payment_note = "将支付" if is_paying else "将收取"
+        payment_note = "will PAY" if is_paying else "will RECEIVE"
         reason = (
-            f"距离下次结算 {minutes_to_settlement} 分钟，"
-            f"作为{direction}方{payment_note}资金费 ({funding_rate.rate_percent:.3f}%)。"
+            f"Settlement in {minutes_to_settlement} mins. "
+            f"As {direction} position you {payment_note} funding fees ({funding_rate.rate_percent:.3f}%)."
         )
         
         return EntryDecision(

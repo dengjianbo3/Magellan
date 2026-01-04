@@ -1386,7 +1386,7 @@ Analyze the consensus and make a decisive action."""
             
         except Exception as e:
             logger.warning(f"[ExecutorAgent] Failed to get funding context: {e}")
-            return "## ⚠️ 资金费率状态\n\n无法获取资金费率数据，请谨慎考虑持仓成本。"
+            return "## ⚠️ Funding Rate Status\n\nUnable to fetch funding rate data. Please consider holding costs carefully."
     
     async def _check_entry_timing(self, direction: str) -> Dict[str, Any]:
         """
