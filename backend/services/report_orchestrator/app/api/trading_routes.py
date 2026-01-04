@@ -615,7 +615,7 @@ class TradingSystem:
         })
 
         # Have each agent reflect
-        for agent in agents.values():
+        for agent in agents:  # agents is a List, not Dict
             try:
                 messages = [
                     {"role": "system", "content": agent.system_prompt or agent.role_prompt},
