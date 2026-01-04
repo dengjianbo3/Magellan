@@ -9,6 +9,7 @@ Key Features:
 - Registers trading tools: open_long, open_short, hold, close_position
 - Uses same LLM calling pattern as TechnicalAnalyst, MacroEconomist, etc.
 - No special tool_choice param - follows standard ReWOO planning
+- Funding fee awareness for cost-conscious trading decisions
 """
 
 import logging
@@ -23,6 +24,18 @@ from app.core.roundtable.tool import FunctionTool
 from app.models.trading_models import TradingSignal
 from app.core.trading.price_service import get_current_btc_price
 from app.core.trading.decision_store import TradingDecision, TradingDecisionStore
+
+# Funding fee awareness imports
+from app.core.trading.funding import (
+    get_funding_data_service,
+    get_funding_calculator,
+    get_entry_timing_controller,
+    get_funding_context_provider,
+    get_funding_impact_monitor,
+    get_holding_time_manager,
+    EntryAction,
+    TradeViability
+)
 
 logger = logging.getLogger(__name__)
 
@@ -136,10 +149,14 @@ class ExecutorAgent(ReWOOAgent):
         # Register trading tools
         self._register_trading_tools()
         
+        # Funding fee awareness - register force-close callback
+        self._setup_funding_monitor()
+        
         logger.info(
             f"[ExecutorAgent] Initialized with {len(self.tools)} tools - "
             f"Position range: {POSITION_CONFIG['min_percent']*100:.0f}%-{POSITION_CONFIG['max_percent']*100:.0f}%, "
-            f"Default: {POSITION_CONFIG['default_percent']*100:.0f}%"
+            f"Default: {POSITION_CONFIG['default_percent']*100:.0f}%, "
+            f"Funding fee awareness: enabled"
         )
     
     def _get_executor_role_prompt(self) -> str:
@@ -392,8 +409,8 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
             "trigger_reason": trigger_reason or "scheduled"
         }
         
-        # Build query for ReWOO analysis
-        query = self._build_execution_query(
+        # Build query for ReWOO analysis (with async funding context)
+        query = await self._build_execution_query(
             leader_summary=leader_summary,
             agent_votes=agent_votes,
             position_context=position_context
@@ -493,19 +510,22 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
             logger.error(f"[ExecutorAgent] Failed to save decision: {e}")
             # Non-fatal - continue even if save fails
     
-    def _build_execution_query(
+    async def _build_execution_query(
         self,
         leader_summary: str,
         agent_votes: List[Dict],
         position_context: Dict
     ) -> str:
-        """Build the execution query for ReWOO analysis."""
+        """Build the execution query for ReWOO analysis with funding fee context."""
         
         # Format votes
         votes_text = self._format_votes(agent_votes)
         
         # Format position context
         position_text = self._format_position_context(position_context)
+        
+        # Get funding fee context (async)
+        funding_context = await self._get_funding_context(position_context)
         
         return f"""# Trading Execution Decision
 
@@ -518,14 +538,17 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
 ## Current Position
 {position_text}
 
+{funding_context}
+
 ## Your Task
-Based on the above information, make a trading decision by calling ONE of the available tools:
+Based on the above information (especially funding fee costs), make a trading decision by calling ONE of the available tools:
 - open_long: Open a LONG position
 - open_short: Open a SHORT position
 - hold: Maintain current state, no action
 - close_position: Close existing position
 
-You MUST call exactly one tool to make your decision. Analyze the consensus and make a decisive action."""
+You MUST call exactly one tool to make your decision. Consider funding fee impact when holding positions.
+Analyze the consensus and make a decisive action."""
     
     def _format_votes(self, agent_votes: List[Dict]) -> str:
         """Format agent votes for the prompt."""
@@ -1306,4 +1329,152 @@ You MUST call exactly one tool to make your decision. Analyze the consensus and 
             "reasoning": reasoning,
             "trade_result": trade_result
         }
+
+    # ==================== Funding Fee Methods ====================
+    
+    def _setup_funding_monitor(self):
+        """Setup funding impact monitor with force-close callback."""
+        try:
+            monitor = get_funding_impact_monitor()
+            
+            # Register callback for force closing positions
+            async def force_close_callback(symbol: str, reason: str) -> Dict:
+                """Callback to force close position when funding impact exceeds threshold."""
+                if self.paper_trader:
+                    logger.warning(f"[ExecutorAgent] 🚨 Force closing position: {reason}")
+                    return await self.paper_trader.close_position(symbol=symbol, reason=reason)
+                return {"success": False, "error": "No paper trader available"}
+            
+            monitor.register_close_callback(force_close_callback)
+            logger.info("[ExecutorAgent] ✅ Funding impact monitor callback registered")
+            
+        except Exception as e:
+            logger.warning(f"[ExecutorAgent] Failed to setup funding monitor: {e}")
+    
+    async def _get_funding_context(self, position_context: Dict) -> str:
+        """
+        Get funding fee context for execution query.
+        
+        Args:
+            position_context: Current position information
+            
+        Returns:
+            Formatted funding fee context string
+        """
+        try:
+            # Determine expected direction from position context
+            has_position = position_context.get('has_position', False)
+            current_direction = position_context.get('direction', None)
+            leverage = position_context.get('leverage', 3)
+            
+            # For new positions, default to long for context calculation
+            direction = current_direction if current_direction else "long"
+            
+            # Get funding context provider
+            context_provider = await get_funding_context_provider()
+            
+            # Generate context with expected parameters
+            funding_context = await context_provider.generate_context(
+                symbol=self.symbol,
+                direction=direction,
+                leverage=leverage,
+                expected_holding_hours=24,  # Default 24h analysis
+                margin=position_context.get('margin', 100.0)
+            )
+            
+            return funding_context
+            
+        except Exception as e:
+            logger.warning(f"[ExecutorAgent] Failed to get funding context: {e}")
+            return "## ⚠️ 资金费率状态\n\n无法获取资金费率数据，请谨慎考虑持仓成本。"
+    
+    async def _check_entry_timing(self, direction: str) -> Dict[str, Any]:
+        """
+        Check if entry timing is optimal based on funding settlement.
+        
+        Args:
+            direction: Position direction ("long" or "short")
+            
+        Returns:
+            Dict with should_delay, wait_minutes, reason
+        """
+        try:
+            data_service = await get_funding_data_service()
+            funding_rate = await data_service.get_current_rate(self.symbol)
+            
+            if not funding_rate:
+                return {"should_delay": False, "reason": "Unable to fetch funding rate"}
+            
+            timing_controller = get_entry_timing_controller()
+            decision = timing_controller.should_delay_entry(direction, funding_rate)
+            
+            return {
+                "should_delay": decision.action == EntryAction.DELAY,
+                "wait_minutes": decision.minutes_to_wait,
+                "reason": decision.reason,
+                "action": decision.action.value
+            }
+            
+        except Exception as e:
+            logger.warning(f"[ExecutorAgent] Entry timing check failed: {e}")
+            return {"should_delay": False, "reason": f"Error: {str(e)}"}
+    
+    async def _evaluate_trade_viability(
+        self,
+        direction: str,
+        expected_profit_percent: float = 5.0,
+        holding_hours: int = 24
+    ) -> Dict[str, Any]:
+        """
+        Evaluate if trade is viable considering funding costs.
+        
+        Args:
+            direction: Position direction
+            expected_profit_percent: Expected profit as % of margin
+            holding_hours: Expected holding duration
+            
+        Returns:
+            Dict with viability assessment
+        """
+        try:
+            data_service = await get_funding_data_service()
+            funding_rate = await data_service.get_current_rate(self.symbol)
+            
+            if not funding_rate:
+                return {"viable": True, "reason": "Unable to assess - defaulting to viable"}
+            
+            calculator = get_funding_calculator()
+            
+            # Get leverage from config
+            leverage = self._position_context.get('leverage', EXECUTOR_CONFIG['max_leverage'])
+            
+            viability = calculator.evaluate_trade_viability(
+                expected_profit_percent=expected_profit_percent,
+                expected_holding_hours=holding_hours,
+                funding_rate=funding_rate.rate,
+                leverage=leverage,
+                direction=direction
+            )
+            
+            # Get optimal holding time
+            holding_manager = get_holding_time_manager()
+            optimal_hours = holding_manager.calculate_optimal_holding(
+                expected_profit_percent=expected_profit_percent,
+                funding_rate=funding_rate.rate,
+                leverage=leverage,
+                confidence=70,
+                direction=direction
+            )
+            
+            return {
+                "viable": viability != TradeViability.NOT_VIABLE,
+                "viability": viability.value,
+                "optimal_holding_hours": optimal_hours,
+                "funding_rate": funding_rate.rate_percent,
+                "is_extreme": funding_rate.is_extreme
+            }
+            
+        except Exception as e:
+            logger.warning(f"[ExecutorAgent] Trade viability check failed: {e}")
+            return {"viable": True, "reason": f"Error: {str(e)}"}
 
