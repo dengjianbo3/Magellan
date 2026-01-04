@@ -661,7 +661,7 @@ Analyze the consensus and make a decisive action."""
     async def _execute_open_long(
         self,
         leverage: int = 5,
-        amount_percent: float = 0.2,
+        amount_percent: Optional[float] = None,
         tp_percent: float = 8.0,
         sl_percent: float = 3.0,
         reasoning: str = "",
@@ -674,6 +674,9 @@ Analyze the consensus and make a decisive action."""
         - Scenario 3: No position → open new long
         """
         logger.info(f"[ExecutorAgent] Executing: open_long(leverage={leverage}, confidence={confidence})")
+        
+        if amount_percent is None:
+            amount_percent = EXECUTOR_CONFIG['default_percent']
         
         current_price = await get_current_btc_price()
         position = await self._get_position_info()
@@ -775,7 +778,7 @@ Analyze the consensus and make a decisive action."""
             direction="long",
             symbol=self.symbol,
             leverage=min(leverage, 20),
-            amount_percent=min(amount_percent, 0.3),
+            amount_percent=amount_percent,
             entry_price=entry_price,
             take_profit_price=tp_price,
             stop_loss_price=sl_price,
@@ -805,7 +808,7 @@ Analyze the consensus and make a decisive action."""
     async def _execute_open_short(
         self,
         leverage: int = 5,
-        amount_percent: float = 0.2,
+        amount_percent: Optional[float] = None,
         tp_percent: float = 8.0,
         sl_percent: float = 3.0,
         reasoning: str = "",
@@ -818,6 +821,9 @@ Analyze the consensus and make a decisive action."""
         - Scenario 3: No position → open new short
         """
         logger.info(f"[ExecutorAgent] Executing: open_short(leverage={leverage}, confidence={confidence})")
+        
+        if amount_percent is None:
+            amount_percent = EXECUTOR_CONFIG['default_percent']
         
         current_price = await get_current_btc_price()
         position = await self._get_position_info()
@@ -913,7 +919,7 @@ Analyze the consensus and make a decisive action."""
             direction="short",
             symbol=self.symbol,
             leverage=min(leverage, 20),
-            amount_percent=min(amount_percent, 0.3),
+            amount_percent=amount_percent,
             entry_price=entry_price,
             take_profit_price=tp_price,
             stop_loss_price=sl_price,
