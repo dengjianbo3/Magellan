@@ -101,56 +101,56 @@ class FundingContextProvider:
         
         # Format context
         context = f"""
-## ⚠️ 资金费率状态 (CRITICAL - 必须考虑)
+## ⚠️ Funding Rate Status (CRITICAL - MUST CONSIDER)
 
-### 当前费率信息
-- **当前费率**: {funding_rate.rate_percent:.4f}% ({payment_status}方)
-- **下次结算**: {funding_rate.minutes_to_settlement} 分钟后
-- **24h平均**: {funding_rate.avg_24h * 100:.4f}%
-- **费率趋势**: {funding_rate.trend.value}
-- **极端费率**: {"⚠️ 是" if funding_rate.is_extreme else "否"}
+### Current Rate Info
+- **Current Rate**: {funding_rate.rate_percent:.4f}% ({payment_status} side)
+- **Next Settlement**: in {funding_rate.minutes_to_settlement} mins
+- **24h Average**: {funding_rate.avg_24h * 100:.4f}%
+- **Rate Trend**: {funding_rate.trend.value}
+- **Extreme Rate**: {"⚠️ YES" if funding_rate.is_extreme else "NO"}
 
-### 成本评估 ({direction.upper()} 方向, {leverage}x杠杆)
-| 持仓时间 | 预估成本 | 保证金占比 |
-|----------|----------|------------|
-| 8小时 | ${cost_estimate.estimated_cost / (expected_holding_hours/8):.2f} | {cost_estimate.cost_percent_of_margin / (expected_holding_hours/8):.2f}% |
-| 24小时 | ${cost_estimate.estimated_cost * (24/expected_holding_hours):.2f} | {cost_estimate.cost_percent_of_margin * (24/expected_holding_hours):.2f}% |
-| {expected_holding_hours}小时 | ${cost_estimate.estimated_cost:.2f} | {cost_estimate.cost_percent_of_margin:.2f}% |
+### Cost Estimation ({direction.upper()} direction, {leverage}x leverage)
+| Holding Time | Est. Cost | % of Margin |
+|--------------|-----------|-------------|
+| 8 Hours      | ${cost_estimate.estimated_cost / (expected_holding_hours/8):.2f} | {cost_estimate.cost_percent_of_margin / (expected_holding_hours/8):.2f}% |
+| 24 Hours     | ${cost_estimate.estimated_cost * (24/expected_holding_hours):.2f} | {cost_estimate.cost_percent_of_margin * (24/expected_holding_hours):.2f}% |
+| {expected_holding_hours} Hours | ${cost_estimate.estimated_cost:.2f} | {cost_estimate.cost_percent_of_margin:.2f}% |
 
-### 关键指标
-- **盈亏平衡价差**: {cost_estimate.break_even_price_move:.3f}% (价格需变动这么多才能保本)
-- **建议最长持仓**: {optimal_holding} 小时
-- **交易可行性**: {viability.value}
+### Key Metrics
+- **Break-Even Price Move**: {cost_estimate.break_even_price_move:.3f}% (Price move needed to zero out fees)
+- **Recommended Max Holding**: {optimal_holding} hours
+- **Trade Viability**: {viability.value}
 
-### 入场时机建议
+### Entry Timing Advice
 {entry_decision.reason}
 
-### 决策建议
+### Decision Recommendations
 """
         # Add recommendations based on situation
         if is_paying and funding_rate.is_extreme:
             context += f"""
-🔴 **高费率警告**: 当前费率极高 ({funding_rate.rate_percent:.3f}%)！
-- 每8小时将支付约 ${cost_estimate.estimated_cost / (expected_holding_hours/8):.2f} 资金费
-- 短期持仓可能更合适，避免费用累积
-- 确保预期利润能覆盖费用成本
+🔴 **HIGH RATE WARNING**: Current funding rate is extremely high ({funding_rate.rate_percent:.3f}%)!
+- You will PAY approx ${cost_estimate.estimated_cost / (expected_holding_hours/8):.2f} every 8 hours.
+- Short-term holding is recommended to avoid fee accumulation.
+- Ensure expected profit covers these costs.
 """
         elif is_paying and funding_rate.rate > 0.0003:
             context += f"""
-🟡 **费率提醒**: 当前费率偏高 ({funding_rate.rate_percent:.3f}%)。
-- 建议控制持仓时间在 {optimal_holding} 小时内
-- 设置更宽的止盈目标以覆盖费用
+🟡 **Rate Alert**: Current funding rate is elevated ({funding_rate.rate_percent:.3f}%).
+- Recommended to limit holding time within {optimal_holding} hours.
+- Set wider Take Profit targets to cover fee costs.
 """
         elif not is_paying and abs(funding_rate.rate) > 0.0001:
             context += f"""
-🟢 **费率有利**: 当前费率对 {direction} 方向有利！
-- 持仓期间将收取资金费约 ${abs(cost_estimate.estimated_cost):.2f}
-- 可适当延长持仓时间获取更多收益
+🟢 **Favorable Rate**: Current rate is favorable for {direction} position!
+- You will RECEIVE approx ${abs(cost_estimate.estimated_cost):.2f} in funding fees.
+- Consider extending holding time to maximize fee yield.
 """
         else:
             context += f"""
-✅ **费率正常**: 当前费率影响较小。
-- 费用成本可控，正常交易策略可行
+✅ **Normal Rate**: Funding rate impact is minimal.
+- Fee costs are manageable; standard trading strategy applies.
 """
         
         return context
@@ -158,15 +158,15 @@ class FundingContextProvider:
     def _generate_fallback_context(self) -> str:
         """Generate fallback context when API fails"""
         return """
-## ⚠️ 资金费率状态
+## ⚠️ Funding Rate Status
 
-**注意**: 无法获取实时资金费率数据。
+**NOTE**: Unable to fetch real-time funding rate data.
 
-### 通用建议
-- 永续合约每8小时结算一次资金费
-- 多头在正费率时支付，空头收取
-- 长期持仓需考虑累计资金费成本
-- 建议在做出交易决策前核实当前费率
+### General Guidelines
+- Perpetual contracts settle funding fees every 8 hours.
+- Longs pay Shorts when rate is positive; Shorts pay Longs when negative.
+- Consider cumulative funding costs for long-term positions.
+- Verify current rates before making trading decisions.
 """
     
     async def get_funding_data_for_vote(
@@ -243,7 +243,7 @@ class FundingContextProvider:
             'minutes_to_settlement': funding_rate.minutes_to_settlement,
             'direction': direction,
             'is_paying': is_paying,
-            'payment_status': '支付' if is_paying else '收取',
+            'payment_status': 'Paying' if is_paying else 'Receiving',
             'leverage': leverage,
             'cost_8h_percent': cost_8h.cost_percent_of_margin,
             'cost_24h_percent': cost_24h.cost_percent_of_margin,
