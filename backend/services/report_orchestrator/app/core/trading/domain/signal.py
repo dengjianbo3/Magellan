@@ -4,10 +4,27 @@ TradingSignal Domain Model
 Represents the final trading decision from a meeting.
 """
 
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, Dict, List, Any
 from .vote import VoteDirection, AgentVote, VoteSummary
+
+
+# ========== Environment helpers ==========
+def _get_env_float(key: str, default: float) -> float:
+    val = os.getenv(key)
+    if val:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    return default
+
+# Default values from environment
+_DEFAULT_POSITION_PERCENT = _get_env_float("DEFAULT_POSITION_PERCENT", 20) / 100  # 0.2 = 20%
+_DEFAULT_TP_PERCENT = _get_env_float("DEFAULT_TP_PERCENT", 5.0)
+_DEFAULT_SL_PERCENT = _get_env_float("DEFAULT_SL_PERCENT", 2.0)
 
 
 @dataclass
@@ -21,16 +38,16 @@ class TradingSignal:
     direction: VoteDirection
     symbol: str = "BTC-USDT-SWAP"
     
-    # Position parameters
+    # Position parameters (defaults from environment)
     leverage: int = 1
-    amount_percent: float = 0.2  # 0.0-1.0 (portion of available margin)
+    amount_percent: float = field(default_factory=lambda: _DEFAULT_POSITION_PERCENT)
     entry_price: float = 0.0
     
-    # Risk management
+    # Risk management (defaults from environment)
     take_profit_price: Optional[float] = None
     stop_loss_price: Optional[float] = None
-    take_profit_percent: float = 5.0
-    stop_loss_percent: float = 2.0
+    take_profit_percent: float = field(default_factory=lambda: _DEFAULT_TP_PERCENT)
+    stop_loss_percent: float = field(default_factory=lambda: _DEFAULT_SL_PERCENT)
     
     # Confidence metrics
     confidence: int = 50  # 0-100
