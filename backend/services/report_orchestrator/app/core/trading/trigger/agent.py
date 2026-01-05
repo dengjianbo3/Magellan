@@ -275,7 +275,12 @@ class TriggerAgent:
         price_change = abs(ta_dict.get("price_change_15m", 0))
         rsi = ta_dict.get("rsi_15m", 50)
         
-        should_trigger = high_impact_count >= 1 or price_change >= 1.5 or rsi <= 25 or rsi >= 75
+        # Use env vars for RSI thresholds (same as scorer.py)
+        rsi_low = int(os.getenv("SCORER_RSI_LOW", "25"))
+        rsi_high = int(os.getenv("SCORER_RSI_HIGH", "75"))
+        price_threshold = float(os.getenv("SCORER_PRICE_CHANGE_15M", "1.5"))
+        
+        should_trigger = high_impact_count >= 1 or price_change >= price_threshold or rsi <= rsi_low or rsi >= rsi_high
         
         if should_trigger:
             return {

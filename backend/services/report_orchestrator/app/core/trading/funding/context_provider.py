@@ -33,7 +33,7 @@ class FundingContextProvider:
         self,
         symbol: str = "BTC-USDT-SWAP",
         direction: str = "long",
-        leverage: int = 3,
+        leverage: int = None,
         expected_holding_hours: int = 24,
         margin: float = 100.0
     ) -> str:
@@ -43,13 +43,16 @@ class FundingContextProvider:
         Args:
             symbol: Trading pair
             direction: Expected position direction
-            leverage: Expected leverage
+            leverage: Expected leverage (if None, uses DEFAULT_LEVERAGE env var)
             expected_holding_hours: Expected holding duration
             margin: Expected margin amount
             
         Returns:
             Formatted context string for prompt injection
         """
+        # Use default leverage from config if not provided
+        if leverage is None:
+            leverage = self.config.default_leverage if hasattr(self.config, 'default_leverage') else 5
         data_service = await get_funding_data_service()
         calculator = get_funding_calculator()
         timing_controller = get_entry_timing_controller()
@@ -173,7 +176,7 @@ class FundingContextProvider:
         self,
         symbol: str = "BTC-USDT-SWAP",
         direction: str = "long",
-        leverage: int = 3,
+        leverage: int = None,
         expected_holding_hours: int = 24
     ) -> Dict[str, Any]:
         """
@@ -184,12 +187,16 @@ class FundingContextProvider:
         Args:
             symbol: Trading pair
             direction: Expected direction
-            leverage: Expected leverage
+            leverage: Expected leverage (if None, uses config default)
             expected_holding_hours: Expected holding time
             
         Returns:
             Dict with funding data for decision-making
         """
+        # Use default leverage from config if not provided
+        if leverage is None:
+            leverage = self.config.default_leverage if hasattr(self.config, 'default_leverage') else 5
+        
         data_service = await get_funding_data_service()
         calculator = get_funding_calculator()
         
