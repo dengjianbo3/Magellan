@@ -41,15 +41,15 @@ class MeetingConfig:
     
     # Execution parameters - read from env
     max_leverage: int = field(default_factory=lambda: _get_env_int("MAX_LEVERAGE", 20))
-    default_leverage: int = 5
+    default_leverage: int = field(default_factory=lambda: _get_env_int(\"DEFAULT_LEVERAGE\", 5))
     min_position_percent: float = field(default_factory=lambda: _get_env_float("MIN_POSITION_PERCENT", 10) / 100)
     max_position_percent: float = field(default_factory=lambda: _get_env_float("MAX_POSITION_PERCENT", 30) / 100)
     
     # Risk parameters - read from env
     default_take_profit_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_TP_PERCENT", 5.0))
     default_stop_loss_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_SL_PERCENT", 2.0))
-    min_stop_loss_percent: float = 0.5
-    max_stop_loss_percent: float = 10.0
+    min_stop_loss_percent: float = field(default_factory=lambda: _get_env_float("MIN_STOP_LOSS_PERCENT", 0.5))
+    max_stop_loss_percent: float = field(default_factory=lambda: _get_env_float("MAX_STOP_LOSS_PERCENT", 10.0))
     
     # Consensus parameters - read from env
     min_consensus_votes: int = 2  # Minimum agreeing votes for action

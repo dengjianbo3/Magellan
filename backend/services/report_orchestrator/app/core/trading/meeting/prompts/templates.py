@@ -5,6 +5,27 @@ Default prompt templates for meeting phases.
 Used when YAML files are not available.
 """
 
+import os
+
+
+def _get_env_int(key: str, default: int) -> int:
+    val = os.getenv(key)
+    if val:
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    return default
+
+
+def _get_env_float(key: str, default: float) -> float:
+    val = os.getenv(key)
+    if val:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    return default
 
 
 class PromptTemplates:
@@ -23,15 +44,33 @@ class PromptTemplates:
 - If data suggests a different view, say so clearly
 - Your job is to find truth, not to justify existing positions"""
     
-    # Vote JSON template - uses placeholder to avoid direction bias
+    @classmethod
+    def get_vote_json_template(cls) -> str:
+        """Get vote JSON template with dynamic ranges from config."""
+        max_lev = _get_env_int("MAX_LEVERAGE", 20)
+        min_sl = _get_env_float("MIN_STOP_LOSS_PERCENT", 0.5)
+        max_sl = _get_env_float("MAX_STOP_LOSS_PERCENT", 10.0)
+        default_tp = _get_env_float("DEFAULT_TP_PERCENT", 5.0)
+        
+        return f'''{{
+  "direction": "<your_vote>",
+  "confidence": <0-100>,
+  "leverage": <1-{max_lev}>,
+  "take_profit_percent": <1-{default_tp*4:.0f}>,
+  "stop_loss_percent": <{min_sl}-{max_sl}>,
+  "reasoning": "<brief explanation>"
+}}'''
+    
+    # Legacy static template (for backward compatibility)
     VOTE_JSON_TEMPLATE = '''{
   "direction": "<your_vote>",
   "confidence": <0-100>,
-  "leverage": <1-10>,
+  "leverage": <1-20>,
   "take_profit_percent": <1-20>,
   "stop_loss_percent": <0.5-10>,
   "reasoning": "<brief explanation>"
 }'''
+
     
     @classmethod
     def get_analysis_prompt(cls, agent_type: str, symbol: str, position_hint: str) -> str:
