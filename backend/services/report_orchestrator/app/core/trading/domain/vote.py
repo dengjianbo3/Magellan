@@ -4,10 +4,32 @@ Vote Domain Models
 Represents agent votes and voting-related structures.
 """
 
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import List
+
+
+def _get_env_float(key: str, default: float) -> float:
+    """Get float from environment variable"""
+    val = os.getenv(key)
+    if val:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    return default
+
+
+def _get_default_tp() -> float:
+    """Get default take profit from env"""
+    return _get_env_float("DEFAULT_TP_PERCENT", 8.0)
+
+
+def _get_default_sl() -> float:
+    """Get default stop loss from env"""
+    return _get_env_float("DEFAULT_SL_PERCENT", 3.0)
 
 
 class VoteDirection(Enum):
@@ -88,12 +110,13 @@ class Vote:
     A single vote from an agent.
     
     Contains the trading recommendation with confidence and risk parameters.
+    TP/SL defaults read from DEFAULT_TP_PERCENT and DEFAULT_SL_PERCENT env vars.
     """
     direction: VoteDirection
     confidence: int  # 0-100
     leverage: int = 1  # 1-125
-    take_profit_percent: float = 8.0  # Default 8% margin gain
-    stop_loss_percent: float = 3.0    # Default 3% margin loss
+    take_profit_percent: float = field(default_factory=_get_default_tp)
+    stop_loss_percent: float = field(default_factory=_get_default_sl)
     reasoning: str = ""
     
     def __post_init__(self):
@@ -205,13 +228,13 @@ class VoteSummary:
     @property
     def avg_take_profit_percent(self) -> float:
         if not self.votes:
-            return 8.0  # Updated default
+            return _get_default_tp()
         return sum(v.take_profit_percent for v in self.votes) / len(self.votes)
     
     @property
     def avg_stop_loss_percent(self) -> float:
         if not self.votes:
-            return 3.0  # Updated default
+            return _get_default_sl()
         return sum(v.stop_loss_percent for v in self.votes) / len(self.votes)
     
     @property
