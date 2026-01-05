@@ -64,12 +64,13 @@ EXECUTOR_CONFIG = {
     "min_percent": _get_env_float("MIN_POSITION_PERCENT", 10) / 100,
     "max_percent": _get_env_float("MAX_POSITION_PERCENT", 30) / 100,
     "default_percent": _get_env_float("DEFAULT_POSITION_PERCENT", 20) / 100,
+    "add_to_percent": _get_env_float("ADD_TO_POSITION_PERCENT", 15) / 100,  # For add_to operations
     # TP/SL defaults
     "default_tp": _get_env_float("DEFAULT_TP_PERCENT", 5.0),
     "default_sl": _get_env_float("DEFAULT_SL_PERCENT", 2.0),
     # Leverage
     "max_leverage": _get_env_int("MAX_LEVERAGE", 20),
-    "default_leverage": 5,  # Default for LLM when not specified
+    "default_leverage": _get_env_int("DEFAULT_LEVERAGE", 5),
     # Confidence thresholds
     "min_confidence": _get_env_int("MIN_CONFIDENCE", 60),
     "min_confidence_open": _get_env_int("MIN_CONFIDENCE_OPEN", 65),  # For opening positions
@@ -240,7 +241,7 @@ Example 3 (CLOSE POSITION - risk management):
 
 ## CRITICAL RULES:
 1. Output ONLY the JSON array - nothing before, nothing after
-2. You can ONLY use these tools: hold, open_long, open_short, close_position
+2. Available tools: hold, open_long, open_short, close_position, add_to_long, add_to_short, reduce_position
 3. Call EXACTLY ONE tool - not zero, not two, just one
 4. DO NOT try to call analysis tools like crypto_price, technical_analysis, etc.
 5. The analysis is already done - your job is to DECIDE and EXECUTE
@@ -257,6 +258,7 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
         default_pct = POSITION_CONFIG['default_percent']
         default_tp = POSITION_CONFIG['default_tp']
         default_sl = POSITION_CONFIG['default_sl']
+        default_leverage = POSITION_CONFIG['default_leverage']
         
         # open_long tool
         self.register_tool(FunctionTool(
@@ -266,7 +268,7 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
             parameters_schema={
                 "type": "object",
                 "properties": {
-                    "leverage": {"type": "integer", "description": "Leverage (1-20)", "default": 5},
+                    "leverage": {"type": "integer", "description": f"Leverage (1-{POSITION_CONFIG['max_leverage']})", "default": default_leverage},
                     "amount_percent": {"type": "number", "description": f"Position size as % of account ({min_pct:.1f}-{max_pct:.1f})", "default": default_pct},
                     "tp_percent": {"type": "number", "description": "Take profit % from entry", "default": default_tp},
                     "sl_percent": {"type": "number", "description": "Stop loss % from entry", "default": default_sl},
@@ -285,7 +287,7 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
             parameters_schema={
                 "type": "object",
                 "properties": {
-                    "leverage": {"type": "integer", "description": "Leverage (1-20)", "default": 5},
+                    "leverage": {"type": "integer", "description": f"Leverage (1-{POSITION_CONFIG['max_leverage']})", "default": default_leverage},
                     "amount_percent": {"type": "number", "description": f"Position size as % of account ({min_pct:.1f}-{max_pct:.1f})", "default": default_pct},
                     "tp_percent": {"type": "number", "description": "Take profit % from entry", "default": default_tp},
                     "sl_percent": {"type": "number", "description": "Stop loss % from entry", "default": default_sl},
@@ -327,14 +329,15 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
         ))
         
         # add_to_long tool (NEW - position management)
+        add_to_pct = POSITION_CONFIG['add_to_percent']
         self.register_tool(FunctionTool(
             name="add_to_long",
-            description="Add to existing LONG position when trend continues upward. Use when already holding LONG and bullish consensus. Parameters: amount_percent (0.1-0.3), reasoning (string), confidence (0-100)",
+            description=f"Add to existing LONG position when trend continues upward. Use when already holding LONG and bullish consensus. Parameters: amount_percent (default {add_to_pct:.2f}), reasoning (string), confidence (0-100)",
             func=self._execute_add_to_long,
             parameters_schema={
                 "type": "object",
                 "properties": {
-                    "amount_percent": {"type": "number", "description": "Additional position size as % of available margin (0.1-0.3)", "default": 0.15},
+                    "amount_percent": {"type": "number", "description": f"Additional position size as % of available margin (default {add_to_pct:.2f})", "default": add_to_pct},
                     "reasoning": {"type": "string", "description": "Reason for adding to position"},
                     "confidence": {"type": "integer", "description": "Confidence level 0-100", "default": 70}
                 },
@@ -345,12 +348,12 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
         # add_to_short tool (NEW - position management)
         self.register_tool(FunctionTool(
             name="add_to_short",
-            description="Add to existing SHORT position when trend continues downward. Use when already holding SHORT and bearish consensus. Parameters: amount_percent (0.1-0.3), reasoning (string), confidence (0-100)",
+            description=f"Add to existing SHORT position when trend continues downward. Use when already holding SHORT and bearish consensus. Parameters: amount_percent (default {add_to_pct:.2f}), reasoning (string), confidence (0-100)",
             func=self._execute_add_to_short,
             parameters_schema={
                 "type": "object",
                 "properties": {
-                    "amount_percent": {"type": "number", "description": "Additional position size as % of available margin (0.1-0.3)", "default": 0.15},
+                    "amount_percent": {"type": "number", "description": f"Additional position size as % of available margin (default {add_to_pct:.2f})", "default": add_to_pct},
                     "reasoning": {"type": "string", "description": "Reason for adding to position"},
                     "confidence": {"type": "integer", "description": "Confidence level 0-100", "default": 70}
                 },
@@ -660,7 +663,7 @@ Analyze the consensus and make a decisive action."""
     
     async def _execute_open_long(
         self,
-        leverage: int = 5,
+        leverage: Optional[int] = None,
         amount_percent: Optional[float] = None,
         tp_percent: float = 8.0,
         sl_percent: float = 3.0,
@@ -677,6 +680,8 @@ Analyze the consensus and make a decisive action."""
         
         if amount_percent is None:
             amount_percent = EXECUTOR_CONFIG['default_percent']
+        if leverage is None:
+            leverage = EXECUTOR_CONFIG['default_leverage']
         
         current_price = await get_current_btc_price()
         position = await self._get_position_info()
@@ -807,7 +812,7 @@ Analyze the consensus and make a decisive action."""
     
     async def _execute_open_short(
         self,
-        leverage: int = 5,
+        leverage: Optional[int] = None,
         amount_percent: Optional[float] = None,
         tp_percent: float = 8.0,
         sl_percent: float = 3.0,
@@ -824,6 +829,8 @@ Analyze the consensus and make a decisive action."""
         
         if amount_percent is None:
             amount_percent = EXECUTOR_CONFIG['default_percent']
+        if leverage is None:
+            leverage = EXECUTOR_CONFIG['default_leverage']
         
         current_price = await get_current_btc_price()
         position = await self._get_position_info()
@@ -1057,7 +1064,7 @@ Analyze the consensus and make a decisive action."""
     
     async def _execute_add_to_long(
         self,
-        amount_percent: float = 0.15,
+        amount_percent: Optional[float] = None,
         reasoning: str = "",
         confidence: int = 70
     ) -> Dict[str, Any]:
@@ -1065,6 +1072,9 @@ Analyze the consensus and make a decisive action."""
         Execute add_to_long tool - add to existing LONG position with safety checks.
         Directly calls paper_trader.open_long() to add to position.
         """
+        if amount_percent is None:
+            amount_percent = EXECUTOR_CONFIG['add_to_percent']
+        
         logger.info(f"[ExecutorAgent] Executing: add_to_long(amount_percent={amount_percent}, confidence={confidence})")
         
         current_price = await get_current_btc_price()
@@ -1096,9 +1106,9 @@ Analyze the consensus and make a decisive action."""
                 add_amount = max(add_amount, 0)
                 
                 if add_amount >= self.MIN_ADD_AMOUNT:
-                    leverage = position.get("leverage", 5)
-                    tp_price = current_price * 1.08
-                    sl_price = current_price * 0.97
+                    leverage = position.get("leverage", EXECUTOR_CONFIG['default_leverage'])
+                    tp_price = current_price * (1 + EXECUTOR_CONFIG['default_tp'] / 100)
+                    sl_price = current_price * (1 - EXECUTOR_CONFIG['default_sl'] / 100)
                     
                     # Validate stop loss
                     is_safe, msg, safe_sl = self._validate_stop_loss("long", current_price, sl_price, leverage, add_amount)
@@ -1130,11 +1140,11 @@ Analyze the consensus and make a decisive action."""
         signal = TradingSignal(
             direction="add_long",
             symbol=self.symbol,
-            leverage=position.get("leverage", 5) if position.get("has_position") else 5,
-            amount_percent=min(amount_percent, 0.3),
+            leverage=position.get("leverage", EXECUTOR_CONFIG['default_leverage']) if position.get("has_position") else EXECUTOR_CONFIG['default_leverage'],
+            amount_percent=amount_percent,
             entry_price=trade_result.get("executed_price", current_price) if trade_result else current_price,
-            take_profit_price=current_price * 1.08,
-            stop_loss_price=current_price * 0.97,
+            take_profit_price=current_price * (1 + EXECUTOR_CONFIG['default_tp'] / 100),
+            stop_loss_price=current_price * (1 - EXECUTOR_CONFIG['default_sl'] / 100),
             confidence=confidence,
             reasoning=f"[{action_taken}] {reasoning}",
             timestamp=datetime.now()
@@ -1159,7 +1169,7 @@ Analyze the consensus and make a decisive action."""
     
     async def _execute_add_to_short(
         self,
-        amount_percent: float = 0.15,
+        amount_percent: Optional[float] = None,
         reasoning: str = "",
         confidence: int = 70
     ) -> Dict[str, Any]:
@@ -1167,6 +1177,9 @@ Analyze the consensus and make a decisive action."""
         Execute add_to_short tool - add to existing SHORT position with safety checks.
         Directly calls paper_trader.open_short() to add to position.
         """
+        if amount_percent is None:
+            amount_percent = EXECUTOR_CONFIG['add_to_percent']
+        
         logger.info(f"[ExecutorAgent] Executing: add_to_short(amount_percent={amount_percent}, confidence={confidence})")
         
         current_price = await get_current_btc_price()
@@ -1197,9 +1210,9 @@ Analyze the consensus and make a decisive action."""
                 add_amount = max(add_amount, 0)
                 
                 if add_amount >= self.MIN_ADD_AMOUNT:
-                    leverage = position.get("leverage", 5)
-                    tp_price = current_price * 0.92
-                    sl_price = current_price * 1.03
+                    leverage = position.get("leverage", EXECUTOR_CONFIG['default_leverage'])
+                    tp_price = current_price * (1 - EXECUTOR_CONFIG['default_tp'] / 100)
+                    sl_price = current_price * (1 + EXECUTOR_CONFIG['default_sl'] / 100)
                     
                     is_safe, msg, safe_sl = self._validate_stop_loss("short", current_price, sl_price, leverage, add_amount)
                     if not is_safe:
@@ -1228,11 +1241,11 @@ Analyze the consensus and make a decisive action."""
         signal = TradingSignal(
             direction="add_short",
             symbol=self.symbol,
-            leverage=position.get("leverage", 5) if position.get("has_position") else 5,
-            amount_percent=min(amount_percent, 0.3),
+            leverage=position.get("leverage", EXECUTOR_CONFIG['default_leverage']) if position.get("has_position") else EXECUTOR_CONFIG['default_leverage'],
+            amount_percent=amount_percent,
             entry_price=trade_result.get("executed_price", current_price) if trade_result else current_price,
-            take_profit_price=current_price * 0.92,
-            stop_loss_price=current_price * 1.03,
+            take_profit_price=current_price * (1 - EXECUTOR_CONFIG['default_tp'] / 100),
+            stop_loss_price=current_price * (1 + EXECUTOR_CONFIG['default_sl'] / 100),
             confidence=confidence,
             reasoning=f"[{action_taken}] {reasoning}",
             timestamp=datetime.now()
