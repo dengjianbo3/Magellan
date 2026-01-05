@@ -102,7 +102,7 @@ class FundingImpactMonitor:
                 f"资金费已吞噬 {impact_percent:.0f}% 的价差利润，"
                 f"超过阈值 {self.config.force_close_threshold}%，触发强制平仓。"
             )
-        elif impact_percent >= 40:
+        elif impact_percent >= self.config.force_close_threshold * 0.8:  # 80% of force_close threshold
             alert_level = HoldingAlertLevel.DANGER
             should_close = False
             reason = (

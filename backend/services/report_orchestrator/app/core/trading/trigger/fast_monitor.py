@@ -16,12 +16,35 @@ Layer 1: 无 LLM 调用，纯规则检测
 import asyncio
 import aiohttp
 import logging
+import os
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
+
+
+def _get_env_float(key: str, default: float) -> float:
+    """Get float from environment variable"""
+    val = os.getenv(key)
+    if val:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    return default
+
+
+def _get_env_int(key: str, default: int) -> int:
+    """Get int from environment variable"""
+    val = os.getenv(key)
+    if val:
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    return default
 
 
 @dataclass
@@ -62,29 +85,34 @@ class FastTriggerResult:
 
 
 class FastMonitorConfig:
-    """快速监控配置阈值"""
+    """
+    快速监控配置阈值
     
-    # ===== 价格急变 =====
-    PRICE_SPIKE_1M = 1.5       # 1分钟变动 ±1.5%
-    PRICE_SPIKE_5M = 2.5       # 5分钟变动 ±2.5%
-    PRICE_SPIKE_15M = 4.0      # 15分钟变动 ±4.0%
+    All thresholds are configurable via environment variables.
+    """
     
-    # ===== 成交量异常 =====
-    VOLUME_SPIKE_5M = 3.0      # 5分钟成交量 > 3x 均值
-    VOLUME_SPIKE_1M = 5.0      # 1分钟成交量 > 5x 均值
-    
-    # ===== 资金费率 =====
-    FUNDING_RATE_EXTREME = 0.1     # 资金费率 > 0.1% (每8h)
-    FUNDING_RATE_CHANGE = 0.05     # 资金费率变化 > 0.05%
-    
-    # ===== 持仓量 =====
-    OI_CHANGE_15M = 3.0        # 15分钟 OI 变化 > 3%
-    OI_CHANGE_1H = 5.0         # 1小时 OI 变化 > 5%
-    
-    # ===== 技术指标 =====
-    RSI_OVERBOUGHT = 85        # RSI > 85 极端超买
-    RSI_OVERSOLD = 15          # RSI < 15 极端超卖
-    EMA_DEVIATION = 5.0        # 价格 vs EMA20 偏离 > 5%
+    def __init__(self):
+        # ===== 价格急变 =====
+        self.PRICE_SPIKE_1M = _get_env_float("MONITOR_PRICE_SPIKE_1M", 1.5)       # 1分钟变动 ±1.5%
+        self.PRICE_SPIKE_5M = _get_env_float("MONITOR_PRICE_SPIKE_5M", 2.5)       # 5分钟变动 ±2.5%
+        self.PRICE_SPIKE_15M = _get_env_float("MONITOR_PRICE_SPIKE_15M", 4.0)     # 15分钟变动 ±4.0%
+        
+        # ===== 成交量异常 =====
+        self.VOLUME_SPIKE_5M = _get_env_float("MONITOR_VOLUME_SPIKE_5M", 3.0)     # 5分钟成交量 > 3x 均值
+        self.VOLUME_SPIKE_1M = _get_env_float("MONITOR_VOLUME_SPIKE_1M", 5.0)     # 1分钟成交量 > 5x 均值
+        
+        # ===== 资金费率 =====
+        self.FUNDING_RATE_EXTREME = _get_env_float("MONITOR_FUNDING_EXTREME", 0.1)    # 资金费率 > 0.1% (每8h)
+        self.FUNDING_RATE_CHANGE = _get_env_float("MONITOR_FUNDING_CHANGE", 0.05)     # 资金费率变化 > 0.05%
+        
+        # ===== 持仓量 =====
+        self.OI_CHANGE_15M = _get_env_float("MONITOR_OI_CHANGE_15M", 3.0)         # 15分钟 OI 变化 > 3%
+        self.OI_CHANGE_1H = _get_env_float("MONITOR_OI_CHANGE_1H", 5.0)           # 1小时 OI 变化 > 5%
+        
+        # ===== 技术指标 =====
+        self.RSI_OVERBOUGHT = _get_env_int("MONITOR_RSI_OVERBOUGHT", 85)          # RSI > 85 极端超买
+        self.RSI_OVERSOLD = _get_env_int("MONITOR_RSI_OVERSOLD", 15)              # RSI < 15 极端超卖
+        self.EMA_DEVIATION = _get_env_float("MONITOR_EMA_DEVIATION", 5.0)         # 价格 vs EMA20 偏离 > 5%
 
 
 class FastMonitor:

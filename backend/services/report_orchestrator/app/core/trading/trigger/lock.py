@@ -6,11 +6,23 @@ Trigger Lock - 触发器锁机制
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Tuple, Optional, Literal
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
+
+
+def _get_env_int(key: str, default: int) -> int:
+    """Get int from environment variable"""
+    val = os.getenv(key)
+    if val:
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    return default
 
 
 @dataclass
@@ -35,7 +47,10 @@ class TriggerLock:
     - COOLDOWN: 冷却期，不可触发
     """
     
-    def __init__(self, cooldown_minutes: int = 30):
+    def __init__(self, cooldown_minutes: int = None):
+        # Read from env var if not provided
+        if cooldown_minutes is None:
+            cooldown_minutes = _get_env_int("TRIGGER_COOLDOWN_MINUTES", 30)
         self.cooldown_minutes = cooldown_minutes
         self._state: Literal["idle", "checking", "analyzing", "cooldown"] = "idle"
         self._lock = asyncio.Lock()

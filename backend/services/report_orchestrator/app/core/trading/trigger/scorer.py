@@ -5,6 +5,7 @@ Trigger Scorer - 触发评分系统
 """
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import List, Dict
 
@@ -17,6 +18,28 @@ except ImportError:
     from ta_calculator import TAData
 
 logger = logging.getLogger(__name__)
+
+
+def _get_env_float(key: str, default: float) -> float:
+    """Get float from environment variable"""
+    val = os.getenv(key)
+    if val:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    return default
+
+
+def _get_env_int(key: str, default: int) -> int:
+    """Get int from environment variable"""
+    val = os.getenv(key)
+    if val:
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    return default
 
 
 @dataclass
@@ -53,22 +76,23 @@ class TriggerScorer:
     - 技术信号: 0-30 分
     
     满分: 100 分
-    触发阈值: 60 分
+    触发阈值: 可配置 (默认 60 分)
     """
     
     def __init__(
         self,
-        price_change_15m_threshold: float = 1.5,
-        price_change_1h_threshold: float = 3.0,
-        rsi_low: int = 25,
-        rsi_high: int = 75,
-        trigger_threshold: int = 60
+        price_change_15m_threshold: float = None,
+        price_change_1h_threshold: float = None,
+        rsi_low: int = None,
+        rsi_high: int = None,
+        trigger_threshold: int = None
     ):
-        self.price_change_15m_threshold = price_change_15m_threshold
-        self.price_change_1h_threshold = price_change_1h_threshold
-        self.rsi_low = rsi_low
-        self.rsi_high = rsi_high
-        self.trigger_threshold = trigger_threshold
+        # Read from env vars with defaults
+        self.price_change_15m_threshold = price_change_15m_threshold or _get_env_float("SCORER_PRICE_CHANGE_15M", 1.5)
+        self.price_change_1h_threshold = price_change_1h_threshold or _get_env_float("SCORER_PRICE_CHANGE_1H", 3.0)
+        self.rsi_low = rsi_low or _get_env_int("SCORER_RSI_LOW", 25)
+        self.rsi_high = rsi_high or _get_env_int("SCORER_RSI_HIGH", 75)
+        self.trigger_threshold = trigger_threshold or _get_env_int("SCORER_TRIGGER_THRESHOLD", 60)
     
     def calculate(
         self,
