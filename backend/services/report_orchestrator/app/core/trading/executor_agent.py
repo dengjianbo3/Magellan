@@ -619,14 +619,28 @@ Analyze the consensus and make a decisive action."""
     async def _get_available_margin(self) -> float:
         """Get available margin for trading (considers unrealized PnL)."""
         if not self.paper_trader:
+            logger.warning("[ExecutorAgent] No paper_trader configured, returning 0")
             return 0.0
         
         try:
             status = await self.paper_trader.get_status()
             available = status.get("available_balance", 0)
             unrealized_pnl = status.get("unrealized_pnl", 0)
-            # True available = available + unrealized (since closing would realize it)
-            true_available = available + max(unrealized_pnl, 0)
+            max_avail = status.get("max_avail_size", 0)  # OKX specific
+            
+            # Use max_avail_size if available (more accurate from OKX), else fallback
+            if max_avail > 0:
+                true_available = max_avail
+            else:
+                # True available = available + unrealized (since closing would realize it)
+                true_available = available + max(unrealized_pnl, 0)
+            
+            logger.info(
+                f"[ExecutorAgent] Margin check: available_balance=${available:.2f}, "
+                f"unrealized_pnl=${unrealized_pnl:.2f}, max_avail_size=${max_avail:.2f} -> "
+                f"true_available=${true_available:.2f}"
+            )
+            
             return true_available
         except Exception as e:
             logger.warning(f"[ExecutorAgent] Failed to get margin: {e}")
