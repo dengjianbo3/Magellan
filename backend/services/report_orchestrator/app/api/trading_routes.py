@@ -339,10 +339,24 @@ class TradingSystem:
                     trade_result = await self._execute_signal(signal)
                     logger.info(f"[SIGNAL_DEBUG] Trade execution result: {trade_result}")
                     
+                    # Determine actual execution status
+                    # Check if trade was really executed (not just tool ran successfully)
+                    action = trade_result.get("action", "")
+                    trade_success = trade_result.get("success", False)
+                    
+                    # Failed actions: insufficient_margin, close_short_failed, etc.
+                    failed_actions = ["insufficient_margin", "close_short_failed", "close_long_failed", "failed"]
+                    trade_actually_executed = trade_success and action not in failed_actions
+                    
+                    # Also check reasoning for failure markers
+                    reasoning = signal.reasoning if signal else ""
+                    if "[insufficient_margin]" in reasoning or "[failed]" in reasoning:
+                        trade_actually_executed = False
+                    
                     self._trade_history.append({
                         "timestamp": datetime.now().isoformat(),
                         "signal": signal.model_dump(),
-                        "status": "executed" if trade_result.get("success") else "failed",
+                        "status": "executed" if trade_actually_executed else "failed",
                         "trade_result": trade_result
                     })
                     logger.info(f"[SIGNAL_DEBUG] History now has {len(self._trade_history)} entries")
@@ -351,7 +365,7 @@ class TradingSystem:
                     await self._broadcast({
                         "type": "trade_executed",
                         "signal": signal.model_dump(),
-                        "success": trade_result.get("success", False),
+                        "success": trade_actually_executed,
                         "trade_result": trade_result
                     })
             else:
@@ -585,24 +599,24 @@ class TradingSystem:
         """
         logger.info(f"Starting reflection meeting for trade with PnL: {pnl}")
 
-        outcome_type = "止盈" if pnl > 0 else "止损"
+        outcome_type = "Take Profit" if pnl > 0 else "Stop Loss"
         lessons = {}
 
         # Build reflection context
-        reflection_context = f"""## 交易反思会议
+        reflection_context = f"""## Trade Reflection Meeting
 
-### 交易结果
-- **结果**: {outcome_type}
-- **方向**: {position.direction}
-- **入场价**: {position.entry_price:.2f}
-- **出场价**: {position.current_price:.2f}
-- **盈亏**: ${pnl:.2f}
-- **杠杆**: {position.leverage}x
+### Trade Result
+- **Outcome**: {outcome_type}
+- **Direction**: {position.direction}
+- **Entry Price**: {position.entry_price:.2f}
+- **Exit Price**: {position.current_price:.2f}
+- **PnL**: ${pnl:.2f}
+- **Leverage**: {position.leverage}x
 
-### 请回答以下问题（50字以内）:
-1. 你当时的判断依据是什么？
-2. 判断{'正确' if pnl > 0 else '错误'}的原因是什么？
-3. 从这笔交易中学到什么？
+### Please answer the following questions (within 50 words):
+1. What was the basis for your judgment?
+2. Why was your judgment {'correct' if pnl > 0 else 'incorrect'}?
+3. What did you learn from this trade?
 """
 
         # Create agents with toolkit
@@ -638,7 +652,7 @@ class TradingSystem:
                     content = str(response)
 
                 # Extract a concise lesson (first 200 chars)
-                lesson = content[:200] if content else f"需要进一步分析{outcome_type}原因"
+                lesson = content[:200] if content else f"Further analysis needed for {outcome_type} reason"
                 lessons[agent.id] = lesson
 
                 # Broadcast reflection
@@ -654,7 +668,7 @@ class TradingSystem:
 
             except Exception as e:
                 logger.error(f"Error in reflection for {agent.name}: {e}")
-                lessons[agent.id] = f"反思过程出错: {str(e)[:50]}"
+                lessons[agent.id] = f"Reflection failed: {str(e)[:50]}"
 
         await self._broadcast({
             "type": "reflection_completed",
