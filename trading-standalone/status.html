@@ -386,7 +386,8 @@
     </div>
 
     <script>
-        const SERVER = 'http://45.76.159.149:9000';
+        // Dynamic server detection - use same host as the page is served from
+        const SERVER = `http://${window.location.hostname}:9000`;
         let autoRefresh = false;
         let refreshInterval = null;
         let signalCache = []; // Cache signals for modal
