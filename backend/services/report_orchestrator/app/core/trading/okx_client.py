@@ -42,12 +42,17 @@ class OKXClient:
         api_key: Optional[str] = None,
         secret_key: Optional[str] = None,
         passphrase: Optional[str] = None,
-        demo_mode: bool = True
+        demo_mode: Optional[bool] = None  # Changed to Optional to detect if explicitly passed
     ):
         self.api_key = api_key or os.getenv("OKX_API_KEY", "")
         self.secret_key = secret_key or os.getenv("OKX_SECRET_KEY", "")
         self.passphrase = passphrase or os.getenv("OKX_PASSPHRASE", "")
-        self.demo_mode = demo_mode or os.getenv("OKX_DEMO_MODE", "true").lower() == "true"
+        
+        # If demo_mode not explicitly passed, read from environment variable
+        if demo_mode is None:
+            self.demo_mode = os.getenv("OKX_DEMO_MODE", "true").lower() == "true"
+        else:
+            self.demo_mode = demo_mode
 
         self._session: Optional[aiohttp.ClientSession] = None
         self._initialized = False
