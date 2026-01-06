@@ -343,15 +343,20 @@ class TradingSystem:
                     # Check if trade was really executed (not just tool ran successfully)
                     action = trade_result.get("action", "")
                     trade_success = trade_result.get("success", False)
+                    order_id = trade_result.get("order_id")  # OKX order ID = definitive success
                     
-                    # Failed actions: insufficient_margin, close_short_failed, etc.
-                    failed_actions = ["insufficient_margin", "close_short_failed", "close_long_failed", "failed"]
-                    trade_actually_executed = trade_success and action not in failed_actions
-                    
-                    # Also check reasoning for failure markers
-                    reasoning = signal.reasoning if signal else ""
-                    if "[insufficient_margin]" in reasoning or "[failed]" in reasoning:
-                        trade_actually_executed = False
+                    # If we have an order_id from OKX, the trade definitely succeeded
+                    if order_id and trade_success:
+                        trade_actually_executed = True
+                        # Fix reasoning if it has wrong tag from ExecutorAgent
+                        if signal and "[insufficient_margin]" in signal.reasoning:
+                            # Remove the incorrect tag since trade actually succeeded
+                            signal.reasoning = signal.reasoning.replace("[insufficient_margin]", "[new_long]")
+                            logger.info(f"[SIGNAL_DEBUG] Fixed reasoning tag: replaced [insufficient_margin] with [new_long]")
+                    else:
+                        # Failed actions: insufficient_margin, close_short_failed, etc.
+                        failed_actions = ["insufficient_margin", "close_short_failed", "close_long_failed", "failed"]
+                        trade_actually_executed = trade_success and action not in failed_actions
                     
                     self._trade_history.append({
                         "timestamp": datetime.now().isoformat(),
