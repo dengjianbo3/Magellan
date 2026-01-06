@@ -1,7 +1,7 @@
-# Magellan Trading System - 完整架构与能力文档 v3.0
+# Magellan Trading System - 完整架构与能力文档 v3.1
 
-> **文档更新日期**: 2026-01-03
-> **适用版本**: dev 分支 (LangGraph + ExecutorAgent 增强版)
+> **文档更新日期**: 2026-01-06
+> **适用版本**: dev 分支 (LangGraph + ExecutorAgent 增强版 + 生产环境支持)
 
 ## 📋 目录
 
@@ -16,6 +16,9 @@
 9. [未实现与移除的能力](#未实现与移除的能力)
 10. [改进建议与未来规划](#改进建议与未来规划)
 11. [快速开始指南](#快速开始指南)
+12. [生产环境部署指南](#生产环境部署指南)
+13. [Bug 修复记录](#bug-修复记录-2026-01)
+14. [常见问题排查](#常见问题排查)
 
 ---
 
@@ -923,10 +926,245 @@ LLM_GATEWAY_URL=http://localhost:8003
 - [DEPLOY.md](/docs/refactoring/DEPLOY.md) - 部署指南
 - [REFACTORING_PLAN.md](/docs/refactoring/REFACTORING_PLAN.md) - 重构计划
 
-### C. 联系方式
+---
+
+## 生产环境部署指南
+
+### 模拟盘 vs 实盘
+
+系统支持两种运行模式：
+
+| 模式 | OKX_DEMO_MODE | 说明 |
+|------|---------------|------|
+| 模拟盘 | `true` | 使用 OKX 模拟交易 API，无真实资金风险 |
+| 实盘 | `false` | 使用 OKX 真实交易 API，真金白银 |
+
+### 切换到正式环境
+
+#### 1. 修改 `.env` 配置
+
+```bash
+# OKX 正式环境 API (⚠️ 使用正式 API Key，不是模拟盘的)
+OKX_API_KEY=你的正式环境API_KEY
+OKX_SECRET_KEY=你的正式环境SECRET_KEY
+OKX_PASSPHRASE=你的正式环境PASSPHRASE
+
+# ⚠️ 关键配置：必须设为 false
+OKX_DEMO_MODE=false
+```
+
+#### 2. 重新构建并部署
+
+```bash
+cd trading-standalone
+git pull origin dev
+./stop.sh && docker compose up -d --build
+```
+
+#### 3. 验证正式环境
+
+```bash
+# 检查日志确认是 REAL 模式
+docker logs trading-service 2>&1 | grep -E "REAL|demo"
+
+# 应该看到:
+# OKX REAL account balance: $XXXX.XX
+```
+
+### 多服务器部署
+
+如果同时运行模拟盘和实盘，确保：
+
+1. **使用不同的服务器或端口**
+2. **每个服务器的 `.env` 配置独立**
+3. **前端使用动态主机检测**（已在 `status.html` 中实现）
+
+---
+
+## Bug 修复记录 (2026-01)
+
+### 🔧 OKX Demo Mode 环境变量无效 (2026-01-06)
+
+**问题**：设置 `OKX_DEMO_MODE=false` 后，系统仍然连接模拟盘。
+
+**根因**：`okx_client.py` 中 `__init__` 的默认参数 `demo_mode=True` 导致环境变量被忽略。
+
+```python
+# 修复前 (Bug)
+def __init__(self, demo_mode: bool = True):
+    self.demo_mode = demo_mode or os.getenv("OKX_DEMO_MODE", "true")
+    # demo_mode=True，所以 True or ... = True
+
+# 修复后
+def __init__(self, demo_mode: Optional[bool] = None):
+    if demo_mode is None:
+        self.demo_mode = os.getenv("OKX_DEMO_MODE", "true").lower() == "true"
+    else:
+        self.demo_mode = demo_mode
+```
+
+**相关文件**：`backend/services/report_orchestrator/app/core/trading/okx_client.py`
+
+---
+
+### 🔧 Insufficient Margin 误报 (2026-01-06)
+
+**问题**：交易实际成功执行，但信号的 reasoning 显示 `[insufficient_margin]`。
+
+**根因**：系统有**双重执行路径**：
+
+1. `ExecutorAgent` 先执行，调用 `_get_available_margin()` 返回 0（因为使用了 paper_trader）
+2. `trading_routes.py` 后执行，用 `OKXTrader` 成功开仓
+3. 但 reasoning 来自 ExecutorAgent 的错误标签
+
+**修复**：在 `trading_routes.py` 中，优先使用 OKX `order_id` 作为成功的确定性证据：
+
+```python
+# 如果有 OKX order_id，交易一定成功了
+if order_id and trade_success:
+    trade_actually_executed = True
+    # 修复错误的 reasoning tag
+    if signal and "[insufficient_margin]" in signal.reasoning:
+        signal.reasoning = signal.reasoning.replace("[insufficient_margin]", "[new_long]")
+```
+
+**相关文件**：`backend/services/report_orchestrator/app/api/trading_routes.py`
+
+---
+
+### 🔧 前端 Dashboard 服务器 URL 硬编码 (2026-01-06)
+
+**问题**：访问不同服务器的 Dashboard 时，数据都来自同一个服务器。
+
+**根因**：`status.html` 中硬编码了服务器 IP：
+
+```javascript
+// 修复前 (Bug)
+const SERVER = 'http://45.76.159.149:9000';
+
+// 修复后
+const SERVER = `http://${window.location.hostname}:9000`;
+```
+
+**相关文件**：`trading-standalone/status.html`
+
+---
+
+### 🔧 保证金计算使用错误数据源 (2026-01-05)
+
+**问题**：`_get_available_margin()` 返回 0，导致所有交易被标记为 insufficient_margin。
+
+**根因**：函数使用 `self.paper_trader.get_status()` 但 paper_trader 未正确配置。
+
+**修复**：优先使用 OKX 的 `max_avail_size`：
+
+```python
+max_avail = status.get("max_avail_size", 0)  # OKX API 返回的真实可用保证金
+if max_avail > 0:
+    true_available = max_avail
+else:
+    true_available = available + max(unrealized_pnl, 0)
+```
+
+**相关文件**：`backend/services/report_orchestrator/app/core/trading/executor_agent.py`
+
+---
+
+## 常见问题排查
+
+### Q1: 交易成功但状态显示 "failed"
+
+**检查**：
+
+1. 查看日志中的 `order_id`，如果存在说明交易成功
+2. 检查 reasoning 是否有 `[insufficient_margin]` 等错误标签
+3. 确认已部署最新代码
+
+### Q2: OKX 连接失败
+
+**检查**：
+
+1. API Key 权限是否包含 Trade
+2. IP 白名单是否配置正确
+3. `OKX_DEMO_MODE` 与 API Key 类型是否匹配
+
+```bash
+# 测试 OKX 连接
+docker exec trading-service python3 -c "
+import asyncio
+from app.core.trading.okx_client import OKXClient
+
+async def test():
+    client = OKXClient()
+    await client.initialize()
+    balance = await client.get_account_balance()
+    print(f'Demo Mode: {client.demo_mode}')
+    print(f'Balance: \${balance.total_equity:.2f}')
+    await client.close()
+
+asyncio.run(test())
+"
+```
+
+### Q3: 前端显示其他服务器的数据
+
+**解决**：
+
+1. 强制刷新浏览器 (Cmd+Shift+R)
+2. 确认访问的 URL 是正确的服务器 IP
+3. 检查 `status.html` 是否使用了动态主机检测
+
+### Q4: 日志中看不到 ExecutorAgent 信息
+
+**检查**：
+
+1. Docker 镜像是否重新构建 (`docker compose up -d --build`)
+2. 检查容器内代码版本
+
+```bash
+docker exec trading-service cat /app/app/core/trading/executor_agent.py | head -20
+```
+
+---
+
+## 附录
+
+### C. 环境变量完整列表
+
+```bash
+# OKX API 配置
+OKX_API_KEY=                    # API Key
+OKX_SECRET_KEY=                 # Secret Key
+OKX_PASSPHRASE=                 # Passphrase
+OKX_DEMO_MODE=true              # true=模拟盘, false=实盘
+
+# 交易参数
+DEFAULT_LEVERAGE=5              # 默认杠杆
+MAX_LEVERAGE=20                 # 最大杠杆
+DEFAULT_POSITION_PERCENT=20     # 默认仓位比例 (%)
+MIN_POSITION_PERCENT=10         # 最小仓位比例 (%)
+MAX_POSITION_PERCENT=30         # 最大仓位比例 (%)
+DEFAULT_TP_PERCENT=8            # 默认止盈 (%)
+DEFAULT_SL_PERCENT=3            # 默认止损 (%)
+
+# 触发器配置
+TRIGGER_INTERVAL_SECONDS=300    # 检查间隔 (秒)
+TRIGGER_COOLDOWN_MINUTES=30     # 冷却时间 (分钟)
+FAST_MONITOR_ENABLED=true       # 快速监控开关
+
+# LLM 配置
+GOOGLE_API_KEY=                 # Gemini API Key
+DEEPSEEK_API_KEY=               # DeepSeek API Key
+
+# 服务配置
+REDIS_HOST=redis                # Redis 主机
+LLM_GATEWAY_URL=http://llm_gateway:8003
+```
+
+### D. 联系方式
 
 如有问题，请联系项目维护者或提交 Issue。
 
 ---
 
-*最后更新: 2026-01-03 by Antigravity AI Assistant*
+*最后更新: 2026-01-06 by Antigravity AI Assistant*
