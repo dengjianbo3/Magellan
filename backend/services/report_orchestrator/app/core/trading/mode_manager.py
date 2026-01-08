@@ -202,7 +202,7 @@ class TradingModeManager:
             )
     
     async def _create_pending_trade(self, signal: Dict[str, Any]) -> PendingTrade:
-        """Create a pending trade entry in Redis."""
+        """Create a pending trade entry in Redis and send notifications."""
         trade_id = f"trade_{uuid.uuid4().hex[:12]}"
         now = datetime.now()
         expires_at = now + timedelta(seconds=self.PENDING_TRADE_TTL_SECONDS)
@@ -232,6 +232,19 @@ class TradingModeManager:
                     trade_id=trade_id,
                     expires_at=expires_at.isoformat()
                 )
+                
+                # 🆕 Phase 2.1: Send notifications
+                try:
+                    from app.core.notifications import get_notification_service
+                    notification_service = get_notification_service()
+                    await notification_service.notify_pending_trade(
+                        trade_id=trade_id,
+                        signal=signal,
+                        expires_at=expires_at,
+                    )
+                except Exception as notify_error:
+                    logger.warning("pending_trade_notification_failed", error=str(notify_error))
+                
         except Exception as e:
             logger.error("pending_trade_create_failed", error=str(e))
         
