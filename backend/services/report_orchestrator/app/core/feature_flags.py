@@ -21,7 +21,7 @@ from typing import Optional, Dict
 from dataclasses import dataclass
 import redis.asyncio as redis
 
-from core.observability.logging import get_logger
+from app.core.observability.logging import get_logger
 
 logger = get_logger(__name__)
 

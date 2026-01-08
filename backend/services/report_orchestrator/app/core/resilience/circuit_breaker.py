@@ -32,8 +32,8 @@ from enum import Enum
 from typing import Optional, Callable, Any, Dict, TypeVar, Awaitable
 from functools import wraps
 
-from core.observability.logging import get_logger
-from core.observability.metrics import update_circuit_state, api_errors
+from app.core.observability.logging import get_logger
+from app.core.observability.metrics import update_circuit_state, api_errors
 
 logger = get_logger(__name__)
 

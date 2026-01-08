@@ -24,8 +24,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Optional
 
-from core.observability.logging import get_logger
-from core.observability.metrics import update_degradation_level
+from app.core.observability.logging import get_logger
+from app.core.observability.metrics import update_degradation_level
 from .circuit_breaker import get_all_circuit_statuses
 
 logger = get_logger(__name__)

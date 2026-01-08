@@ -18,8 +18,8 @@ from .state import TradingState, NodeResult, TradeDirection
 from app.core.trading.executor_agent import ExecutorAgent
 
 # Observability imports
-from core.observability.logging import get_logger, TradingLogger
-from core.observability.metrics import (
+from app.core.observability.logging import get_logger, TradingLogger
+from app.core.observability.metrics import (
     signals_generated,
     execution_failures,
     agent_latency,
