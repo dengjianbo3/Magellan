@@ -291,6 +291,22 @@ class FeatureFlagManager:
 _feature_flag_manager: Optional[FeatureFlagManager] = None
 
 
+async def get_feature_flag_manager_async() -> FeatureFlagManager:
+    """Get the singleton feature flag manager with Redis connection."""
+    global _feature_flag_manager
+    if _feature_flag_manager is None or _feature_flag_manager.redis is None:
+        # Auto-connect to Redis using environment variable
+        import os
+        redis_url = os.environ.get("REDIS_URL", "redis://redis:6379")
+        try:
+            redis_client = redis.from_url(redis_url)
+            _feature_flag_manager = FeatureFlagManager(redis_client)
+        except Exception as e:
+            logger.warning(f"feature_flag_redis_connect_error: {e}")
+            _feature_flag_manager = FeatureFlagManager(None)
+    return _feature_flag_manager
+
+
 def get_feature_flag_manager(
     redis_client: Optional[redis.Redis] = None
 ) -> FeatureFlagManager:
@@ -312,5 +328,6 @@ async def is_feature_enabled(
         if await is_feature_enabled(FeatureFlag.PARALLEL_AGENTS):
             ...
     """
-    manager = get_feature_flag_manager()
+    manager = await get_feature_flag_manager_async()
     return await manager.is_enabled(flag, user_id)
+
