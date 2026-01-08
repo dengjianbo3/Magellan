@@ -423,3 +423,88 @@ async def get_mtf_analysis(symbol: str = "BTC-USDT-SWAP"):
     )
 
 
+# ============================================================================
+# Agent Weight Learning (Phase 3.2)
+# ============================================================================
+
+class AgentWeightsResponse(BaseModel):
+    """Response for agent weights."""
+    weights: dict
+    performance: Optional[dict] = None
+
+
+@router.get("/agent-weights", response_model=AgentWeightsResponse)
+async def get_agent_weights(include_performance: bool = False):
+    """
+    Get current learned weights for all agents.
+    
+    Weights are adjusted based on historical prediction accuracy.
+    Range: 0.5 (poor accuracy) to 2.0 (excellent accuracy)
+    """
+    from app.core.trading.weight_learner import get_weight_learner
+    
+    learner = get_weight_learner()
+    weights = await learner.get_all_weights()
+    
+    performance = None
+    if include_performance:
+        performance = await learner.get_all_performance()
+    
+    return AgentWeightsResponse(
+        weights=weights,
+        performance=performance,
+    )
+
+
+class RecordOutcomeRequest(BaseModel):
+    """Request to record trade outcome for learning."""
+    agent_predictions: dict  # {agent_name: prediction}
+    actual_outcome: str  # "profitable", "loss", "neutral"
+    trade_direction: str  # "long" or "short"
+
+
+@router.post("/agent-weights/record-outcome")
+async def record_trade_outcome(request: RecordOutcomeRequest):
+    """
+    Record trade outcome to update agent weights.
+    
+    This should be called after each trade closes to train the system.
+    """
+    from app.core.trading.weight_learner import get_weight_learner
+    
+    if request.actual_outcome not in ("profitable", "loss", "neutral"):
+        raise HTTPException(
+            status_code=400,
+            detail="actual_outcome must be 'profitable', 'loss', or 'neutral'"
+        )
+    
+    learner = get_weight_learner()
+    updated_weights = await learner.record_trade_outcome(
+        agent_predictions=request.agent_predictions,
+        actual_outcome=request.actual_outcome,
+        trade_direction=request.trade_direction,
+    )
+    
+    return {
+        "success": True,
+        "updated_weights": updated_weights,
+        "message": f"Updated weights for {len(updated_weights)} agents",
+    }
+
+
+@router.post("/agent-weights/reset/{agent_name}")
+async def reset_agent_weight(agent_name: str):
+    """Reset an agent's weight to default (1.0)."""
+    from app.core.trading.weight_learner import get_weight_learner
+    
+    learner = get_weight_learner()
+    new_weight = await learner.reset_agent_weight(agent_name)
+    
+    return {
+        "success": True,
+        "agent": agent_name,
+        "new_weight": new_weight,
+    }
+
+
+
