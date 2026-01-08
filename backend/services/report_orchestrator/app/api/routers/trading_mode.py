@@ -288,3 +288,64 @@ async def reject_pending_trade(trade_id: str, request: RejectTradeRequest):
         "trade_id": trade_id,
         "message": "Trade rejected"
     }
+
+
+# ============================================================================
+# ATR Dynamic Stop-Loss (Phase 2.2)
+# ============================================================================
+
+class ATRStopLossRequest(BaseModel):
+    """Request for ATR-based stop-loss calculation."""
+    direction: str = Field(..., description="Trade direction: long or short")
+    entry_price: float = Field(..., description="Entry price")
+    leverage: int = Field(1, description="Leverage multiplier")
+    symbol: str = Field("BTC-USDT-SWAP", description="Trading symbol")
+
+
+class ATRStopLossResponse(BaseModel):
+    """Response with calculated stop-loss."""
+    stop_loss_price: float
+    sl_percent: float
+    atr_value: float
+    atr_multiplier: float
+    method: str  # "atr", "max_cap", or "liquidation"
+
+
+@router.post("/calculate-sl", response_model=ATRStopLossResponse)
+async def calculate_atr_stop_loss(request: ATRStopLossRequest):
+    """
+    Calculate dynamic stop-loss based on ATR (Average True Range).
+    
+    The stop-loss adapts to market volatility:
+    - High ATR = wider stop-loss
+    - Low ATR = tighter stop-loss
+    
+    Constraints:
+    - Maximum SL: 5% of entry price
+    - Minimum SL: 0.5% of entry price
+    - Ensures SL triggers before liquidation
+    """
+    from app.core.trading.atr_stop_loss import get_atr_calculator
+    
+    if request.direction.lower() not in ("long", "short"):
+        raise HTTPException(
+            status_code=400,
+            detail="Direction must be 'long' or 'short'"
+        )
+    
+    calculator = get_atr_calculator()
+    result = await calculator.calculate_stop_loss(
+        direction=request.direction,
+        entry_price=request.entry_price,
+        leverage=request.leverage,
+        symbol=request.symbol,
+    )
+    
+    return ATRStopLossResponse(
+        stop_loss_price=result.stop_loss_price,
+        sl_percent=round(result.sl_percent, 2),
+        atr_value=round(result.atr_value, 2),
+        atr_multiplier=result.atr_multiplier_used,
+        method=result.method,
+    )
+
