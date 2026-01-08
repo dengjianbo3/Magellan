@@ -16,6 +16,11 @@ import traceback
 from langchain_core.runnables import RunnableConfig
 from .state import TradingState, NodeResult, TradeDirection
 from app.core.trading.executor_agent import ExecutorAgent
+from app.core.trading.mode_manager import (
+    get_mode_manager,
+    TradingMode,
+    ExecutionAction,
+)
 
 # Observability imports
 from app.core.observability.logging import get_logger, TradingLogger
@@ -288,7 +293,12 @@ async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[st
     Output: final_signal, execution_result, execution_success
     """
     start_time = time.time()
-    mode = state.get("mode", "full_auto")
+    
+    # 🆕 Phase 1.3: HITL - Check trading mode before execution
+    mode_manager = get_mode_manager()
+    current_mode = await mode_manager.get_mode()
+    mode = current_mode.value
+    
     logger.info("node_started", node="execution", mode=mode)
     
     try:
