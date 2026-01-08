@@ -5,22 +5,39 @@
 
 ## 📋 目录
 
+**第一部分：系统概述**
+
 1. [系统概述](#系统概述)
 2. [技术架构](#技术架构)
-3. [交易系统详解](#交易系统详解)
-4. [触发器系统 (TriggerAgent)](#触发器系统-triggeragent)
-5. [执行系统 (ExecutorAgent)](#执行系统-executoragent)
-6. [资金费率感知系统](#资金费率感知系统-funding-fee-system)
-7. [LangGraph 工作流](#langgraph-工作流)
-8. [重构变更记录](#重构变更记录)
-9. [未实现与移除的能力](#未实现与移除的能力)
-10. [改进建议与未来规划](#改进建议与未来规划)
-11. [快速开始指南](#快速开始指南)
-12. [生产环境部署指南](#生产环境部署指南)
-13. [Bug 修复记录](#bug-修复记录-2026-01)
-14. [常见问题排查](#常见问题排查)
+3. [目录结构](#目录结构)
+
+**第二部分：核心系统**
+4. [交易决策流程](#交易决策流程)
+5. [触发器系统 (TriggerAgent)](#触发器系统-triggeragent)
+6. [执行系统 (ExecutorAgent)](#执行系统-executoragent)
+7. [资金费率感知系统](#资金费率感知系统-funding-fee-system)
+8. [LangGraph 工作流](#langgraph-工作流)
+
+**第三部分：交易模式**
+9. [人在环路模式设计](#人在环路模式设计-human-in-the-loop)
+
+**第四部分：开发与部署**
+10. [快速开始指南](#快速开始指南)
+11. [生产环境部署指南](#生产环境部署指南)
+
+**第五部分：演进与规划**
+12. [重构变更记录](#重构变更记录)
+13. [改进建议与未来规划](#改进建议与未来规划)
+14. [未实现与移除的能力](#未实现与移除的能力)
+
+**第六部分：附录**
+15. [Bug 修复记录](#bug-修复记录-2026-01)
+16. [常见问题排查](#常见问题排查)
+17. [附录：配置与规范](#附录配置与规范)
 
 ---
+
+# 第一部分：系统概述
 
 ## 系统概述
 
@@ -40,6 +57,7 @@
 | **LangGraph 编排** | 基于状态机的工作流，支持条件分支和错误恢复 |
 | **仓位管理** | 支持加仓、减仓、反向操作的智能仓位管理 |
 | **风险控制** | 多层安全检查 (启动保护、止损验证、爆仓风险) |
+| **人在环路** | 支持全自动、半自动、手动三种交易模式 |
 
 ---
 
@@ -49,15 +67,15 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                        Magellan Trading System v3.0                          │
+│                        Magellan Trading System v3.1                          │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
 │  │                       Trigger Layer (触发层)                         │    │
 │  │                                                                     │    │
 │  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────┐ │    │
-│  │  │TriggerScheduler│ │ TriggerAgent │ │ NewsCrawler │ │TACalculator│ │    │
-│  │  │  (定时检查)   │ │  (LLM分析)   │ │  (新闻抓取) │ │ (技术指标) │ │    │
+│  │  │ FastMonitor  │ │ TriggerAgent │ │ NewsCrawler │ │TACalculator│ │    │
+│  │  │ (硬条件检测) │ │  (LLM分析)   │ │  (新闻抓取) │ │ (技术指标) │ │    │
 │  │  └──────────────┘ └──────────────┘ └──────────────┘ └────────────┘ │    │
 │  │                          │                                          │    │
 │  │                    TriggerLock (状态机)                              │    │
@@ -123,7 +141,9 @@
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 目录结构
+---
+
+## 目录结构
 
 ```
 backend/services/report_orchestrator/app/core/trading/
@@ -162,9 +182,11 @@ backend/services/report_orchestrator/app/core/trading/
 
 ---
 
-## 交易系统详解
+# 第二部分：核心系统
 
-### 交易决策流程
+## 交易决策流程
+
+### 整体流程图
 
 ```
 市场变化 → TriggerAgent 判断 → 触发分析?
@@ -217,63 +239,7 @@ backend/services/report_orchestrator/app/core/trading/
 
 避免在无变化的市场中频繁调用 LLM 分析，节省 API 成本。
 
-### 组件说明
-
-| 组件 | 职责 |
-|------|------|
-| `TriggerScheduler` | 每 5 分钟执行定时检查 |
-| `TriggerAgent` | 使用 LLM 分析是否应该触发主分析 |
-| `TriggerLock` | 状态机，防止并发触发和主分析冲突 |
-| `NewsCrawler` | 抓取加密货币相关新闻 |
-| `TACalculator` | 计算 RSI、MACD、成交量等技术指标 |
-
-### 状态机 (TriggerLock)
-
-```
-                    ┌─────────┐
-                    │  idle   │ ← 初始状态
-                    └────┬────┘
-                         │ acquire() 触发检查
-                         ▼
-                    ┌─────────┐
-                    │checking │ ← TriggerAgent 运行中
-                    └────┬────┘
-                         │ release_check()
-         ┌───────────────┼───────────────┐
-         │               │               │
-    should_trigger   not_trigger    error
-         │               │               │
-         ▼               ▼               ▼
-    ┌─────────┐    ┌──────────┐    ┌─────────┐
-    │analyzing│    │ cooldown │    │  idle   │
-    └────┬────┘    └────┬─────┘    └─────────┘
-         │              │ (5 分钟后过期)
-         │              ▼
-         │         ┌─────────┐
-         └────────►│  idle   │
-   release()       └─────────┘
-```
-
-### 仓位感知能力
-
-TriggerAgent 现在可以感知当前仓位状态：
-
-```python
-# TriggerContext 新增字段
-has_position: bool = False
-position_direction: str = "none"
-position_pnl_percent: float = 0.0
-position_size_usd: float = 0.0
-```
-
-这使 TriggerAgent 可以做出仓位相关决策：
-
-- 持仓浮亏 >10%? → 可能需要止损分析
-- 持仓浮盈 >15%? → 考虑是否锁定利润
-
-### 三层触发器架构 (FastMonitor + TriggerAgent)
-
-为了更高效地响应市场变化，系统采用三层触发架构：
+### 三层触发器架构
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -309,6 +275,17 @@ position_size_usd: float = 0.0
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
+### 组件说明
+
+| 组件 | 职责 |
+|------|------|
+| `FastMonitor` | Layer 1: 硬条件检测，无 LLM 调用 |
+| `TriggerAgent` | Layer 2: LLM 分析是否应该触发主分析 |
+| `TriggerScheduler` | 每 5 分钟执行定时检查 |
+| `TriggerLock` | 状态机，防止并发触发和主分析冲突 |
+| `NewsCrawler` | 抓取加密货币相关新闻 |
+| `TACalculator` | 计算 RSI、MACD、成交量等技术指标 |
+
 ### FastMonitor 硬条件指标 (6 类)
 
 | 指标 | 阈值 | 紧急度 | OKX API |
@@ -325,41 +302,49 @@ position_size_usd: float = 0.0
 | RSI 超卖 | <15 | medium | 计算自 K 线 |
 | EMA 偏离 | >5% vs EMA20 | medium | 计算自 K 线 |
 
-### FastMonitor 配置
+### 状态机 (TriggerLock)
+
+```
+                    ┌─────────┐
+                    │  idle   │ ← 初始状态
+                    └────┬────┘
+                         │ acquire() 触发检查
+                         ▼
+                    ┌─────────┐
+                    │checking │ ← TriggerAgent 运行中
+                    └────┬────┘
+                         │ release_check()
+         ┌───────────────┼───────────────┐
+         │               │               │
+    should_trigger   not_trigger    error
+         │               │               │
+         ▼               ▼               ▼
+    ┌─────────┐    ┌──────────┐    ┌─────────┐
+    │analyzing│    │ cooldown │    │  idle   │
+    └────┬────┘    └────┬─────┘    └─────────┘
+         │              │ (5 分钟后过期)
+         │              ▼
+         │         ┌─────────┐
+         └────────►│  idle   │
+   release()       └─────────┘
+```
+
+### 仓位感知能力
+
+TriggerAgent 可以感知当前仓位状态：
 
 ```python
-class FastMonitorConfig:
-    # 价格急变
-    PRICE_SPIKE_1M = 1.5       # 1分钟变动 ±1.5%
-    PRICE_SPIKE_5M = 2.5       # 5分钟变动 ±2.5%
-    PRICE_SPIKE_15M = 4.0      # 15分钟变动 ±4.0%
-    
-    # 成交量异常
-    VOLUME_SPIKE_5M = 3.0      # 5分钟成交量 > 3x 均值
-    VOLUME_SPIKE_1M = 5.0      # 1分钟成交量 > 5x 均值
-    
-    # 资金费率
-    FUNDING_RATE_EXTREME = 0.1     # 资金费率 > 0.1%
-    FUNDING_RATE_CHANGE = 0.05     # 资金费率变化 > 0.05%
-    
-    # 持仓量
-    OI_CHANGE_15M = 3.0        # 15分钟 OI 变化 > 3%
-    
-    # 技术指标
-    RSI_OVERBOUGHT = 85        # RSI > 85 极端超买
-    RSI_OVERSOLD = 15          # RSI < 15 极端超卖
-    EMA_DEVIATION = 5.0        # 价格 vs EMA20 偏离 > 5%
+# TriggerContext 新增字段
+has_position: bool = False
+position_direction: str = "none"
+position_pnl_percent: float = 0.0
+position_size_usd: float = 0.0
 ```
 
-### 环境变量
+这使 TriggerAgent 可以做出仓位相关决策：
 
-```bash
-# 启用/禁用 FastMonitor
-FAST_MONITOR_ENABLED=true   # 默认启用
-
-# 检查间隔 (分钟)
-TRIGGER_INTERVAL_MINUTES=5  # 默认 5 分钟
-```
+- 持仓浮亏 >10%? → 可能需要止损分析
+- 持仓浮盈 >15%? → 考虑是否锁定利润
 
 ### 成本节省效果
 
@@ -439,51 +424,51 @@ def _validate_stop_loss(direction, entry_price, sl_price, leverage, margin):
 
 ### 设计目标
 
-传统的交易系统往往忽视资金费率（Funding Fee）的影响，导致长期持仓成本过高。本系统引入了完整的资金费率感知模块，旨在：
+传统交易系统往往忽视资金费率（Funding Fee）的影响，导致长期持仓成本过高。本系统引入完整的资金费率感知模块：
 
-1. **规避高昂成本**: 自动识别并规避需要支付高额资金费的时段。
-2. **捕捉套利机会**: 识别负费率（或反向正费率）机会，通过持仓“躺赚”费率。
-3. **防止利润侵蚀**: 实时监控资金费对利润的侵蚀比例，必要时强制平仓。
+1. **规避高昂成本**: 自动识别并规避需要支付高额资金费的时段
+2. **捕捉套利机会**: 识别负费率机会，通过持仓"躺赚"费率
+3. **防止利润侵蚀**: 实时监控资金费对利润的侵蚀比例，必要时强制平仓
 
 ### 核心组件
 
 | 组件 | 职责 |
 |------|------|
-| `FundingDataService` | 对接 OKX API，获取实时费率、下一次结算时间、历史平均值。 |
-| `FundingCostCalculator` | 计算持有成本、盈亏平衡点、交易可行性（Viability）。 |
-| `EntryTimingController` | **入场时机优化**：建议“立即入场”还是“等待结算后入场”。 |
-| `HoldingTimeManager` | **动态久期管理**：基于费率高低，动态计算建议的最大持仓时间。 |
-| `FundingImpactMonitor` | **实时监控与强平**：后台任务，监控资金费/利润占比，触发风控。 |
+| `FundingDataService` | 对接 OKX API，获取实时费率、下一次结算时间、历史平均值 |
+| `FundingCostCalculator` | 计算持有成本、盈亏平衡点、交易可行性 |
+| `EntryTimingController` | **入场时机优化**：建议"立即入场"还是"等待结算后入场" |
+| `HoldingTimeManager` | **动态久期管理**：基于费率高低，动态计算建议的最大持仓时间 |
+| `FundingImpactMonitor` | **实时监控与强平**：后台任务，监控资金费/利润占比，触发风控 |
 
 ### 关键策略逻辑
 
 #### 1. 智能入场 (Entry Timing)
 
-- **支付方 (Paying)**: 如果距离结算 < 30分钟，且费率较高，系统会建议 **延迟入场** (Delay)，等待结算完成后再开仓，节省一次费用。
-- **收取方 (Receiving)**: 如果距离结算 < 30分钟，系统会建议 **立即入场** (Enter Now)，以捕获即将到来的费率收入。
+- **支付方 (Paying)**: 如果距离结算 < 30分钟，且费率较高，系统会建议 **延迟入场** (Delay)，等待结算完成后再开仓，节省一次费用
+- **收取方 (Receiving)**: 如果距离结算 < 30分钟，系统会建议 **立即入场** (Enter Now)，以捕获即将到来的费率收入
 
 #### 2. 动态持仓限制 (Dynamic Holding Limit)
 
 系统不再使用固定的持仓时间限制，而是基于费率动态计算 `optimal_holding_hours`：
 
 - **公式**: `最大持仓时间 = (预期利润 * 允许损耗比) / 单位时间费率成本`
-- **效果**: 费率越高，允许持仓的时间越短。迫使 Agent 追求资本效率。
+- **效果**: 费率越高，允许持仓的时间越短，迫使 Agent 追求资本效率
 
 #### 3. 利润保护与强平 (Force Close)
 
 - **监控指标**: `费率影响比 (Impact %)` = `累计已付资金费` / `当前未实现利润`
 - **阈值逻辑**:
-  - **Impact > 30%**: 发出 WARNING 警告。
-  - **Impact > 50%**: 触发 **CRITICAL 强制平仓**。即使账面微利，也因为费率损耗过大而强制止损。
+  - **Impact > 30%**: 发出 WARNING 警告
+  - **Impact > 50%**: 触发 **CRITICAL 强制平仓**
 
 ### Agent 整合
 
 资金费率信息被直接注入到 `ExecutorAgent` 的 Prompt 中：
 
-- **⚠️ CRITICAL 警告**: 明确告知当前是支付方还是收取方。
-- **成本预估表**: 展示持仓 8h/24h 的预计绝对成本。
-- **盈亏平衡点**: 告知价格需要跑赢多少才能覆盖费率。
-- **时机建议**: 明确建议 "Wait for settlement" 或 "Enter now"。
+- **⚠️ CRITICAL 警告**: 明确告知当前是支付方还是收取方
+- **成本预估表**: 展示持仓 8h/24h 的预计绝对成本
+- **盈亏平衡点**: 告知价格需要跑赢多少才能覆盖费率
+- **时机建议**: 明确建议 "Wait for settlement" 或 "Enter now"
 
 ---
 
@@ -546,6 +531,269 @@ class TradingState(TypedDict):
 
 ---
 
+# 第三部分：交易模式
+
+## 人在环路模式设计 (Human-in-the-Loop)
+
+系统支持三种交易模式，满足不同用户的风险偏好和参与程度。
+
+### 模式对比总览
+
+| 特性 | 全自动 | 半自动 | 手动 |
+|------|--------|--------|------|
+| 自动开仓 | ✅ | ❌ 需确认 | ❌ |
+| 自动平仓 | ✅ | ❌ 需确认 | ❌ |
+| 分析报告 | ✅ | ✅ | ✅ |
+| 交易建议 | ✅ 直接执行 | ✅ 待确认 | ✅ 仅供参考 |
+| 风险等级 | 高 | 中 | 低 |
+| 参与程度 | 无需参与 | 审批确认 | 完全参与 |
+| 适合用户 | 量化交易者 | 有经验交易者 | 学习者/保守型 |
+
+---
+
+### 模式 1: 全自动模式 (Full Auto)
+
+**特点**: 完全托管给系统，无需人工干预
+
+| 功能 | 行为 |
+|------|------|
+| 触发分析 | ✅ 自动 (TriggerAgent) |
+| 开仓决策 | ✅ 自动 (ExecutorAgent) |
+| 仓位管理 | ✅ 自动 (加仓/减仓/止损) |
+| 平仓执行 | ✅ 自动 (触发 TP/SL 或信号反转) |
+| 用户干预 | ❌ 无需 |
+
+**适用场景**: 高信任度用户、小资金试水、长期策略验证
+
+```python
+# 配置示例
+TRADING_MODE = "full_auto"
+REQUIRE_CONFIRMATION = False
+AUTO_EXECUTE_TRADES = True
+```
+
+---
+
+### 模式 2: 半自动模式 (Semi-Auto)
+
+**特点**: 系统提供建议，用户确认或修改后执行
+
+| 功能 | 行为 |
+|------|------|
+| 触发分析 | ✅ 自动 |
+| 开仓决策 | ⚠️ 系统建议 → 用户确认/修改 |
+| 仓位管理 | ⚠️ 系统建议 → 用户确认 |
+| 平仓执行 | ⚠️ 系统建议 → 用户确认 |
+| 用户干预 | ✅ 最终审批权 |
+
+**交互流程**:
+
+```
+系统分析完成
+     ↓
+生成交易建议 (方向/杠杆/止盈止损)
+     ↓
+推送通知给用户 (Telegram/WebSocket/App)
+     ↓
+用户操作:
+  ├── ✅ 确认执行 → 系统下单
+  ├── ✏️ 修改参数 → 系统按修改后参数下单
+  ├── ❌ 拒绝 → 不执行
+  └── ⏰ 超时 (可配置) → 自动取消或自动执行
+```
+
+**配置选项**:
+
+```python
+TRADING_MODE = "semi_auto"
+REQUIRE_CONFIRMATION = True
+CONFIRMATION_TIMEOUT_SECONDS = 300  # 5分钟超时
+TIMEOUT_ACTION = "cancel"  # cancel / auto_execute
+NOTIFICATION_CHANNELS = ["telegram", "websocket"]
+```
+
+**UI 交互示例**:
+
+```json
+{
+  "signal_id": "sig_20260103_001",
+  "type": "trade_suggestion",
+  "suggestion": {
+    "direction": "long",
+    "leverage": 5,
+    "amount_percent": 20,
+    "tp_percent": 8.0,
+    "sl_percent": 3.0,
+    "confidence": 78
+  },
+  "reasoning": "技术面RSI超卖+资金费率为负，看涨信号明确",
+  "actions": ["confirm", "modify", "reject"],
+  "expires_at": "2026-01-03T17:05:00Z"
+}
+```
+
+---
+
+### 模式 3: 手动模式 (Manual)
+
+**特点**: 用户完全自主交易，系统仅提供分析和建议
+
+| 功能 | 行为 |
+|------|------|
+| 触发分析 | ✅ 自动 (或用户手动触发) |
+| 分析报告 | ✅ 自动生成并推送 |
+| 开仓决策 | ❌ 用户自行操作 |
+| 仓位管理 | ❌ 用户自行操作 |
+| 平仓执行 | ❌ 用户自行操作 |
+| 用户干预 | ✅ 完全控制 |
+
+**系统提供**:
+
+- 📊 实时市场分析报告
+- 📈 技术指标和趋势预测
+- 🗳️ 多 Agent 投票结果和共识
+- ⚠️ 风险提示和建议止损位
+- 📰 重大新闻和市场事件提醒
+
+```python
+TRADING_MODE = "manual"
+AUTO_EXECUTE_TRADES = False
+PUSH_ANALYSIS_REPORTS = True
+ANALYSIS_PUSH_CHANNELS = ["telegram", "email", "websocket"]
+```
+
+---
+
+### 实现架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Trading Mode Manager                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │              Signal Generation (通用)                │    │
+│  │  TriggerAgent → LangGraph → Agent投票 → 共识建议     │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                            │                                 │
+│                            ▼                                 │
+│  ┌────────────┬────────────┬────────────────────────────┐   │
+│  │  Full Auto │ Semi-Auto  │         Manual             │   │
+│  │            │            │                            │   │
+│  │ ExecutorAgent           │                            │   │
+│  │ 直接执行   │ 推送建议   │         推送报告           │   │
+│  │            │     ↓      │                            │   │
+│  │            │ 等待用户   │                            │   │
+│  │            │ 确认/修改  │                            │   │
+│  │            │     ↓      │                            │   │
+│  │            │ 执行交易   │         用户自行交易       │   │
+│  └────────────┴────────────┴────────────────────────────┘   │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+# 第四部分：开发与部署
+
+## 快速开始指南
+
+### 本地开发
+
+```bash
+# 1. 启动依赖服务
+docker-compose up -d redis postgres llm_gateway
+
+# 2. 运行交易服务
+cd backend/services/report_orchestrator
+uvicorn app.main:app --reload --port 8000
+
+# 3. 启动前端 (可选)
+cd frontend
+npm run dev
+```
+
+### 配置文件
+
+```bash
+# .env 关键配置
+OKX_API_KEY=xxx
+OKX_SECRET_KEY=xxx
+OKX_PASSPHRASE=xxx
+OKX_IS_DEMO=true          # true=模拟盘, false=实盘
+
+TRIGGER_CHECK_INTERVAL=300        # 触发器检查间隔 (秒)
+TRIGGER_CONFIDENCE_THRESHOLD=60   # 触发器信心阈值
+
+REDIS_HOST=localhost
+LLM_GATEWAY_URL=http://localhost:8003
+```
+
+### API 端点
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/api/trading/status` | GET | 获取系统状态 |
+| `/api/trading/start` | POST | 启动交易系统 |
+| `/api/trading/stop` | POST | 停止交易系统 |
+| `/api/trading/history` | GET | 获取交易历史 |
+| `/ws/trading/{session_id}` | WS | 实时交易推送 |
+
+---
+
+## 生产环境部署指南
+
+### 模拟盘 vs 实盘
+
+| 模式 | OKX_DEMO_MODE | 说明 |
+|------|---------------|------|
+| 模拟盘 | `true` | 使用 OKX 模拟交易 API，无真实资金风险 |
+| 实盘 | `false` | 使用 OKX 真实交易 API，真金白银 |
+
+### 切换到正式环境
+
+#### 1. 修改 `.env` 配置
+
+```bash
+# OKX 正式环境 API (⚠️ 使用正式 API Key，不是模拟盘的)
+OKX_API_KEY=你的正式环境API_KEY
+OKX_SECRET_KEY=你的正式环境SECRET_KEY
+OKX_PASSPHRASE=你的正式环境PASSPHRASE
+
+# ⚠️ 关键配置：必须设为 false
+OKX_DEMO_MODE=false
+```
+
+#### 2. 重新构建并部署
+
+```bash
+cd trading-standalone
+git pull origin dev
+./stop.sh && docker compose up -d --build
+```
+
+#### 3. 验证正式环境
+
+```bash
+# 检查日志确认是 REAL 模式
+docker logs trading-service 2>&1 | grep -E "REAL|demo"
+
+# 应该看到:
+# OKX REAL account balance: $XXXX.XX
+```
+
+### 多服务器部署
+
+如果同时运行模拟盘和实盘，确保：
+
+1. **使用不同的服务器或端口**
+2. **每个服务器的 `.env` 配置独立**
+3. **前端使用动态主机检测**（已在 `status.html` 中实现）
+
+---
+
+# 第五部分：演进与规划
+
 ## 重构变更记录
 
 ### v2.0 → v3.0 主要变更
@@ -579,45 +827,9 @@ class TradingState(TypedDict):
 
 ---
 
-## 未实现与移除的能力
-
-### 1. Embedding/RAG 搜索 (已移除)
-
-**原因**: 维护成本高，效果不明显
-
-**影响**:
-
-- 无法进行语义相似搜索
-- 历史分析报告无法作为知识库
-
-**替代方案**:
-
-- 使用 Perplexity API 实时搜索
-- 关键词匹配历史记录
-
-### 2. 多交易对支持 (未实现)
-
-**当前**: 仅支持 BTC-USDT-SWAP
-
-**扩展方向**:
-
-- 添加 ETH-USDT-SWAP
-- symbol 参数化
-
-### 3. 自动止盈止损调整 (部分实现)
-
-**当前**: 使用固定百分比 (TP 8%, SL 3%)
-
-**改进方向**:
-
-- 基于 ATR 动态计算
-- 移动止损 (trailing stop)
-
----
-
 ## 改进建议与未来规划
 
-### ⚡ 优先级 P0: Agent 并行执行 (下一阶段重点)
+### ⚡ P0 优先级: Agent 并行执行 (下一阶段重点)
 
 **当前问题**:
 
@@ -674,7 +886,7 @@ async def signal_generation_node(state: TradingState) -> Dict[str, Any]:
 
 ---
 
-### 短期 (1-2 周)
+### 短期规划 (1-2 周)
 
 | 任务 | 优先级 | 说明 |
 |------|--------|------|
@@ -683,7 +895,7 @@ async def signal_generation_node(state: TradingState) -> Dict[str, Any]:
 | 超时处理 | P1 | 单 Agent 超时不阻塞整体 |
 | 日志增强 | P2 | 结构化日志 + 追踪 ID |
 
-### 中期 (1-2 月)
+### 中期规划 (1-2 月)
 
 | 任务 | 优先级 | 说明 |
 |------|--------|------|
@@ -692,294 +904,53 @@ async def signal_generation_node(state: TradingState) -> Dict[str, Any]:
 | 事件驱动触发 | P2 | 监听链上大额转账 |
 | Agent 权重自学习 | P2 | 基于历史表现自动调整 |
 
-### 🎛️ 人在环路 (Human-in-the-Loop) 模式设计
-
-系统支持三种交易模式，满足不同用户的风险偏好和参与程度：
-
-#### 模式 1: 全自动模式 (Full Auto)
-
-**特点**: 完全托管给系统，无需人工干预
-
-| 功能 | 行为 |
-|------|------|
-| 触发分析 | ✅ 自动 (TriggerAgent) |
-| 开仓决策 | ✅ 自动 (ExecutorAgent) |
-| 仓位管理 | ✅ 自动 (加仓/减仓/止损) |
-| 平仓执行 | ✅ 自动 (触发 TP/SL 或信号反转) |
-| 用户干预 | ❌ 无需 |
-
-**适用场景**: 高信任度用户、小资金试水、长期策略验证
-
-```python
-# 配置示例
-TRADING_MODE = "full_auto"
-REQUIRE_CONFIRMATION = False
-AUTO_EXECUTE_TRADES = True
-```
-
----
-
-#### 模式 2: 半自动模式 (Semi-Auto)
-
-**特点**: 系统提供建议，用户确认或修改后执行
-
-| 功能 | 行为 |
-|------|------|
-| 触发分析 | ✅ 自动 |
-| 开仓决策 | ⚠️ 系统建议 → 用户确认/修改 |
-| 仓位管理 | ⚠️ 系统建议 → 用户确认 |
-| 平仓执行 | ⚠️ 系统建议 → 用户确认 |
-| 用户干预 | ✅ 最终审批权 |
-
-**交互流程**:
-
-```
-系统分析完成
-     ↓
-生成交易建议 (方向/杠杆/止盈止损)
-     ↓
-推送通知给用户 (Telegram/WebSocket/App)
-     ↓
-用户操作:
-  ├── ✅ 确认执行 → 系统下单
-  ├── ✏️ 修改参数 → 系统按修改后参数下单
-  ├── ❌ 拒绝 → 不执行
-  └── ⏰ 超时 (可配置) → 自动取消或自动执行
-```
-
-**配置选项**:
-
-```python
-# 配置示例
-TRADING_MODE = "semi_auto"
-REQUIRE_CONFIRMATION = True
-CONFIRMATION_TIMEOUT_SECONDS = 300  # 5分钟超时
-TIMEOUT_ACTION = "cancel"  # cancel / auto_execute
-NOTIFICATION_CHANNELS = ["telegram", "websocket"]
-```
-
-**UI 交互示例**:
-
-```json
-{
-  "signal_id": "sig_20260103_001",
-  "type": "trade_suggestion",
-  "suggestion": {
-    "direction": "long",
-    "leverage": 5,
-    "amount_percent": 20,
-    "tp_percent": 8.0,
-    "sl_percent": 3.0,
-    "confidence": 78
-  },
-  "reasoning": "技术面RSI超卖+资金费率为负，看涨信号明确",
-  "actions": ["confirm", "modify", "reject"],
-  "expires_at": "2026-01-03T17:05:00Z"
-}
-```
-
----
-
-#### 模式 3: 手动模式 (Manual)
-
-**特点**: 用户完全自主交易，系统仅提供分析和建议
-
-| 功能 | 行为 |
-|------|------|
-| 触发分析 | ✅ 自动 (或用户手动触发) |
-| 分析报告 | ✅ 自动生成并推送 |
-| 开仓决策 | ❌ 用户自行操作 |
-| 仓位管理 | ❌ 用户自行操作 |
-| 平仓执行 | ❌ 用户自行操作 |
-| 用户干预 | ✅ 完全控制 |
-
-**系统提供**:
-
-- 📊 实时市场分析报告
-- 📈 技术指标和趋势预测
-- 🗳️ 多 Agent 投票结果和共识
-- ⚠️ 风险提示和建议止损位
-- 📰 重大新闻和市场事件提醒
-
-```python
-# 配置示例
-TRADING_MODE = "manual"
-AUTO_EXECUTE_TRADES = False
-PUSH_ANALYSIS_REPORTS = True
-ANALYSIS_PUSH_CHANNELS = ["telegram", "email", "websocket"]
-```
-
----
-
-#### 模式对比
-
-| 特性 | 全自动 | 半自动 | 手动 |
-|------|--------|--------|------|
-| 自动开仓 | ✅ | ❌ 需确认 | ❌ |
-| 自动平仓 | ✅ | ❌ 需确认 | ❌ |
-| 分析报告 | ✅ | ✅ | ✅ |
-| 交易建议 | ✅ 直接执行 | ✅ 待确认 | ✅ 仅供参考 |
-| 风险等级 | 高 | 中 | 低 |
-| 参与程度 | 无需参与 | 审批确认 | 完全参与 |
-| 适合用户 | 量化交易者 | 有经验交易者 | 学习者/保守型 |
-
----
-
-#### 实现架构
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Trading Mode Manager                     │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │              Signal Generation (通用)                │    │
-│  │  TriggerAgent → LangGraph → Agent投票 → 共识建议     │    │
-│  └─────────────────────────────────────────────────────┘    │
-│                            │                                 │
-│                            ▼                                 │
-│  ┌────────────┬────────────┬────────────────────────────┐   │
-│  │  Full Auto │ Semi-Auto  │         Manual             │   │
-│  │            │            │                            │   │
-│  │ ExecutorAgent           │                            │   │
-│  │ 直接执行   │ 推送建议   │         推送报告           │   │
-│  │            │     ↓      │                            │   │
-│  │            │ 等待用户   │                            │   │
-│  │            │ 确认/修改  │                            │   │
-│  │            │     ↓      │                            │   │
-│  │            │ 执行交易   │         用户自行交易       │   │
-│  └────────────┴────────────┴────────────────────────────┘   │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-### 长期 (3-6 月)
+### 长期规划 (3-6 月)
 
 | 任务 | 优先级 | 说明 |
 |------|--------|------|
-| 多交易对支持 | P1 | ETH, BNB 等主流币 |
-| 策略框架 | P2 | 可配置的交易策略模板 |
-| 回测系统 | P2 | 历史数据回测验证 |
-| 风控仪表板 | P3 | 可视化监控面板 |
 | **人在环路模式** | P1 | 实现三种交易模式切换 |
+| 策略框架 | P2 | 可配置的交易策略模板 |
+| 风控仪表板 | P3 | 可视化监控面板 |
 
 ---
 
-## 快速开始指南
+## 未实现与移除的能力
 
-### 本地开发
+### 1. Embedding/RAG 搜索 (已移除)
 
-```bash
-# 1. 启动依赖服务
-docker-compose up -d redis postgres llm_gateway
+**原因**: 维护成本高，效果不明显
 
-# 2. 运行交易服务
-cd backend/services/report_orchestrator
-uvicorn app.main:app --reload --port 8000
+**影响**:
 
-# 3. 启动前端 (可选)
-cd frontend
-npm run dev
-```
+- 无法进行语义相似搜索
+- 历史分析报告无法作为知识库
 
-### 配置文件
+**替代方案**:
 
-```bash
-# .env 关键配置
-OKX_API_KEY=xxx
-OKX_SECRET_KEY=xxx
-OKX_PASSPHRASE=xxx
-OKX_IS_DEMO=true          # true=模拟盘, false=实盘
+- 使用 Perplexity API 实时搜索
+- 关键词匹配历史记录
 
-TRIGGER_CHECK_INTERVAL=300        # 触发器检查间隔 (秒)
-TRIGGER_CONFIDENCE_THRESHOLD=60   # 触发器信心阈值
+### 2. 多交易对支持 (未实现)
 
-REDIS_HOST=localhost
-LLM_GATEWAY_URL=http://localhost:8003
-```
+**当前**: 仅支持 BTC-USDT-SWAP
 
-### API 端点
+**扩展方向**:
 
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/api/trading/status` | GET | 获取系统状态 |
-| `/api/trading/start` | POST | 启动交易系统 |
-| `/api/trading/stop` | POST | 停止交易系统 |
-| `/api/trading/history` | GET | 获取交易历史 |
-| `/ws/trading/{session_id}` | WS | 实时交易推送 |
+- 添加 ETH-USDT-SWAP
+- symbol 参数化
+
+### 3. 自动止盈止损调整 (部分实现)
+
+**当前**: 使用固定百分比 (TP 8%, SL 3%)
+
+**改进方向**:
+
+- 基于 ATR 动态计算
+- 移动止损 (trailing stop)
 
 ---
 
-## 附录
-
-### A. 代码规范
-
-- 所有交易相关代码使用 `async/await`
-- 日志格式: `[ModuleName] emoji 消息`
-- 错误处理: 捕获并记录，返回默认安全值
-
-### B. 相关文档
-
-- [ARCHITECTURE.md](/docs/refactoring/ARCHITECTURE.md) - 模块架构
-- [DEPLOY.md](/docs/refactoring/DEPLOY.md) - 部署指南
-- [REFACTORING_PLAN.md](/docs/refactoring/REFACTORING_PLAN.md) - 重构计划
-
----
-
-## 生产环境部署指南
-
-### 模拟盘 vs 实盘
-
-系统支持两种运行模式：
-
-| 模式 | OKX_DEMO_MODE | 说明 |
-|------|---------------|------|
-| 模拟盘 | `true` | 使用 OKX 模拟交易 API，无真实资金风险 |
-| 实盘 | `false` | 使用 OKX 真实交易 API，真金白银 |
-
-### 切换到正式环境
-
-#### 1. 修改 `.env` 配置
-
-```bash
-# OKX 正式环境 API (⚠️ 使用正式 API Key，不是模拟盘的)
-OKX_API_KEY=你的正式环境API_KEY
-OKX_SECRET_KEY=你的正式环境SECRET_KEY
-OKX_PASSPHRASE=你的正式环境PASSPHRASE
-
-# ⚠️ 关键配置：必须设为 false
-OKX_DEMO_MODE=false
-```
-
-#### 2. 重新构建并部署
-
-```bash
-cd trading-standalone
-git pull origin dev
-./stop.sh && docker compose up -d --build
-```
-
-#### 3. 验证正式环境
-
-```bash
-# 检查日志确认是 REAL 模式
-docker logs trading-service 2>&1 | grep -E "REAL|demo"
-
-# 应该看到:
-# OKX REAL account balance: $XXXX.XX
-```
-
-### 多服务器部署
-
-如果同时运行模拟盘和实盘，确保：
-
-1. **使用不同的服务器或端口**
-2. **每个服务器的 `.env` 配置独立**
-3. **前端使用动态主机检测**（已在 `status.html` 中实现）
-
----
+# 第六部分：附录
 
 ## Bug 修复记录 (2026-01)
 
@@ -1127,7 +1098,19 @@ docker exec trading-service cat /app/app/core/trading/executor_agent.py | head -
 
 ---
 
-## 附录
+## 附录：配置与规范
+
+### A. 代码规范
+
+- 所有交易相关代码使用 `async/await`
+- 日志格式: `[ModuleName] emoji 消息`
+- 错误处理: 捕获并记录，返回默认安全值
+
+### B. 相关文档
+
+- [ARCHITECTURE.md](/docs/refactoring/ARCHITECTURE.md) - 模块架构
+- [DEPLOY.md](/docs/refactoring/DEPLOY.md) - 部署指南
+- [REFACTORING_PLAN.md](/docs/refactoring/REFACTORING_PLAN.md) - 重构计划
 
 ### C. 环境变量完整列表
 
