@@ -45,6 +45,10 @@ from app.core.trading.reflection.engine import ReflectionEngine
 from app.core.trading.orchestration.graph import TradingGraph
 from app.core.trading.orchestration.state import create_initial_state
 
+# 🆕 Phase 1: Parallel execution and Feature Flags
+from app.core.parallel import RateLimitedExecutor, get_rate_limiter, AGENT_BATCHES
+from app.core.feature_flags import FeatureFlag, is_feature_enabled
+
 logger = logging.getLogger(__name__)
 
 
@@ -1046,7 +1050,8 @@ Provide your analysis and views based on real data."""
         """
         Phase 2: Signal Generation
 
-        Refactored: Use structured JSON output to avoid string matching errors
+        Refactored: Supports both sequential and parallel execution modes.
+        Use Feature Flag PARALLEL_AGENTS to switch between modes.
         """
         self._add_message(
             agent_id="system",
@@ -1055,11 +1060,130 @@ Provide your analysis and views based on real data."""
             message_type="phase"
         )
 
+        # Check if parallel execution is enabled
+        use_parallel = await is_feature_enabled(FeatureFlag.PARALLEL_AGENTS)
+        
+        if use_parallel:
+            logger.info("[SignalGen] 🚀 Using PARALLEL agent execution")
+            await self._run_parallel_signal_generation(position_context)
+        else:
+            logger.info("[SignalGen] 📝 Using SEQUENTIAL agent execution")
+            await self._run_sequential_signal_generation(position_context)
+        
+        # Summary of collected votes
+        print(f"[VOTE_DEBUG] Total votes collected: {len(self._agent_votes)} from AGENT_BATCHES")
+        print(f"[VOTE_DEBUG] Voting agents: {[v.agent_name for v in self._agent_votes]}")
+
+    async def _run_sequential_signal_generation(self, position_context: PositionContext):
+        """
+        Original sequential signal generation.
+        Runs agents one by one.
+        """
         # Generate decision options based on position status
         decision_options = self._get_decision_options_for_analysts(position_context)
+        vote_prompt = self._build_vote_prompt(position_context, decision_options)
 
-        # JSON structured output prompt
-        vote_prompt = f"""Based on the above analysis and real-time data you've collected, please provide your trading recommendation.
+        # Phase 3: Added OnchainAnalyst to voting agents
+        vote_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "OnchainAnalyst", "QuantStrategist"]
+        for agent_id in vote_agents:
+            agent = self._get_agent_by_id(agent_id)
+            if agent:
+                response = await self._run_agent_turn(agent, vote_prompt)
+                vote = self._parse_vote_json(agent_id, agent.name, response)
+                if vote:
+                    self._agent_votes.append(vote)
+                    print(f"[VOTE_DEBUG] ✅ {agent.name} vote recorded: {vote.direction} (confidence: {vote.confidence}%)")
+                else:
+                    # Fallback when JSON parsing fails
+                    logger.warning(f"[{agent.name}] JSON parsing failed, attempting text parsing fallback")
+                    vote = self._parse_vote_fallback(agent_id, agent.name, response)
+                    if vote:
+                        self._agent_votes.append(vote)
+                        print(f"[VOTE_DEBUG] ⚠️ {agent.name} vote recorded via fallback: {vote.direction}")
+                    else:
+                        # Both parsing methods failed
+                        print(f"[VOTE_DEBUG] ❌ {agent.name} vote FAILED - both JSON and fallback parsing failed")
+                        logger.error(f"[{agent.name}] Failed to parse vote from response (length: {len(response)} chars)")
+            else:
+                print(f"[VOTE_DEBUG] ❌ {agent_id} agent not found in self.agents")
+
+    async def _run_parallel_signal_generation(self, position_context: PositionContext):
+        """
+        🆕 Phase 1: Parallel signal generation with rate limiting.
+        Runs agents in batches with concurrency control.
+        """
+        import time
+        start_time = time.time()
+        
+        # Generate decision options based on position status
+        decision_options = self._get_decision_options_for_analysts(position_context)
+        vote_prompt = self._build_vote_prompt(position_context, decision_options)
+        
+        # Get rate limiter
+        rate_limiter = get_rate_limiter()
+        
+        logger.info(f"[ParallelSignalGen] Starting parallel execution with {len(AGENT_BATCHES)} batches")
+        
+        # Execute all batches
+        results = await rate_limiter.execute_all_batches(
+            get_agents_func=self._get_agent_by_id,
+            prompt=vote_prompt,
+            run_agent_func=self._run_agent_turn,
+            parse_vote_func=self._parse_vote_with_fallback
+        )
+        
+        # Process results and collect votes
+        for result in results:
+            if result.success and result.vote:
+                self._agent_votes.append(result.vote)
+                print(f"[VOTE_DEBUG] ✅ {result.agent_name} vote: {result.vote.direction} ({result.vote.confidence}%) [{result.duration_ms:.0f}ms]")
+            elif result.is_fallback:
+                # Generate fallback vote for failed agents
+                fallback_vote = self._generate_fallback_vote(result.agent_id, result.agent_name)
+                if fallback_vote:
+                    self._agent_votes.append(fallback_vote)
+                    print(f"[VOTE_DEBUG] ⚠️ {result.agent_name} fallback vote: hold (30%)")
+            else:
+                print(f"[VOTE_DEBUG] ❌ {result.agent_name} failed: {result.error}")
+        
+        total_time = (time.time() - start_time) * 1000
+        logger.info(f"[ParallelSignalGen] ✅ Completed in {total_time:.0f}ms, collected {len(self._agent_votes)} votes")
+
+    def _parse_vote_with_fallback(self, agent_id: str, agent_name: str, response: str):
+        """
+        Parse vote from agent response, with fallback to text parsing.
+        Used by parallel executor.
+        """
+        # Try JSON parsing first
+        vote = self._parse_vote_json(agent_id, agent_name, response)
+        if vote:
+            return vote
+        
+        # Fallback to text parsing
+        logger.warning(f"[{agent_name}] JSON parsing failed, trying text fallback")
+        vote = self._parse_vote_fallback(agent_id, agent_name, response)
+        return vote
+
+    def _generate_fallback_vote(self, agent_id: str, agent_name: str):
+        """
+        Generate a conservative fallback vote for failed agents.
+        Returns a hold vote with low confidence.
+        """
+        from app.models.trading_models import AgentVote
+        return AgentVote(
+            agent_id=agent_id,
+            agent_name=agent_name,
+            direction="hold",
+            confidence=30,
+            leverage=1,
+            reasoning="[Fallback] Agent execution failed or timed out",
+            take_profit_percent=5.0,
+            stop_loss_percent=2.0
+        )
+
+    def _build_vote_prompt(self, position_context: PositionContext, decision_options: str) -> str:
+        """Build the vote prompt for signal generation phase."""
+        return f"""Based on the above analysis and real-time data you've collected, please provide your trading recommendation.
 
 {position_context.to_summary()}
 
@@ -1123,34 +1247,6 @@ First explain your analysis reasoning, then output a JSON trading signal at the 
 
 **Important**: JSON must be at the END of your response and properly formatted!
 """
-
-        # Phase 3: Added OnchainAnalyst to voting agents
-        vote_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "OnchainAnalyst", "QuantStrategist"]
-        for agent_id in vote_agents:
-            agent = self._get_agent_by_id(agent_id)
-            if agent:
-                response = await self._run_agent_turn(agent, vote_prompt)
-                vote = self._parse_vote_json(agent_id, agent.name, response)
-                if vote:
-                    self._agent_votes.append(vote)
-                    print(f"[VOTE_DEBUG] ✅ {agent.name} vote recorded: {vote.direction} (confidence: {vote.confidence}%)")
-                else:
-                    # Fallback when JSON parsing fails
-                    logger.warning(f"[{agent.name}] JSON parsing failed, attempting text parsing fallback")
-                    vote = self._parse_vote_fallback(agent_id, agent.name, response)
-                    if vote:
-                        self._agent_votes.append(vote)
-                        print(f"[VOTE_DEBUG] ⚠️ {agent.name} vote recorded via fallback: {vote.direction}")
-                    else:
-                        # Both parsing methods failed
-                        print(f"[VOTE_DEBUG] ❌ {agent.name} vote FAILED - both JSON and fallback parsing failed")
-                        logger.error(f"[{agent.name}] Failed to parse vote from response (length: {len(response)} chars)")
-            else:
-                print(f"[VOTE_DEBUG] ❌ {agent_id} agent not found in self.agents")
-        
-        # Summary of collected votes
-        print(f"[VOTE_DEBUG] Total votes collected: {len(self._agent_votes)} from {len(vote_agents)} agents")
-        print(f"[VOTE_DEBUG] Voting agents: {[v.agent_name for v in self._agent_votes]}")
 
     async def _run_risk_assessment_phase(self, position_context: PositionContext):
         """Phase 3: Risk Assessment"""
