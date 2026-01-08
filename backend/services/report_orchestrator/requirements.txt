@@ -63,3 +63,6 @@ google-genai>=0.3.0
 
 # For LangGraph workflow orchestration (Phase 4 refactoring)
 langgraph>=0.2.0
+
+# For Circuit Breaker pattern (Phase 0 observability)
+pycircuitbreaker>=0.3.0
