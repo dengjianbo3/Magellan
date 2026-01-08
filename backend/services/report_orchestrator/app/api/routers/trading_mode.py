@@ -384,3 +384,42 @@ async def get_degradation_status():
     )
 
 
+# ============================================================================
+# Multi-Timeframe Analysis (Phase 3.1)
+# ============================================================================
+
+class MTFAnalysisResponse(BaseModel):
+    """Response for multi-timeframe analysis."""
+    overall_direction: str
+    alignment_score: float
+    confidence_modifier: float
+    recommendation: str
+    timeframes: dict
+
+
+@router.get("/mtf-analysis", response_model=MTFAnalysisResponse)
+async def get_mtf_analysis(symbol: str = "BTC-USDT-SWAP"):
+    """
+    Perform multi-timeframe analysis.
+    
+    Analyzes trend alignment across 15m, 1H, 4H, and 1D timeframes.
+    
+    Returns:
+    - overall_direction: bullish/bearish/neutral
+    - alignment_score: 0-100, how aligned are all timeframes
+    - confidence_modifier: 0.7-1.3, multiplier for signal confidence
+    """
+    from app.core.trading.multi_timeframe import get_mtf_analyzer
+    
+    analyzer = get_mtf_analyzer()
+    result = await analyzer.analyze(symbol)
+    
+    return MTFAnalysisResponse(
+        overall_direction=result.overall_direction.value,
+        alignment_score=round(result.alignment_score, 1),
+        confidence_modifier=round(result.confidence_modifier, 2),
+        recommendation=result.recommendation,
+        timeframes=result.to_dict()["timeframes"],
+    )
+
+
