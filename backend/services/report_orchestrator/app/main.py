@@ -886,7 +886,7 @@ async def health_check():
     # Check LLM Gateway (optional - don't fail health check if down)
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get("http://llm_gateway:8002/health", timeout=2.0)
+            response = await client.get("http://llm_gateway:8003/health", timeout=2.0)
             if response.status_code == 200:
                 health_status["checks"]["llm_gateway"] = {
                     "status": "healthy",
