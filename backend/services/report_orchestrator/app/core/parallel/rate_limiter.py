@@ -32,9 +32,9 @@ class RateLimitConfig:
     # Concurrency control
     max_concurrent_agents: int = 2
     
-    # Timing
+    # Timing - increased timeout because each agent makes 5-6 tool calls
     batch_delay_seconds: float = 0.5
-    agent_timeout_seconds: float = 45.0
+    agent_timeout_seconds: float = 90.0  # Increased from 45s for multi-tool agents
     
     # API-specific limits
     tavily_requests_per_second: int = 3
