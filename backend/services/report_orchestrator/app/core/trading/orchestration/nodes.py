@@ -3,9 +3,10 @@ Trading Workflow Nodes
 
 Defines all nodes for the LangGraph trading workflow.
 Each node is an async function that takes state and returns updated state.
+
+Observability: Uses structured logging with trace ID and Prometheus metrics.
 """
 
-import logging
 import time
 from datetime import datetime
 from typing import Dict, Any, List
@@ -14,9 +15,19 @@ import traceback
 
 from langchain_core.runnables import RunnableConfig
 from .state import TradingState, NodeResult, TradeDirection
-from app.core.trading.executor_agent import ExecutorAgent  # Unified ReWOOAgent-based executor
+from app.core.trading.executor_agent import ExecutorAgent
 
-logger = logging.getLogger(__name__)
+# Observability imports
+from core.observability.logging import get_logger, TradingLogger
+from core.observability.metrics import (
+    signals_generated,
+    execution_failures,
+    agent_latency,
+    signal_generation_latency,
+)
+
+logger = get_logger(__name__)
+trading_logger = TradingLogger(__name__)
 
 
 async def market_analysis_node(state: TradingState) -> Dict[str, Any]:
@@ -28,24 +39,30 @@ async def market_analysis_node(state: TradingState) -> Dict[str, Any]:
     Output: analysis
     """
     start_time = time.time()
-    logger.info("[Node: market_analysis] Starting market analysis...")
+    logger.info("node_started", node="market_analysis")
     
     try:
         market_data = state.get("market_data", {})
         
         # Extract key metrics
+        trend = _determine_trend(market_data)
         analysis = {
             "current_price": market_data.get("current_price", 0),
             "price_change_24h": market_data.get("price_change_24h", 0),
             "volume_24h": market_data.get("volume_24h", 0),
             "fear_greed_index": market_data.get("fear_greed_index", 50),
-            "trend": _determine_trend(market_data),
+            "trend": trend,
             "volatility": market_data.get("volatility", "medium"),
             "timestamp": datetime.now().isoformat()
         }
         
         elapsed = (time.time() - start_time) * 1000
-        logger.info(f"[Node: market_analysis] ✅ Complete in {elapsed:.0f}ms - Trend: {analysis['trend']}")
+        logger.info("node_completed", 
+            node="market_analysis", 
+            duration_ms=elapsed,
+            trend=trend,
+            current_price=analysis["current_price"]
+        )
         
         return {
             "analysis": analysis,
@@ -55,7 +72,7 @@ async def market_analysis_node(state: TradingState) -> Dict[str, Any]:
         }
         
     except Exception as e:
-        logger.error(f"[Node: market_analysis] ❌ Failed: {e}")
+        logger.error("node_failed", node="market_analysis", error=str(e))
         return {
             "error": str(e),
             "error_node": "market_analysis",
@@ -72,19 +89,25 @@ async def signal_generation_node(state: TradingState) -> Dict[str, Any]:
     Output: agent_votes
     """
     start_time = time.time()
-    logger.info("[Node: signal_generation] Starting agent voting...")
+    mode = state.get("mode", "full_auto")
+    logger.info("node_started", node="signal_generation", mode=mode)
     
     try:
-        # This will be replaced with actual agent calls
-        # For now, use placeholder votes from context
-        existing_votes = state.get("agent_votes", [])
-        
-        if not existing_votes:
-            # Placeholder: In real implementation, call agents here
-            logger.warning("[Node: signal_generation] No agent votes available")
+        # Track signal generation latency with Prometheus
+        with signal_generation_latency.labels(mode=mode).time():
+            # This will be replaced with actual agent calls
+            # For now, use placeholder votes from context
+            existing_votes = state.get("agent_votes", [])
+            
+            if not existing_votes:
+                logger.warning("no_agent_votes", node="signal_generation")
         
         elapsed = (time.time() - start_time) * 1000
-        logger.info(f"[Node: signal_generation] ✅ Complete in {elapsed:.0f}ms - {len(existing_votes)} votes")
+        logger.info("node_completed",
+            node="signal_generation",
+            duration_ms=elapsed,
+            vote_count=len(existing_votes)
+        )
         
         return {
             "current_node": "signal_generation",
@@ -93,7 +116,7 @@ async def signal_generation_node(state: TradingState) -> Dict[str, Any]:
         }
         
     except Exception as e:
-        logger.error(f"[Node: signal_generation] ❌ Failed: {e}")
+        logger.error("node_failed", node="signal_generation", error=str(e))
         return {
             "error": str(e),
             "error_node": "signal_generation",
@@ -252,7 +275,7 @@ async def consensus_node(state: TradingState, config: RunnableConfig) -> Dict[st
 
 async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[str, Any]:
     """
-    Node 5: Execution (🆕 Uses ExecutorAgent - unified Agent architecture)
+    Node 5: Execution (Uses ExecutorAgent - unified Agent architecture)
     
     Uses ExecutorAgent (inherits from Agent) to make intelligent trading decisions.
     The agent considers:
@@ -265,15 +288,16 @@ async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[st
     Output: final_signal, execution_result, execution_success
     """
     start_time = time.time()
-    logger.info("[Node: execution] 🤖 Starting ExecutorAgent...")
+    mode = state.get("mode", "full_auto")
+    logger.info("node_started", node="execution", mode=mode)
     
     try:
         # Get ExecutorAgent from config (passed from TradingMeeting)
-        # Note: variable still named trade_executor for backward compatibility
         trade_executor = config.get("configurable", {}).get("trade_executor")
         
         if not trade_executor:
-            logger.error("[Node: execution] ❌ ExecutorAgent not found in config!")
+            logger.error("executor_not_found", node="execution")
+            execution_failures.labels(reason="executor_not_available").inc()
             return _fallback_execution(state, start_time, "ExecutorAgent not available")
         
         # Prepare inputs for ExecutorAgent
@@ -282,8 +306,12 @@ async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[st
         position_context = state.get("position_context", {})
         trigger_reason = state.get("trigger_reason", "scheduled")
         
-        logger.info(f"[Node: execution] Inputs: {len(agent_votes)} votes, "
-                   f"has_position={position_context.get('has_position', False)}")
+        logger.info("executor_inputs",
+            node="execution",
+            vote_count=len(agent_votes),
+            has_position=position_context.get("has_position", False),
+            trigger_reason=trigger_reason
+        )
         
         # Call ExecutorAgent.execute() - LLM decides: open_long/open_short/hold/close
         signal = await trade_executor.execute(
@@ -313,15 +341,28 @@ async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[st
             }
             execution_success = True
             
-            logger.info(f"[Node: execution] 🎯 ExecutorAgent Decision: {signal.direction.upper()} "
-                       f"(Confidence: {signal.confidence}%)")
+            # Record metrics
+            signals_generated.labels(direction=signal.direction, mode=mode).inc()
+            
+            # Use trading logger for signal
+            trading_logger.signal_generated(
+                direction=signal.direction,
+                confidence=signal.confidence,
+                mode=mode,
+                agent_votes=len(agent_votes)
+            )
         else:
             # ExecutorAgent returned None - fallback to HOLD
-            logger.warning("[Node: execution] ExecutorAgent returned None, defaulting to HOLD")
+            logger.warning("executor_no_signal", node="execution")
             return _fallback_execution(state, start_time, "ExecutorAgent returned no signal")
         
         elapsed = (time.time() - start_time) * 1000
-        logger.info(f"[Node: execution] ✅ Complete in {elapsed:.0f}ms - {signal.direction.upper()}")
+        logger.info("node_completed",
+            node="execution",
+            duration_ms=elapsed,
+            direction=signal.direction,
+            confidence=signal.confidence
+        )
         
         return {
             "final_signal": final_signal,
@@ -333,8 +374,9 @@ async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[st
         }
         
     except Exception as e:
-        logger.error(f"[Node: execution] ❌ Failed: {e}")
-        logger.error(traceback.format_exc())
+        logger.error("node_failed", node="execution", error=str(e))
+        logger.error("execution_traceback", traceback=traceback.format_exc())
+        execution_failures.labels(reason="exception").inc()
         return {
             "error": str(e),
             "error_node": "execution",
