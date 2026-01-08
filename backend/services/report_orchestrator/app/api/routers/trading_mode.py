@@ -349,3 +349,38 @@ async def calculate_atr_stop_loss(request: ATRStopLossRequest):
         method=result.method,
     )
 
+
+# ============================================================================
+# Graceful Degradation Status (Phase 2.3)
+# ============================================================================
+
+class DegradationStatusResponse(BaseModel):
+    """Response for system degradation status."""
+    level: str
+    capabilities: dict
+    circuit_statuses: dict
+
+
+@router.get("/degradation", response_model=DegradationStatusResponse)
+async def get_degradation_status():
+    """
+    Get current system degradation status.
+    
+    Degradation levels:
+    - FULL: All services healthy, full functionality
+    - REDUCED: Some services degraded, limited analysis
+    - MINIMAL: Only position closing allowed
+    - OFFLINE: No operations possible
+    """
+    from app.core.resilience.degradation import get_degradation_manager
+    
+    manager = get_degradation_manager()
+    status = manager.get_status_summary()
+    
+    return DegradationStatusResponse(
+        level=status["level"],
+        capabilities=status["capabilities"],
+        circuit_statuses=status["circuit_statuses"],
+    )
+
+
