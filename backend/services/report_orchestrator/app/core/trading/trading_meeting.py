@@ -331,31 +331,80 @@ Based on your expertise, provide your trading recommendation.
 ```
 """
             
-            # Collect votes sequentially (simpler than parallel for now)
-            for agent_id in vote_agent_ids:
-                agent = self._get_agent_by_id(agent_id)
-                if agent:
-                    try:
-                        response = await self._run_agent_turn(agent, vote_prompt)
-                        vote = self._parse_vote_json(agent_id, agent.name, response)
-                        if vote:
-                            # Convert AgentVote object to dict for graph compatibility
-                            # Use getattr with defaults to handle missing attributes safely
-                            vote_dict = vote.to_dict() if hasattr(vote, 'to_dict') else {
-                                'agent_name': getattr(vote, 'agent_name', 'unknown'),
-                                'direction': getattr(vote, 'direction', 'hold'),
-                                'confidence': getattr(vote, 'confidence', 50),
-                                'leverage': getattr(vote, 'leverage', 1),
-                                'reasoning': getattr(vote, 'reasoning', ''),
-                                'take_profit_percent': getattr(vote, 'take_profit_percent', 8.0),
-                                'stop_loss_percent': getattr(vote, 'stop_loss_percent', 3.0)
-                            }
-                            votes.append(vote_dict)
-                            logger.info(f"[LangGraph] ✅ {agent.name}: {vote_dict.get('direction', 'unknown')} ({vote_dict.get('confidence', 0)}%)")
-                    except Exception as e:
-                        logger.warning(f"[LangGraph] ❌ {agent.name} vote failed: {e}")
+            # 🆕 Phase 1: Check if parallel execution is enabled
+            use_parallel = await is_feature_enabled(FeatureFlag.PARALLEL_AGENTS)
             
-            logger.info(f"[LangGraph] Collected {len(votes)} votes")
+            if use_parallel:
+                # Parallel vote collection
+                logger.info("[LangGraph] 🚀 Collecting votes in PARALLEL mode")
+                import time
+                start_time = time.time()
+                
+                rate_limiter = get_rate_limiter()
+                
+                # Execute all batches in parallel
+                results = await rate_limiter.execute_all_batches(
+                    get_agents_func=self._get_agent_by_id,
+                    prompt=vote_prompt,
+                    run_agent_func=self._run_agent_turn,
+                    parse_vote_func=self._parse_vote_with_fallback
+                )
+                
+                # Process results and collect votes
+                for result in results:
+                    if result.success and result.vote:
+                        vote = result.vote
+                        vote_dict = vote.to_dict() if hasattr(vote, 'to_dict') else {
+                            'agent_name': getattr(vote, 'agent_name', 'unknown'),
+                            'direction': getattr(vote, 'direction', 'hold'),
+                            'confidence': getattr(vote, 'confidence', 50),
+                            'leverage': getattr(vote, 'leverage', 1),
+                            'reasoning': getattr(vote, 'reasoning', ''),
+                            'take_profit_percent': getattr(vote, 'take_profit_percent', 8.0),
+                            'stop_loss_percent': getattr(vote, 'stop_loss_percent', 3.0)
+                        }
+                        votes.append(vote_dict)
+                        logger.info(f"[LangGraph] ✅ {result.agent_name}: {vote_dict.get('direction', 'unknown')} ({vote_dict.get('confidence', 0)}%) [{result.duration_ms:.0f}ms]")
+                    elif result.is_fallback:
+                        # Use fallback vote
+                        votes.append({
+                            'agent_name': result.agent_name,
+                            'direction': 'hold',
+                            'confidence': 30,
+                            'leverage': 1,
+                            'reasoning': '[Fallback] Agent failed/timeout',
+                            'take_profit_percent': 5.0,
+                            'stop_loss_percent': 2.0
+                        })
+                        logger.warning(f"[LangGraph] ⚠️ {result.agent_name}: fallback vote (hold/30%)")
+                
+                total_time = (time.time() - start_time) * 1000
+                logger.info(f"[LangGraph] Collected {len(votes)} votes in {total_time:.0f}ms (PARALLEL)")
+            else:
+                # Original sequential vote collection
+                logger.info("[LangGraph] 📝 Collecting votes in SEQUENTIAL mode")
+                for agent_id in vote_agent_ids:
+                    agent = self._get_agent_by_id(agent_id)
+                    if agent:
+                        try:
+                            response = await self._run_agent_turn(agent, vote_prompt)
+                            vote = self._parse_vote_json(agent_id, agent.name, response)
+                            if vote:
+                                vote_dict = vote.to_dict() if hasattr(vote, 'to_dict') else {
+                                    'agent_name': getattr(vote, 'agent_name', 'unknown'),
+                                    'direction': getattr(vote, 'direction', 'hold'),
+                                    'confidence': getattr(vote, 'confidence', 50),
+                                    'leverage': getattr(vote, 'leverage', 1),
+                                    'reasoning': getattr(vote, 'reasoning', ''),
+                                    'take_profit_percent': getattr(vote, 'take_profit_percent', 8.0),
+                                    'stop_loss_percent': getattr(vote, 'stop_loss_percent', 3.0)
+                                }
+                                votes.append(vote_dict)
+                                logger.info(f"[LangGraph] ✅ {agent.name}: {vote_dict.get('direction', 'unknown')} ({vote_dict.get('confidence', 0)}%)")
+                        except Exception as e:
+                            logger.warning(f"[LangGraph] ❌ {agent.name} vote failed: {e}")
+                
+                logger.info(f"[LangGraph] Collected {len(votes)} votes (SEQUENTIAL)")
             
             # 🆕 ExecutorAgent: inherits from Agent, uses native HTTP calls, no llm_service needed
             if not self._trade_executor:
