@@ -632,6 +632,35 @@
             }
         }
 
+        // Set trading mode (HITL)
+        async function setTradingMode(mode) {
+            if (!confirm(`Switch trading mode to ${mode.toUpperCase()}?\n\nThis will change how trades are executed.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${SERVER}/api/trading/mode`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ mode: mode })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`✅ Mode changed to ${mode.toUpperCase()}`);
+                    refresh();
+                } else {
+                    alert(`❌ Failed to change mode:\n\n${result.detail || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Set mode error:', error);
+                alert(`❌ Error changing mode:\n\n${error.message}`);
+            }
+        }
+
         async function refresh() {
             const content = document.getElementById('content');
             content.innerHTML = '<div class="loading">Loading...</div>';
@@ -647,14 +676,18 @@
                     ? `performance?start_date=${drawdownStartDate}`
                     : 'performance';
 
-                const [status, account, position, history, drawdown, performance, funding] = await Promise.all([
+                const [status, account, position, history, drawdown, performance, funding, tradingMode, mtfAnalysis, agentWeights, degradation] = await Promise.all([
                     fetchData('status'),
                     fetchData('account'),
                     fetchData('position'),
                     fetchData('history?limit=50'),
                     fetchData(drawdownEndpoint),
                     fetchData(performanceEndpoint),
-                    fetchData('funding')
+                    fetchData('funding'),
+                    fetchData('mode'),
+                    fetchData('mtf-analysis'),
+                    fetchData('agent-weights'),
+                    fetchData('degradation')
                 ]);
 
                 if (!status) {
@@ -696,6 +729,94 @@
                         </div>
                     </div>
                 `;
+
+                // HITL Trading Mode (Phase 1.3)
+                if (tradingMode) {
+                    const modeColors = {
+                        'full_auto': 'positive',
+                        'semi_auto': 'neutral',
+                        'manual': 'negative'
+                    };
+                    const modeLabels = {
+                        'full_auto': '🤖 Full Auto',
+                        'semi_auto': '👤 Semi-Auto',
+                        'manual': '✋ Manual'
+                    };
+                    html += `
+                        <div class="card">
+                            <div class="card-title">🎮 Trading Mode (HITL)</div>
+                            <div class="row">
+                                <span class="label">Current Mode</span>
+                                <span class="value ${modeColors[tradingMode.mode] || ''}">${modeLabels[tradingMode.mode] || tradingMode.mode}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Description</span>
+                                <span class="value" style="font-size: 0.75em;">${tradingMode.description || ''}</span>
+                            </div>
+                            <div class="button-row" style="margin-top: 10px;">
+                                <button class="btn btn-secondary" onclick="setTradingMode('manual')" style="flex:1;padding:8px;font-size:0.8em;">Manual</button>
+                                <button class="btn btn-primary" onclick="setTradingMode('semi_auto')" style="flex:1;padding:8px;font-size:0.8em;">Semi-Auto</button>
+                                <button class="btn btn-primary" onclick="setTradingMode('full_auto')" style="flex:1;padding:8px;font-size:0.8em;background:linear-gradient(135deg, #059669 0%, #047857 100%);">Full Auto</button>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // MTF Analysis (Phase 3.1)
+                if (mtfAnalysis) {
+                    const dirColors = { 'bullish': 'positive', 'bearish': 'negative', 'neutral': 'neutral' };
+                    html += `
+                        <div class="card">
+                            <div class="card-title">📊 Multi-Timeframe Analysis</div>
+                            <div class="row">
+                                <span class="label">Overall Direction</span>
+                                <span class="value ${dirColors[mtfAnalysis.overall_direction] || ''}">${mtfAnalysis.overall_direction?.toUpperCase() || 'N/A'}</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Alignment Score</span>
+                                <span class="value">${mtfAnalysis.alignment_score?.toFixed(1) || 0}%</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Confidence Modifier</span>
+                                <span class="value">${mtfAnalysis.confidence_modifier?.toFixed(2) || 1.0}x</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">Recommendation</span>
+                                <span class="value" style="font-size: 0.75em;">${mtfAnalysis.recommendation || ''}</span>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Agent Weights (Phase 3.2)
+                if (agentWeights?.weights) {
+                    const weights = agentWeights.weights;
+                    let weightsHtml = Object.entries(weights).map(([name, w]) => {
+                        const weightClass = w > 1.1 ? 'positive' : (w < 0.9 ? 'negative' : '');
+                        const shortName = name.replace('Analyst', '').replace('Manager', '');
+                        return `<div class="row"><span class="label">${shortName}</span><span class="value ${weightClass}">${w.toFixed(2)}</span></div>`;
+                    }).join('');
+                    html += `
+                        <div class="card">
+                            <div class="card-title">🎯 Agent Weights (Learned)</div>
+                            ${weightsHtml}
+                        </div>
+                    `;
+                }
+
+                // Degradation Status (Phase 2.3)
+                if (degradation) {
+                    const levelColors = { 'full': 'positive', 'reduced': 'neutral', 'minimal': 'negative', 'offline': 'negative' };
+                    html += `
+                        <div class="card">
+                            <div class="card-title">🛡️ System Health</div>
+                            <div class="row">
+                                <span class="label">Degradation Level</span>
+                                <span class="value ${levelColors[degradation.level] || ''}">${degradation.level?.toUpperCase() || 'N/A'}</span>
+                            </div>
+                        </div>
+                    `;
+                }
 
                 // Account
                 if (account) {
