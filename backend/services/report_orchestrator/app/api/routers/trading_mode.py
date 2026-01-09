@@ -507,4 +507,166 @@ async def reset_agent_weight(agent_name: str):
     }
 
 
+# ============================================================================
+# User Preference Learning (Phase 3.3)
+# ============================================================================
 
+class UserPreferencesResponse(BaseModel):
+    """Response for user preferences."""
+    user_id: str
+    leverage: dict
+    direction: dict
+    risk: dict
+    confidence: dict
+    stats: dict
+    last_updated: Optional[str] = None
+
+
+@router.get("/user-preferences", response_model=UserPreferencesResponse)
+async def get_user_preferences(user_id: str = "default"):
+    """
+    Get learned preferences for a user.
+    
+    Preferences are learned from SEMI_AUTO confirmation/rejection patterns.
+    """
+    from app.core.trading.preference_learner import get_preference_learner
+    
+    learner = get_preference_learner()
+    prefs = await learner.get_preferences(user_id)
+    prefs_dict = prefs.to_dict()
+    
+    return UserPreferencesResponse(
+        user_id=prefs_dict["user_id"],
+        leverage=prefs_dict["leverage"],
+        direction=prefs_dict["direction"],
+        risk=prefs_dict["risk"],
+        confidence=prefs_dict["confidence"],
+        stats=prefs_dict["stats"],
+        last_updated=prefs_dict.get("last_updated"),
+    )
+
+
+class RecordDecisionRequest(BaseModel):
+    """Request to record a trade decision."""
+    trade_id: str
+    user_id: str = "default"
+    direction: str
+    leverage: int
+    confidence: int
+    stop_loss_percent: float
+    take_profit_percent: float
+    action: str  # "confirmed", "rejected", "modified", "expired"
+    modified_leverage: Optional[int] = None
+    modified_sl: Optional[float] = None
+    modified_tp: Optional[float] = None
+
+
+@router.post("/user-preferences/record-decision")
+async def record_user_decision(request: RecordDecisionRequest):
+    """
+    Record a user's trade decision to update preferences.
+    
+    Call this when user confirms/rejects/modifies a pending trade.
+    """
+    from app.core.trading.preference_learner import get_preference_learner
+    
+    if request.action not in ("confirmed", "rejected", "modified", "expired"):
+        raise HTTPException(
+            status_code=400,
+            detail="action must be 'confirmed', 'rejected', 'modified', or 'expired'"
+        )
+    
+    learner = get_preference_learner()
+    prefs = await learner.record_decision(
+        trade_id=request.trade_id,
+        user_id=request.user_id,
+        direction=request.direction,
+        leverage=request.leverage,
+        confidence=request.confidence,
+        stop_loss_percent=request.stop_loss_percent,
+        take_profit_percent=request.take_profit_percent,
+        action=request.action,
+        modified_leverage=request.modified_leverage,
+        modified_sl=request.modified_sl,
+        modified_tp=request.modified_tp,
+    )
+    
+    return {
+        "success": True,
+        "action": request.action,
+        "updated_preferences": prefs.to_dict(),
+    }
+
+
+@router.get("/user-preferences/recent-decisions")
+async def get_recent_decisions(user_id: str = "default", limit: int = 20):
+    """Get recent trade decisions for a user."""
+    from app.core.trading.preference_learner import get_preference_learner
+    
+    learner = get_preference_learner()
+    decisions = await learner.get_recent_decisions(user_id, limit)
+    
+    return {
+        "user_id": user_id,
+        "count": len(decisions),
+        "decisions": decisions,
+    }
+
+
+class SuggestAdjustmentsRequest(BaseModel):
+    """Request to get suggested adjustments for a signal."""
+    direction: str
+    leverage: int
+    confidence: int
+    stop_loss_percent: float
+    take_profit_percent: float
+    user_id: str = "default"
+
+
+@router.post("/user-preferences/suggest")
+async def suggest_signal_adjustments(request: SuggestAdjustmentsRequest):
+    """
+    Get suggested adjustments for a trade signal based on user preferences.
+    
+    Returns warnings and suggestions if signal doesn't match user's typical preferences.
+    """
+    from app.core.trading.preference_learner import get_preference_learner
+    
+    learner = get_preference_learner()
+    prefs = await learner.get_preferences(request.user_id)
+    
+    signal = {
+        "direction": request.direction,
+        "leverage": request.leverage,
+        "confidence": request.confidence,
+        "stop_loss_percent": request.stop_loss_percent,
+        "take_profit_percent": request.take_profit_percent,
+    }
+    
+    suggestions = learner.suggest_adjustments(prefs, signal)
+    
+    return {
+        "has_suggestions": len(suggestions) > 0,
+        "suggestions": suggestions,
+        "user_preferences_summary": {
+            "direction_bias": prefs.direction_bias,
+            "avg_leverage": round(prefs.avg_accepted_leverage, 1),
+            "min_confidence": prefs.min_accepted_confidence,
+        }
+    }
+
+
+@router.post("/user-preferences/reset")
+async def reset_user_preferences(user_id: str = "default"):
+    """Reset user preferences to defaults."""
+    from app.core.trading.preference_learner import get_preference_learner
+    
+    learner = get_preference_learner()
+    prefs = await learner.reset_preferences(user_id)
+    
+    return {
+        "success": True,
+        "user_id": user_id,
+        "message": "Preferences reset to defaults",
+        "preferences": prefs.to_dict(),
+    }
