@@ -262,6 +262,130 @@
             </button>
           </div>
         </div>
+
+        <!-- Trading Mode (HITL Phase 1.3) -->
+        <div class="glass-panel rounded-xl p-6">
+          <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
+            <span class="material-symbols-outlined mr-2 text-accent-cyan">gamepad</span>
+            Trading Mode
+          </h3>
+
+          <div class="space-y-3">
+            <div class="flex justify-between items-center">
+              <span class="text-text-secondary text-sm">Current Mode</span>
+              <span
+                :class="[
+                  'px-3 py-1 rounded-full text-sm font-medium',
+                  tradingMode.mode === 'full_auto' ? 'bg-emerald-500/20 text-emerald-400' :
+                  tradingMode.mode === 'semi_auto' ? 'bg-yellow-500/20 text-yellow-400' :
+                  'bg-red-500/20 text-red-400'
+                ]"
+              >
+                {{ tradingMode.mode === 'full_auto' ? '🤖 Full Auto' : 
+                   tradingMode.mode === 'semi_auto' ? '👤 Semi-Auto' : '✋ Manual' }}
+              </span>
+            </div>
+
+            <div class="flex gap-2 pt-2">
+              <button
+                @click="setTradingMode('manual')"
+                :disabled="changingMode"
+                class="flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all"
+                :class="tradingMode.mode === 'manual' ? 'bg-red-500/30 text-red-300' : 'bg-white/10 text-white/60 hover:bg-white/20'"
+              >
+                Manual
+              </button>
+              <button
+                @click="setTradingMode('semi_auto')"
+                :disabled="changingMode"
+                class="flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all"
+                :class="tradingMode.mode === 'semi_auto' ? 'bg-yellow-500/30 text-yellow-300' : 'bg-white/10 text-white/60 hover:bg-white/20'"
+              >
+                Semi-Auto
+              </button>
+              <button
+                @click="setTradingMode('full_auto')"
+                :disabled="changingMode"
+                class="flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all"
+                :class="tradingMode.mode === 'full_auto' ? 'bg-emerald-500/30 text-emerald-300' : 'bg-white/10 text-white/60 hover:bg-white/20'"
+              >
+                Full Auto
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- MTF Analysis (Phase 3.1) -->
+        <div class="glass-panel rounded-xl p-6">
+          <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
+            <span class="material-symbols-outlined mr-2 text-primary">analytics</span>
+            Multi-Timeframe
+          </h3>
+
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between items-center">
+              <span class="text-text-secondary">Direction</span>
+              <span
+                :class="[
+                  'font-medium',
+                  mtfAnalysis.overall_direction === 'bullish' ? 'text-emerald-400' :
+                  mtfAnalysis.overall_direction === 'bearish' ? 'text-red-400' : 'text-yellow-400'
+                ]"
+              >
+                {{ mtfAnalysis.overall_direction?.toUpperCase() || 'N/A' }}
+              </span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-text-secondary">Alignment</span>
+              <span class="text-white">{{ mtfAnalysis.alignment_score?.toFixed(1) || 0 }}%</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-text-secondary">Confidence</span>
+              <span class="text-white">{{ mtfAnalysis.confidence_modifier?.toFixed(2) || 1.0 }}x</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent Weights (Phase 3.2) -->
+        <div class="glass-panel rounded-xl p-6">
+          <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
+            <span class="material-symbols-outlined mr-2 text-accent-violet">psychology</span>
+            Agent Weights
+          </h3>
+
+          <div class="space-y-1.5 text-sm">
+            <div v-for="(weight, name) in learnedWeights" :key="name" class="flex justify-between items-center">
+              <span class="text-text-secondary">{{ name.replace('Analyst', '').replace('Manager', '') }}</span>
+              <span
+                :class="[
+                  'font-medium',
+                  weight > 1.1 ? 'text-emerald-400' : weight < 0.9 ? 'text-red-400' : 'text-white'
+                ]"
+              >
+                {{ weight.toFixed(2) }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Health (Phase 2.3) -->
+        <div class="glass-panel rounded-xl p-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <span class="material-symbols-outlined mr-2 text-emerald-400">shield</span>
+              <span class="text-white text-sm">System Health</span>
+            </div>
+            <span
+              :class="[
+                'px-2 py-0.5 rounded text-xs font-medium',
+                systemHealth.level === 'full' ? 'bg-emerald-500/20 text-emerald-400' :
+                systemHealth.level === 'reduced' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'
+              ]"
+            >
+              {{ systemHealth.level?.toUpperCase() }}
+            </span>
+          </div>
+        </div>
       </div>
 
       <!-- Right Column: Charts & Agents -->
@@ -966,6 +1090,34 @@ const performanceData = ref({
   tradesAnalyzed: 0
 });
 
+// Phase 0-3: HITL, MTF, Agent Weights, Degradation
+const tradingMode = ref({
+  mode: 'semi_auto',
+  description: ''
+});
+
+const mtfAnalysis = ref({
+  overall_direction: 'neutral',
+  alignment_score: 0,
+  confidence_modifier: 1.0,
+  recommendation: ''
+});
+
+const learnedWeights = ref({
+  TechnicalAnalyst: 1.0,
+  FundamentalAnalyst: 1.0,
+  SentimentAnalyst: 1.0,
+  RiskManager: 1.0,
+  OnchainAnalyst: 1.0
+});
+
+const systemHealth = ref({
+  level: 'full',
+  capabilities: {}
+});
+
+const changingMode = ref(false);
+
 
 // WebSocket
 let ws = null;
@@ -1208,6 +1360,79 @@ async function fetchPerformance() {
     };
   } catch (e) {
     console.error('Error fetching performance metrics:', e);
+  }
+}
+
+// Phase 0-3: Fetch HITL Mode
+async function fetchTradingMode() {
+  try {
+    const response = await fetch('/api/trading/mode');
+    const data = await response.json();
+    if (data.mode) {
+      tradingMode.value = data;
+    }
+  } catch (e) {
+    console.error('Error fetching trading mode:', e);
+  }
+}
+
+// Phase 3.1: Fetch MTF Analysis
+async function fetchMtfAnalysis() {
+  try {
+    const response = await fetch('/api/trading/mtf-analysis');
+    const data = await response.json();
+    if (data.overall_direction) {
+      mtfAnalysis.value = data;
+    }
+  } catch (e) {
+    console.error('Error fetching MTF analysis:', e);
+  }
+}
+
+// Phase 3.2: Fetch Agent Weights
+async function fetchAgentWeights() {
+  try {
+    const response = await fetch('/api/trading/agent-weights');
+    const data = await response.json();
+    if (data.weights) {
+      learnedWeights.value = data.weights;
+    }
+  } catch (e) {
+    console.error('Error fetching agent weights:', e);
+  }
+}
+
+// Phase 2.3: Fetch Degradation Status
+async function fetchDegradation() {
+  try {
+    const response = await fetch('/api/trading/degradation');
+    const data = await response.json();
+    if (data.level) {
+      systemHealth.value = data;
+    }
+  } catch (e) {
+    console.error('Error fetching degradation:', e);
+  }
+}
+
+// Set Trading Mode (HITL)
+async function setTradingMode(mode) {
+  changingMode.value = true;
+  try {
+    const response = await fetch('/api/trading/mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode })
+    });
+    const data = await response.json();
+    if (data.success) {
+      tradingMode.value = { mode: data.new_mode, description: '' };
+      await fetchTradingMode();
+    }
+  } catch (e) {
+    console.error('Error setting trading mode:', e);
+  } finally {
+    changingMode.value = false;
   }
 }
 
@@ -1907,7 +2132,11 @@ async function refreshAllData() {
     fetchAccount(),
     fetchPosition(),
     fetchTradeHistory(),
-    fetchPerformance()  // Refresh performance metrics
+    fetchPerformance(),
+    fetchTradingMode(),
+    fetchMtfAnalysis(),
+    fetchAgentWeights(),
+    fetchDegradation()
   ]);
 }
 
@@ -1924,7 +2153,11 @@ onMounted(async () => {
     fetchAgentPerformance(),
     fetchDiscussionMessages(),  // Restore discussion messages on page load
     fetchDrawdown(),  // Fetch drawdown data
-    fetchPerformance()  // Fetch performance metrics from backend
+    fetchPerformance(),  // Fetch performance metrics from backend
+    fetchTradingMode(),  // Phase 1.3: HITL Mode
+    fetchMtfAnalysis(),  // Phase 3.1: MTF Analysis
+    fetchAgentWeights(),  // Phase 3.2: Agent Weights
+    fetchDegradation()  // Phase 2.3: Degradation Status
   ]);
 
 
