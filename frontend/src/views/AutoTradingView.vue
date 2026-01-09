@@ -467,7 +467,7 @@
             </span>
           </h3>
 
-          <div class="flex-1 overflow-y-auto space-y-4 pr-2 min-h-[200px]" ref="discussionContainer">
+          <div class="flex-1 overflow-y-auto space-y-4 pr-2 min-h-[200px] max-h-[600px]" ref="discussionContainer">
             <div
               v-for="(msg, idx) in discussionMessages"
               :key="idx"

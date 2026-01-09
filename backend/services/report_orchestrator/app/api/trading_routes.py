@@ -321,10 +321,65 @@ class TradingSystem:
                     })
                     logger.info(f"[SIGNAL_DEBUG] History now has {len(self._trade_history)} entries")
                 else:
+                    # 🆕 Phase 1.3: HITL - Check trading mode before execution
+                    from app.core.trading.mode_manager import get_mode_manager, TradingMode
+                    mode_manager = get_mode_manager()
+                    current_mode = await mode_manager.get_mode()
+                    
+                    if current_mode == TradingMode.MANUAL:
+                        # MANUAL mode: Only analyze, no execution
+                        logger.info(f"[HITL] MANUAL mode - Signal recorded but NOT executed: {signal.direction}")
+                        self._trade_history.append({
+                            "timestamp": datetime.now().isoformat(),
+                            "signal": signal.model_dump(),
+                            "status": "manual_mode",
+                            "trade_result": {"action": "manual_hold", "message": "手动模式：信号已记录，需手动操作"}
+                        })
+                        await self._broadcast({
+                            "type": "signal_generated",
+                            "signal": signal.model_dump(),
+                            "mode": "manual",
+                            "message": "手动模式：请根据信号自行决定是否交易"
+                        })
+                        return  # Don't execute
+                    
+                    elif current_mode == TradingMode.SEMI_AUTO:
+                        # SEMI_AUTO mode: Create pending trade for user confirmation
+                        logger.info(f"[HITL] SEMI_AUTO mode - Creating pending trade for confirmation: {signal.direction}")
+                        pending_trade = await mode_manager.add_pending_trade(
+                            direction=signal.direction,
+                            leverage=signal.leverage,
+                            entry_price=signal.entry_price,
+                            take_profit=signal.take_profit_price,
+                            stop_loss=signal.stop_loss_price,
+                            confidence=signal.confidence,
+                            reasoning=signal.reasoning,
+                            amount_percent=signal.amount_percent
+                        )
+                        
+                        self._trade_history.append({
+                            "timestamp": datetime.now().isoformat(),
+                            "signal": signal.model_dump(),
+                            "status": "pending_confirmation",
+                            "trade_id": pending_trade.trade_id,
+                            "trade_result": {"action": "pending", "message": "半自动模式：等待用户确认"}
+                        })
+                        
+                        await self._broadcast({
+                            "type": "pending_trade_created",
+                            "signal": signal.model_dump(),
+                            "trade_id": pending_trade.trade_id,
+                            "mode": "semi_auto",
+                            "message": "半自动模式：请确认或拒绝此交易"
+                        })
+                        logger.info(f"[HITL] Pending trade created: {pending_trade.trade_id}")
+                        return  # Don't auto-execute
+                    
+                    # FULL_AUTO mode: Execute automatically (original behavior)
                     # 🔧 FIX: LangGraph execution_node only PREPARES the signal, 
                     # it does NOT actually execute trades via the trader.
                     # We MUST call _execute_signal to actually open the position.
-                    logger.info(f"[SIGNAL_DEBUG] Executing {signal.direction} signal via _execute_signal")
+                    logger.info(f"[SIGNAL_DEBUG] FULL_AUTO mode - Executing {signal.direction} signal via _execute_signal")
                     
                     # Check if position already exists to prevent duplicates
                     current_position = await self.paper_trader.get_position() if self.paper_trader else None
