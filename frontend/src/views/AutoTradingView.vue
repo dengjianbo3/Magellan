@@ -262,7 +262,6 @@
             </button>
           </div>
         </div>
-
         <!-- Trading Mode (HITL Phase 1.3) -->
         <div class="glass-panel rounded-xl p-6">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
@@ -312,6 +311,60 @@
                 Full Auto
               </button>
             </div>
+
+            <!-- Mode Description -->
+            <div class="text-xs text-text-secondary pt-2 border-t border-white/10">
+              <template v-if="tradingMode.mode === 'manual'">
+                <span class="text-red-400">✋ Manual:</span> 仅分析，不自动交易。系统监控市场并生成信号，您需手动操作。
+              </template>
+              <template v-else-if="tradingMode.mode === 'semi_auto'">
+                <span class="text-yellow-400">👤 Semi-Auto:</span> AI 生成交易建议，需要您确认后才会执行。
+              </template>
+              <template v-else>
+                <span class="text-emerald-400">🤖 Full Auto:</span> AI 全自动决策和执行，无需人工干预。
+              </template>
+            </div>
+
+            <!-- Pending Trades (Semi-Auto Mode) -->
+            <template v-if="tradingMode.mode === 'semi_auto'">
+              <div class="mt-3 pt-3 border-t border-white/10">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm text-white font-medium">待确认交易</span>
+                  <span v-if="pendingTrades.length > 0" class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-xs">
+                    {{ pendingTrades.length }} 条待处理
+                  </span>
+                </div>
+                
+                <template v-if="pendingTrades.length > 0">
+                  <div 
+                    v-for="trade in pendingTrades" 
+                    :key="trade.trade_id"
+                    class="bg-white/5 rounded-lg p-3 mb-2 cursor-pointer hover:bg-white/10 transition-all"
+                    @click="openPendingTradeModal(trade)"
+                  >
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2">
+                        <span :class="trade.direction === 'long' ? 'text-emerald-400' : 'text-red-400'" class="font-bold">
+                          {{ trade.direction === 'long' ? '▲ LONG' : '▼ SHORT' }}
+                        </span>
+                        <span class="text-white text-sm">{{ trade.leverage }}x</span>
+                      </div>
+                      <span class="text-text-secondary text-xs">{{ trade.confidence }}% 置信度</span>
+                    </div>
+                    <div class="text-xs text-text-secondary mt-1">
+                      入场: ${{ formatNumber(trade.entry_price) }} | TP: ${{ formatNumber(trade.take_profit) }} | SL: ${{ formatNumber(trade.stop_loss) }}
+                    </div>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="text-center py-4 text-text-secondary text-sm">
+                    <span class="material-symbols-outlined text-2xl opacity-50">hourglass_empty</span>
+                    <p class="mt-1">暂无待确认交易</p>
+                    <p class="text-xs opacity-70">等待 AI 分析生成新信号...</p>
+                  </div>
+                </template>
+              </div>
+            </template>
           </div>
         </div>
 
@@ -1040,6 +1093,9 @@ const settingsForm = ref({
 });
 const loadingConfig = ref(false);
 
+// Pending Trades (HITL Semi-Auto Mode)
+const pendingTrades = ref([]);
+
 // Decision Confirmation Modal State
 const showDecisionModal = ref(false);
 const pendingDecision = ref({
@@ -1428,12 +1484,45 @@ async function setTradingMode(mode) {
     if (data.success) {
       tradingMode.value = { mode: data.new_mode, description: '' };
       await fetchTradingMode();
+      // Fetch pending trades if switching to semi_auto
+      if (mode === 'semi_auto') {
+        await fetchPendingTrades();
+      }
     }
   } catch (e) {
     console.error('Error setting trading mode:', e);
   } finally {
     changingMode.value = false;
   }
+}
+
+// Fetch Pending Trades (HITL Semi-Auto)
+async function fetchPendingTrades() {
+  try {
+    const response = await fetch('/api/trading/pending');
+    const data = await response.json();
+    if (data.trades) {
+      pendingTrades.value = data.trades;
+    }
+  } catch (e) {
+    console.error('Error fetching pending trades:', e);
+  }
+}
+
+// Open Pending Trade Modal for confirmation
+function openPendingTradeModal(trade) {
+  pendingDecision.value = {
+    decision_id: trade.trade_id,
+    direction: trade.direction,
+    leverage: trade.leverage,
+    confidence: trade.confidence,
+    take_profit: trade.take_profit,
+    stop_loss: trade.stop_loss,
+    current_price: trade.entry_price,
+    reasoning: trade.reasoning || ''
+  };
+  modifiedLeverage.value = trade.leverage;
+  showDecisionModal.value = true;
 }
 
 // Fetch BTC benchmark data for alpha calculation
@@ -2138,6 +2227,10 @@ async function refreshAllData() {
     fetchAgentWeights(),
     fetchDegradation()
   ]);
+  // Fetch pending trades only in semi_auto mode
+  if (tradingMode.value.mode === 'semi_auto') {
+    await fetchPendingTrades();
+  }
 }
 
 
