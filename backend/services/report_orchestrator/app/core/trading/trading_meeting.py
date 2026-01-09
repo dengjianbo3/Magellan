@@ -2566,6 +2566,31 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             
             if toolkit and toolkit.paper_trader:
                 try:
+                    # 🆕 Phase 1.3: HITL - Check trading mode before actual execution
+                    from app.core.trading.mode_manager import get_mode_manager, TradingMode
+                    mode_manager = get_mode_manager()
+                    current_mode = await mode_manager.get_mode()
+                    
+                    if current_mode in (TradingMode.SEMI_AUTO, TradingMode.MANUAL):
+                        # In SEMI_AUTO or MANUAL mode, don't execute trade directly
+                        # Return signal info for later processing by _on_analysis_cycle
+                        logger.info(f"[open_long_tool] HITL Mode {current_mode.value} - Skipping direct execution")
+                        return json.dumps({
+                            "success": True,
+                            "action": "signal_only",
+                            "direction": "long",
+                            "leverage": leverage,
+                            "amount_percent": amount_percent,
+                            "confidence": confidence,
+                            "take_profit": take_profit,
+                            "stop_loss": stop_loss,
+                            "current_price": current_price,
+                            "reasoning": reasoning,
+                            "mode": current_mode.value,
+                            "message": f"HITL {current_mode.value} mode: Signal recorded, trade not executed"
+                        })
+                    
+                    # FULL_AUTO mode: proceed with execution
                     # 📊 Step 1: Collect complete status info
                     position = await toolkit.paper_trader.get_position()
                     account = await toolkit.paper_trader.get_account()
@@ -2865,6 +2890,31 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             
             if toolkit and toolkit.paper_trader:
                 try:
+                    # 🆕 Phase 1.3: HITL - Check trading mode before actual execution
+                    from app.core.trading.mode_manager import get_mode_manager, TradingMode
+                    mode_manager = get_mode_manager()
+                    current_mode = await mode_manager.get_mode()
+                    
+                    if current_mode in (TradingMode.SEMI_AUTO, TradingMode.MANUAL):
+                        # In SEMI_AUTO or MANUAL mode, don't execute trade directly
+                        # Return signal info for later processing by _on_analysis_cycle
+                        logger.info(f"[open_short_tool] HITL Mode {current_mode.value} - Skipping direct execution")
+                        return json.dumps({
+                            "success": True,
+                            "action": "signal_only",
+                            "direction": "short",
+                            "leverage": leverage,
+                            "amount_percent": amount_percent,
+                            "confidence": confidence,
+                            "take_profit": take_profit,
+                            "stop_loss": stop_loss,
+                            "current_price": current_price,
+                            "reasoning": reasoning,
+                            "mode": current_mode.value,
+                            "message": f"HITL {current_mode.value} mode: Signal recorded, trade not executed"
+                        })
+                    
+                    # FULL_AUTO mode: proceed with execution
                     # 📊 Step 1: Collect complete status info
                     position = await toolkit.paper_trader.get_position()
                     account = await toolkit.paper_trader.get_account()
