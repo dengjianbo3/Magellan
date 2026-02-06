@@ -174,7 +174,21 @@ class Agent:
         Returns:
             System prompt string
         """
-        base_prompt = f"""You are {self.name}, a member of an investment analysis expert team.
+        # CRITICAL: Inject current timestamp to prevent searching outdated information
+        from datetime import datetime
+        current_time = datetime.now()
+        time_context = f"""## ⏰ CURRENT TIME (IMPORTANT!)
+**Current Date/Time**: {current_time.strftime('%Y-%m-%d %H:%M:%S')} (UTC+8, Beijing Time)
+**Current Date**: {current_time.strftime('%B %d, %Y')}
+
+> ⚠️ **TIME-AWARE ANALYSIS REQUIRED**: When searching for information or analyzing data, 
+> you MUST focus on the MOST RECENT information available. Always specify time ranges 
+> in your searches (e.g., "last 24 hours", "today", "this week").
+> Do NOT rely on outdated information. Current market conditions change rapidly.
+
+"""
+        
+        base_prompt = f"""{time_context}You are {self.name}, a member of an investment analysis expert team.
 
 {self.role_prompt}
 
@@ -210,11 +224,20 @@ You have access to the tools listed above. When you need information, simply ind
 - **Be specific** about what you're looking for (e.g., "I need to search for Bitcoin's current market sentiment")
 - The system will automatically invoke the appropriate tool based on your request
 
-### Time-Sensitive Search Guidelines (Important!):
-For questions requiring latest information, specify the time range needed:
+### Time-Sensitive Search Guidelines (CRITICAL!):
+⚠️ **ALWAYS specify time ranges** when searching for recent information:
 - "Search for Bitcoin news from the last 24 hours"
 - "Find market analysis from this week"  
-- "Look up recent earnings reports from the past month"
+- "Look up today's trading data"
+- "Get the most recent earnings reports"
+
+**BAD examples (avoid these)**:
+- ❌ "Search for Bitcoin news" (no time range - may get outdated results)
+- ❌ "Find market analysis" (too vague)
+
+**GOOD examples (use these)**:
+- ✅ "Search for Bitcoin news from the past 24 hours"
+- ✅ "Find market analysis published today or yesterday"
 
 After tool execution, you will receive results to continue the discussion.
 """
@@ -230,6 +253,7 @@ After tool execution, you will receive results to continue the discussion.
 - If you need data to support your views, proactively use available tools
 - If uncertain, honestly express it and seek more information
 - Remember this is a collaborative discussion, the goal is to reach the best investment decision
+- **ALWAYS verify information is current and recent before using it**
 """
         return base_prompt
 

@@ -37,9 +37,11 @@ pnpm-debug.log*
 # Adding it here is good practice for local development.
 uploads/
 
-# Test files
+# Test files (ignore stray test files, but allow in tests/ directories)
 test_*.py
 test_*.html
+!**/tests/test_*.py
+!**/tests/**/test_*.py
 *.bak
 
 # ChromaDB data
@@ -51,3 +53,18 @@ playwright-report/
 
 # Debug files
 DEBUG_*.md
+
+# Temporary runtime files
+logs.txt
+startup_logs.txt
+post_reload_logs.txt
+analysis_debug.log
+analysis_round.log
+full_debug.log
+last_trade.json
+recent_messages.json
+
+# Coverage reports
+htmlcov/
+.coverage
+coverage.xml

@@ -10,7 +10,7 @@ services:
     image: redis:7-alpine
     container_name: trading-redis
     command: >
-      redis-server --maxmemory ${REDIS_MAX_MEMORY:-256mb} --maxmemory-policy allkeys-lru --appendonly no --save ""
+      redis-server  --maxmemory ${REDIS_MAX_MEMORY:-256mb}  --maxmemory-policy allkeys-lru  --appendonly yes  --appendfsync everysec
     ports:
       - "6381:6379" # Avoid conflict with main Redis on 6380
     volumes:
@@ -122,6 +122,8 @@ services:
       # Tavily (网络搜索)
       - TAVILY_API_KEY=${TAVILY_API_KEY}
       - SERPER_API_KEY=${SERPER_API_KEY:-}
+      # Gemini Embedding (for semantic search matching)
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       # OKX 交易所
       - OKX_API_KEY=${OKX_API_KEY}
       - OKX_SECRET_KEY=${OKX_SECRET_KEY}
@@ -176,7 +178,6 @@ services:
         condition: service_healthy
     volumes:
       - ./logs:/app/logs
-      - ./config.yaml:/app/config.yaml:ro
       # Agent 和 Workflow 配置文件 (从主项目挂载到代码所在目录)
       - ../backend/services/report_orchestrator/config/agents.yaml:/usr/src/app/config/agents.yaml:ro
       - ../backend/services/report_orchestrator/config/workflows.yaml:/usr/src/app/config/workflows.yaml:ro

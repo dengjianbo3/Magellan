@@ -21,7 +21,9 @@ from app.core.trading.trading_tools import TradingToolkit
 from app.core.trading.trading_agents import create_trading_agents, get_trading_agent_config
 from app.core.trading.trading_meeting import TradingMeeting, TradingMeetingConfig
 from app.core.trading.agent_memory import get_memory_store
+from app.core.trading.decision_store import get_decision_store  # Redis persistence for signals
 from app.core.trading.scheduler import TradingScheduler, CooldownManager
+from app.core.trading.trigger import TriggerScheduler, TriggerAgent
 from app.models.trading_models import TradingConfig, TradingSignal
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,7 @@ class TradingSystem:
 
         self.toolkit: Optional[TradingToolkit] = None
         self.scheduler: Optional[TradingScheduler] = None
+        self.trigger_scheduler: Optional[TriggerScheduler] = None  # Event-driven trigger
         self.cooldown_manager = CooldownManager()
 
         self._ws_clients: Dict[str, WebSocket] = {}
@@ -114,6 +117,16 @@ class TradingSystem:
             on_state_change=self._on_scheduler_state_change
         )
 
+        # Initialize event-driven trigger scheduler
+        # Runs every 15 minutes, uses LLM to decide if immediate analysis needed
+        self.trigger_scheduler = TriggerScheduler(
+            trigger_agent=TriggerAgent(paper_trader=self.paper_trader),
+            on_trigger=self._on_trigger_event,
+            interval_minutes=15,
+            cooldown_minutes=30
+        )
+        logger.info("✅ TriggerScheduler initialized (15min interval, LLM-driven, position-aware)")
+
         self._initialized = True
         logger.info(f"Trading system initialized with {self.trader_type} trader")
 
@@ -145,6 +158,11 @@ class TradingSystem:
         
         await self.scheduler.start()
 
+        # Start event-driven trigger scheduler
+        if self.trigger_scheduler:
+            await self.trigger_scheduler.start()
+            logger.info("🎯 Trigger scheduler started (event-driven analysis)")
+
         # Start position monitoring task
         self._monitor_task = asyncio.create_task(self._monitor_loop())
         logger.info("📊 Monitor task created")
@@ -162,6 +180,11 @@ class TradingSystem:
 
         if self.scheduler:
             await self.scheduler.stop()
+
+        # Stop trigger scheduler
+        if self.trigger_scheduler:
+            await self.trigger_scheduler.stop()
+            logger.info("🛑 Trigger scheduler stopped")
 
         if self._monitor_task:
             self._monitor_task.cancel()
@@ -206,6 +229,39 @@ class TradingSystem:
             except Exception as e:
                 logger.error(f"Error in monitor loop: {e}")
                 await asyncio.sleep(30)
+
+    async def _on_trigger_event(self, context):
+        """
+        Handle LLM-driven trigger event.
+        
+        Called by TriggerScheduler when significant market events are detected.
+        Triggers an immediate analysis cycle via the main scheduler.
+        """
+        logger.info(f"🎯 Trigger event received! Urgency: {context.urgency}, Confidence: {context.confidence}%")
+        logger.info(f"   Reason: {context.reasoning}")
+        logger.info(f"   Key events: {context.key_events}")
+        
+        # Broadcast trigger event to WebSocket clients
+        await self._broadcast({
+            "type": "trigger_event",
+            "urgency": context.urgency,
+            "confidence": context.confidence,
+            "reasoning": context.reasoning,
+            "key_events": context.key_events,
+            "current_price": context.current_price,
+            "news_count": context.news_count,
+            "timestamp": context.trigger_time
+        })
+        
+        # Trigger immediate analysis via main scheduler
+        if self.scheduler:
+            reason = f"trigger_event: {context.urgency} urgency, {context.confidence}% confidence"
+            triggered = await self.scheduler.trigger_now(reason=reason)
+            if triggered:
+                logger.info("✅ Immediate analysis triggered successfully")
+            else:
+                logger.warning("⚠️ Could not trigger immediate analysis (scheduler busy or cooldown)")
+
 
     async def _on_analysis_cycle(self, cycle_number: int, reason: str, timestamp: datetime):
         """Handle analysis cycle"""
@@ -265,50 +321,102 @@ class TradingSystem:
                     })
                     logger.info(f"[SIGNAL_DEBUG] History now has {len(self._trade_history)} entries")
                 else:
-                    # 🆕 交易已在TradingMeeting.TradeExecutor中执行
-                    # 这里只记录结果，不再重复执行
-                    logger.info(f"[SIGNAL_DEBUG] Recording {signal.direction} signal to history")
+                    # 🆕 Phase 1.3: HITL - Check trading mode before execution
+                    from app.core.trading.mode_manager import get_mode_manager, TradingMode
+                    mode_manager = get_mode_manager()
+                    current_mode = await mode_manager.get_mode()
                     
-                    # 🔧 FIX Issue #1: 更可靠的检测 - TradeExecutor执行成功后会设置entry_price
-                    # 如果signal.entry_price已设置，说明交易已执行
-                    trade_already_executed = signal.entry_price is not None and signal.entry_price > 0
+                    if current_mode == TradingMode.MANUAL:
+                        # MANUAL mode: Only analyze, no execution
+                        logger.info(f"[HITL] MANUAL mode - Signal recorded but NOT executed: {signal.direction}")
+                        self._trade_history.append({
+                            "timestamp": datetime.now().isoformat(),
+                            "signal": signal.model_dump(),
+                            "status": "manual_mode",
+                            "trade_result": {"action": "manual_hold", "message": "手动模式：信号已记录，需手动操作"}
+                        })
+                        await self._broadcast({
+                            "type": "signal_generated",
+                            "signal": signal.model_dump(),
+                            "mode": "manual",
+                            "message": "手动模式：请根据信号自行决定是否交易"
+                        })
+                        return  # Don't execute
                     
-                    if trade_already_executed:
-                        # TradeExecutor已成功执行，直接使用signal中的信息
-                        logger.info(f"[SIGNAL_DEBUG] Trade already executed by TradeExecutor (entry_price=${signal.entry_price:.2f}), skipping _execute_signal")
-                        trade_result = {
-                            "success": True,
-                            "action": signal.direction,
-                            "message": "交易已由TradeExecutor执行",
-                            "entry_price": signal.entry_price,
-                            "leverage": signal.leverage,
-                            "tp_price": signal.take_profit_price,
-                            "sl_price": signal.stop_loss_price
-                        }
-                    else:
-                        # TradeExecutor可能执行失败，检查当前持仓状态作为备用
-                        current_position = await self.paper_trader.get_position() if self.paper_trader else None
-                        has_any_position = current_position and current_position.get("has_position")
+                    elif current_mode == TradingMode.SEMI_AUTO:
+                        # SEMI_AUTO mode: Create pending trade for user confirmation
+                        logger.info(f"[HITL] SEMI_AUTO mode - Creating pending trade for confirmation: {signal.direction}")
+                        pending_trade = await mode_manager.add_pending_trade(
+                            direction=signal.direction,
+                            leverage=signal.leverage,
+                            entry_price=signal.entry_price,
+                            take_profit=signal.take_profit_price,
+                            stop_loss=signal.stop_loss_price,
+                            confidence=signal.confidence,
+                            reasoning=signal.reasoning,
+                            amount_percent=signal.amount_percent
+                        )
                         
-                        if has_any_position:
-                            # 有持仓存在，不要尝试再次执行以避免冲突
-                            existing_dir = current_position.get("direction")
-                            logger.info(f"[SIGNAL_DEBUG] Position exists ({existing_dir}), not calling _execute_signal to avoid conflict")
-                            trade_result = {
-                                "success": False,
-                                "action": signal.direction,
-                                "message": f"跳过执行: 已存在{existing_dir}持仓",
-                                "existing_position": existing_dir
-                            }
-                        else:
-                            # 没有持仓，作为备用方案尝试执行
-                            logger.info(f"[SIGNAL_DEBUG] No position found and TradeExecutor didn't execute, attempting _execute_signal as fallback")
-                            trade_result = await self._execute_signal(signal)
+                        self._trade_history.append({
+                            "timestamp": datetime.now().isoformat(),
+                            "signal": signal.model_dump(),
+                            "status": "pending_confirmation",
+                            "trade_id": pending_trade.trade_id,
+                            "trade_result": {"action": "pending", "message": "半自动模式：等待用户确认"}
+                        })
+                        
+                        await self._broadcast({
+                            "type": "pending_trade_created",
+                            "signal": signal.model_dump(),
+                            "trade_id": pending_trade.trade_id,
+                            "mode": "semi_auto",
+                            "message": "半自动模式：请确认或拒绝此交易"
+                        })
+                        logger.info(f"[HITL] Pending trade created: {pending_trade.trade_id}")
+                        return  # Don't auto-execute
+                    
+                    # FULL_AUTO mode: Execute automatically (original behavior)
+                    # 🔧 FIX: LangGraph execution_node only PREPARES the signal, 
+                    # it does NOT actually execute trades via the trader.
+                    # We MUST call _execute_signal to actually open the position.
+                    logger.info(f"[SIGNAL_DEBUG] FULL_AUTO mode - Executing {signal.direction} signal via _execute_signal")
+                    
+                    # Check if position already exists to prevent duplicates
+                    current_position = await self.paper_trader.get_position() if self.paper_trader else None
+                    has_existing_position = current_position and current_position.get("has_position")
+                    existing_direction = current_position.get("direction") if has_existing_position else None
+                    
+                    # 🔧 FIX: Do not skip execution if position exists.
+                    # Allow "adding to position" if the strategy dictates.
+                    # The underlying trader (Paper/OKX) will handle checks/merging.
+                    
+                    # Execute the trade
+                    trade_result = await self._execute_signal(signal)
+                    logger.info(f"[SIGNAL_DEBUG] Trade execution result: {trade_result}")
+                    
+                    # Determine actual execution status
+                    # Check if trade was really executed (not just tool ran successfully)
+                    action = trade_result.get("action", "")
+                    trade_success = trade_result.get("success", False)
+                    order_id = trade_result.get("order_id")  # OKX order ID = definitive success
+                    
+                    # If we have an order_id from OKX, the trade definitely succeeded
+                    if order_id and trade_success:
+                        trade_actually_executed = True
+                        # Fix reasoning if it has wrong tag from ExecutorAgent
+                        if signal and "[insufficient_margin]" in signal.reasoning:
+                            # Remove the incorrect tag since trade actually succeeded
+                            signal.reasoning = signal.reasoning.replace("[insufficient_margin]", "[new_long]")
+                            logger.info(f"[SIGNAL_DEBUG] Fixed reasoning tag: replaced [insufficient_margin] with [new_long]")
+                    else:
+                        # Failed actions: insufficient_margin, close_short_failed, etc.
+                        failed_actions = ["insufficient_margin", "close_short_failed", "close_long_failed", "failed"]
+                        trade_actually_executed = trade_success and action not in failed_actions
                     
                     self._trade_history.append({
                         "timestamp": datetime.now().isoformat(),
                         "signal": signal.model_dump(),
-                        "status": "executed" if trade_result.get("success") else "failed",
+                        "status": "executed" if trade_actually_executed else "failed",
                         "trade_result": trade_result
                     })
                     logger.info(f"[SIGNAL_DEBUG] History now has {len(self._trade_history)} entries")
@@ -317,7 +425,7 @@ class TradingSystem:
                     await self._broadcast({
                         "type": "trade_executed",
                         "signal": signal.model_dump(),
-                        "success": trade_result.get("success", False),
+                        "success": trade_actually_executed,
                         "trade_result": trade_result
                     })
             else:
@@ -475,15 +583,36 @@ class TradingSystem:
 
     def _on_scheduler_state_change(self, old_state, new_state):
         """Handle scheduler state change"""
+        # Broadcast state change
         asyncio.create_task(self._broadcast({
             "type": "scheduler_state",
             "old_state": old_state.value,
             "new_state": new_state.value
         }))
 
-    async def _on_position_closed(self, position, pnl: float):
+        # Sync TriggerLock state with main scheduler
+        async def _sync_lock():
+            if self.trigger_scheduler and self.trigger_scheduler.trigger_lock:
+                lock = self.trigger_scheduler.trigger_lock
+                
+                # Check enum values directly
+                if new_state.value == "analyzing":
+                     # Main analysis started -> Acquire lock
+                    await lock.acquire()
+                    logger.info("🔒 TriggerLock acquired (Main Analysis Started)")
+                
+                elif (old_state.value == "analyzing") and (new_state.value != "analyzing"):
+                    # Main analysis finished -> Release lock (enter cooldown)
+                    # Only release if we effectively hold the lock
+                    if lock.state == "analyzing":
+                        lock.release()
+                        logger.info("🔓 TriggerLock released (Main Analysis Finished) -> Cooldown started")
+        
+        asyncio.create_task(_sync_lock())
+
+    async def _on_position_closed(self, position, pnl: float, reason: str = None):
         """Handle position closed"""
-        logger.info(f"Position closed with PnL: {pnl}")
+        logger.info(f"Position closed with PnL: {pnl}" + (f", reason: {reason[:100]}..." if reason else ""))
 
         # Record result
         result = self.cooldown_manager.record_trade_result(pnl)
@@ -530,24 +659,24 @@ class TradingSystem:
         """
         logger.info(f"Starting reflection meeting for trade with PnL: {pnl}")
 
-        outcome_type = "止盈" if pnl > 0 else "止损"
+        outcome_type = "Take Profit" if pnl > 0 else "Stop Loss"
         lessons = {}
 
         # Build reflection context
-        reflection_context = f"""## 交易反思会议
+        reflection_context = f"""## Trade Reflection Meeting
 
-### 交易结果
-- **结果**: {outcome_type}
-- **方向**: {position.direction}
-- **入场价**: {position.entry_price:.2f}
-- **出场价**: {position.current_price:.2f}
-- **盈亏**: ${pnl:.2f}
-- **杠杆**: {position.leverage}x
+### Trade Result
+- **Outcome**: {outcome_type}
+- **Direction**: {position.direction}
+- **Entry Price**: {position.entry_price:.2f}
+- **Exit Price**: {position.current_price:.2f}
+- **PnL**: ${pnl:.2f}
+- **Leverage**: {position.leverage}x
 
-### 请回答以下问题（50字以内）:
-1. 你当时的判断依据是什么？
-2. 判断{'正确' if pnl > 0 else '错误'}的原因是什么？
-3. 从这笔交易中学到什么？
+### Please answer the following questions (within 50 words):
+1. What was the basis for your judgment?
+2. Why was your judgment {'correct' if pnl > 0 else 'incorrect'}?
+3. What did you learn from this trade?
 """
 
         # Create agents with toolkit
@@ -560,7 +689,7 @@ class TradingSystem:
         })
 
         # Have each agent reflect
-        for agent in agents.values():
+        for agent in agents:  # agents is a List, not Dict
             try:
                 messages = [
                     {"role": "system", "content": agent.system_prompt or agent.role_prompt},
@@ -583,7 +712,7 @@ class TradingSystem:
                     content = str(response)
 
                 # Extract a concise lesson (first 200 chars)
-                lesson = content[:200] if content else f"需要进一步分析{outcome_type}原因"
+                lesson = content[:200] if content else f"Further analysis needed for {outcome_type} reason"
                 lessons[agent.id] = lesson
 
                 # Broadcast reflection
@@ -599,7 +728,7 @@ class TradingSystem:
 
             except Exception as e:
                 logger.error(f"Error in reflection for {agent.name}: {e}")
-                lessons[agent.id] = f"反思过程出错: {str(e)[:50]}"
+                lessons[agent.id] = f"Reflection failed: {str(e)[:50]}"
 
         await self._broadcast({
             "type": "reflection_completed",
@@ -707,7 +836,8 @@ class TradingSystem:
 
         for client_id, ws in self._ws_clients.items():
             try:
-                await ws.send_text(json.dumps(message))
+                # Use default=str to handle datetime objects
+                await ws.send_text(json.dumps(message, default=str))
             except Exception as e:
                 logger.error(f"[BROADCAST] Failed to send to {client_id}: {e}")
                 dead_clients.append(client_id)
@@ -726,7 +856,7 @@ class TradingSystem:
             del self._ws_clients[client_id]
             logger.info(f"WebSocket client unregistered: {client_id}")
 
-    def get_status(self) -> Dict[str, Any]:
+    async def get_status(self) -> Dict[str, Any]:
         """Get system status"""
         # Determine actual running state based on scheduler state
         # enabled should reflect if the system is actually running, not just configured
@@ -736,7 +866,7 @@ class TradingSystem:
             # Consider running if scheduler is in RUNNING, ANALYZING, or EXECUTING state
             is_running = scheduler_state in ["running", "analyzing", "executing"]
 
-        trader_status = self.paper_trader.get_status() if self.paper_trader else None
+        trader_status = await self.paper_trader.get_status() if self.paper_trader else None
 
         return {
             "initialized": self._initialized,
@@ -768,7 +898,94 @@ async def get_trading_system(llm_service=None) -> TradingSystem:
 async def get_status():
     """Get trading system status"""
     system = await get_trading_system()
-    return system.get_status()
+    return await system.get_status()
+
+
+@router.get("/funding")
+async def get_funding_rate():
+    """Get current funding rate and cost analysis"""
+    try:
+        from app.core.trading.funding import (
+            get_funding_data_service,
+            get_funding_calculator,
+            get_funding_config
+        )
+        
+        # Get funding rate data
+        data_service = await get_funding_data_service()
+        funding_rate = await data_service.get_current_rate("BTC-USDT-SWAP")
+        
+        if not funding_rate:
+            return {
+                "available": False,
+                "error": "Unable to fetch funding rate from OKX"
+            }
+        
+        # Get config
+        config = get_funding_config()
+        calculator = get_funding_calculator()
+        
+        # Calculate cost estimates for standard position
+        # Assume $1000 position with 3x leverage
+        position_value = 1000
+        margin = position_value / 3
+        leverage = 3
+        
+        estimate_8h = calculator.estimate_holding_cost(
+            position_value=position_value,
+            margin=margin,
+            leverage=leverage,
+            holding_hours=8,
+            current_rate=funding_rate.rate,
+            direction="long"
+        )
+        
+        estimate_24h = calculator.estimate_holding_cost(
+            position_value=position_value,
+            margin=margin,
+            leverage=leverage,
+            holding_hours=24,
+            current_rate=funding_rate.rate,
+            direction="long"
+        )
+        
+        return {
+            "available": True,
+            "symbol": funding_rate.symbol,
+            "rate": funding_rate.rate,
+            "rate_percent": round(funding_rate.rate_percent, 4),
+            "avg_24h": round(funding_rate.avg_24h * 100, 4) if funding_rate.avg_24h else None,
+            "avg_7d": round(funding_rate.avg_7d * 100, 4) if funding_rate.avg_7d else None,
+            "trend": funding_rate.trend.value if funding_rate.trend else "stable",
+            "is_extreme": funding_rate.is_extreme,
+            "minutes_to_settlement": funding_rate.minutes_to_settlement,
+            "next_settlement_time": funding_rate.next_settlement_time.isoformat() if funding_rate.next_settlement_time else None,
+            
+            # Cost analysis (per $1000 position at 3x)
+            "cost_analysis": {
+                "position_value": position_value,
+                "leverage": leverage,
+                "cost_8h": round(estimate_8h.estimated_cost, 4),
+                "cost_24h": round(estimate_24h.estimated_cost, 4),
+                "cost_8h_percent": round(estimate_8h.cost_percent_of_margin, 3),
+                "cost_24h_percent": round(estimate_24h.cost_percent_of_margin, 3),
+                "break_even_24h": round(estimate_24h.break_even_price_move, 3)
+            },
+            
+            # Config thresholds
+            "thresholds": {
+                "force_close_percent": config.force_close_threshold,
+                "warning_percent": config.warning_threshold,
+                "pre_settlement_buffer_min": config.pre_settlement_buffer_minutes,
+                "max_holding_hours": config.default_max_holding_hours
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error fetching funding rate: {e}")
+        return {
+            "available": False,
+            "error": str(e)
+        }
 
 
 @router.get("/account")
@@ -798,14 +1015,32 @@ async def get_trade_history(limit: int = Query(default=50, le=100)):
     """Get trade history including signals and actual closed trades"""
     system = await get_trading_system()
 
-    # Get actual closed trades from paper trader
+    # 🔧 CRITICAL FIX: Always use async get_trade_history() for REAL OKX data
+    # The old get_filtered_trade_history() returned local estimates without fees
     actual_trades = []
     if system.paper_trader:
+        # Call the async method that fetches from OKX API
         actual_trades = await system.paper_trader.get_trade_history(limit)
 
+    # 🆕 Get signals from Redis for persistence across restarts
+    signals = []
+    try:
+        decision_store = await get_decision_store()
+        redis_signals = await decision_store.get_recent_decisions_for_frontend(limit)
+        if redis_signals:
+            signals = redis_signals
+            logger.info(f"[get_trade_history] Loaded {len(signals)} signals from Redis")
+    except Exception as e:
+        logger.warning(f"[get_trade_history] Redis failed, using memory: {e}")
+    
+    # Fallback to memory if Redis is empty
+    if not signals and system._trade_history:
+        signals = system._trade_history[-limit:]
+        logger.info(f"[get_trade_history] Using {len(signals)} signals from memory")
+
     return {
-        "trades": actual_trades,  # Actual closed trades with real PnL
-        "signals": system._trade_history[-limit:]  # Signal history for reference
+        "trades": actual_trades,  # REAL closed trades with actual PnL from OKX
+        "signals": signals  # Signal history from Redis (persisted) or memory (fallback)
     }
 
 
@@ -814,6 +1049,133 @@ async def get_discussion_messages(limit: int = Query(default=100, le=200)):
     """Get discussion messages history for state restoration"""
     system = await get_trading_system()
     return {"messages": system._discussion_messages[-limit:]}
+
+
+# ===== SEMI_AUTO Mode: Pending Trade Management =====
+
+@router.get("/pending")
+async def get_pending_trades():
+    """Get all pending trades waiting for user confirmation (SEMI_AUTO mode)"""
+    from app.core.trading.mode_manager import get_mode_manager
+    mode_manager = get_mode_manager()
+    pending_trades = await mode_manager.get_pending_trades()
+    return {
+        "pending_trades": [t.to_dict() for t in pending_trades],
+        "count": len(pending_trades)
+    }
+
+
+@router.get("/pending/{trade_id}")
+async def get_pending_trade(trade_id: str):
+    """Get a specific pending trade by ID"""
+    from app.core.trading.mode_manager import get_mode_manager
+    mode_manager = get_mode_manager()
+    pending_trade = await mode_manager.get_pending_trade(trade_id)
+    if pending_trade:
+        return {"pending_trade": pending_trade.to_dict()}
+    raise HTTPException(status_code=404, detail=f"Pending trade {trade_id} not found")
+
+
+@router.post("/pending/{trade_id}/confirm")
+async def confirm_pending_trade(
+    trade_id: str,
+    user_id: str = Query(default="frontend", description="User confirming the trade"),
+    leverage: Optional[int] = Query(default=None, description="Optional: override leverage"),
+    tp_percent: Optional[float] = Query(default=None, description="Optional: override TP%"),
+    sl_percent: Optional[float] = Query(default=None, description="Optional: override SL%")
+):
+    """
+    Confirm a pending trade for execution (SEMI_AUTO mode).
+    
+    Optionally modify parameters before execution.
+    """
+    from app.core.trading.mode_manager import get_mode_manager
+    mode_manager = get_mode_manager()
+    
+    # Build modifications dict if any overrides provided
+    modifications = {}
+    if leverage is not None:
+        modifications["leverage"] = leverage
+    if tp_percent is not None:
+        modifications["tp_percent"] = tp_percent
+    if sl_percent is not None:
+        modifications["sl_percent"] = sl_percent
+    
+    # Confirm and get the final signal
+    final_signal = await mode_manager.confirm_trade(
+        trade_id=trade_id,
+        user_id=user_id,
+        modifications=modifications if modifications else None
+    )
+    
+    if not final_signal:
+        raise HTTPException(status_code=404, detail=f"Pending trade {trade_id} not found or already processed")
+    
+    # Execute the confirmed trade
+    system = await get_trading_system()
+    if system.paper_trader:
+        # Convert dict to TradingSignal
+        signal = TradingSignal(**final_signal) if isinstance(final_signal, dict) else final_signal
+        
+        trade_result = await system._execute_signal(signal)
+        
+        # Broadcast confirmation and execution
+        await system._broadcast({
+            "type": "trade_confirmed",
+            "trade_id": trade_id,
+            "signal": signal.model_dump() if hasattr(signal, 'model_dump') else final_signal,
+            "trade_result": trade_result,
+            "confirmed_by": user_id
+        })
+        
+        logger.info(f"[HITL] Trade {trade_id} confirmed by {user_id} and executed")
+        
+        return {
+            "success": True,
+            "trade_id": trade_id,
+            "confirmed_by": user_id,
+            "trade_result": trade_result
+        }
+    
+    raise HTTPException(status_code=500, detail="Trading system not initialized")
+
+
+@router.post("/pending/{trade_id}/reject")
+async def reject_pending_trade(
+    trade_id: str,
+    user_id: str = Query(default="frontend", description="User rejecting the trade"),
+    reason: str = Query(default="", description="Reason for rejection")
+):
+    """Reject a pending trade (SEMI_AUTO mode)"""
+    from app.core.trading.mode_manager import get_mode_manager
+    mode_manager = get_mode_manager()
+    
+    success = await mode_manager.reject_trade(
+        trade_id=trade_id,
+        user_id=user_id,
+        reason=reason
+    )
+    
+    if success:
+        # Broadcast rejection
+        system = await get_trading_system()
+        await system._broadcast({
+            "type": "trade_rejected",
+            "trade_id": trade_id,
+            "rejected_by": user_id,
+            "reason": reason
+        })
+        
+        logger.info(f"[HITL] Trade {trade_id} rejected by {user_id}: {reason}")
+        
+        return {
+            "success": True,
+            "trade_id": trade_id,
+            "rejected_by": user_id,
+            "reason": reason
+        }
+    
+    raise HTTPException(status_code=404, detail=f"Pending trade {trade_id} not found or already processed")
 
 
 @router.get("/equity")
@@ -852,10 +1214,13 @@ async def get_max_drawdown(start_date: Optional[str] = Query(default=None, descr
         }
     
     try:
-        # Get trades from the actual source (OKX API for OKXTrader, local for PaperTrader)
-        trades = await system.paper_trader.get_trade_history(limit=100)
+        # 🆕 Use filtered trade history if metrics baseline is set
+        if hasattr(system.paper_trader, 'get_filtered_trade_history'):
+            trades = system.paper_trader.get_filtered_trade_history()[-100:]
+        else:
+            trades = await system.paper_trader.get_trade_history(limit=100)
         
-        # Filter by start_date if provided
+        # Filter by start_date if provided (additional manual filter)
         if start_date and trades:
             try:
                 from datetime import datetime
@@ -868,9 +1233,10 @@ async def get_max_drawdown(start_date: Optional[str] = Query(default=None, descr
                 ]
             except (ValueError, TypeError) as e:
                 logger.warning(f"Invalid start_date format: {start_date}, using all trades. Error: {e}")
+
         
         if not trades:
-            initial_balance = getattr(system.paper_trader, 'initial_balance', 10000)
+            initial_balance = getattr(system.paper_trader, 'initial_balance', 5000)
             return {
                 'max_drawdown_pct': 0.0,
                 'max_drawdown_usd': 0.0,
@@ -883,7 +1249,7 @@ async def get_max_drawdown(start_date: Optional[str] = Query(default=None, descr
             }
         
         # Calculate drawdown from trades
-        initial_balance = getattr(system.paper_trader, 'initial_balance', 10000)
+        initial_balance = getattr(system.paper_trader, 'initial_balance', 5000)
         equity_curve = [initial_balance]
         running_equity = initial_balance
         
@@ -985,10 +1351,14 @@ async def get_performance_metrics(start_date: Optional[str] = Query(default=None
         if hasattr(system.paper_trader, 'calculate_performance_metrics'):
             return await system.paper_trader.calculate_performance_metrics(start_date)
         
-        # Fallback: Calculate from trade history for PaperTrader
+        # 🆕 Use filtered trade history if metrics baseline is set
         import math
-        trades = await system.paper_trader.get_trade_history(limit=200)
+        if hasattr(system.paper_trader, 'get_filtered_trade_history'):
+            trades = system.paper_trader.get_filtered_trade_history()[-200:]
+        else:
+            trades = await system.paper_trader.get_trade_history(limit=200)
         
+        # Additional start_date filter if provided
         if start_date and trades:
             try:
                 from datetime import datetime
@@ -1001,6 +1371,7 @@ async def get_performance_metrics(start_date: Optional[str] = Query(default=None
                 ]
             except (ValueError, TypeError) as e:
                 logger.warning(f"Invalid start_date format: {start_date}. Error: {e}")
+
         
         if not trades or len(trades) < 2:
             return {
@@ -1027,7 +1398,7 @@ async def get_performance_metrics(start_date: Optional[str] = Query(default=None
         gross_loss = abs(sum(losses)) if losses else 0
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0
         
-        initial = getattr(system.paper_trader, 'initial_balance', 10000)
+        initial = getattr(system.paper_trader, 'initial_balance', 5000)
         total_pnl = sum(pnl_list)
         total_return_pct = (total_pnl / initial) * 100 if initial > 0 else 0
         
@@ -1125,6 +1496,31 @@ async def close_position():
             return {"error": "Failed to close position"}
     except Exception as e:
         logger.error(f"Error closing position: {e}")
+        return {"error": str(e)}
+
+
+@router.post("/reset-metrics")
+async def reset_metrics_baseline():
+    """
+    Reset metrics baseline - all performance metrics will be calculated from this point.
+    
+    Use this when:
+    1. Trade history is corrupted/polluted by bugs
+    2. Starting fresh evaluation after system issues
+    3. Beginning a new performance tracking period
+    
+    Returns the new baseline timestamp.
+    """
+    system = await get_trading_system()
+    if not system.paper_trader:
+        return {"error": "Trader not initialized"}
+
+    try:
+        result = await system.paper_trader.reset_metrics_baseline()
+        logger.info(f"[API] Metrics baseline reset: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Error resetting metrics baseline: {e}")
         return {"error": str(e)}
 
 
@@ -1230,6 +1626,32 @@ async def end_cooldown():
     return {"status": "cooldown_ended"}
 
 
+@router.post("/reset-daily-pnl")
+async def reset_daily_pnl():
+    """
+    Reset daily PnL tracking and halt status.
+    
+    Use this when:
+    1. Daily PnL data is corrupted (e.g., showing impossible values)
+    2. Manual override needed after fixing bugs
+    3. Trading is incorrectly halted due to bad data
+    
+    Returns:
+        Dict with old and new values
+    """
+    system = await get_trading_system()
+    
+    if not system.trader:
+        return {"success": False, "error": "Trading system not initialized"}
+    
+    # OKXTrader has reset_daily_pnl method
+    if hasattr(system.trader, 'reset_daily_pnl'):
+        result = await system.trader.reset_daily_pnl()
+        return result
+    else:
+        return {"success": False, "error": "Trader does not support daily PnL reset"}
+
+
 @router.post("/reset")
 async def reset_trading_system():
     """
@@ -1320,7 +1742,7 @@ async def trading_websocket(websocket: WebSocket, session_id: str):
     # Send initial status
     await websocket.send_json({
         "type": "connected",
-        "status": system.get_status()
+        "status": await system.get_status()
     })
 
     try:
@@ -2125,7 +2547,7 @@ async def execute_trade(request: Dict[str, Any]):
     
     This is called after user confirms or modifies the AI decision.
     """
-    system = get_trading_system()
+    system = await get_trading_system()
     if not system or not system.paper_trader:
         return {"success": False, "error": "Trading system not initialized"}
     

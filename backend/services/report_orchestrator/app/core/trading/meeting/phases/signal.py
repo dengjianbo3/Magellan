@@ -134,14 +134,19 @@ class SignalGenerationPhase(PhaseExecutor):
                 agent_analysis = f"\n\nYour previous analysis:\n{analysis.get('summary', '')}"
         
         # Build the vote JSON template - IMPORTANT: Use placeholder to avoid bias
-        vote_template = '''{
+        # Get dynamic ranges from config
+        max_leverage = context.config.max_leverage if hasattr(context.config, 'max_leverage') else 20
+        min_sl = context.config.min_stop_loss_percent if hasattr(context.config, 'min_stop_loss_percent') else 0.5
+        max_sl = context.config.max_stop_loss_percent if hasattr(context.config, 'max_stop_loss_percent') else 10.0
+        
+        vote_template = f'''{{
   "direction": "<your_vote>",
   "confidence": <0-100>,
-  "leverage": <1-10>,
+  "leverage": <1-{max_leverage}>,
   "take_profit_percent": <1-20>,
-  "stop_loss_percent": <0.5-10>,
+  "stop_loss_percent": <{min_sl}-{max_sl}>,
   "reasoning": "<brief explanation>"
-}'''
+}}'''
         
         return f"""Based on your market analysis, provide your trading recommendation for {symbol}.
 

@@ -1252,6 +1252,10 @@ class TradingToolkit:
     async def _tavily_search(self, query: str, max_results: int = 5, time_range: str = None, topic: str = "general", days: int = None, **kwargs) -> str:
         """
         Search for cryptocurrency news and market information using MCP.
+        
+        🆕 Context Engineering P0: Uses CycleSearchCache for cross-agent sharing.
+        Within a single analysis cycle, if Agent 1 searches "Bitcoin news",
+        Agent 2 can reuse that result instead of calling the API again.
 
         Args:
             query: Search query string
@@ -1264,13 +1268,31 @@ class TradingToolkit:
             JSON string with search results
         """
         try:
+            # Direct search without caching
+            # The user explicitly requested to remove embedding search cache
+            search_result = await self._execute_tavily_search(query, max_results, time_range, topic, days, **kwargs)
+            return json.dumps(search_result, ensure_ascii=False)
+            
+        except Exception as e:
+            logger.error(f"[TradingTools] Tavily search error: {e}")
+            return json.dumps({
+                "success": False,
+                "error": str(e),
+                "message": f"Search error: {str(e)}"
+            }, ensure_ascii=False)
+
+    async def _execute_tavily_search(self, query: str, max_results: int = 5, time_range: str = None, topic: str = "general", days: int = None, **kwargs) -> dict:
+        """
+        Execute the actual Tavily search via MCP (internal method).
+        Returns dict instead of JSON string for caching.
+        """
+        try:
             # Check if mock mode is enabled
             from app.core.trading.mock_tavily import is_mock_mode_enabled, get_mock_search_results
             
             if is_mock_mode_enabled():
                 logger.info(f"[TradingTools] Using MOCK Tavily for query: '{query}'")
-                mock_results = get_mock_search_results(query, max_results)
-                return json.dumps(mock_results, ensure_ascii=False)
+                return get_mock_search_results(query, max_results)
             
             # Use MCP Client to call web-search service
             from app.core.roundtable.mcp_tools import get_mcp_client
@@ -1315,7 +1337,8 @@ class TradingToolkit:
                     "score": 1.0  # MCP result has no score, default to 1.0
                 } for r in mcp_results]
 
-                return json.dumps({
+                # Return dict (not JSON string) for caching
+                return {
                     "success": True,
                     "query": query,
                     "answer": result.get("result", {}).get("summary", ""),
@@ -1323,23 +1346,23 @@ class TradingToolkit:
                     "result_count": len(formatted_results),
                     "source": "MCP Web Search",
                     "message": f"Search '{query}' returned {len(formatted_results)} results"
-                }, ensure_ascii=False)
+                }
             else:
                 error_msg = result.get("error", "Unknown error")
                 logger.error(f"[TradingTools] MCP search failed: {error_msg}")
-                return json.dumps({
+                return {
                     "success": False,
                     "error": error_msg,
                     "message": f"Search failed: {error_msg}"
-                }, ensure_ascii=False)
+                }
 
         except Exception as e:
             logger.error(f"[TradingTools] Tavily search error: {e}")
-            return json.dumps({
+            return {
                 "success": False,
                 "error": str(e),
                 "message": f"Search error: {str(e)}"
-            }, ensure_ascii=False)
+            }
 
     async def _analyze_execution_conditions(
         self,

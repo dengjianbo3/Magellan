@@ -1,88 +1,133 @@
 <template>
   <div class="max-w-7xl mx-auto p-6 space-y-6">
     <!-- Header -->
-    <div class="flex items-center justify-between">
+    <!-- Header -->
+    <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-2">
       <div>
-        <h1 class="text-2xl font-bold text-white">{{ t('trading.title') || 'Auto Trading System' }}</h1>
-        <p class="text-text-secondary mt-1">
-          {{ t('trading.subtitle') || 'AI-powered automated cryptocurrency trading' }}
+        <h1 class="text-2xl font-bold text-white tracking-tight">{{ t('trading.title') || 'AI 自动交易系统' }}</h1>
+        <p class="text-text-secondary text-sm mt-1">
+          {{ t('trading.subtitle') || 'AI 驱动的自动化加密货币交易' }}
         </p>
       </div>
 
-      <!-- System Controls -->
-      <div class="flex items-center gap-4">
-        <div class="flex items-center gap-2">
-          <span class="text-sm text-text-secondary">{{ t('trading.status') || 'Status' }}:</span>
-          <span
-            :class="[
-              'px-3 py-1 rounded-full text-sm font-medium',
-              systemStatus.enabled
-                ? 'bg-emerald-500/20 text-emerald-400'
-                : 'bg-gray-500/20 text-gray-400'
-            ]"
+      <!-- Controls & Status -->
+      <div class="flex flex-wrap items-center gap-3">
+
+        <!-- 1. Trading Mode (Context) -->
+        <div class="flex items-center h-10 bg-white/5 rounded-lg p-1 border border-white/5 backdrop-blur-sm">
+             <button @click="setTradingMode('manual')" :disabled="changingMode" class="h-full px-3 rounded-md text-xs font-bold transition-all flex items-center" :class="tradingMode.mode === 'manual' ? 'bg-red-500/20 text-red-400 shadow-sm' : 'text-text-secondary hover:text-white'">手动</button>
+             <button @click="setTradingMode('semi_auto')" :disabled="changingMode" class="h-full px-3 rounded-md text-xs font-bold transition-all flex items-center" :class="tradingMode.mode === 'semi_auto' ? 'bg-yellow-500/20 text-yellow-400 shadow-sm' : 'text-text-secondary hover:text-white'">半自动</button>
+             <button @click="setTradingMode('full_auto')" :disabled="changingMode" class="h-full px-3 rounded-md text-xs font-bold transition-all flex items-center" :class="tradingMode.mode === 'full_auto' ? 'bg-emerald-500/20 text-emerald-400 shadow-sm' : 'text-text-secondary hover:text-white'">全自动</button>
+        </div>
+        
+        <!-- 2. Next Analysis (Pulse) -->
+        <div class="flex items-center h-10 gap-3 bg-white/5 rounded-lg px-4 border border-white/5 backdrop-blur-sm">
+          <div class="flex items-baseline gap-2">
+            <span class="text-[10px] text-text-secondary uppercase tracking-wider font-semibold">下次分析</span>
+            <span class="text-sm font-mono font-bold text-accent-cyan">{{ countdown }}</span>
+          </div>
+          <div class="w-px h-4 bg-white/10"></div>
+          <button
+            @click="triggerAnalysis"
+            class="group p-1 rounded hover:bg-primary/20 text-primary transition-all active:scale-95 flex items-center justify-center"
+            :title="'立即触发'"
           >
-            {{ systemStatus.enabled ? (t('trading.running') || 'Running') : (t('trading.stopped') || 'Stopped') }}
+            <span class="material-symbols-outlined text-lg group-hover:text-amber-400 transition-colors">bolt</span>
+          </button>
+        </div>
+
+        <!-- 3. Status (State) -->
+        <div class="flex items-center h-10 gap-2 bg-white/5 rounded-lg px-3 border border-white/5 backdrop-blur-sm">
+          <span class="relative flex h-2.5 w-2.5">
+             <span v-if="systemStatus.enabled" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+             <span :class="['relative inline-flex rounded-full h-2.5 w-2.5', systemStatus.enabled ? 'bg-emerald-500' : 'bg-red-500']"></span>
+          </span>
+          <span :class="['text-xs font-bold', systemStatus.enabled ? 'text-emerald-400' : 'text-text-secondary']">
+            {{ systemStatus.enabled ? '运行中' : '已停止' }}
           </span>
         </div>
 
-        <button
-          v-if="!systemStatus.enabled"
-          @click="startTrading"
-          class="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium hover:shadow-lg transition-all"
-        >
-          <span class="material-symbols-outlined mr-1 align-middle text-lg">play_arrow</span>
-          {{ t('trading.start') || 'Start Trading' }}
-        </button>
-        <button
-          v-else
-          @click="stopTrading"
-          class="px-4 py-2 rounded-lg bg-gradient-to-r from-red-500 to-orange-500 text-white font-medium hover:shadow-lg transition-all"
-        >
-          <span class="material-symbols-outlined mr-1 align-middle text-lg">stop</span>
-          {{ t('trading.stop') || 'Stop Trading' }}
-        </button>
+        <!-- 4. Actions (Control) -->
+        <div class="flex items-center gap-2">
+            <!-- Start/Stop Button -->
+            <button
+            v-if="!systemStatus.enabled"
+            @click="startTrading"
+            class="flex items-center h-10 px-4 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-semibold shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 transition-all active:scale-95"
+            >
+            <span class="material-symbols-outlined mr-1.5 text-lg">play_arrow</span>
+            <span class="text-sm">启动</span>
+            </button>
+            <button
+            v-else
+            @click="stopTrading"
+            class="flex items-center h-10 px-4 rounded-lg bg-white/10 hover:bg-red-500/20 text-white hover:text-red-400 font-semibold border border-white/10 hover:border-red-500/50 transition-all active:scale-95"
+            >
+            <span class="material-symbols-outlined mr-1.5 text-lg">stop</span>
+            <span class="text-sm">停止</span>
+            </button>
 
-        <button
-          @click="openSettings"
-          class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all"
-          :title="t('trading.settings') || 'Settings'"
-        >
-          <span class="material-symbols-outlined align-middle text-lg">settings</span>
-        </button>
+            <!-- Separator -->
+            <div class="w-px h-6 bg-white/10 mx-1"></div>
+
+            <!-- Team -->
+            <button
+            @click="showTeamModal = true"
+            class="hidden lg:flex items-center h-10 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium border border-white/5 hover:border-white/10 transition-all active:scale-95"
+            >
+            <span class="material-symbols-outlined mr-1.5 text-lg">groups</span>
+            <span class="text-xs">专家团队</span>
+            </button>
+
+            <!-- Pending Trades Alert -->
+            <button
+            v-if="pendingTrades.length > 0"
+            @click="openPendingTradeModal(pendingTrades[0])"
+            class="flex items-center h-10 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold shadow-lg shadow-amber-500/20 animate-pulse transition-all active:scale-95"
+            >
+            <span class="material-symbols-outlined mr-1.5 text-lg">notifications_active</span>
+            <span class="text-xs">{{ pendingTrades.length }} 待办</span>
+            </button>
+
+            <!-- Settings -->
+            <button
+            @click="openSettings"
+            class="h-10 w-10 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 text-text-secondary hover:text-white border border-white/5 hover:border-white/10 transition-all"
+            :title="'设置'"
+            >
+            <span class="material-symbols-outlined text-lg">settings</span>
+            </button>
+        </div>
       </div>
     </div>
 
     <!-- Main Content Grid -->
-    <div class="grid grid-cols-12 gap-6">
-      <!-- Left Column: Account & Position -->
-      <div class="col-span-12 lg:col-span-4 space-y-6">
-        <!-- Account Overview Card -->
+    <!-- Main Content (Sticky Sidebar Layout) -->
+    <div class="grid grid-cols-12 gap-6 items-start mb-6">
+      
+      <!-- Left Sidebar (Sticky Control Center) -->
+      <div class="col-span-12 lg:col-span-4 sticky top-6 z-10 space-y-6">
+        
+        <!-- Account Overview -->
         <div class="glass-panel rounded-xl p-6">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
             <span class="material-symbols-outlined mr-2 text-primary">account_balance_wallet</span>
-            {{ t('trading.account') || '账户概览' }}
+            账户概览
           </h3>
 
           <div class="space-y-3">
-            <!-- Trading Start Date -->
             <div class="flex justify-between items-center">
               <span class="text-text-secondary text-sm">交易起始日期</span>
               <span class="text-white">{{ tradingStartDateFormatted }}</span>
             </div>
-
-            <!-- Initial Capital -->
             <div class="flex justify-between items-center">
               <span class="text-text-secondary text-sm">起始金额</span>
-              <span class="text-white font-medium">$3,000.00</span>
+              <span class="text-white font-medium">${{ formatNumber(initialCapital) }}</span>
             </div>
-
-            <!-- Current Equity -->
             <div class="flex justify-between items-center pt-2 border-t border-white/10">
               <span class="text-text-secondary">当前权益</span>
               <span class="text-2xl font-bold text-white">${{ formatNumber(account.totalEquity) }}</span>
             </div>
-
-            <!-- Total Profit -->
             <div class="flex justify-between items-center">
               <span class="text-text-secondary">总盈利</span>
               <span :class="totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400'" class="font-semibold">
@@ -90,349 +135,188 @@
                 <span class="text-sm">({{ totalProfitPercent >= 0 ? '+' : '' }}{{ totalProfitPercent.toFixed(2) }}%)</span>
               </span>
             </div>
-
-            <!-- Max Drawdown -->
             <div class="flex justify-between items-center">
               <span class="text-text-secondary">最大回撤</span>
-              <span class="text-red-400 font-medium">
-                -{{ drawdown.maxDrawdownPct?.toFixed(2) || 0 }}%
-              </span>
+              <span class="text-red-400 font-medium">-{{ drawdown.maxDrawdownPct?.toFixed(2) || 0 }}%</span>
             </div>
-
-            <!-- Alpha (Excess Return vs BTC) -->
             <div v-if="btcBenchmark.startPrice > 0" class="pt-2 border-t border-white/10 space-y-2">
-              <div class="flex justify-between items-center">
-                <span class="text-text-secondary text-sm">BTC 同期收益</span>
-                <span :class="btcBenchmark.returnPercent >= 0 ? 'text-emerald-400' : 'text-red-400'" class="text-sm">
-                  {{ btcBenchmark.returnPercent >= 0 ? '+' : '' }}{{ btcBenchmark.returnPercent.toFixed(2) }}%
-                </span>
-              </div>
-              <div class="flex justify-between items-center">
-                <span class="text-text-secondary font-medium">超额收益 (Alpha)</span>
-                <span 
-                  :class="alpha >= 0 ? 'text-emerald-400' : 'text-red-400'" 
-                  class="font-bold text-lg"
-                >
-                  {{ alpha >= 0 ? '+' : '' }}{{ alpha?.toFixed(2) || 0 }}%
-                </span>
-              </div>
-            </div>
-
-            <!-- Unrealized PnL (if has position) -->
-            <template v-if="position.hasPosition">
-              <div class="flex justify-between items-center pt-2 border-t border-white/10">
-                <span class="text-text-secondary text-sm">未实现盈亏</span>
-                <span :class="account.unrealizedPnl >= 0 ? 'text-emerald-400' : 'text-red-400'">
-                  {{ account.unrealizedPnl >= 0 ? '+' : '' }}${{ formatNumber(account.unrealizedPnl) }}
-                </span>
-              </div>
-            </template>
-
-            <!-- Performance Metrics -->
-            <div v-if="performanceMetrics.totalTrades > 0" class="pt-3 border-t border-white/10 space-y-2">
-              <div class="text-text-secondary text-xs mb-2">策略绩效指标</div>
-              <div class="grid grid-cols-2 gap-2 text-sm">
-                <div class="flex justify-between items-center">
-                  <span class="text-text-secondary">总交易</span>
-                  <span class="text-white">{{ performanceMetrics.totalTrades }}笔</span>
-                </div>
-                <div class="flex justify-between items-center">
-                  <span class="text-text-secondary">胜率</span>
-                  <span :class="performanceMetrics.winRate >= 50 ? 'text-emerald-400' : 'text-yellow-400'">
-                    {{ performanceMetrics.winRate.toFixed(1) }}%
-                  </span>
-                </div>
-                <div class="flex justify-between items-center">
-                  <span class="text-text-secondary">盈亏比</span>
-                  <span :class="performanceMetrics.pnlRatio >= 1.5 ? 'text-emerald-400' : 'text-yellow-400'">
-                    {{ performanceMetrics.pnlRatio === Infinity ? '∞' : performanceMetrics.pnlRatio.toFixed(2) }}
-                  </span>
-                </div>
-                <div class="flex justify-between items-center">
-                  <span class="text-text-secondary">夏普</span>
-                  <span :class="performanceMetrics.sharpeRatio >= 1 ? 'text-emerald-400' : performanceMetrics.sharpeRatio >= 0 ? 'text-yellow-400' : 'text-red-400'">
-                    {{ performanceMetrics.sharpeRatio.toFixed(2) }}
-                  </span>
-                </div>
-              </div>
+               <div class="flex justify-between items-center">
+                 <span class="text-text-secondary text-sm">BTC 同期收益</span>
+                 <span :class="btcBenchmark.returnPercent >= 0 ? 'text-emerald-400' : 'text-red-400'" class="text-sm">
+                   {{ btcBenchmark.returnPercent >= 0 ? '+' : '' }}{{ btcBenchmark.returnPercent.toFixed(2) }}%
+                 </span>
+               </div>
+               <div class="flex justify-between items-center">
+                 <span class="text-text-secondary font-medium">超额收益 (Alpha)</span>
+                 <span :class="alpha >= 0 ? 'text-emerald-400' : 'text-red-400'" class="font-bold text-lg">
+                   {{ alpha >= 0 ? '+' : '' }}{{ alpha?.toFixed(2) || 0 }}%
+                 </span>
+               </div>
             </div>
           </div>
         </div>
 
-        <!-- Current Position Card -->
+        <!-- Current Position -->
         <div class="glass-panel rounded-xl p-6">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
             <span class="material-symbols-outlined mr-2 text-accent-cyan">trending_up</span>
-            {{ t('trading.position') || 'Current Position' }}
+            当前持仓
           </h3>
-
           <template v-if="position.hasPosition">
             <div class="space-y-3">
               <div class="flex items-center justify-between">
-                <span
-                  :class="[
-                    'px-3 py-1 rounded-lg font-medium',
-                    position.direction === 'long'
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : 'bg-red-500/20 text-red-400'
-                  ]"
-                >
+                <span :class="['px-3 py-1 rounded-lg font-medium', position.direction === 'long' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400']">
                   {{ position.direction === 'long' ? 'LONG' : 'SHORT' }} {{ position.leverage }}x
                 </span>
                 <span class="text-white font-medium">{{ position.symbol }}</span>
               </div>
-
               <div class="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <span class="text-text-secondary block">{{ t('trading.entry') || 'Entry' }}</span>
-                  <span class="text-white">${{ formatNumber(position.entryPrice) }}</span>
-                </div>
-                <div>
-                  <span class="text-text-secondary block">{{ t('trading.current') || 'Current' }}</span>
-                  <span class="text-white">${{ formatNumber(position.currentPrice) }}</span>
-                </div>
-                <div>
-                  <span class="text-text-secondary block">{{ t('trading.takeProfit') || 'Take Profit' }}</span>
-                  <span class="text-emerald-400">{{ position.takeProfitPrice > 0 ? '$' + formatNumber(position.takeProfitPrice) : (t('trading.notSet') || '未设置') }}</span>
-                </div>
-                <div>
-                  <span class="text-text-secondary block">{{ t('trading.stopLoss') || 'Stop Loss' }}</span>
-                  <span class="text-red-400">{{ position.stopLossPrice > 0 ? '$' + formatNumber(position.stopLossPrice) : (t('trading.notSet') || '未设置') }}</span>
-                </div>
+                <div><span class="text-text-secondary block">Entry</span><span class="text-white">${{ formatNumber(position.entryPrice) }}</span></div>
+                <div><span class="text-text-secondary block">Current</span><span class="text-white">${{ formatNumber(position.currentPrice) }}</span></div>
+                <div><span class="text-text-secondary block">TP</span><span class="text-emerald-400">{{ position.takeProfitPrice > 0 ? '$' + formatNumber(position.takeProfitPrice) : '未设置' }}</span></div>
+                <div><span class="text-text-secondary block">SL</span><span class="text-red-400">{{ position.stopLossPrice > 0 ? '$' + formatNumber(position.stopLossPrice) : '未设置' }}</span></div>
               </div>
-
-              <div class="pt-3 border-t border-white/10">
-                <div class="flex justify-between items-center">
-                  <span class="text-text-secondary">{{ t('trading.pnl') || 'P&L' }}</span>
-                  <span
-                    :class="[
-                      'text-xl font-bold',
-                      position.unrealizedPnl >= 0 ? 'text-emerald-400' : 'text-red-400'
-                    ]"
-                  >
-                    {{ position.unrealizedPnl >= 0 ? '+' : '' }}${{ formatNumber(position.unrealizedPnl) }}
-                    <span class="text-sm">({{ calculatePnlPercent(position.unrealizedPnl).toFixed(2) }}%)</span>
-                  </span>
-                </div>
+              <div class="pt-3 border-t border-white/10 flex justify-between items-center">
+                 <span class="text-text-secondary">P&L</span>
+                 <span :class="['text-xl font-bold', position.unrealizedPnl >= 0 ? 'text-emerald-400' : 'text-red-400']">
+                   {{ position.unrealizedPnl >= 0 ? '+' : '' }}${{ formatNumber(position.unrealizedPnl) }}
+                   <span class="text-sm">({{ calculatePnlPercent(position.unrealizedPnl).toFixed(2) }}%)</span>
+                 </span>
               </div>
-
-              <!-- Manual Close Position Button -->
               <div class="pt-3 border-t border-white/10">
-                <button
-                  @click="closePosition"
-                  :disabled="closingPosition"
-                  class="w-full px-4 py-2 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white font-medium hover:shadow-lg transition-all disabled:opacity-50"
-                >
+                <button @click="closePosition" :disabled="closingPosition" class="w-full px-4 py-2 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white font-medium hover:shadow-lg transition-all disabled:opacity-50">
                   <span class="material-symbols-outlined mr-1 align-middle text-lg">close</span>
-                  {{ closingPosition ? (t('trading.closing') || 'Closing...') : (t('trading.closePosition') || 'Close Position') }}
+                  {{ closingPosition ? 'Closing...' : 'Close Position' }}
                 </button>
               </div>
             </div>
           </template>
-
           <template v-else>
             <div class="text-center py-8 text-text-secondary">
               <span class="material-symbols-outlined text-4xl mb-2 opacity-50">do_not_disturb</span>
-              <p>{{ t('trading.noPosition') || 'No open position' }}</p>
+              <p>No open position</p>
             </div>
           </template>
         </div>
 
-        <!-- Next Analysis Countdown -->
-        <div class="glass-panel rounded-xl p-6">
-          <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
-            <span class="material-symbols-outlined mr-2 text-accent-violet">schedule</span>
-            {{ t('trading.nextAnalysis') || 'Next Analysis' }}
-          </h3>
 
-          <div class="text-center">
-            <div class="text-3xl font-bold text-white font-mono">
-              {{ countdown }}
-            </div>
-            <p class="text-text-secondary text-sm mt-2">
-              {{ intervalText }}
-            </p>
-
-            <button
-              @click="triggerAnalysis"
-              class="mt-4 px-4 py-2 rounded-lg border border-primary text-primary hover:bg-primary/10 transition-colors text-sm"
-            >
-              <span class="material-symbols-outlined mr-1 align-middle text-lg">bolt</span>
-              {{ t('trading.triggerNow') || 'Trigger Now' }}
-            </button>
-          </div>
-        </div>
       </div>
 
-      <!-- Right Column: Charts & Agents -->
-      <div class="col-span-12 lg:col-span-8 flex flex-col gap-6">
+      <!-- Right Column (Analysis & History) -->
+      <div class="col-span-12 lg:col-span-8 space-y-6">
+        
         <!-- Equity Curve Chart -->
         <div class="glass-panel rounded-xl p-6">
           <div class="flex items-center justify-between mb-4">
+
             <h3 class="text-lg font-semibold text-white flex items-center">
               <span class="material-symbols-outlined mr-2 text-primary">show_chart</span>
-              {{ t('trading.equityCurve') || 'Equity Curve' }}
+              权益曲线
             </h3>
           </div>
-
           <div class="h-64">
             <canvas ref="equityChartCanvas"></canvas>
           </div>
         </div>
 
-        <!-- Agent Discussion (Live) - grows to fill remaining space -->
-        <div class="glass-panel rounded-xl p-6 flex flex-col flex-1">
-          <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
+        <!-- Live Discussion (Fixed Height, Internal Scroll) -->
+        <div class="glass-panel rounded-xl p-6 flex flex-col h-[700px]">
+          <h3 class="text-lg font-semibold text-white mb-4 flex items-center sticky top-0 bg-[#0f172a]/95 backdrop-blur z-10 py-2 border-b border-white/5">
             <span class="material-symbols-outlined mr-2 text-accent-violet">forum</span>
-            {{ t('trading.discussion') || 'Live Discussion' }}
-            <span v-if="isAnalyzing" class="ml-2 flex items-center text-primary text-sm">
-              <span class="animate-pulse mr-1">●</span> Live
-            </span>
+            实时讨论
+            <span v-if="isAnalyzing" class="ml-2 flex items-center text-primary text-sm"><span class="animate-pulse mr-1">●</span> Live</span>
           </h3>
 
-          <div class="flex-1 overflow-y-auto space-y-4 pr-2 min-h-[200px]" ref="discussionContainer">
-            <div
-              v-for="(msg, idx) in discussionMessages"
-              :key="idx"
-              class="p-3 rounded-lg bg-white/5"
-            >
-              <div class="flex items-center gap-2 mb-1">
-                <span class="text-primary font-medium text-sm">{{ msg.agentName }}</span>
-                <span class="text-text-secondary text-xs">{{ formatTime(msg.timestamp) }}</span>
-              </div>
-              <div class="text-text-secondary text-sm prose prose-sm prose-invert max-w-none" v-html="renderMarkdown(msg.content)"></div>
-            </div>
+          <div class="flex-1 overflow-y-auto space-y-4 pr-2" ref="discussionContainer">
+            <div v-for="(msg, idx) in discussionMessages" :key="idx" class="p-4 rounded-xl bg-white/5 border border-white/5 transition-all hover:bg-white/10">
+              <!-- Case 1: Has JSON Conclusion -->
+              <div v-if="msg.parsed && msg.parsed.hasJson">
+                 <details class="group mb-3">
+                    <summary class="flex items-center gap-2 cursor-pointer list-none text-text-secondary hover:text-white transition-colors">
+                       <span class="material-symbols-outlined text-sm group-open:rotate-180 transition-transform">expand_more</span>
+                       <div class="flex items-center gap-2">
+                          <span class="px-2 py-0.5 rounded bg-primary/20 text-primary text-xs font-bold">{{ msg.agentName }}</span>
+                          <span class="text-xs">思考过程 (Thinking Process)</span>
+                       </div>
+                    </summary>
+                    <div class="mt-2 pl-6 pt-2 border-l-2 border-white/5 text-gray-400 text-sm prose prose-sm prose-invert max-w-none leading-relaxed" v-html="renderMarkdown(msg.parsed.reasoning)"></div>
+                 </details>
+                 
+                 <!-- Always Visible Conclusion -->
+                 <div class="pl-0">
+                    <div class="flex items-center justify-between mb-2">
+                       <span class="text-xs font-mono text-text-secondary">{{ formatTime(msg.timestamp) }}</span>
+                       <span class="text-xs font-bold text-accent-cyan">结论 (Decision Ticket)</span>
+                    </div>
 
-            <div v-if="discussionMessages.length === 0" class="flex flex-col items-center justify-center h-full py-8 text-text-secondary">
+                    <!-- Signal Card (Visualized JSON) -->
+                    <div v-if="msg.parsed.parsedJson" class="bg-[#0f172a] rounded-lg border border-white/10 p-4 relative overflow-hidden group/card shadow-sm hover:shadow-md transition-all">
+                        <!-- Decorative bg -->
+                        <div class="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-xl -translate-y-1/2 translate-x-1/2"></div>
+
+                        <!-- Compressed Header Row -->
+                        <div class="flex items-center justify-between mb-3 pb-2 border-b border-white/5 relative z-10">
+                             <!-- Left: Direction Badge & Leverage -->
+                             <div class="flex items-center gap-3">
+                                <span :class="['px-2 py-0.5 rounded text-xs font-black uppercase tracking-wider', 
+                                   (msg.parsed.parsedJson.direction || '').toLowerCase() === 'long' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20' : 
+                                   (msg.parsed.parsedJson.direction || '').toLowerCase() === 'short' ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-gray-500/20 text-gray-400 border border-gray-500/20']">
+                                   {{ (msg.parsed.parsedJson.direction || 'HOLD').toUpperCase() }}
+                                </span>
+                                <span v-if="msg.parsed.parsedJson.leverage" class="text-white font-bold text-sm font-mono opacity-80">
+                                   {{ msg.parsed.parsedJson.leverage }}x
+                                </span>
+                             </div>
+
+                             <!-- Right: Compact Metrics -->
+                             <div class="flex items-center gap-3 text-xs font-mono bg-black/20 rounded px-2 py-1">
+                                 <div class="flex items-center gap-1.5 border-r border-white/10 pr-3">
+                                     <span class="text-text-secondary text-[10px] uppercase">Conf</span>
+                                     <span :class="['font-bold', (msg.parsed.parsedJson.confidence || 0) >= 70 ? 'text-emerald-400' : 'text-yellow-400']">
+                                        {{ msg.parsed.parsedJson.confidence }}%
+                                     </span>
+                                 </div>
+                                 <div class="flex items-center gap-1.5 border-r border-white/10 pr-3">
+                                     <span class="text-text-secondary text-[10px] uppercase">TP</span>
+                                     <span class="text-emerald-400 font-bold">+{{ msg.parsed.parsedJson.take_profit_percent }}%</span>
+                                 </div>
+                                 <div class="flex items-center gap-1.5">
+                                     <span class="text-text-secondary text-[10px] uppercase">SL</span>
+                                     <span class="text-red-400 font-bold">-{{ msg.parsed.parsedJson.stop_loss_percent }}%</span>
+                                 </div>
+                             </div>
+                        </div>
+                
+                        <!-- Main Body: Reasoning Text (Prominent) -->
+                        <div v-if="msg.parsed.parsedJson.reasoning" class="relative z-10">
+                            <div class="text-sm text-gray-300 leading-relaxed opacity-90 font-light">
+                                {{ msg.parsed.parsedJson.reasoning }}
+                            </div>
+                        </div>
+                    </div>
+                
+                    <!-- Fallback to Raw Code if Parsing Failed -->
+                    <div v-else class="prose prose-sm prose-invert max-w-none bg-[#0f172a] rounded-lg p-3 border border-white/10 shadow-inner" v-html="renderMarkdown(msg.parsed.conclusion)"></div>
+                 </div>
+              </div>
+
+              <!-- Case 2: No JSON (Standard Message) -->
+              <div v-else>
+                 <div class="flex items-center gap-2 mb-2">
+                   <span class="px-2 py-0.5 rounded bg-primary/20 text-primary text-xs font-bold">{{ msg.agentName }}</span>
+                   <span class="text-text-secondary text-xs font-mono">{{ formatTime(msg.timestamp) }}</span>
+                 </div>
+                 <div class="text-gray-300 text-sm prose prose-sm prose-invert max-w-none leading-relaxed" v-html="renderMarkdown(msg.content)"></div>
+              </div>
+            </div>
+            <div v-if="discussionMessages.length === 0" class="flex flex-col items-center justify-center py-20 text-text-secondary">
               <span class="material-symbols-outlined text-4xl mb-2 opacity-50">chat_bubble</span>
-              <p>{{ t('trading.noMessages') || 'Waiting for analysis...' }}</p>
+              <p>Waiting for analysis...</p>
             </div>
           </div>
         </div>
 
-        <!-- Agent Team Panel (Compact) -->
-        <div class="glass-panel rounded-xl p-4">
-          <h3 class="text-base font-semibold text-white mb-3 flex items-center">
-            <span class="material-symbols-outlined mr-2 text-accent-cyan text-lg">groups</span>
-            {{ t('trading.agentTeam') || 'Trading Expert Team' }}
-          </h3>
 
-          <div class="flex flex-wrap gap-2">
-            <div
-              v-for="agent in agents"
-              :key="agent.id"
-              class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-primary/50 transition-colors"
-            >
-              <div class="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                <span class="material-symbols-outlined text-primary text-sm">{{ agent.icon }}</span>
-              </div>
-              <div class="min-w-0">
-                <div class="text-white font-medium text-xs truncate">{{ agent.name }}</div>
-                <div class="text-text-secondary text-xs">{{ t('trading.winRate') || 'Win' }}: {{ (agent.winRate * 100).toFixed(1) }}%</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Trade History -->
-    <div class="glass-panel rounded-xl p-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-semibold text-white flex items-center">
-          <span class="material-symbols-outlined mr-2 text-primary">history</span>
-          {{ t('trading.history') || 'Trade History' }}
-        </h3>
-        <button
-          @click="fetchTradeHistory"
-          class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-all"
-        >
-          <span class="material-symbols-outlined align-middle text-base mr-1">refresh</span>
-          {{ t('common.refresh') || 'Refresh' }}
-        </button>
-      </div>
-
-      <div class="max-h-80 overflow-y-auto overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="text-text-secondary border-b border-white/10">
-              <th class="text-left py-3 px-4">{{ t('trading.time') || 'Time' }}</th>
-              <th class="text-left py-3 px-4">{{ t('trading.status') || 'Status' }}</th>
-              <th class="text-left py-3 px-4">{{ t('trading.direction') || 'Direction' }}</th>
-              <th class="text-right py-3 px-4">{{ t('trading.leverage') || 'Leverage' }}</th>
-              <th class="text-right py-3 px-4">{{ t('trading.entry') || 'Entry' }}</th>
-              <th class="text-right py-3 px-4 text-emerald-400">TP</th>
-              <th class="text-right py-3 px-4 text-red-400">SL</th>
-              <th class="text-right py-3 px-4">{{ t('trading.exit') || 'Exit' }}</th>
-              <th class="text-right py-3 px-4">{{ t('trading.pnl') || 'P&L' }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="trade in tradeHistory"
-              :key="trade.id"
-              class="border-b border-white/5 hover:bg-white/5"
-            >
-              <td class="py-3 px-4 text-white">{{ formatDate(trade.timestamp) }}</td>
-              <td class="py-3 px-4">
-                <span
-                  :class="[
-                    'px-2 py-1 rounded text-xs font-medium',
-                    trade.status === 'open'
-                      ? 'bg-blue-500/20 text-blue-400'
-                      : 'bg-gray-500/20 text-gray-400'
-                  ]"
-                >
-                  {{ trade.status === 'open' ? 'OPEN' : 'CLOSED' }}
-                </span>
-              </td>
-              <td class="py-3 px-4">
-                <span
-                  :class="[
-                    'px-2 py-1 rounded text-xs font-medium',
-                    trade.direction === 'long'
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : 'bg-red-500/20 text-red-400'
-                  ]"
-                >
-                  {{ (trade.direction || 'unknown').toUpperCase() }}
-                </span>
-              </td>
-              <td class="py-3 px-4 text-right text-white">{{ trade.leverage }}x</td>
-              <td class="py-3 px-4 text-right text-white">${{ formatNumber(trade.entryPrice) }}</td>
-              <td class="py-3 px-4 text-right text-emerald-400">
-                <template v-if="trade.takeProfit">${{ formatNumber(trade.takeProfit) }}</template>
-                <template v-else><span class="text-text-secondary">-</span></template>
-              </td>
-              <td class="py-3 px-4 text-right text-red-400">
-                <template v-if="trade.stopLoss">${{ formatNumber(trade.stopLoss) }}</template>
-                <template v-else><span class="text-text-secondary">-</span></template>
-              </td>
-              <td class="py-3 px-4 text-right text-white">
-                <template v-if="trade.exitPrice !== null">
-                  ${{ formatNumber(trade.exitPrice) }}
-                </template>
-                <template v-else>
-                  <span class="text-text-secondary">-</span>
-                </template>
-              </td>
-              <td class="py-3 px-4 text-right">
-                <template v-if="trade.pnl !== null">
-                  <span :class="trade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'">
-                    {{ trade.pnl >= 0 ? '+' : '' }}${{ formatNumber(trade.pnl) }}
-                  </span>
-                </template>
-                <template v-else>
-                  <span class="text-blue-400">{{ t('trading.holding') || 'Holding' }}</span>
-                </template>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div v-if="tradeHistory.length === 0" class="text-center py-8 text-text-secondary">
-          {{ t('trading.noTrades') || 'No trades yet' }}
-        </div>
       </div>
     </div>
 
@@ -441,14 +325,14 @@
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold text-white flex items-center">
           <span class="material-symbols-outlined mr-2 text-accent-cyan">leaderboard</span>
-          {{ t('trading.agentPerformance') || 'Agent Performance' }}
+          智能体表现 (Agent Performance)
         </h3>
         <button
           @click="fetchAgentPerformance"
           class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-all"
         >
           <span class="material-symbols-outlined align-middle text-base mr-1">refresh</span>
-          {{ t('common.refresh') || 'Refresh' }}
+          刷新
         </button>
       </div>
 
@@ -484,12 +368,12 @@
         <table class="w-full text-sm">
           <thead>
             <tr class="text-text-secondary border-b border-white/10">
-              <th class="text-left py-3 px-4">{{ t('trading.agent') || 'Agent' }}</th>
-              <th class="text-right py-3 px-4">{{ t('trading.totalTrades') || 'Trades' }}</th>
-              <th class="text-right py-3 px-4">{{ t('trading.wins') || 'Wins' }}</th>
-              <th class="text-right py-3 px-4">{{ t('trading.winRate') || 'Win Rate' }}</th>
-              <th class="text-right py-3 px-4">{{ t('trading.totalPnlLabel') || 'Total PnL' }}</th>
-              <th class="text-left py-3 px-4">{{ t('trading.latestLesson') || 'Latest Lesson' }}</th>
+              <th class="text-left py-3 px-4">智能体</th>
+              <th class="text-right py-3 px-4">交易数</th>
+              <th class="text-right py-3 px-4">胜场</th>
+              <th class="text-right py-3 px-4">胜率</th>
+              <th class="text-right py-3 px-4">总盈亏</th>
+              <th class="text-left py-3 px-4">最新反思</th>
             </tr>
           </thead>
           <tbody>
@@ -524,6 +408,33 @@
         <div v-if="!agentPerformance.agents || Object.keys(agentPerformance.agents).length === 0" class="text-center py-8 text-text-secondary">
           {{ t('trading.noAgentData') || 'No agent performance data yet' }}
         </div>
+      </div>
+    </div>
+
+    <!-- Trade History (Full Width Bottom) -->
+    <div class="glass-panel rounded-xl p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-white flex items-center">
+          <span class="material-symbols-outlined mr-2 text-primary">history</span>
+          交易历史
+        </h3>
+        <button @click="fetchTradeHistory" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-all flex items-center">
+           <span class="material-symbols-outlined text-sm mr-1">refresh</span> Refresh
+        </button>
+      </div>
+      <div class="max-h-[500px] overflow-y-auto">
+         <table class="w-full text-sm">
+            <thead><tr class="text-text-secondary border-b border-white/10 sticky top-0 bg-[#0f172a] z-10"><th class="text-left py-3 px-4">时间</th><th class="text-left py-3 px-4">方向</th><th class="text-right py-3 px-4">入场价</th><th class="text-right py-3 px-4">盈亏</th></tr></thead>
+            <tbody>
+              <tr v-for="trade in tradeHistory" :key="trade.id" class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                <td class="py-3 px-4 text-white font-mono">{{ formatDate(trade.timestamp) }}</td>
+                <td class="py-3 px-4"><span :class="['px-2 py-1 rounded text-xs font-bold', trade.direction === 'long' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400']">{{ trade.direction.toUpperCase() }}</span></td>
+                <td class="py-3 px-4 text-right text-white font-mono">${{ formatNumber(trade.entryPrice) }}</td>
+                <td class="py-3 px-4 text-right"><span :class="['font-bold', (trade.pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400']">{{ (trade.pnl || 0) >= 0 ? '+' : '' }}${{ formatNumber(trade.pnl || 0) }}</span></td>
+              </tr>
+              <tr v-if="tradeHistory.length === 0"><td colspan="4" class="text-center py-8 text-text-secondary">No trades yet</td></tr>
+            </tbody>
+         </table>
       </div>
     </div>
 
@@ -835,6 +746,42 @@
       </div>
     </div>
   </div>
+
+
+  <!-- Expert Team Modal -->
+  <div v-if="showTeamModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" @click.self="showTeamModal = false">
+    <div class="bg-[#0f172a] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl relative animate-fadeIn">
+       <div class="p-6 border-b border-white/10 flex justify-between items-center sticky top-0 bg-[#0f172a] z-10">
+         <h3 class="text-xl font-bold text-white flex items-center">
+           <span class="material-symbols-outlined mr-2 text-accent-cyan">groups</span>
+           专家团队
+         </h3>
+         <button @click="showTeamModal = false" class="text-text-secondary hover:text-white transition-colors">
+           <span class="material-symbols-outlined text-2xl">close</span>
+         </button>
+       </div>
+       <div class="p-6">
+         <!-- Team Agent List -->
+         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div v-for="agent in agents" :key="agent.id" class="p-4 rounded-xl bg-white/5 border border-white/5 hover:border-primary/30 transition-all group">
+               <div class="flex items-start gap-4">
+                  <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/30 transition-colors">
+                    <span class="material-symbols-outlined text-primary text-xl">{{ agent.icon }}</span>
+                  </div>
+                  <div>
+                    <h4 class="text-white font-bold">{{ agent.name }}</h4>
+                    <p class="text-xs text-text-secondary mt-1">{{ agent.role }}</p>
+                    <div class="flex items-center gap-3 mt-3 text-xs">
+                       <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Win: {{ (agent.winRate * 100).toFixed(0) }}%</span>
+                       <span class="text-text-secondary">{{ t('trading.totalTrades') }}: {{ agent.totalTrades }}</span>
+                    </div>
+                  </div>
+               </div>
+            </div>
+         </div>
+       </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -857,6 +804,7 @@ let equityChart = null;
 
 // Refs
 const discussionContainer = ref(null);
+const showTeamModal = ref(false);
 
 // State
 const systemStatus = ref({
@@ -916,6 +864,9 @@ const settingsForm = ref({
 });
 const loadingConfig = ref(false);
 
+// Pending Trades (HITL Semi-Auto Mode)
+const pendingTrades = ref([]);
+
 // Decision Confirmation Modal State
 const showDecisionModal = ref(false);
 const pendingDecision = ref({
@@ -966,14 +917,43 @@ const performanceData = ref({
   tradesAnalyzed: 0
 });
 
+// Phase 0-3: HITL, MTF, Agent Weights, Degradation
+const tradingMode = ref({
+  mode: 'semi_auto',
+  description: ''
+});
+
+const mtfAnalysis = ref({
+  overall_direction: 'neutral',
+  alignment_score: 0,
+  confidence_modifier: 1.0,
+  recommendation: ''
+});
+
+const learnedWeights = ref({
+  TechnicalAnalyst: 1.0,
+  FundamentalAnalyst: 1.0,
+  SentimentAnalyst: 1.0,
+  RiskManager: 1.0,
+  OnchainAnalyst: 1.0
+});
+
+const systemHealth = ref({
+  level: 'full',
+  capabilities: {}
+});
+
+const changingMode = ref(false);
+
 
 // WebSocket
 let ws = null;
 let countdownInterval = null;
 
 // Computed
-// Fixed initial capital
-const INITIAL_CAPITAL = 3000;
+// Fixed initial capital - matches OKX demo account
+const INITIAL_CAPITAL = 5000;
+const initialCapital = ref(INITIAL_CAPITAL);
 
 // Trading start date - earliest trade timestamp
 const tradingStartDate = computed(() => {
@@ -1211,6 +1191,112 @@ async function fetchPerformance() {
   }
 }
 
+// Phase 0-3: Fetch HITL Mode
+async function fetchTradingMode() {
+  try {
+    const response = await fetch('/api/trading/mode');
+    const data = await response.json();
+    if (data.mode) {
+      tradingMode.value = data;
+    }
+  } catch (e) {
+    console.error('Error fetching trading mode:', e);
+  }
+}
+
+// Phase 3.1: Fetch MTF Analysis
+async function fetchMtfAnalysis() {
+  try {
+    const response = await fetch('/api/trading/mtf-analysis');
+    const data = await response.json();
+    if (data.overall_direction) {
+      mtfAnalysis.value = data;
+    }
+  } catch (e) {
+    console.error('Error fetching MTF analysis:', e);
+  }
+}
+
+// Phase 3.2: Fetch Agent Weights
+async function fetchAgentWeights() {
+  try {
+    const response = await fetch('/api/trading/agent-weights');
+    const data = await response.json();
+    if (data.weights) {
+      learnedWeights.value = data.weights;
+    }
+  } catch (e) {
+    console.error('Error fetching agent weights:', e);
+  }
+}
+
+// Phase 2.3: Fetch Degradation Status
+async function fetchDegradation() {
+  try {
+    const response = await fetch('/api/trading/degradation');
+    const data = await response.json();
+    if (data.level) {
+      systemHealth.value = data;
+    }
+  } catch (e) {
+    console.error('Error fetching degradation:', e);
+  }
+}
+
+// Set Trading Mode (HITL)
+async function setTradingMode(mode) {
+  changingMode.value = true;
+  try {
+    const response = await fetch('/api/trading/mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode })
+    });
+    const data = await response.json();
+    if (data.success) {
+      tradingMode.value = { mode: data.new_mode, description: '' };
+      await fetchTradingMode();
+      // Fetch pending trades if switching to semi_auto
+      if (mode === 'semi_auto') {
+        await fetchPendingTrades();
+      }
+    }
+  } catch (e) {
+    console.error('Error setting trading mode:', e);
+  } finally {
+    changingMode.value = false;
+  }
+}
+
+// Fetch Pending Trades (HITL Semi-Auto)
+async function fetchPendingTrades() {
+  try {
+    const response = await fetch('/api/trading/pending');
+    const data = await response.json();
+    if (data.trades) {
+      pendingTrades.value = data.trades;
+    }
+  } catch (e) {
+    console.error('Error fetching pending trades:', e);
+  }
+}
+
+// Open Pending Trade Modal for confirmation
+function openPendingTradeModal(trade) {
+  pendingDecision.value = {
+    decision_id: trade.trade_id,
+    direction: trade.direction,
+    leverage: trade.leverage,
+    confidence: trade.confidence,
+    take_profit: trade.take_profit,
+    stop_loss: trade.stop_loss,
+    current_price: trade.entry_price,
+    reasoning: trade.reasoning || ''
+  };
+  modifiedLeverage.value = trade.leverage;
+  showDecisionModal.value = true;
+}
+
 // Fetch BTC benchmark data for alpha calculation
 async function fetchBtcBenchmark() {
   if (!tradingStartDate.value) return;
@@ -1303,6 +1389,41 @@ async function fetchTradeHistory() {
   }
 }
 
+function parseDiscussionContent(content) {
+  if (!content) return { hasJson: false, reasoning: '', conclusion: '', parsedJson: null };
+  
+  // Find the last JSON code block
+  const jsonBlockRegex = /```json\s*([\s\S]*?)\s*```/g;
+  let match;
+  let lastMatch = null;
+  
+  while ((match = jsonBlockRegex.exec(content)) !== null) {
+    lastMatch = match;
+  }
+  
+  if (lastMatch) {
+    const jsonStr = lastMatch[1];
+    const fullBlock = lastMatch[0];
+    const reasoning = content.replace(fullBlock, '').trim();
+    
+    let parsedJson = null;
+    try {
+      parsedJson = JSON.parse(jsonStr);
+    } catch (e) {
+      console.warn('Failed to parse discussion JSON:', e);
+    }
+
+    return {
+      hasJson: true,
+      parsedJson: parsedJson,
+      reasoning: reasoning || '查看详细分析过程...',
+      conclusion: fullBlock
+    };
+  }
+  
+  return { hasJson: false, reasoning: content, conclusion: '', parsedJson: null };
+}
+
 async function fetchDiscussionMessages() {
   try {
     const response = await fetch('/api/trading/messages?limit=100');
@@ -1311,6 +1432,7 @@ async function fetchDiscussionMessages() {
       discussionMessages.value = data.messages.map(msg => ({
         agentName: msg.agent_name,
         content: msg.content,
+        parsed: parseDiscussionContent(msg.content),
         timestamp: msg.timestamp
       }));
     }
@@ -1548,6 +1670,7 @@ async function saveSettings() {
       discussionMessages.value.push({
         agentName: '系统',
         content: message,
+        parsed: parseDiscussionContent(message),
         timestamp: new Date().toISOString()
       });
     }
@@ -1694,6 +1817,7 @@ function handleWebSocketMessage(msg) {
       discussionMessages.value.push({
         agentName: msg.agent_name,
         content: msg.content,
+        parsed: parseDiscussionContent(msg.content),
         timestamp: msg.timestamp
       });
       // Auto-scroll
@@ -1706,19 +1830,45 @@ function handleWebSocketMessage(msg) {
 
     case 'signal_generated':
       isAnalyzing.value = false;
+      const signal = msg.signal || {};
+      
+      // Synthesize Leader Message content for Discussion Panel
+      // We wrap the signal in valid JSON markdown so it renders as a Ticket
+      const signalReasoning = signal.reasoning || msg.reasoning || 'Market analysis complete.';
+      
+      // Construct the display payload
+      const displayPayload = {
+        direction: signal.direction || 'hold',
+        leverage: signal.leverage || 1,
+        attendance: 0, // Placeholder
+        confidence: signal.confidence || 0,
+        take_profit_percent: ((signal.take_profit_price && signal.entry_price) ? ((signal.take_profit_price/signal.entry_price - 1) * 100 * (signal.direction==='short'?-1:1)).toFixed(1) : 0),
+        stop_loss_percent: ((signal.stop_loss_price && signal.entry_price) ? ((1 - signal.stop_loss_price/signal.entry_price) * 100 * (signal.direction==='short'?-1:1)).toFixed(1) : 0),
+        reasoning: signalReasoning
+      };
+
+      const leaderContent = `${signalReasoning}\n\n\`\`\`json\n${JSON.stringify(displayPayload, null, 2)}\n\`\`\``;
+
+      discussionMessages.value.push({
+         agentName: 'Leader',
+         content: leaderContent,
+         parsed: parseDiscussionContent(leaderContent),
+         timestamp: new Date().toISOString()
+      });
+      
+      // Auto-scroll
+      nextTick(() => {
+        if (discussionContainer.value) {
+          discussionContainer.value.scrollTop = discussionContainer.value.scrollHeight;
+        }
+      });
       
       // Check if this is a HOLD signal (no action needed)
       if (msg.signal?.direction === 'hold' || !msg.signal?.direction) {
-        discussionMessages.value.push({
-          agentName: '系统',
-          content: `市场分析完成: 维持观望 (HOLD)`,
-          timestamp: new Date().toISOString()
-        });
-        break;
+        break; // Message already pushed above
       }
       
       // Show decision confirmation modal for LONG/SHORT signals
-      const signal = msg.signal || {};
       pendingDecision.value = {
         decision_id: `decision-${Date.now()}`,
         direction: signal.direction || 'long',
@@ -1727,10 +1877,12 @@ function handleWebSocketMessage(msg) {
         take_profit: signal.take_profit_price || 0,
         stop_loss: signal.stop_loss_price || 0,
         current_price: signal.entry_price || 0,
-        reasoning: signal.reasoning || msg.reasoning || '综合技术面、宏观面、市场情绪等进行多维度分析，建议执行此交易。'
+        reasoning: signalReasoning
       };
+      
       modifiedLeverage.value = pendingDecision.value.leverage;
       showDecisionModal.value = true;
+
       
       discussionMessages.value.push({
         agentName: '系统',
@@ -1907,8 +2059,17 @@ async function refreshAllData() {
     fetchAccount(),
     fetchPosition(),
     fetchTradeHistory(),
-    fetchPerformance()  // Refresh performance metrics
+    fetchPerformance(),
+    fetchTradingMode(),
+    fetchMtfAnalysis(),
+    fetchAgentWeights(),
+    fetchDiscussionMessages(),
+    fetchDegradation()
   ]);
+  // Fetch pending trades only in semi_auto mode
+  if (tradingMode.value.mode === 'semi_auto') {
+    await fetchPendingTrades();
+  }
 }
 
 
@@ -1924,7 +2085,11 @@ onMounted(async () => {
     fetchAgentPerformance(),
     fetchDiscussionMessages(),  // Restore discussion messages on page load
     fetchDrawdown(),  // Fetch drawdown data
-    fetchPerformance()  // Fetch performance metrics from backend
+    fetchPerformance(),  // Fetch performance metrics from backend
+    fetchTradingMode(),  // Phase 1.3: HITL Mode
+    fetchMtfAnalysis(),  // Phase 3.1: MTF Analysis
+    fetchAgentWeights(),  // Phase 3.2: Agent Weights
+    fetchDegradation()  // Phase 2.3: Degradation Status
   ]);
 
 
@@ -1987,3 +2152,17 @@ onUnmounted(() => {
   }
 });
 </script>
+
+<style scoped>
+/* Force code blocks to wrap text to prevent overflow */
+:deep(.prose pre) {
+  white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+  overflow-x: hidden !important;
+  max-width: 100%;
+}
+:deep(.prose code) {
+  white-space: pre-wrap !important;
+  word-break: break-all !important;
+}
+</style>

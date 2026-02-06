@@ -37,6 +37,7 @@ from .api.routers.analysis import router as analysis_router
 from .api.routers.export import router as export_router, set_get_report_func
 from .api.routers.dd_workflow import router as dd_workflow_router, set_session_funcs
 from .api.routers.monitoring import router as monitoring_router
+from .api.routers.trading_mode import router as trading_mode_router
 from .api.trading_routes import router as trading_router
 from .middleware import RequestLoggingMiddleware, CachingMiddleware
 
@@ -163,6 +164,7 @@ app.include_router(export_router, prefix="/api/reports", tags=["Report Export"])
 app.include_router(dd_workflow_router, prefix="/api/dd", tags=["DD Workflow"])
 app.include_router(monitoring_router, prefix="/api/errors", tags=["Monitoring"])
 app.include_router(trading_router, tags=["Auto Trading"])
+app.include_router(trading_mode_router, tags=["Trading Mode"])
 
 # --- Pydantic Models ---
 class AnalysisRequest(BaseModel):
@@ -886,7 +888,7 @@ async def health_check():
     # Check LLM Gateway (optional - don't fail health check if down)
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get("http://llm_gateway:8002/health", timeout=2.0)
+            response = await client.get("http://llm_gateway:8003/health", timeout=2.0)
             if response.status_code == 200:
                 health_status["checks"]["llm_gateway"] = {
                     "status": "healthy",

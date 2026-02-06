@@ -24,6 +24,7 @@ from app.core.trading.agent_memory import (
 )
 from app.core.trading.price_service import get_current_btc_price
 from app.core.trading.position_context import PositionContext
+from app.core.trading.trading_logger import get_trading_logger
 
 # Import from new refactored modules
 from app.core.trading.trading_config import TradingMeetingConfig
@@ -34,8 +35,26 @@ from app.core.trading.vote_calculator import (
     DynamicWeightCalculator,
 )
 
+# 🆕 Phase 1-2 Refactored Modules
+from app.core.trading.safety.guards import SafetyGuard
+from app.core.trading.executor import TradeExecutor  # Legacy (kept for backward compatibility)
+from app.core.trading.executor_agent import ExecutorAgent  # 🆕 New unified agent-based executor
+from app.core.trading.reflection.engine import ReflectionEngine
+
+# 🆕 LangGraph orchestration imports
+from app.core.trading.orchestration.graph import TradingGraph
+from app.core.trading.orchestration.state import create_initial_state
+
+# 🆕 Phase 1: Parallel execution and Feature Flags
+from app.core.parallel import RateLimitedExecutor, get_rate_limiter, AGENT_BATCHES
+from app.core.feature_flags import FeatureFlag, is_feature_enabled
+
 logger = logging.getLogger(__name__)
 
+
+# Note: LLMGatewayClient class has been removed (2026-01-01)
+# ExecutorAgent now inherits from ReWOOAgent and calls LLM gateway directly via HTTP.
+# See: executor_agent.py
 
 # Note: The following are now imported from modular files:
 # - TradingMeetingConfig from trading_config.py
@@ -95,8 +114,70 @@ class TradingMeeting(Meeting):
         self._current_predictions: Dict[str, Dict[str, Any]] = {}
         self._current_trade_id: Optional[str] = None
 
+        # 🆕 Phase 1-2: Initialize new refactored modules
+        self._safety_guard: Optional[SafetyGuard] = None
+        self._trade_executor: Optional[TradeExecutor] = None
+        self._reflection_engine: Optional[ReflectionEngine] = None
+        self._init_refactored_modules()
+        
+        # 🆕 Phase 4: LangGraph workflow (feature flag)
+        self._trading_graph: Optional[TradingGraph] = None
+        if self.config.use_langgraph:
+            try:
+                self._trading_graph = TradingGraph()
+                logger.info("[TradingMeeting] ✅ LangGraph workflow enabled")
+            except Exception as e:
+                logger.warning(f"[TradingMeeting] LangGraph initialization failed: {e}")
+
         # Register position closed callback (for triggering Agent reflection)
         self._register_position_closed_callback()
+
+    def _init_refactored_modules(self):
+        """
+        Initialize Phase 1-2 refactored modules.
+        
+        Sets up:
+        - SafetyGuard: Centralized safety checks
+        - TradeExecutor: Execution with ReAct fallback
+        - ReflectionEngine: Post-trade reflection
+        """
+        try:
+            # Get paper_trader from toolkit if available
+            paper_trader = getattr(self.toolkit, 'paper_trader', None) if self.toolkit else None
+            
+            # Initialize SafetyGuard
+            if paper_trader:
+                self._safety_guard = SafetyGuard(
+                    trader=paper_trader,
+                    cooldown_manager=getattr(self.toolkit, 'cooldown_manager', None),
+                    config=self.config,
+                    min_confidence=getattr(self.config, 'min_confidence', 60)
+                )
+                logger.info("[TradingMeeting] ✅ SafetyGuard initialized")
+            
+            # Initialize TradeExecutor
+            if paper_trader and self.llm_service:
+                self._trade_executor = TradeExecutor(
+                    llm_service=self.llm_service,
+                    toolkit=self.toolkit,
+                    paper_trader=paper_trader,
+                    safety_guard=self._safety_guard,
+                    on_message=self.on_message,
+                    symbol=getattr(self.config, 'symbol', 'BTC-USDT-SWAP')
+                )
+                logger.info("[TradingMeeting] ✅ TradeExecutor initialized")
+            
+            # Initialize ReflectionEngine
+            if self.llm_service:
+                self._reflection_engine = ReflectionEngine(
+                    llm_service=self.llm_service,
+                    redis_url="redis://redis:6379"  # Default Redis URL
+                )
+                logger.info("[TradingMeeting] ✅ ReflectionEngine initialized")
+                
+        except Exception as e:
+            logger.warning(f"[TradingMeeting] Failed to initialize refactored modules: {e}")
+            # Non-fatal - the original code paths will still work
 
     async def _calculate_agent_weights(self) -> Dict[str, float]:
         """
@@ -154,8 +235,317 @@ class TradingMeeting(Meeting):
             logger.debug("No paper_trader in toolkit, skipping callback registration")
             return
 
-        # Save original callback (if any)
-        original_callback = getattr(paper_trader, 'on_position_closed', None)
+        # 🔧 FIX: Check if reflection callback is already registered to prevent duplicate wrapping
+        # Each TradingMeeting was wrapping the existing callback, creating a chain of N callbacks
+        if getattr(paper_trader, '_reflection_callback_registered', False):
+            logger.debug("Reflection callback already registered, skipping to prevent duplicate")
+            return
+
+        # Save original callback (if any) - but only the base one, not a previously wrapped one
+        original_callback = getattr(paper_trader, '_original_position_closed_callback', None)
+        if original_callback is None:
+            # First time registration - save the current callback as original
+            original_callback = getattr(paper_trader, 'on_position_closed', None)
+            paper_trader._original_position_closed_callback = original_callback
+
+    # 🆕 Phase 4: LangGraph Workflow Methods
+    
+    async def run_with_graph(
+        self,
+        trigger_reason: str = "scheduled",
+        context: Optional[str] = None
+    ) -> Optional[TradingSignal]:
+        """
+        Run trading workflow using LangGraph.
+        Alternative execution path when use_langgraph=True.
+        """
+        logger.info(f"[TradingMeeting] 🔄 Running via LangGraph - Trigger: {trigger_reason}")
+        
+        try:
+            # Load agent weights  
+            agent_weights = await self._calculate_agent_weights()
+            
+            # Get market data
+            market_data = {
+                "current_price": await get_current_btc_price(),
+                "trigger_reason": trigger_reason
+            }
+            
+            # Get position context (FULL data for TradeExecutor)
+            position_context = {}
+            if self.toolkit and hasattr(self.toolkit, 'paper_trader'):
+                pos = await self.toolkit.paper_trader.get_position(self.config.symbol)
+                if pos:
+                    # Pass full position data for TradeExecutor's intelligent decision
+                    position_context = {
+                        "has_position": True,
+                        "direction": pos.get("direction"),
+                        "entry_price": pos.get("entry_price", 0),
+                        "current_price": pos.get("current_price", 0),
+                        "unrealized_pnl": pos.get("unrealized_pnl", 0),
+                        "unrealized_pnl_percent": pos.get("unrealized_pnl_percent", 0),
+                        "leverage": pos.get("leverage", 1),
+                        "margin": pos.get("margin", 0),
+                        "size": pos.get("size", 0),
+                        "take_profit_price": pos.get("take_profit_price"),
+                        "stop_loss_price": pos.get("stop_loss_price"),
+                        "liquidation_price": pos.get("liquidation_price"),
+                    }
+                else:
+                    position_context = {"has_position": False}
+            
+            
+            # Collect real agent votes for LangGraph  
+            logger.info("[LangGraph] Collecting agent votes...")
+            votes = []
+            
+            # Get analysis agents (dynamic from loaded agents)
+            # Filter out system agents (Leader, RiskAssessor, TradeExecutor)
+            # Note: self.agents is dict {name: agent}, but _get_agent_by_id uses agent.id
+            system_agents = {'Leader', 'RiskAssessor', 'TradeExecutor'}
+            vote_agent_ids = [
+                agent.id for agent in self.agents.values() 
+                if agent.id not in system_agents
+            ]
+            
+            # Build vote prompt with position context
+            position_info = ""
+            if position_context.get('has_position'):
+                direction = position_context.get('direction') or 'unknown'
+                position_info = f"\n**Current Position**: {direction.upper()}\n"
+            
+            vote_prompt = f"""You are participating in a trading strategy meeting.
+
+**Market Context**:
+- Symbol: BTC-USDT-SWAP
+- Current Price: ${market_data['current_price']:,.2f}
+- Trigger: {trigger_reason}{position_info}
+
+Based on your expertise, provide your trading recommendation.
+
+**Output your vote as JSON** at the END of your response:
+
+```json
+{{
+  "direction": "<hold|long|short|close>",
+  "confidence": 75,
+  "leverage": 6,
+  "take_profit_percent": 8.0,
+  "stop_loss_percent": 3.0,
+  "reasoning": "Your analysis here"
+}}
+```
+"""
+            
+            # 🆕 Phase 1: Check if parallel execution is enabled
+            use_parallel = await is_feature_enabled(FeatureFlag.PARALLEL_AGENTS)
+            
+            if use_parallel:
+                # Parallel vote collection
+                logger.info("[LangGraph] 🚀 Collecting votes in PARALLEL mode")
+                import time
+                start_time = time.time()
+                
+                rate_limiter = get_rate_limiter()
+                
+                # Execute all batches in parallel
+                results = await rate_limiter.execute_all_batches(
+                    get_agents_func=self._get_agent_by_id,
+                    prompt=vote_prompt,
+                    run_agent_func=self._run_agent_turn,
+                    parse_vote_func=self._parse_vote_with_fallback
+                )
+                
+                # Process results and collect votes
+                for result in results:
+                    if result.success and result.vote:
+                        vote = result.vote
+                        vote_dict = vote.to_dict() if hasattr(vote, 'to_dict') else {
+                            'agent_name': getattr(vote, 'agent_name', 'unknown'),
+                            'direction': getattr(vote, 'direction', 'hold'),
+                            'confidence': getattr(vote, 'confidence', 50),
+                            'leverage': getattr(vote, 'leverage', 1),
+                            'reasoning': getattr(vote, 'reasoning', ''),
+                            'take_profit_percent': getattr(vote, 'take_profit_percent', 8.0),
+                            'stop_loss_percent': getattr(vote, 'stop_loss_percent', 3.0)
+                        }
+                        votes.append(vote_dict)
+                        logger.info(f"[LangGraph] ✅ {result.agent_name}: {vote_dict.get('direction', 'unknown')} ({vote_dict.get('confidence', 0)}%) [{result.duration_ms:.0f}ms]")
+                    elif result.is_fallback:
+                        # Use fallback vote
+                        votes.append({
+                            'agent_name': result.agent_name,
+                            'direction': 'hold',
+                            'confidence': 30,
+                            'leverage': 1,
+                            'reasoning': '[Fallback] Agent failed/timeout',
+                            'take_profit_percent': 5.0,
+                            'stop_loss_percent': 2.0
+                        })
+                        logger.warning(f"[LangGraph] ⚠️ {result.agent_name}: fallback vote (hold/30%)")
+                
+                total_time = (time.time() - start_time) * 1000
+                logger.info(f"[LangGraph] Collected {len(votes)} votes in {total_time:.0f}ms (PARALLEL)")
+            else:
+                # Original sequential vote collection
+                logger.info("[LangGraph] 📝 Collecting votes in SEQUENTIAL mode")
+                for agent_id in vote_agent_ids:
+                    agent = self._get_agent_by_id(agent_id)
+                    if agent:
+                        try:
+                            response = await self._run_agent_turn(agent, vote_prompt)
+                            vote = self._parse_vote_json(agent_id, agent.name, response)
+                            if vote:
+                                vote_dict = vote.to_dict() if hasattr(vote, 'to_dict') else {
+                                    'agent_name': getattr(vote, 'agent_name', 'unknown'),
+                                    'direction': getattr(vote, 'direction', 'hold'),
+                                    'confidence': getattr(vote, 'confidence', 50),
+                                    'leverage': getattr(vote, 'leverage', 1),
+                                    'reasoning': getattr(vote, 'reasoning', ''),
+                                    'take_profit_percent': getattr(vote, 'take_profit_percent', 8.0),
+                                    'stop_loss_percent': getattr(vote, 'stop_loss_percent', 3.0)
+                                }
+                                votes.append(vote_dict)
+                                logger.info(f"[LangGraph] ✅ {agent.name}: {vote_dict.get('direction', 'unknown')} ({vote_dict.get('confidence', 0)}%)")
+                        except Exception as e:
+                            logger.warning(f"[LangGraph] ❌ {agent.name} vote failed: {e}")
+                
+                logger.info(f"[LangGraph] Collected {len(votes)} votes (SEQUENTIAL)")
+            
+            # 🆕 ExecutorAgent: inherits from Agent, uses native HTTP calls, no llm_service needed
+            if not self._trade_executor:
+                paper_trader = getattr(self.toolkit, 'paper_trader', None) if self.toolkit else None
+                
+                if paper_trader:
+                    # Use new ExecutorAgent - self-contained, no llm_service injection needed
+                    self._trade_executor = ExecutorAgent(
+                        toolkit=self.toolkit,
+                        paper_trader=paper_trader,
+                        safety_guard=self._safety_guard,
+                        on_message=self.on_message,
+                        symbol=getattr(self.config, 'symbol', 'BTC-USDT-SWAP'),
+                        llm_gateway_url="http://llm_gateway:8003"
+                    )
+                    logger.info("[LangGraph] ✅ ExecutorAgent initialized (unified agent architecture)")
+                else:
+                    logger.warning("[LangGraph] ⚠️ Cannot init ExecutorAgent: paper_trader not available")
+
+            # Run the graph
+            result_state = await self._trading_graph.run(
+                trigger_reason=trigger_reason,
+                symbol=self.config.symbol,
+                market_data=market_data,
+                position_context=position_context,
+                agent_votes=votes,
+                agent_weights=agent_weights,
+                leader_agent=self._get_agent_by_id("Leader"),  # Pass Leader agent for summary generation
+                risk_agent=self._get_agent_by_id("RiskAssessor"),  # 🆕 Pass RiskAssessor agent for LLM risk assessment
+                trade_executor=self._trade_executor,  # Pass TradeExecutor for execution decisions
+                on_message=self.on_message  # Pass message callback for broadcasting to frontend
+            )
+            
+            # Extract final signal from graph state
+            signal_dict = result_state.get("final_signal")
+            if signal_dict:
+                # 🔧 FIX: Extract leader_summary from result_state
+                leader_summary = result_state.get("leader_summary", "")
+                
+                signal = TradingSignal(
+                    direction=signal_dict["direction"],
+                    symbol=self.config.symbol,
+                    leverage=max(signal_dict.get("leverage", 1), 1),
+                    amount_percent=signal_dict.get("amount_percent", 0.2),
+                    entry_price=signal_dict.get("entry_price", market_data["current_price"]),
+                    take_profit_price=signal_dict.get("tp_price", market_data["current_price"]),
+                    stop_loss_price=signal_dict.get("sl_price", market_data["current_price"]),
+                    confidence=signal_dict.get("confidence", 50),
+                    reasoning=signal_dict.get("reasoning", ""),
+                    leader_summary=leader_summary,  # 🔧 FIX: Include leader_summary
+                    agents_consensus={"graph_state": "langgraph_execution"},
+                    timestamp=datetime.now()
+                )
+                
+                self._final_signal = signal
+                logger.info(f"[TradingMeeting] ✅ LangGraph complete: {signal.direction.upper()}")
+                return signal
+            
+            logger.warning("[TradingMeeting] ⚠️ No signal from LangGraph")
+            return None
+            
+        except Exception as e:
+            logger.error(f"[TradingMeeting] ❌ LangGraph failed: {e}", exc_info=True)
+            logger.info("[TradingMeeting] Falling back to traditional flow")
+            # Fall through to return None - caller will handle
+            return None
+    
+    # 🆕 Phase 5: Enhanced Memory Formatting Methods
+    
+    def _format_memory_context(self, memory) -> str:
+        """
+        Format agent memory into rich context string with visual separators.
+        Phase 5: Enhanced Memory - improves prompt quality
+        """
+        if not memory or not hasattr(memory, 'win_rate'):
+            return ""
+        
+        # Calculate dynamic focus area
+        focus = self._calculate_focus_area(memory)
+        
+        # Format recent lessons
+        lessons_text = ""
+        if hasattr(memory, 'lessons_learned') and memory.lessons_learned:
+            lessons = memory.lessons_learned[-5:]
+            lessons_text = "\n".join([f"  • {lesson}" for lesson in lessons])
+        else:
+            lessons_text = "  No lessons yet - this is your first analysis"
+        
+        # Rich formatting with emojis and separators
+        return f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 YOUR TRACK RECORD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Win Rate: {memory.win_rate:.1f}% 
+Trades: {memory.winning_trades}W / {memory.losing_trades}L
+Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄️ "}{max(getattr(memory, 'consecutive_wins', 0), getattr(memory, 'consecutive_losses', 0))} trades
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 CURRENT FOCUS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{focus}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 KEY LESSONS (Recent 5)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{lessons_text}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+    
+    def _calculate_focus_area(self, memory) -> str:
+        """
+        Dynamically calculate what agent should focus on based on performance.
+        Phase 5: Enhanced Memory - provides actionable guidance
+        """
+        consecutive_losses = getattr(memory, 'consecutive_losses', 0)
+        consecutive_wins = getattr(memory, 'consecutive_wins', 0)
+        win_rate = getattr(memory, 'win_rate', 50)
+        
+        # Provide actionable guidance based on performance
+        if consecutive_losses >= 3:
+            return "⚠️ RISK CONTROL - Reduce position sizes, tighten stops, avoid revenge trading"
+        elif win_rate < 40:
+            return "🎯 ACCURACY - Focus on high-confidence setups only (>70%)"
+        elif consecutive_wins >= 3:
+            return "💰 CAPITALIZE - Trending well, maintain discipline, don't overtrade"
+        elif win_rate >= 60:
+            return "📈 PERFORMING - Good consistency, continue current approach"
+        else:
+            return "📊 BALANCED - Stick to your strategy, wait for quality setups"
+
+
 
         async def on_position_closed_with_reflection(position, pnl, reason="manual"):
             """Position closed callback: trigger Agent reflection generation"""
@@ -189,10 +579,45 @@ class TradingMeeting(Meeting):
                 # Generate Agent reflections
                 logger.info(f"📝 Generating agent reflections for trade {trade_id}...")
 
+                # 🆕 Use new ReflectionEngine if available (Phase 1-2 integration)
+                if self._reflection_engine:
+                    try:
+                        # Get agent votes from current predictions
+                        agent_votes = []
+                        for agent_id, pred in self._current_predictions.items():
+                            agent_votes.append({
+                                "agent_id": agent_id,
+                                "agent_name": pred.get("agent_name", agent_id),
+                                "direction": pred.get("direction"),
+                                "confidence": pred.get("confidence", 0),
+                                "reasoning": pred.get("reasoning", "")
+                            })
+                        
+                        reflection = await self._reflection_engine.reflect_on_trade(
+                            trade_id=trade_id,
+                            direction=trade_result['direction'],
+                            entry_price=trade_result['entry_price'],
+                            exit_price=trade_result['exit_price'],
+                            leverage=getattr(position, 'leverage', 1),
+                            pnl=pnl,
+                            pnl_percent=pnl / getattr(position, 'margin', 1) * 100 if getattr(position, 'margin', 0) else 0,
+                            close_reason=reason,
+                            agent_votes=agent_votes
+                        )
+                        logger.info(f"✅ [ReflectionEngine] Generated reflection: {'WIN' if reflection.is_win else 'LOSS'}")
+                        logger.info(f"   Correct predictions: {reflection.correct_predictions}")
+                        logger.info(f"   Incorrect predictions: {reflection.incorrect_predictions}")
+                    except Exception as re_error:
+                        logger.warning(f"ReflectionEngine failed, falling back to legacy: {re_error}")
+
                 # Get an available agent as LLM client (for generating reflections)
                 llm_client = None
                 if self.agents:
-                    llm_client = self.agents[0]
+                    # Handle both dict and list types for self.agents
+                    if isinstance(self.agents, dict):
+                        llm_client = next(iter(self.agents.values()), None)
+                    elif isinstance(self.agents, list):
+                        llm_client = self.agents[0] if self.agents else None
 
                 reflections = await generate_trade_reflections(
                     trade_id=trade_id,
@@ -220,6 +645,7 @@ class TradingMeeting(Meeting):
 
         # Register callback
         paper_trader.on_position_closed = on_position_closed_with_reflection
+        paper_trader._reflection_callback_registered = True  # Mark as registered
         logger.info("✅ Registered position closed callback for agent reflection")
 
     async def _record_agent_predictions_for_trade(self, market_price: float = 0.0):
@@ -286,7 +712,34 @@ class TradingMeeting(Meeting):
         Returns:
             TradingSignal if a trade decision is made, None otherwise
         """
+        # 🆕 Phase 4: Use LangGraph workflow if enabled
+        if self._trading_graph is not None and self.config.use_langgraph:
+            logger.info("[TradingMeeting] 🔄 Using LangGraph workflow")
+            return await self.run_with_graph(
+                trigger_reason=context or "scheduled",
+                context=context
+            )
+        
+        # Traditional flow continues below
         logger.info(f"Starting trading meeting for {self.config.symbol}")
+        
+        # 🛡️ Store context for safety checks (e.g., block auto-reverse during startup)
+        self._current_context = context
+        
+        # 🆕 Context Engineering P0: Cycle ID for tracking (Cache removed by user request)
+        cycle_id = f"meeting_{self.config.symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        
+        # 🆕 Context Engineering P1: Create shared market data snapshot
+        # Fetch market data once, share across all agents
+        from app.core.trading.market_data_snapshot import get_market_snapshot_manager
+        snapshot_manager = get_market_snapshot_manager()
+        market_snapshot = await snapshot_manager.create_snapshot(
+            symbol=self.config.symbol,
+            cycle_id=cycle_id,
+            paper_trader=self.toolkit.paper_trader if self.toolkit else None
+        )
+        logger.info(f"[Context Engineering] Market snapshot: price=${market_snapshot.price:,.2f}, sentiment={market_snapshot.fear_greed_index}")
 
         # Step 0: Collect position context
         logger.info("[PositionContext] Collecting position context...")
@@ -336,6 +789,85 @@ class TradingMeeting(Meeting):
                 if self.on_signal:
                     await self.on_signal(self._final_signal)
 
+            # 🆕 Log trading decision to Redis for debugging
+            try:
+                trading_logger = await get_trading_logger()
+                
+                # Build votes dict from agent_votes (which is a List of AgentVote)
+                votes_dict = {}
+                for vote in self._agent_votes:
+                    # Use to_dict() if available (AgentVote from domain model)
+                    if hasattr(vote, 'to_dict'):
+                        vote_data = vote.to_dict()
+                        agent_name = vote_data.get('agent_name', 'unknown')
+                        votes_dict[agent_name] = {
+                            "direction": vote_data.get('direction', 'hold'),
+                            "confidence": vote_data.get('confidence', 0),
+                            "leverage": vote_data.get('leverage', 1)
+                        }
+                    else:
+                        # Fallback for dict-like votes
+                        agent_name = vote.get('agent_name', 'unknown') if isinstance(vote, dict) else getattr(vote, 'agent_name', 'unknown')
+                        direction = vote.get('direction', 'hold') if isinstance(vote, dict) else getattr(vote, 'direction', 'hold')
+                        # Handle VoteDirection enum
+                        if hasattr(direction, 'value'):
+                            direction = direction.value
+                        votes_dict[agent_name] = {
+                            "direction": str(direction),
+                            "confidence": vote.get('confidence', 0) if isinstance(vote, dict) else getattr(vote, 'confidence', 0),
+                            "leverage": vote.get('leverage', 1) if isinstance(vote, dict) else getattr(vote, 'leverage', 1)
+                        }
+
+                
+                # Vote summary
+                vote_summary = {"long": 0, "short": 0, "hold": 0}
+                for vote in votes_dict.values():
+                    direction = vote.get("direction", "hold").lower()
+                    if "long" in direction:
+                        vote_summary["long"] += 1
+                    elif "short" in direction:
+                        vote_summary["short"] += 1
+                    else:
+                        vote_summary["hold"] += 1
+                
+                # Final decision from signal
+                final_decision = {}
+                if self._final_signal:
+                    final_decision = {
+                        "direction": self._final_signal.direction.value if hasattr(self._final_signal.direction, 'value') else str(self._final_signal.direction),
+                        "confidence": self._final_signal.confidence,
+                        "leverage": self._final_signal.leverage,
+                        "reasoning": self._final_signal.reasoning[:300] if self._final_signal.reasoning else ""
+                    }
+                
+                # Position context for logging
+                pos_ctx_dict = None
+                if position_context and position_context.has_position:
+                    pos_ctx_dict = {
+                        "has_position": True,
+                        "direction": position_context.direction,
+                        "entry_price": position_context.entry_price,
+                        "unrealized_pnl": position_context.unrealized_pnl
+                    }
+                
+                await trading_logger.log_decision(
+                    trigger_reason=context or "scheduled",
+                    symbol=self.config.symbol,
+                    market_price=position_context.current_price if position_context else 0.0,
+                    votes=votes_dict,
+                    vote_summary=vote_summary,
+                    final_decision=final_decision,
+                    position_context=pos_ctx_dict,
+                    leader_summary=self._final_signal.leader_summary if self._final_signal else ""
+                )
+            except Exception as e:
+                logger.warning(f"[TradingLogger] Failed to log decision: {e}")
+
+            # 🆕 Context Engineering P0: End cycle and log statistics
+            cache_stats = cycle_cache.end_cycle()
+            snapshot_manager.clear()  # P1: Clear market snapshot
+            logger.info(f"[Context Engineering] Cycle ended. Search cache stats: {cache_stats}")
+
             return self._final_signal
 
         except Exception as e:
@@ -346,6 +878,11 @@ class TradingMeeting(Meeting):
                 content=f"Meeting error occurred: {str(e)}",
                 message_type="error"
             )
+            # 🆕 Context Engineering: End cycle even on error
+            try:
+                cycle_cache.end_cycle()
+            except:
+                pass
             return None
 
     def _build_agenda(self, context: Optional[str] = None, position_context: Optional[PositionContext] = None) -> str:
@@ -570,7 +1107,8 @@ Provide your analysis and views based on real data."""
         """
         Phase 2: Signal Generation
 
-        Refactored: Use structured JSON output to avoid string matching errors
+        Refactored: Supports both sequential and parallel execution modes.
+        Use Feature Flag PARALLEL_AGENTS to switch between modes.
         """
         self._add_message(
             agent_id="system",
@@ -579,74 +1117,28 @@ Provide your analysis and views based on real data."""
             message_type="phase"
         )
 
+        # Check if parallel execution is enabled
+        use_parallel = await is_feature_enabled(FeatureFlag.PARALLEL_AGENTS)
+        
+        if use_parallel:
+            logger.info("[SignalGen] 🚀 Using PARALLEL agent execution")
+            await self._run_parallel_signal_generation(position_context)
+        else:
+            logger.info("[SignalGen] 📝 Using SEQUENTIAL agent execution")
+            await self._run_sequential_signal_generation(position_context)
+        
+        # Summary of collected votes
+        print(f"[VOTE_DEBUG] Total votes collected: {len(self._agent_votes)} from AGENT_BATCHES")
+        print(f"[VOTE_DEBUG] Voting agents: {[v.agent_name for v in self._agent_votes]}")
+
+    async def _run_sequential_signal_generation(self, position_context: PositionContext):
+        """
+        Original sequential signal generation.
+        Runs agents one by one.
+        """
         # Generate decision options based on position status
         decision_options = self._get_decision_options_for_analysts(position_context)
-
-        # JSON structured output prompt
-        vote_prompt = f"""Based on the above analysis and real-time data you've collected, please provide your trading recommendation.
-
-{position_context.to_summary()}
-
-{decision_options}
-
-**Note**: If you did not use tools to fetch data in the previous phase, please use relevant tools NOW to get the latest information before making your judgment!
-
-⚠️ **IMPORTANT - Do NOT call decision tools**:
-- You are in the "Signal Generation Phase" - only provide **text recommendations**
-- **Do NOT** call any decision tools (open_long/open_short/hold/close_position)
-- Only the TradeExecutor can execute trades in Phase 5
-
----
-
-## 📋 Output Requirements
-
-First explain your analysis reasoning, then output a JSON trading signal at the **END** of your response.
-
-**JSON must be valid format, placed in a ```json code block:**
-
-⚠️ **CRITICAL**: The example below uses placeholder values. You MUST choose `direction` based on YOUR analysis:
-- If market is BULLISH → `"direction": "long"`
-- If market is BEARISH → `"direction": "short"`  
-- If market is UNCLEAR → `"direction": "hold"`
-
-```json
-{{
-  "direction": "<long|short|hold - choose based on YOUR analysis, NOT this example>",
-  "confidence": 75,
-  "leverage": 6,
-  "take_profit_percent": 8.0,
-  "stop_loss_percent": 3.0,
-  "reasoning": "Brief reasoning with specific data references"
-}}
-```
-
-**direction field options**:
-- `"long"`: Go long / Buy
-- `"short"`: Go short / Sell
-- `"hold"`: Wait / No action
-- `"add_long"`: Add to long position (when already long)
-- `"add_short"`: Add to short position (when already short)
-- `"close"`: Close position
-- `"reverse"`: Reverse (close and open opposite)
-
-**confidence and leverage correlation rules**:
-- confidence >= 80: leverage should be in range {int(self.config.max_leverage * 0.5)}-{self.config.max_leverage}
-- confidence 60-79: leverage should be in range {int(self.config.max_leverage * 0.25)}-{int(self.config.max_leverage * 0.5)}
-- confidence < 60: leverage should be in range 1-{int(self.config.max_leverage * 0.25)}, or choose hold
-
-**⚠️ CRITICAL - TP/SL Guidelines (MARGIN-BASED, not price-based)**:
-- `take_profit_percent` and `stop_loss_percent` represent **MARGIN** gain/loss, NOT price movement
-- With leverage, actual price move = margin_percent / leverage
-- Example: 5x leverage, 4% margin SL → triggers at 0.8% price drop
-
-**TP/SL Based on Market Volatility**:
-- High volatility (BTC 24h range > 5%): TP 10-15%, SL 4-6%
-- Medium volatility (2-5% range): TP 6-10%, SL 3-4%
-- Low volatility (<2% range): TP 4-6%, SL 2-3%
-- Consider recent ATR (Average True Range) for better precision
-
-**Important**: JSON must be at the END of your response and properly formatted!
-"""
+        vote_prompt = self._build_vote_prompt(position_context, decision_options)
 
         # Phase 3: Added OnchainAnalyst to voting agents
         vote_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "OnchainAnalyst", "QuantStrategist"]
@@ -671,10 +1163,147 @@ First explain your analysis reasoning, then output a JSON trading signal at the 
                         logger.error(f"[{agent.name}] Failed to parse vote from response (length: {len(response)} chars)")
             else:
                 print(f"[VOTE_DEBUG] ❌ {agent_id} agent not found in self.agents")
+
+    async def _run_parallel_signal_generation(self, position_context: PositionContext):
+        """
+        🆕 Phase 1: Parallel signal generation with rate limiting.
+        Runs agents in batches with concurrency control.
+        """
+        import time
+        start_time = time.time()
         
-        # Summary of collected votes
-        print(f"[VOTE_DEBUG] Total votes collected: {len(self._agent_votes)} from {len(vote_agents)} agents")
-        print(f"[VOTE_DEBUG] Voting agents: {[v.agent_name for v in self._agent_votes]}")
+        # Generate decision options based on position status
+        decision_options = self._get_decision_options_for_analysts(position_context)
+        vote_prompt = self._build_vote_prompt(position_context, decision_options)
+        
+        # Get rate limiter
+        rate_limiter = get_rate_limiter()
+        
+        logger.info(f"[ParallelSignalGen] Starting parallel execution with {len(AGENT_BATCHES)} batches")
+        
+        # Execute all batches
+        results = await rate_limiter.execute_all_batches(
+            get_agents_func=self._get_agent_by_id,
+            prompt=vote_prompt,
+            run_agent_func=self._run_agent_turn,
+            parse_vote_func=self._parse_vote_with_fallback
+        )
+        
+        # Process results and collect votes
+        for result in results:
+            if result.success and result.vote:
+                self._agent_votes.append(result.vote)
+                print(f"[VOTE_DEBUG] ✅ {result.agent_name} vote: {result.vote.direction} ({result.vote.confidence}%) [{result.duration_ms:.0f}ms]")
+            elif result.is_fallback:
+                # Generate fallback vote for failed agents
+                fallback_vote = self._generate_fallback_vote(result.agent_id, result.agent_name)
+                if fallback_vote:
+                    self._agent_votes.append(fallback_vote)
+                    print(f"[VOTE_DEBUG] ⚠️ {result.agent_name} fallback vote: hold (30%)")
+            else:
+                print(f"[VOTE_DEBUG] ❌ {result.agent_name} failed: {result.error}")
+        
+        total_time = (time.time() - start_time) * 1000
+        logger.info(f"[ParallelSignalGen] ✅ Completed in {total_time:.0f}ms, collected {len(self._agent_votes)} votes")
+
+    def _parse_vote_with_fallback(self, agent_id: str, agent_name: str, response: str):
+        """
+        Parse vote from agent response, with fallback to text parsing.
+        Used by parallel executor.
+        """
+        # Try JSON parsing first
+        vote = self._parse_vote_json(agent_id, agent_name, response)
+        if vote:
+            return vote
+        
+        # Fallback to text parsing
+        logger.warning(f"[{agent_name}] JSON parsing failed, trying text fallback")
+        vote = self._parse_vote_fallback(agent_id, agent_name, response)
+        return vote
+
+    def _generate_fallback_vote(self, agent_id: str, agent_name: str):
+        """
+        Generate a conservative fallback vote for failed agents.
+        Returns a hold vote with low confidence.
+        """
+        from app.models.trading_models import AgentVote
+        return AgentVote(
+            agent_id=agent_id,
+            agent_name=agent_name,
+            direction="hold",
+            confidence=30,
+            leverage=1,
+            reasoning="[Fallback] Agent execution failed or timed out",
+            take_profit_percent=5.0,
+            stop_loss_percent=2.0
+        )
+
+    def _build_vote_prompt(self, position_context: PositionContext, decision_options: str) -> str:
+        """Build the vote prompt for signal generation phase."""
+        return f"""Based on the above analysis and real-time data you've collected, please provide your trading recommendation.
+
+{position_context.to_summary()}
+
+{decision_options}
+
+**Note**: If you did not use tools to fetch data in the previous phase, please use relevant tools NOW to get the latest information before making your judgment!
+
+⚠️ **IMPORTANT - Do NOT call decision tools**:
+- You are in the "Signal Generation Phase" - only provide **text recommendations**
+- **Do NOT** call any decision tools (open_long/open_short/hold/close_position)
+- Only the TradeExecutor can execute trades in Phase 5
+
+---
+
+## 📋 Output Requirements
+
+First explain your analysis reasoning, then output a JSON trading signal at the **END** of your response.
+
+**JSON must be valid format, placed in a ```json code block:**
+
+⚠️ **CRITICAL**: The example below uses placeholder values. You MUST choose `direction` based on YOUR analysis:
+- If YOUR analysis shows BEARISH conditions → `"direction": "short"`
+- If YOUR analysis shows BULLISH conditions → `"direction": "long"`
+- If market direction is UNCLEAR → `"direction": "hold"`
+
+```json
+{{
+  "direction": "<YOUR CHOICE: short|long|hold - based on YOUR analysis>",
+  "confidence": 75,
+  "leverage": 6,
+  "take_profit_percent": 8.0,
+  "stop_loss_percent": 3.0,
+  "reasoning": "Brief reasoning with specific data references"
+}}
+```
+
+**direction field options**:
+- `"short"`: Go short / Sell (bearish view)
+- `"long"`: Go long / Buy (bullish view)
+- `"hold"`: Wait / No action (unclear direction)
+- `"add_long"`: Add to long position (when already long)
+- `"add_short"`: Add to short position (when already short)
+- `"close"`: Close position
+- `"reverse"`: Reverse (close and open opposite)
+
+**confidence and leverage correlation rules**:
+- confidence >= 80: leverage should be in range {int(self.config.max_leverage * 0.5)}-{self.config.max_leverage}
+- confidence 60-79: leverage should be in range {int(self.config.max_leverage * 0.25)}-{int(self.config.max_leverage * 0.5)}
+- confidence < 60: leverage should be in range 1-{int(self.config.max_leverage * 0.25)}, or choose hold
+
+**⚠️ CRITICAL - TP/SL Guidelines (MARGIN-BASED, not price-based)**:
+- `take_profit_percent` and `stop_loss_percent` represent **MARGIN** gain/loss, NOT price movement
+- With leverage, actual price move = margin_percent / leverage
+- Example: 5x leverage, 4% margin SL → triggers at 0.8% price drop
+
+**TP/SL Based on Market Volatility**:
+- High volatility (BTC 24h range > 5%): TP 10-15%, SL 4-6%
+- Medium volatility (2-5% range): TP 6-10%, SL 3-4%
+- Low volatility (<2% range): TP 4-6%, SL 2-3%
+- Consider recent ATR (Average True Range) for better precision
+
+**Important**: JSON must be at the END of your response and properly formatted!
+"""
 
     async def _run_risk_assessment_phase(self, position_context: PositionContext):
         """Phase 3: Risk Assessment"""
@@ -693,6 +1322,7 @@ First explain your analysis reasoning, then output a JSON trading signal at the 
 
         risk_agent = self._get_agent_by_id("RiskAssessor")
         if risk_agent:
+            logger.info(f"[Phase 3] RiskAssessor found, running risk assessment...")
             prompt = f"""Here are the expert voting results:
 
 {votes_summary}
@@ -712,6 +1342,10 @@ If not approved, explain your reasons.
 - Your responsibility is to assess risk, NOT to execute trades
 """
             await self._run_agent_turn(risk_agent, prompt)
+        else:
+            # Log available agent IDs for debugging
+            available_ids = [agent.id for agent in self.agents.values()]
+            logger.warning(f"[Phase 3] RiskAssessor not found! Available agent IDs: {available_ids}")
     
     def _generate_risk_context(self, position_context: PositionContext) -> str:
         """
@@ -810,8 +1444,11 @@ Please provide comprehensive risk assessment and recommendations!
         # Use Leader for meeting summary
         leader = self._get_agent_by_id("Leader")
         if not leader:
-            logger.error("Leader not found")
+            available_ids = [agent.id for agent in self.agents.values()]
+            logger.error(f"[Phase 4] Leader not found! Available agent IDs: {available_ids}")
             return None
+        else:
+            logger.info(f"[Phase 4] Leader found, running consensus phase...")
 
         # Generate position-aware decision guidance
         decision_guidance = self._generate_decision_guidance(position_context)
@@ -1945,6 +2582,31 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             
             if toolkit and toolkit.paper_trader:
                 try:
+                    # 🆕 Phase 1.3: HITL - Check trading mode before actual execution
+                    from app.core.trading.mode_manager import get_mode_manager, TradingMode
+                    mode_manager = get_mode_manager()
+                    current_mode = await mode_manager.get_mode()
+                    
+                    if current_mode in (TradingMode.SEMI_AUTO, TradingMode.MANUAL):
+                        # In SEMI_AUTO or MANUAL mode, don't execute trade directly
+                        # Return signal info for later processing by _on_analysis_cycle
+                        logger.info(f"[open_long_tool] HITL Mode {current_mode.value} - Skipping direct execution")
+                        return json.dumps({
+                            "success": True,
+                            "action": "signal_only",
+                            "direction": "long",
+                            "leverage": leverage,
+                            "amount_percent": amount_percent,
+                            "confidence": confidence,
+                            "take_profit": take_profit,
+                            "stop_loss": stop_loss,
+                            "current_price": current_price,
+                            "reasoning": reasoning,
+                            "mode": current_mode.value,
+                            "message": f"HITL {current_mode.value} mode: Signal recorded, trade not executed"
+                        })
+                    
+                    # FULL_AUTO mode: proceed with execution
                     # 📊 Step 1: Collect complete status info
                     position = await toolkit.paper_trader.get_position()
                     account = await toolkit.paper_trader.get_account()
@@ -2052,63 +2714,73 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                     
                     # 📌 Scenario 2: Have short position (opposite direction) -> Close short -> Open long
                     elif current_direction == "short":
-                        logger.info(f"[TradeExecutor] 🔄 Reverse operation: close short -> open long (short unrealized PnL ${unrealized_pnl:.2f})")
-                        
-                        # Close short position first
-                        close_result = await toolkit.paper_trader.close_position(
-                            symbol="BTC-USDT-SWAP",
-                            reason="Reverse: short to long"
-                        )
-                        
-                        if close_result.get("success"):
-                            pnl = close_result.get("pnl", 0)
-                            logger.info(f"[TradeExecutor] ✅ Close short success, PnL=${pnl:.2f}")
-                            
-                            # 🔧 Re-get true available margin (balance changed after closing)
-                            account = await toolkit.paper_trader.get_account()
-                            new_true_available = account.get("true_available_margin", 0)
-                            if new_true_available <= 0:
-                                new_true_available = account.get("total_equity", 10000) - account.get("used_margin", 0)
-                            
-                            amount_usdt = min(
-                                new_true_available * amount_percent,
-                                new_true_available - SAFETY_BUFFER
-                            )
-                            amount_usdt = max(amount_usdt, 0)
-                            
-                            if amount_usdt >= MIN_ADD_AMOUNT:
-                                # 🔧 Validate stop loss safety
-                                is_safe, sl_msg, safe_sl = validate_stop_loss("long", current_price, stop_loss, leverage, amount_usdt)
-                                if not is_safe:
-                                    logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
-                                    stop_loss = safe_sl
-                                
-                                # Open long position
-                                result = await toolkit.paper_trader.open_long(
-                                    symbol="BTC-USDT-SWAP",
-                                    leverage=leverage,
-                                    amount_usdt=amount_usdt,
-                                    tp_price=take_profit,
-                                    sl_price=stop_loss
-                                )
-                                if result.get("success"):
-                                    trade_success = True
-                                    action_taken = "reverse_short_to_long"
-                                    entry_price = result.get("executed_price", current_price)
-                                    final_reasoning = f"Reverse success: closed short (PnL=${pnl:.2f}) -> opened long ${amount_usdt:.2f}. {reasoning}"
-                                    logger.info(f"[TradeExecutor] ✅ Reverse to long success")
-                                else:
-                                    trade_success = True  # Close success counts as partial success
-                                    action_taken = "close_short_only"
-                                    entry_price = current_price
-                                    final_reasoning = f"Close short success (PnL=${pnl:.2f}), but open long failed ({result.get('error')}). {reasoning}"
-                            else:
-                                trade_success = True
-                                action_taken = "close_short_insufficient"
-                                entry_price = current_price
-                                final_reasoning = f"Close short success (PnL=${pnl:.2f}), but insufficient balance for long (available ${new_true_available:.2f}). {reasoning}"
+                        # 🛡️ SAFETY: Block auto-reverse during startup to prevent accidental closures
+                        trigger_context = getattr(self, '_current_context', None) or ''
+                        if trigger_context == 'startup':
+                            logger.warning(f"[TradeExecutor] ⚠️ BLOCKED: Cannot auto-reverse short to long during startup. Manual confirmation required.")
+                            trade_success = True  # Mark as handled
+                            action_taken = "blocked_reverse"
+                            entry_price = existing_entry
+                            final_reasoning = f"🛡️ Auto-reverse blocked during startup. Have short position (PnL ${unrealized_pnl:.2f}), received long signal. Please manually close and re-analyze. {reasoning}"
+                            # Skip the rest of reverse logic
                         else:
-                            final_reasoning = f"Close short failed: {close_result.get('error')}. {reasoning}"
+                            logger.info(f"[TradeExecutor] 🔄 Reverse operation: close short -> open long (short unrealized PnL ${unrealized_pnl:.2f})")
+                            
+                            # Close short position first
+                            close_result = await toolkit.paper_trader.close_position(
+                                symbol="BTC-USDT-SWAP",
+                                reason="Reverse: short to long"
+                            )
+                        
+                            if close_result.get("success"):
+                                pnl = close_result.get("pnl", 0)
+                                logger.info(f"[TradeExecutor] ✅ Close short success, PnL=${pnl:.2f}")
+                                
+                                # 🔧 Re-get true available margin (balance changed after closing)
+                                account = await toolkit.paper_trader.get_account()
+                                new_true_available = account.get("true_available_margin", 0)
+                                if new_true_available <= 0:
+                                    new_true_available = account.get("total_equity", 10000) - account.get("used_margin", 0)
+                                
+                                amount_usdt = min(
+                                    new_true_available * amount_percent,
+                                    new_true_available - SAFETY_BUFFER
+                                )
+                                amount_usdt = max(amount_usdt, 0)
+                                
+                                if amount_usdt >= MIN_ADD_AMOUNT:
+                                    # 🔧 Validate stop loss safety
+                                    is_safe, sl_msg, safe_sl = validate_stop_loss("long", current_price, stop_loss, leverage, amount_usdt)
+                                    if not is_safe:
+                                        logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
+                                        stop_loss = safe_sl
+                                    
+                                    # Open long position
+                                    result = await toolkit.paper_trader.open_long(
+                                        symbol="BTC-USDT-SWAP",
+                                        leverage=leverage,
+                                        amount_usdt=amount_usdt,
+                                        tp_price=take_profit,
+                                        sl_price=stop_loss
+                                    )
+                                    if result.get("success"):
+                                        trade_success = True
+                                        action_taken = "reverse_short_to_long"
+                                        entry_price = result.get("executed_price", current_price)
+                                        final_reasoning = f"Reverse success: closed short (PnL=${pnl:.2f}) -> opened long ${amount_usdt:.2f}. {reasoning}"
+                                        logger.info(f"[TradeExecutor] ✅ Reverse to long success")
+                                    else:
+                                        trade_success = True  # Close success counts as partial success
+                                        action_taken = "close_short_only"
+                                        entry_price = current_price
+                                        final_reasoning = f"Close short success (PnL=${pnl:.2f}), but open long failed ({result.get('error')}). {reasoning}"
+                                else:
+                                    trade_success = True
+                                    action_taken = "close_short_insufficient"
+                                    entry_price = current_price
+                                    final_reasoning = f"Close short success (PnL=${pnl:.2f}), but insufficient balance for long (available ${new_true_available:.2f}). {reasoning}"
+                            else:
+                                final_reasoning = f"Close short failed: {close_result.get('error')}. {reasoning}"
                     
                     # 📌 Scenario 3: No position -> Normal open long
                     else:
@@ -2234,6 +2906,31 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             
             if toolkit and toolkit.paper_trader:
                 try:
+                    # 🆕 Phase 1.3: HITL - Check trading mode before actual execution
+                    from app.core.trading.mode_manager import get_mode_manager, TradingMode
+                    mode_manager = get_mode_manager()
+                    current_mode = await mode_manager.get_mode()
+                    
+                    if current_mode in (TradingMode.SEMI_AUTO, TradingMode.MANUAL):
+                        # In SEMI_AUTO or MANUAL mode, don't execute trade directly
+                        # Return signal info for later processing by _on_analysis_cycle
+                        logger.info(f"[open_short_tool] HITL Mode {current_mode.value} - Skipping direct execution")
+                        return json.dumps({
+                            "success": True,
+                            "action": "signal_only",
+                            "direction": "short",
+                            "leverage": leverage,
+                            "amount_percent": amount_percent,
+                            "confidence": confidence,
+                            "take_profit": take_profit,
+                            "stop_loss": stop_loss,
+                            "current_price": current_price,
+                            "reasoning": reasoning,
+                            "mode": current_mode.value,
+                            "message": f"HITL {current_mode.value} mode: Signal recorded, trade not executed"
+                        })
+                    
+                    # FULL_AUTO mode: proceed with execution
                     # 📊 Step 1: Collect complete status info
                     position = await toolkit.paper_trader.get_position()
                     account = await toolkit.paper_trader.get_account()
@@ -2334,63 +3031,73 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                     
                     # 📌 Scenario 2: Have long position (opposite direction) -> Close long -> Open short
                     elif current_direction == "long":
-                        logger.info(f"[TradeExecutor] 🔄 Reverse operation: close long -> open short (long unrealized PnL ${unrealized_pnl:.2f})")
-                        
-                        # Close long position first
-                        close_result = await toolkit.paper_trader.close_position(
-                            symbol="BTC-USDT-SWAP",
-                            reason="Reverse: long to short"
-                        )
-                        
-                        if close_result.get("success"):
-                            pnl = close_result.get("pnl", 0)
-                            logger.info(f"[TradeExecutor] ✅ Close long success, PnL=${pnl:.2f}")
+                        # 🛡️ SAFETY: Block auto-reverse during startup to prevent accidental closures
+                        trigger_context = getattr(self, '_current_context', None) or ''
+                        if trigger_context == 'startup':
+                            logger.warning(f"[TradeExecutor] ⚠️ BLOCKED: Cannot auto-reverse long to short during startup. Manual confirmation required.")
+                            trade_success = True  # Mark as handled
+                            action_taken = "blocked_reverse"
+                            entry_price = existing_entry
+                            final_reasoning = f"🛡️ Auto-reverse blocked during startup. Have long position (PnL ${unrealized_pnl:.2f}), received short signal. Please manually close and re-analyze. {reasoning}"
+                            # Skip the rest of reverse logic
+                        else:
+                            logger.info(f"[TradeExecutor] 🔄 Reverse operation: close long -> open short (long unrealized PnL ${unrealized_pnl:.2f})")
                             
-                            # 🔧 Re-get true available margin
-                            account = await toolkit.paper_trader.get_account()
-                            new_true_available = account.get("true_available_margin", 0)
-                            if new_true_available <= 0:
-                                new_true_available = account.get("total_equity", 10000) - account.get("used_margin", 0)
-                            
-                            amount_usdt = min(
-                                new_true_available * amount_percent,
-                                new_true_available - SAFETY_BUFFER
+                            # Close long position first
+                            close_result = await toolkit.paper_trader.close_position(
+                                symbol="BTC-USDT-SWAP",
+                                reason="Reverse: long to short"
                             )
-                            amount_usdt = max(amount_usdt, 0)
-                            
-                            if amount_usdt >= MIN_ADD_AMOUNT:
-                                # 🔧 Validate stop loss safety
-                                is_safe, sl_msg, safe_sl = validate_stop_loss("short", current_price, stop_loss, leverage, amount_usdt)
-                                if not is_safe:
-                                    logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
-                                    stop_loss = safe_sl
+                        
+                            if close_result.get("success"):
+                                pnl = close_result.get("pnl", 0)
+                                logger.info(f"[TradeExecutor] ✅ Close long success, PnL=${pnl:.2f}")
                                 
-                                # Open short position
-                                result = await toolkit.paper_trader.open_short(
-                                    symbol="BTC-USDT-SWAP",
-                                    leverage=leverage,
-                                    amount_usdt=amount_usdt,
-                                    tp_price=take_profit,
-                                    sl_price=stop_loss
+                                # 🔧 Re-get true available margin
+                                account = await toolkit.paper_trader.get_account()
+                                new_true_available = account.get("true_available_margin", 0)
+                                if new_true_available <= 0:
+                                    new_true_available = account.get("total_equity", 10000) - account.get("used_margin", 0)
+                                
+                                amount_usdt = min(
+                                    new_true_available * amount_percent,
+                                    new_true_available - SAFETY_BUFFER
                                 )
-                                if result.get("success"):
-                                    trade_success = True
-                                    action_taken = "reverse_long_to_short"
-                                    entry_price = result.get("executed_price", current_price)
-                                    final_reasoning = f"Reverse success: closed long (PnL=${pnl:.2f}) -> opened short ${amount_usdt:.2f}. {reasoning}"
-                                    logger.info(f"[TradeExecutor] ✅ Reverse to short success")
+                                amount_usdt = max(amount_usdt, 0)
+                                
+                                if amount_usdt >= MIN_ADD_AMOUNT:
+                                    # 🔧 Validate stop loss safety
+                                    is_safe, sl_msg, safe_sl = validate_stop_loss("short", current_price, stop_loss, leverage, amount_usdt)
+                                    if not is_safe:
+                                        logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
+                                        stop_loss = safe_sl
+                                    
+                                    # Open short position
+                                    result = await toolkit.paper_trader.open_short(
+                                        symbol="BTC-USDT-SWAP",
+                                        leverage=leverage,
+                                        amount_usdt=amount_usdt,
+                                        tp_price=take_profit,
+                                        sl_price=stop_loss
+                                    )
+                                    if result.get("success"):
+                                        trade_success = True
+                                        action_taken = "reverse_long_to_short"
+                                        entry_price = result.get("executed_price", current_price)
+                                        final_reasoning = f"Reverse success: closed long (PnL=${pnl:.2f}) -> opened short ${amount_usdt:.2f}. {reasoning}"
+                                        logger.info(f"[TradeExecutor] ✅ Reverse to short success")
+                                    else:
+                                        trade_success = True
+                                        action_taken = "close_long_only"
+                                        entry_price = current_price
+                                        final_reasoning = f"Close long success (PnL=${pnl:.2f}), but open short failed ({result.get('error')}). {reasoning}"
                                 else:
                                     trade_success = True
-                                    action_taken = "close_long_only"
+                                    action_taken = "close_long_insufficient"
                                     entry_price = current_price
-                                    final_reasoning = f"Close long success (PnL=${pnl:.2f}), but open short failed ({result.get('error')}). {reasoning}"
+                                    final_reasoning = f"Close long success (PnL=${pnl:.2f}), but insufficient balance for short (available ${new_true_available:.2f}). {reasoning}"
                             else:
-                                trade_success = True
-                                action_taken = "close_long_insufficient"
-                                entry_price = current_price
-                                final_reasoning = f"Close long success (PnL=${pnl:.2f}), but insufficient balance for short (available ${new_true_available:.2f}). {reasoning}"
-                        else:
-                            final_reasoning = f"Close long failed: {close_result.get('error')}. {reasoning}"
+                                final_reasoning = f"Close long failed: {close_result.get('error')}. {reasoning}"
                     
                     # 📌 Scenario 3: No position -> Normal open short
                     else:
@@ -2807,6 +3514,10 @@ You MUST call a tool based on meeting results!""",
                 logger.warning("[TradeExecutor] ⚠️ DEPRECATED: Using text inference fallback. "
                               "This indicates LLM did not use native tool calling. "
                               "This fallback will be removed in future versions.")
+                
+                # 🛡️ CRITICAL SAFETY FIX: Do NOT execute trades based on keyword inference!
+                # Keyword matching is unreliable and can cause unintended trades.
+                # Always default to HOLD when proper function calling fails.
                 text_lower = text.lower()
 
                 # Count direction keywords to avoid first-match bias (ANTI-BIAS FIX)
@@ -2816,53 +3527,24 @@ You MUST call a tool based on meeting results!""",
                 long_count = sum(1 for kw in long_keywords if kw in text_lower)
                 short_count = sum(1 for kw in short_keywords if kw in text_lower)
                 
-                # Use majority vote to determine direction
+                # 🛡️ SAFETY: Only log the inferred direction, do NOT execute
+                inferred_direction = "hold"
                 if short_count > long_count:
-                    # SHORT direction wins
-                    leverage_match = re.search(r'(\d+)\s*[xX]', text)
-                    leverage = int(leverage_match.group(1)) if leverage_match else None
-
-                    amount_match = re.search(r'(\d+)\s*%', text)
-                    amount = (int(amount_match.group(1)) / 100) if amount_match else None
-
-                    confidence_match = re.search(r'[Cc]onfidence\s*[:：]?\s*(\d+)', text)
-                    confidence = int(confidence_match.group(1)) if confidence_match else None
-
-                    logger.info(f"[TradeExecutor] 📊 Inferred SHORT from text (short_count={short_count}, long_count={long_count})")
-                    await self.tools['open_short'](
-                        leverage=min(leverage, 20) if leverage else None,
-                        amount_percent=min(amount, 1.0) if amount else None,
-                        confidence=confidence,
-                        reasoning=text[:200]
-                    )
-
+                    inferred_direction = "short"
+                    logger.warning(f"[TradeExecutor] 🛡️ Would have inferred SHORT (short_count={short_count}, long_count={long_count}) "
+                                  f"but NOT executing due to safety policy. Returning HOLD.")
                 elif long_count > short_count:
-                    # LONG direction wins
-                    leverage_match = re.search(r'(\d+)\s*[xX]', text)
-                    leverage = int(leverage_match.group(1)) if leverage_match else None
-
-                    amount_match = re.search(r'(\d+)\s*%', text)
-                    amount = (int(amount_match.group(1)) / 100) if amount_match else None
-
-                    confidence_match = re.search(r'[Cc]onfidence\s*[:：]?\s*(\d+)', text)
-                    confidence = int(confidence_match.group(1)) if confidence_match else None
-
-                    logger.info(f"[TradeExecutor] 📊 Inferred LONG from text (long_count={long_count}, short_count={short_count})")
-                    await self.tools['open_long'](
-                        leverage=min(leverage, 20) if leverage else None,
-                        amount_percent=min(amount, 1.0) if amount else None,
-                        confidence=confidence,
-                        reasoning=text[:200]
-                    )
-                    
+                    inferred_direction = "long"
+                    logger.warning(f"[TradeExecutor] 🛡️ Would have inferred LONG (long_count={long_count}, short_count={short_count}) "
+                                  f"but NOT executing due to safety policy. Returning HOLD.")
                 elif any(kw in text_lower for kw in ['close']):
-                    logger.info("[TradeExecutor] 📊 Inferred close position from text")
-                    await self.tools['close_position'](reasoning=text[:200])
-                    
-                else:
-                    # Tie or no direction keywords - default to HOLD (safe)
-                    logger.info(f"[TradeExecutor] 📊 Inferred HOLD from text (long_count={long_count}, short_count={short_count})")
-                    await self.tools['hold'](reason=text[:200] or "Market unclear")
+                    inferred_direction = "close"
+                    logger.warning("[TradeExecutor] 🛡️ Would have inferred CLOSE from text "
+                                  "but NOT executing due to safety policy. Returning HOLD.")
+                
+                # Always execute HOLD for safety
+                logger.info("[TradeExecutor] 📊 Executing HOLD due to text inference safety policy")
+                await self.tools['hold'](reason=f"Safety: Text inference blocked. Would have been {inferred_direction}. {text[:100]}")
                 
                 # Return execution result
                 if self.result["signal"]:

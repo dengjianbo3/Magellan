@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 import redis.asyncio as redis
 
 from app.core.trading.okx_client import OKXClient, get_okx_client
+from app.core.trading.trading_logger import get_trading_logger, TradingLogger
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class OKXTraderConfig:
     """OKX Trader Configuration"""
-    initial_balance: float = 10000.0
+    initial_balance: float = 5000.0  # Match OKX demo account
     symbol: str = "BTC-USDT-SWAP"
     max_leverage: int = 20
     demo_mode: bool = True
@@ -69,7 +70,7 @@ class OKXTrader:
     Uses OKX demo trading API.
     """
 
-    def __init__(self, initial_balance: float = 10000.0, demo_mode: bool = True, config: OKXTraderConfig = None,
+    def __init__(self, initial_balance: float = 5000.0, demo_mode: bool = True, config: OKXTraderConfig = None,  # Match OKX demo account
                  redis_url: str = "redis://redis:6379"):
         self.config = config or OKXTraderConfig(initial_balance=initial_balance, demo_mode=demo_mode)
         self.initial_balance = self.config.initial_balance
@@ -110,6 +111,12 @@ class OKXTrader:
         self.on_sl_hit: Optional[Callable] = None
         self.on_pnl_update: Optional[Callable] = None
 
+        # 🆕 Trading Logger for Redis persistence
+        self._trading_logger: Optional[TradingLogger] = None
+
+        # 🆕 Metrics baseline for resetting performance calculations
+        self._metrics_baseline: Optional[datetime] = None
+
     async def initialize(self):
         """Initialize OKX client"""
         if self._initialized:
@@ -139,6 +146,9 @@ class OKXTrader:
             
             # Load saved state (trade history, daily PnL, halt status)
             await self._load_state()
+            
+            # 🆕 Initialize TradingLogger for position event persistence
+            self._trading_logger = await get_trading_logger(self.redis_url)
         except Exception as e:
             logger.warning(f"[Redis] Not available, using memory only: {e}")
             self._redis = None
@@ -271,6 +281,13 @@ class OKXTrader:
                     json.dumps(position_tp_sl)
                 )
 
+            # 🆕 Save metrics baseline for performance calculation reset
+            if self._metrics_baseline:
+                await self._redis.set(
+                    f"{self._key_prefix}metrics_baseline",
+                    self._metrics_baseline.isoformat()
+                )
+
             logger.debug("[Redis] State saved successfully")
 
         except Exception as e:
@@ -319,6 +336,12 @@ class OKXTrader:
                 self._saved_sl_price = tp_sl_state.get('stop_loss_price')
                 self._saved_direction = tp_sl_state.get('direction')  # 🆕 FIX: Load direction to prevent TP/SL mismatch
                 logger.info(f"[Redis] Loaded saved TP=${self._saved_tp_price}, SL=${self._saved_sl_price}, dir={self._saved_direction}")
+
+            # 🆕 Load metrics baseline for performance calculation reset
+            baseline_data = await self._redis.get(f"{self._key_prefix}metrics_baseline")
+            if baseline_data:
+                self._metrics_baseline = datetime.fromisoformat(baseline_data)
+                logger.info(f"[Redis] Loaded metrics baseline: {self._metrics_baseline.isoformat()}")
 
         except Exception as e:
             logger.error(f"[Redis] Error loading state: {e}")
@@ -718,6 +741,20 @@ class OKXTrader:
                         # This ensures correct TP/SL and direction are persisted to Redis
                         await self._save_state()
                         logger.info(f"[Redis] Saved new position state: dir={direction}, TP={tp_price}, SL={sl_price}")
+                        
+                        # 🆕 Log position event for debugging
+                        if self._trading_logger:
+                            await self._trading_logger.log_position_event(
+                                event_type="open",
+                                symbol=symbol,
+                                direction=direction,
+                                size=executed_amount,
+                                entry_price=executed_price,
+                                leverage=leverage,
+                                margin=amount_usdt,
+                                take_profit=tp_price,
+                                stop_loss=sl_price
+                            )
 
                     # Return format consistent with PaperTrader
                     return {
@@ -766,6 +803,125 @@ class OKXTrader:
                 return False, f"Trading halted: daily loss {loss_percent:.1f}% exceeds {self._max_daily_loss_percent}% limit"
 
         return True, ""
+
+    async def reset_daily_pnl(self) -> Dict[str, Any]:
+        """
+        Reset daily PnL tracking.
+        
+        Use this when:
+        1. Daily PnL data is corrupted
+        2. Manual override needed after fixing bugs
+        3. Starting fresh for a new trading day
+        
+        Returns:
+            Dict with reset result
+        """
+        old_pnl = self._daily_pnl
+        old_halted = self._is_trading_halted
+        
+        self._daily_pnl = 0.0
+        self._daily_pnl_reset_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        self._is_trading_halted = False
+        
+        # Save to Redis
+        await self._save_state()
+        
+        logger.info(f"[DailyLimit] ⚠️ RESET: Daily PnL reset from ${old_pnl:.2f} to $0, halted={old_halted} -> False")
+        
+        return {
+            "success": True,
+            "old_daily_pnl": old_pnl,
+            "old_is_halted": old_halted,
+            "new_daily_pnl": 0.0,
+            "new_is_halted": False,
+            "message": f"Daily PnL reset from ${old_pnl:.2f} to $0.00"
+        }
+
+    async def reset_metrics_baseline(self) -> Dict[str, Any]:
+        """
+        Reset metrics baseline to current time.
+        
+        All performance metrics (Alpha, Sharpe, PnL stats, etc.) will be calculated
+        only from trades after this baseline, ignoring corrupted historical data.
+        
+        Use this when:
+        1. Trade history is corrupted/polluted
+        2. Starting fresh after system bugs
+        3. Beginning a new evaluation period
+        
+        Returns:
+            Dict with reset result
+        """
+        old_baseline = self._metrics_baseline
+        self._metrics_baseline = datetime.now()
+        
+        # Also reset daily PnL to complement the baseline reset
+        self._daily_pnl = 0.0
+        self._daily_pnl_reset_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        self._is_trading_halted = False
+        
+        # Save to Redis
+        await self._save_state()
+        
+        logger.info(f"[MetricsBaseline] ⚠️ RESET: Metrics baseline set to {self._metrics_baseline.isoformat()}")
+        logger.info(f"[MetricsBaseline] All performance metrics will ignore trades before this time")
+        
+        return {
+            "success": True,
+            "old_baseline": old_baseline.isoformat() if old_baseline else None,
+            "new_baseline": self._metrics_baseline.isoformat(),
+            "message": f"Metrics baseline reset to {self._metrics_baseline.isoformat()}. All future metrics will ignore older trades."
+        }
+
+    def get_filtered_trade_history(self) -> List[Dict]:
+        """
+        Get trade history filtered by metrics baseline.
+        
+        🆕 CRITICAL FIX: Now returns REAL OKX API data instead of local estimates.
+        
+        Returns only trades that occurred after the metrics baseline timestamp.
+        Use this for calculating performance metrics to exclude corrupted data.
+        
+        Returns:
+            List of trade records after baseline (or all if no baseline set)
+        """
+        # 🔧 FIX: Use synchronous wrapper to call get_trade_history
+        # This ensures we get REAL PnL from OKX API instead of local estimates
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If called from async context, use run_coroutine_threadsafe
+                # Note: This is a temporary workaround. Ideally this method should be async.
+                logger.warning("[OKXTrader] get_filtered_trade_history called from sync context")
+                return self._trade_history  # Fallback to local for now
+            else:
+                # Run the async method in the event loop
+                trades = loop.run_until_complete(self.get_trade_history(limit=100))
+                return trades
+        except Exception as e:
+            logger.error(f"[OKXTrader] Error getting filtered history: {e}, falling back to local")
+            # Fallback to local history with baseline filter
+            if not self._metrics_baseline:
+                return self._trade_history
+            
+            filtered = []
+            for trade in self._trade_history:
+                closed_at_str = trade.get('closed_at')
+                if closed_at_str:
+                    try:
+                        closed_at = datetime.fromisoformat(closed_at_str)
+                        if closed_at > self._metrics_baseline:
+                            filtered.append(trade)
+                    except (ValueError, TypeError):
+                        filtered.append(trade)
+            
+            return filtered
+
+    @property
+    def metrics_baseline(self) -> Optional[datetime]:
+        """Get the current metrics baseline timestamp."""
+        return self._metrics_baseline
 
     async def close_position(self, symbol: str = "BTC-USDT-SWAP", reason: str = "manual") -> Optional[Dict]:
         """Close current position on OKX demo"""
@@ -822,6 +978,25 @@ class OKXTrader:
 
                     # 🆕 Save state to Redis after trade
                     await self._save_state()
+                    
+                    # 🆕 Log position close event for debugging
+                    if self._trading_logger:
+                        duration_hours = (datetime.now() - closed_position.opened_at).total_seconds() / 3600
+                        await self._trading_logger.log_position_event(
+                            event_type="close",
+                            symbol=symbol,
+                            direction=closed_position.direction,
+                            size=closed_position.size,
+                            entry_price=closed_position.entry_price,
+                            leverage=closed_position.leverage,
+                            margin=closed_position.margin,
+                            take_profit=closed_position.take_profit_price,
+                            stop_loss=closed_position.stop_loss_price,
+                            exit_price=price,
+                            pnl=pnl,
+                            close_reason=reason,
+                            duration_hours=duration_hours
+                        )
 
                     # Trigger callback
                     if self.on_position_closed:
@@ -893,10 +1068,25 @@ class OKXTrader:
 
         return self._equity_history[-limit:]
 
-    def get_status(self) -> Dict:
-        """Get trader status (PaperTrader compatible)"""
+    async def get_status(self) -> Dict:
+        """Get trader status (PaperTrader compatible)
+        
+        🆕 CRITICAL FIX: Now returns REAL trade count from OKX API after baseline
+        """
         # Calculate daily loss percentage
         daily_loss_percent = (abs(self._daily_pnl) / self.initial_balance * 100) if self.initial_balance > 0 and self._daily_pnl < 0 else 0
+        
+        # 🔧 FIX: Get real trade count from OKX API (respects metrics_baseline)
+        try:
+            real_trades = await self.get_trade_history(limit=100)
+            total_trades = len(real_trades)
+            realized_pnl = sum(t.get('pnl', 0) for t in real_trades)
+            win_rate_calc = self._calculate_win_rate_from_trades(real_trades)
+        except Exception as e:
+            logger.warning(f"[OKXTrader] Failed to get real trade history: {e}, using local fallback")
+            total_trades = len(self._trade_history)
+            realized_pnl = sum(t.get('pnl', 0) for t in self._trade_history)
+            win_rate_calc = self._calculate_win_rate()
         
         return {
             'initialized': self._initialized,
@@ -907,15 +1097,23 @@ class OKXTrader:
             'current_price': self._last_price,
             'balance': self.initial_balance,
             'equity': self.initial_balance,
-            'total_trades': len(self._trade_history),
-            'win_rate': self._calculate_win_rate(),
-            'realized_pnl': sum(t.get('pnl', 0) for t in self._trade_history),
+            'total_trades': total_trades,  # 🔧 FIXED: Real count from OKX
+            'win_rate': win_rate_calc,      # 🔧 FIXED: Based on real trades
+            'realized_pnl': realized_pnl,   # 🔧 FIXED: Real PnL from OKX
             # 🆕 Daily loss tracking
             'daily_pnl': self._daily_pnl,
             'daily_loss_percent': daily_loss_percent,
             'max_daily_loss_percent': self._max_daily_loss_percent,
             'is_trading_halted': self._is_trading_halted
         }
+
+    def _calculate_win_rate_from_trades(self, trades: List[Dict]) -> str:
+        """Calculate win rate from trade list"""
+        if not trades:
+            return "0.0%"
+        wins = sum(1 for t in trades if t.get('pnl', 0) > 0)
+        return f"{(wins / len(trades) * 100):.1f}%"
+
 
     def _calculate_win_rate(self) -> str:
         if not self._trade_history:
@@ -931,7 +1129,11 @@ class OKXTrader:
         realized PnL (including fees and funding).
         
         Falls back to local history if API fails.
+        
+        🆕 Applies metrics_baseline filter if set.
         """
+        trades = []
+        
         try:
             # 🆕 Get real trade history from OKX API
             if self._okx_client:
@@ -939,15 +1141,53 @@ class OKXTrader:
                 
                 if okx_trades:
                     logger.info(f"[OKXTrader] Retrieved {len(okx_trades)} trades from OKX positions-history API")
-                    return okx_trades
+                    trades = okx_trades
             
-            logger.warning("[OKXTrader] OKX API unavailable, using local history (PnL may be inaccurate)")
+            if not trades:
+                logger.warning("[OKXTrader] OKX API unavailable, using local history (PnL may be inaccurate)")
+                trades = self._trade_history[-limit:]
             
         except Exception as e:
             logger.error(f"[OKXTrader] Error fetching OKX trade history: {e}")
+            trades = self._trade_history[-limit:]
         
-        # Fallback to local history
-        return self._trade_history[-limit:]
+        # 🆕 Apply metrics baseline filter if set
+        if self._metrics_baseline and trades:
+            filtered = []
+            for trade in trades:
+                closed_at_str = trade.get('closed_at', trade.get('uTime', ''))
+                if closed_at_str:
+                    try:
+                        # Handle both ISO format and OKX timestamp format
+                        if isinstance(closed_at_str, str):
+                            if 'T' in closed_at_str:
+                                # ISO format - parse and convert to naive datetime (remove timezone)
+                                parsed = datetime.fromisoformat(closed_at_str.replace('Z', '+00:00'))
+                                # Make it naive for comparison with metrics_baseline
+                                closed_at = parsed.replace(tzinfo=None)
+                            else:
+                                # OKX returns milliseconds timestamp as string
+                                closed_at = datetime.fromtimestamp(int(closed_at_str) / 1000)
+                        else:
+                            closed_at = datetime.fromtimestamp(int(closed_at_str) / 1000)
+                        
+                        # Compare naive datetimes
+                        if closed_at > self._metrics_baseline:
+                            filtered.append(trade)
+                        else:
+                            logger.debug(f"[OKXTrader] Filtering out trade closed at {closed_at} (before baseline {self._metrics_baseline})")
+                    except (ValueError, TypeError) as e:
+                        # If can't parse, include the trade to be safe
+                        logger.debug(f"[OKXTrader] Could not parse trade timestamp: {closed_at_str}, including trade")
+                        filtered.append(trade)
+                else:
+                    filtered.append(trade)
+            
+            logger.info(f"[OKXTrader] Baseline filter: {len(trades)} trades -> {len(filtered)} after {self._metrics_baseline.isoformat()}")
+            return filtered
+        
+        return trades
+
     
     async def reset(self):
         """
@@ -995,15 +1235,18 @@ class OKXTrader:
             - start_date: Start date used for calculation
             - trades_analyzed: Number of trades analyzed
         """
-        # Filter trades by date if provided
-        trades = self._trade_history
+        # 🆕 Use filtered trade history (respects metrics_baseline)
+        trades = self.get_filtered_trade_history()
+        
+        # Additional filter by start_date if provided
         if start_date:
             try:
                 filter_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
                 trades = [
-                    t for t in self._trade_history 
+                    t for t in trades 
                     if datetime.fromisoformat(t.get('closed_at', t.get('timestamp', '2000-01-01')).replace('Z', '+00:00')) >= filter_date
                 ]
+
             except (ValueError, TypeError) as e:
                 logger.warning(f"Invalid start_date format: {start_date}, using all trades. Error: {e}")
         

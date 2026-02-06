@@ -42,12 +42,17 @@ class OKXClient:
         api_key: Optional[str] = None,
         secret_key: Optional[str] = None,
         passphrase: Optional[str] = None,
-        demo_mode: bool = True
+        demo_mode: Optional[bool] = None  # Changed to Optional to detect if explicitly passed
     ):
         self.api_key = api_key or os.getenv("OKX_API_KEY", "")
         self.secret_key = secret_key or os.getenv("OKX_SECRET_KEY", "")
         self.passphrase = passphrase or os.getenv("OKX_PASSPHRASE", "")
-        self.demo_mode = demo_mode or os.getenv("OKX_DEMO_MODE", "true").lower() == "true"
+        
+        # If demo_mode not explicitly passed, read from environment variable
+        if demo_mode is None:
+            self.demo_mode = os.getenv("OKX_DEMO_MODE", "true").lower() == "true"
+        else:
+            self.demo_mode = demo_mode
 
         self._session: Optional[aiohttp.ClientSession] = None
         self._initialized = False
@@ -494,7 +499,12 @@ class OKXClient:
                             tp_price, sl_price = await self._get_tp_sl_prices(symbol, side)
                             
                             # Calculate margin from position value / leverage
-                            position_value = abs(pos_amt) * entry_price
+                            # 🔧 FIX: pos_amt is in CONTRACTS (e.g., 5), need to convert to BTC
+                            # BTC-USDT-SWAP: 1 contract = 0.01 BTC
+                            contract_val = 0.01
+                            size_in_btc = abs(pos_amt) * contract_val
+                            
+                            position_value = size_in_btc * entry_price
                             calculated_margin = position_value / leverage if leverage > 0 else position_value
                             actual_margin = margin if margin > 0 else calculated_margin
                             
@@ -505,7 +515,7 @@ class OKXClient:
                                 'position': Position(
                                     symbol=symbol,
                                     direction=side,
-                                    size=abs(pos_amt),
+                                    size=size_in_btc,  # 🔧 FIX: Use BTC not contracts
                                     entry_price=entry_price,
                                     current_price=mark_price,
                                     leverage=leverage,
@@ -518,7 +528,7 @@ class OKXClient:
                                     opened_at=datetime.now()
                                 ),
                                 'utime': utime,
-                                'size': abs(pos_amt)
+                                'size': size_in_btc  # 🔧 FIX: Use BTC not contracts
                             })
                     
                     if active_positions:

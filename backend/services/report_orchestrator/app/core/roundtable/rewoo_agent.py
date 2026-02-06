@@ -26,6 +26,11 @@ from ..config_timeouts import (
     HTTP_CLIENT_TIMEOUT
 )
 
+# Context Engineering Note:
+# Tool result compression was removed - agents need FULL data for current decisions.
+# Compression should only apply to HISTORICAL data (MeetingCompactor, AgentMemory)
+# not to current tool call results within a decision cycle.
+
 # 配置日志
 logger = logging.getLogger(__name__)
 
@@ -321,7 +326,9 @@ class ReWOOAgent(Agent):
                     "raw_result": obs
                 })
             elif isinstance(obs, dict):
-                # Normal dict result
+                # Pass through full tool result - agents need complete data for decisions
+                # Context Engineering note: compression should only apply to HISTORICAL data
+                # (previous meeting transcripts, old reflections), not current tool results
                 processed_observations.append(obs)
             else:
                 # Unknown type - convert to string

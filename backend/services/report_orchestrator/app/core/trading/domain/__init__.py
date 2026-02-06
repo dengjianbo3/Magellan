@@ -9,6 +9,7 @@ from .vote import Vote, AgentVote, VoteDirection
 from .signal import TradingSignal
 from .position import PositionContext
 from .account import AccountInfo
+from .unified_position import Position, PositionSource
 
 __all__ = [
     "Vote",
@@ -17,4 +18,6 @@ __all__ = [
     "TradingSignal",
     "PositionContext",
     "AccountInfo",
+    "Position",
+    "PositionSource",
 ]
