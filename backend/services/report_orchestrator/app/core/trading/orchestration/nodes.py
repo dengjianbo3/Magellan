@@ -260,18 +260,32 @@ from langchain_core.runnables import RunnableConfig
 async def consensus_node(state: TradingState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Node 4: Consensus Building
-    
+
     Synthesizes votes into a consensus decision.
     Input: agent_votes, risk_assessment, agent_weights
     Output: leader_summary, consensus_direction, consensus_confidence
+
+    🆕 P0 Fix: Now uses WeightLearner for dynamic agent weights based on historical accuracy.
     """
     start_time = time.time()
     logger.info("[Node: consensus] Building consensus...")
-    
+
     try:
         votes = state.get("agent_votes", [])
-        weights = state.get("agent_weights", {})
         risk_blocked = state.get("risk_blocked", False)
+
+        # 🆕 P0: Use WeightLearner for dynamic weights (falls back to static if unavailable)
+        static_weights = state.get("agent_weights", {})
+        try:
+            from app.core.trading.weight_learner import get_learned_weights
+            learned_weights = await get_learned_weights()
+            # Merge: learned weights take priority, fall back to static
+            weights = {**static_weights, **learned_weights}
+            if learned_weights:
+                logger.info(f"[Node: consensus] 🧠 Using learned weights: {learned_weights}")
+        except Exception as e:
+            logger.warning(f"[Node: consensus] WeightLearner unavailable, using static weights: {e}")
+            weights = static_weights
         
         # Get on_message callback for broadcasting to frontend
         on_message = config.get("configurable", {}).get("on_message")

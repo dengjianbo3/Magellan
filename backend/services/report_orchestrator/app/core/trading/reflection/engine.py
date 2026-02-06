@@ -280,19 +280,21 @@ class AgentWeightAdjuster:
 class ReflectionEngine:
     """
     Main Reflection Engine.
-    
+
     Implements the Reflexion pattern:
     1. Analyze trade outcome
     2. Compare with agent predictions
     3. Generate lessons learned
     4. Store for future reference
     5. Adjust agent weights
-    
+
     Usage:
         engine = ReflectionEngine(llm_service)
         await engine.reflect_on_trade(trade_result, agent_votes)
+
+    🆕 P0 Fix: Now uses AgentWeightLearner for unified weight management.
     """
-    
+
     def __init__(
         self,
         llm_service: Any = None,
@@ -301,6 +303,8 @@ class ReflectionEngine:
         self.llm = llm_service
         self.memory = ReflectionMemory(redis_url)
         self.weight_adjuster = AgentWeightAdjuster(redis_url)
+        # 🆕 P0: Use unified WeightLearner for more sophisticated weight learning
+        self._weight_learner = None
     
     async def reflect_on_trade(
         self,
@@ -405,10 +409,42 @@ class ReflectionEngine:
         
         # Store reflection
         await self.memory.store_reflection(reflection)
-        
-        # Adjust weights
+
+        # Adjust weights using legacy adjuster (for backward compatibility)
         await self.weight_adjuster.adjust_weights(correct_agents, incorrect_agents)
-        
+
+        # 🆕 P0: Also update WeightLearner for more sophisticated learning
+        try:
+            from app.core.trading.weight_learner import get_weight_learner
+            weight_learner = get_weight_learner()
+
+            # Build agent predictions dict
+            agent_predictions = {}
+            for vote in agent_votes:
+                agent_id = vote.get("agent_id") or vote.get("agent_name", "unknown")
+                vote_direction = vote.get("direction", "hold")
+                if hasattr(vote_direction, 'value'):
+                    vote_direction = vote_direction.value
+                agent_predictions[agent_id] = str(vote_direction).lower()
+
+            # Determine outcome
+            if is_win:
+                outcome = "profitable"
+            elif pnl < 0:
+                outcome = "loss"
+            else:
+                outcome = "neutral"
+
+            # Record to WeightLearner
+            await weight_learner.record_trade_outcome(
+                agent_predictions=agent_predictions,
+                actual_outcome=outcome,
+                trade_direction=direction
+            )
+            logger.info(f"[REFLECTION] WeightLearner updated with trade outcome: {outcome}")
+        except Exception as e:
+            logger.warning(f"[REFLECTION] Failed to update WeightLearner: {e}")
+
         logger.info(
             f"[REFLECTION] Trade {trade_id}: {'WIN' if is_win else 'LOSS'} "
             f"PnL: ${pnl:.2f} ({pnl_percent:.1f}%) "
