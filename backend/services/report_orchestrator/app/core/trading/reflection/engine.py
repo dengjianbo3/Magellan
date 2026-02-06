@@ -191,22 +191,30 @@ class ReflectionMemory:
 class AgentWeightAdjuster:
     """
     Adjusts agent weights based on prediction accuracy.
-    
+
     Agents that consistently predict correctly get higher weights.
     Agents that consistently predict wrong get lower weights.
+
+    .. deprecated::
+        Use AgentWeightLearner from weight_learner.py instead.
+        This class is kept for backward compatibility but will be removed.
     """
-    
+
     def __init__(self, redis_url: str = "redis://redis:6379"):
         self.redis_url = redis_url
         self._redis: Optional[redis.Redis] = None
         self.key_prefix = "trading:weights"
-        
+
         # Weight adjustment parameters
         self.correct_bonus = 0.05  # +5% for correct prediction
         self.incorrect_penalty = 0.03  # -3% for incorrect prediction
         self.min_weight = 0.5  # Minimum weight multiplier
         self.max_weight = 2.0  # Maximum weight multiplier
         self.default_weight = 1.0
+
+        logger.warning(
+            "AgentWeightAdjuster is deprecated. Use AgentWeightLearner instead."
+        )
     
     async def _get_redis(self) -> redis.Redis:
         if self._redis is None:

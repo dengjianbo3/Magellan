@@ -14,7 +14,7 @@ import json
 import traceback
 
 from langchain_core.runnables import RunnableConfig
-from .state import TradingState, NodeResult, TradeDirection
+from .state import TradingState
 from app.core.trading.executor_agent import ExecutorAgent
 from app.core.trading.mode_manager import (
     get_mode_manager,
@@ -27,7 +27,6 @@ from app.core.observability.logging import get_logger, TradingLogger
 from app.core.observability.metrics import (
     signals_generated,
     execution_failures,
-    agent_latency,
     signal_generation_latency,
 )
 
@@ -254,8 +253,6 @@ async def risk_assessment_node(state: TradingState, config: RunnableConfig = Non
             "should_fallback": True
         }
 
-
-from langchain_core.runnables import RunnableConfig
 
 async def consensus_node(state: TradingState, config: RunnableConfig) -> Dict[str, Any]:
     """
