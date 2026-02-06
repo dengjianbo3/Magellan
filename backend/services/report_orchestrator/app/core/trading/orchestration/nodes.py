@@ -756,14 +756,29 @@ def _get_consensus_direction(votes: List[Dict]) -> str:
 
 
 def _calculate_weighted_consensus(votes: List[Dict], weights: Dict[str, float]) -> tuple:
-    """Calculate weighted consensus from votes."""
+    """
+    Calculate weighted consensus from votes.
+
+    Supports both legacy votes (direction field) and neutral votes (bullish_score/bearish_score).
+    """
     if not votes:
         return "hold", 0, 0.0
-    
+
+    # Check if any vote has neutral format (bullish_score/bearish_score)
+    has_neutral_votes = any(
+        "bullish_score" in vote and "bearish_score" in vote
+        for vote in votes
+    )
+
+    if has_neutral_votes:
+        # Use DirectionNeutralizer for neutral votes
+        return _calculate_neutral_consensus(votes, weights)
+
+    # Legacy direction-based voting
     weighted_scores = {"long": 0.0, "short": 0.0, "hold": 0.0}
     total_weight = 0.0
     total_confidence = 0.0
-    
+
     for vote in votes:
         agent_id = vote.get("agent_id") or vote.get("agent_name", "unknown")
         direction = vote.get("direction", "hold").lower()
@@ -771,17 +786,17 @@ def _calculate_weighted_consensus(votes: List[Dict], weights: Dict[str, float]) 
             direction = direction.value
         confidence = vote.get("confidence", 50)
         weight = weights.get(agent_id, 1.0)
-        
+
         if direction in weighted_scores:
             weighted_scores[direction] += confidence * weight
             total_weight += weight
             total_confidence += confidence
-    
+
     # Find winning direction
     # 🔧 FIX: Check for tie between long and short to avoid primacy bias
     max_score = max(weighted_scores.values())
     candidates = [d for d, s in weighted_scores.items() if s == max_score and s > 0]
-    
+
     if len(candidates) == 0:
         winning_direction = "hold"
     elif len(candidates) == 1:
@@ -791,12 +806,87 @@ def _calculate_weighted_consensus(votes: List[Dict], weights: Dict[str, float]) 
         winning_direction = "hold"
     else:
         winning_direction = candidates[0]
-    
+
     # Calculate weighted confidence
     avg_confidence = int(total_confidence / len(votes)) if votes else 0
     weighted_conf = max_score / total_weight if total_weight > 0 else 0.0
-    
+
     return winning_direction, avg_confidence, weighted_conf
+
+
+def _calculate_neutral_consensus(votes: List[Dict], weights: Dict[str, float]) -> tuple:
+    """
+    Calculate consensus from neutral votes using DirectionNeutralizer.
+
+    This eliminates linguistic bias by having agents score bullish/bearish arguments
+    separately, then calculating direction mathematically.
+    """
+    from app.core.trading.anti_bias import DirectionNeutralizer, NeutralVote
+
+    neutral_votes = []
+
+    for vote in votes:
+        # Convert dict to NeutralVote if it has the required fields
+        if "bullish_score" in vote and "bearish_score" in vote:
+            neutral_vote = NeutralVote(
+                agent_id=vote.get("agent_id") or vote.get("agent_name", "unknown"),
+                agent_name=vote.get("agent_name", "unknown"),
+                bullish_score=int(vote.get("bullish_score", 50)),
+                bearish_score=int(vote.get("bearish_score", 50)),
+                confidence=int(vote.get("confidence", 50)),
+                leverage=int(vote.get("leverage", 1)),
+                take_profit_percent=float(vote.get("take_profit_percent", 8.0)),
+                stop_loss_percent=float(vote.get("stop_loss_percent", 3.0)),
+                reasoning=vote.get("reasoning", "")
+            )
+            neutral_votes.append(neutral_vote)
+        else:
+            # Legacy vote - convert to neutral format
+            direction = vote.get("direction", "hold").lower()
+            if hasattr(direction, 'value'):
+                direction = direction.value
+            confidence = int(vote.get("confidence", 50))
+
+            # Convert direction to scores
+            if direction == "long":
+                bullish_score = 50 + confidence // 2
+                bearish_score = 50 - confidence // 2
+            elif direction == "short":
+                bullish_score = 50 - confidence // 2
+                bearish_score = 50 + confidence // 2
+            else:  # hold
+                bullish_score = 50
+                bearish_score = 50
+
+            neutral_vote = NeutralVote(
+                agent_id=vote.get("agent_id") or vote.get("agent_name", "unknown"),
+                agent_name=vote.get("agent_name", "unknown"),
+                bullish_score=bullish_score,
+                bearish_score=bearish_score,
+                confidence=confidence,
+                leverage=int(vote.get("leverage", 1)),
+                take_profit_percent=float(vote.get("take_profit_percent", 8.0)),
+                stop_loss_percent=float(vote.get("stop_loss_percent", 3.0)),
+                reasoning=vote.get("reasoning", "")
+            )
+            neutral_votes.append(neutral_vote)
+
+    # Use DirectionNeutralizer to aggregate
+    direction, confidence, metadata = DirectionNeutralizer.aggregate_neutral_votes(
+        neutral_votes,
+        weights
+    )
+
+    logger.info(
+        f"[NeutralConsensus] Aggregated {len(neutral_votes)} votes: "
+        f"bullish={metadata.get('avg_bullish_score', 0):.1f}, "
+        f"bearish={metadata.get('avg_bearish_score', 0):.1f} → {direction.upper()}"
+    )
+
+    # weighted_conf is the score difference normalized
+    weighted_conf = abs(metadata.get('score_difference', 0)) / 100.0
+
+    return direction, confidence, weighted_conf
 
 
 def _generate_leader_summary(votes: List[Dict], direction: str, confidence: int) -> str:
