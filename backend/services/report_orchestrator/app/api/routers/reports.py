@@ -152,7 +152,7 @@ def _extract_numbers_from_text(text: str) -> List[float]:
     for n in numbers:
         try:
             result.append(float(n.replace(',', '')))
-        except:
+        except (ValueError, TypeError):
             pass
     return result
 

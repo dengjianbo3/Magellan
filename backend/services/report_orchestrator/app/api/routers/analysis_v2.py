@@ -211,7 +211,7 @@ async def websocket_analysis_v2(websocket: WebSocket, session_id: str):
                     "error": str(e)
                 }
             })
-        except:
+        except Exception:
             pass
 
 

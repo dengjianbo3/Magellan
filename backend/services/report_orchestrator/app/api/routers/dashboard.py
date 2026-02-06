@@ -94,7 +94,7 @@ async def get_recent_reports(
             else:
                 minutes = max(1, time_diff.seconds // 60)
                 time_ago = f"{minutes} minute{'s' if minutes > 1 else ''} ago"
-        except:
+        except (ValueError, TypeError, AttributeError):
             time_ago = "recently"
 
         agents_used = len(report.get("steps", []))
@@ -137,7 +137,7 @@ async def get_analysis_trends(
             if days_ago < days:
                 day_label = created_at.strftime("%a")
                 reports_by_day[day_label] += 1
-        except:
+        except (ValueError, TypeError, KeyError):
             pass
 
     reports_data = [reports_by_day.get(label, 0) for label in labels]

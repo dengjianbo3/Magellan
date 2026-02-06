@@ -462,7 +462,7 @@ def convert_openai_to_gemini_messages(messages: List[ChatCompletionMessage]) -> 
                 if isinstance(args, str):
                     try:
                         args = json.loads(args)
-                    except:
+                    except json.JSONDecodeError:
                         args = {}
 
                 # Gemini 3.0: FunctionCall parts may contain signatures

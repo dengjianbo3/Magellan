@@ -881,8 +881,8 @@ Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄
             # 🆕 Context Engineering: End cycle even on error
             try:
                 cycle_cache.end_cycle()
-            except:
-                pass
+            except Exception as cycle_err:
+                logger.warning(f"[TradingMeeting] Failed to end cycle cache: {cycle_err}")
             return None
 
     def _build_agenda(self, context: Optional[str] = None, position_context: Optional[PositionContext] = None) -> str:

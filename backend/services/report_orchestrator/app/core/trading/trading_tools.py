@@ -637,8 +637,8 @@ class TradingToolkit:
         if self.paper_trader:
             try:
                 base_price = await self.paper_trader.get_current_price()
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"[TradingTools] paper_trader.get_current_price failed: {e}")
         # If paper_trader fails, use price_service (Binance -> OKX -> CoinGecko)
         if base_price is None:
             try:
@@ -820,8 +820,8 @@ class TradingToolkit:
         if self.paper_trader:
             try:
                 current_price = await self.paper_trader.get_current_price()
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"[TradingTools] paper_trader.get_current_price failed: {e}")
         # If paper_trader fails, use price_service (Binance -> OKX -> CoinGecko)
         if current_price is None:
             try:

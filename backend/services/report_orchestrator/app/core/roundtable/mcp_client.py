@@ -95,7 +95,7 @@ class HTTPMCPConnection(MCPServerConnection):
             try:
                 response = await self.client.get("/health")
                 self.connected = response.status_code == 200
-            except:
+            except httpx.RequestError:
                 # 即使没有health端点，也认为连接成功
                 self.connected = True
             return self.connected
@@ -141,7 +141,7 @@ class HTTPMCPConnection(MCPServerConnection):
                 )
                 response.raise_for_status()
                 return response.json()
-            except:
+            except httpx.HTTPStatusError:
                 # 再尝试直接工具名
                 try:
                     response = await self.client.post(
@@ -150,7 +150,7 @@ class HTTPMCPConnection(MCPServerConnection):
                     )
                     response.raise_for_status()
                     return response.json()
-                except:
+                except httpx.HTTPStatusError:
                     return {
                         "success": False,
                         "error": f"HTTP error: {e.response.status_code}",
@@ -172,7 +172,7 @@ class HTTPMCPConnection(MCPServerConnection):
             response = await self.client.get("/tools")
             response.raise_for_status()
             return response.json().get("tools", [])
-        except:
+        except httpx.RequestError:
             # 返回配置中定义的工具
             return [{"name": t} for t in self.config.tools]
 

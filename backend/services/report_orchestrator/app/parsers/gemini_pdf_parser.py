@@ -199,7 +199,7 @@ class GeminiPDFParser:
                 try:
                     data = json.loads(match.group(0))
                     return data
-                except:
+                except json.JSONDecodeError:
                     pass
             
             # If parsing fails, return minimal data

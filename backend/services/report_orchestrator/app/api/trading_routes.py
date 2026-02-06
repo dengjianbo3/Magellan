@@ -1259,7 +1259,7 @@ async def get_max_drawdown(start_date: Optional[str] = Query(default=None, descr
             if isinstance(pnl, str):
                 try:
                     pnl = float(pnl)
-                except:
+                except (ValueError, TypeError):
                     pnl = 0
             running_equity += pnl
             equity_curve.append(running_equity)

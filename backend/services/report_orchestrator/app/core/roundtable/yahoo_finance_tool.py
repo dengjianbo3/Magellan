@@ -390,15 +390,15 @@ class YahooFinanceTool(Tool):
                     return "N/A"
                 try:
                     return f"{prefix}{val * mult:.2f}{suffix}"
-                except:
+                except (TypeError, ValueError):
                     return "N/A"
-            
+
             def fmt_int(val, prefix="$"):
                 if val is None or val == 0:
                     return "N/A"
                 try:
                     return f"{prefix}{val:,.0f}"
-                except:
+                except (TypeError, ValueError):
                     return "N/A"
 
             # 构建摘要
@@ -546,7 +546,7 @@ class YahooFinanceTool(Tool):
                     return "N/A"
                 try:
                     return f"{prefix}{val * mult:.2f}{suffix}"
-                except:
+                except (TypeError, ValueError):
                     return "N/A"
 
             summary = f"""
@@ -605,7 +605,7 @@ class YahooFinanceTool(Tool):
                     return "N/A"
                 try:
                     return f"{val * 100:.2f}%"
-                except:
+                except (TypeError, ValueError):
                     return "N/A"
 
             summary = f"""

@@ -1399,7 +1399,8 @@ class OKXTrader:
                 closed = datetime.fromisoformat(t.get('closed_at', '').replace('Z', '+00:00'))
                 hours = (closed - opened).total_seconds() / 3600
                 holding_hours.append(hours)
-            except:
+            except (ValueError, TypeError, AttributeError):
+                # Skip trades with invalid or missing timestamp data
                 pass
         
         avg_holding_hours = sum(holding_hours) / len(holding_hours) if holding_hours else 0

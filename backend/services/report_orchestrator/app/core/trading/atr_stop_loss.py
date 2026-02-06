@@ -314,8 +314,8 @@ class ATRStopLossCalculator:
             if data.get("code") == "0" and data.get("data"):
                 price = float(data["data"][0]["last"])
                 return price * 0.02  # 2% of price as fallback ATR
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"ATR fallback price fetch failed: {e}")
         
         # Ultimate fallback: assume BTC price ~$90,000
         return 1800.0  # 2% of $90,000

@@ -390,7 +390,7 @@ class BaseOrchestrator(ABC):
                     "target": self.request.target,
                     "results": self.results
                 })
-            except:
+            except Exception:
                 return False
 
         return True
