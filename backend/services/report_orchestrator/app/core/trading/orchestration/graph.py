@@ -176,7 +176,9 @@ class TradingGraph:
         agent_weights: Dict = None,
         thread_id: str = None,
         leader_agent: Any = None,
-        trade_executor: Any = None  # ExecutorAgent instance for execution_node
+        risk_agent: Any = None,  # 🆕 RiskAssessor agent for LLM risk assessment
+        trade_executor: Any = None,  # ExecutorAgent instance for execution_node
+        on_message: Optional[Callable] = None  # Callback for broadcasting messages to frontend
     ) -> TradingState:
         """
         Run the trading workflow.
@@ -190,7 +192,9 @@ class TradingGraph:
             agent_weights: Agent weight multipliers (optional)
             thread_id: Thread ID for checkpointing
             leader_agent: Leader agent instance for summary generation
+            risk_agent: RiskAssessor agent instance for LLM risk assessment
             trade_executor: ExecutorAgent instance for execution decisions
+            on_message: Callback for broadcasting agent messages to frontend
             
         Returns:
             Final TradingState with results
@@ -216,7 +220,9 @@ class TradingGraph:
             "configurable": {
                 "thread_id": thread_id or "default",
                 "leader_agent": leader_agent,
-                "trade_executor": trade_executor  # 🔧 NEW: Pass to execution_node
+                "risk_agent": risk_agent,  # 🆕 Pass to risk_assessment_node
+                "trade_executor": trade_executor,  # Pass to execution_node
+                "on_message": on_message  # Pass to nodes for message broadcasting
             }
         }
         

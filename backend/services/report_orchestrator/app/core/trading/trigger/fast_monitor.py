@@ -353,7 +353,7 @@ class FastMonitor:
                 threshold=self.config.FUNDING_RATE_EXTREME,
                 direction="both",
                 urgency="high",
-                description=f"资金费率极端: {current_rate:.4f}% ({'多头拥挤' if current_rate > 0 else '空头拥挤'})"
+                description=f"资金费率极端: {current_rate:.4f}% ({'多头付费' if current_rate > 0 else '空头付费'})"
             ))
         
         # 资金费率变化 (如果有历史数据)
@@ -423,7 +423,7 @@ class FastMonitor:
                 threshold=self.config.RSI_OVERBOUGHT,
                 direction="above",
                 urgency="medium",
-                description=f"RSI(15m) 极端超买: {rsi:.1f}"
+                description=f"RSI(15m) 极端高位: {rsi:.1f}"
             ))
         elif rsi <= self.config.RSI_OVERSOLD:
             conditions.append(FastTriggerCondition(
@@ -432,7 +432,7 @@ class FastMonitor:
                 threshold=self.config.RSI_OVERSOLD,
                 direction="below",
                 urgency="medium",
-                description=f"RSI(15m) 极端超卖: {rsi:.1f}"
+                description=f"RSI(15m) 极端低位: {rsi:.1f}"
             ))
         
         return conditions
@@ -462,7 +462,7 @@ class FastMonitor:
                     threshold=self.config.EMA_DEVIATION,
                     direction="above" if deviation > 0 else "below",
                     urgency="medium",
-                    description=f"价格偏离 EMA20: {deviation:+.2f}% ({'超买区' if deviation > 0 else '超卖区'})"
+                    description=f"价格偏离 EMA20: {deviation:+.2f}% ({'高于均线' if deviation > 0 else '低于均线'})"
                 ))
         
         return conditions

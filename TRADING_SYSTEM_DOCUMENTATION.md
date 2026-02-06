@@ -1,7 +1,7 @@
-# Magellan Trading System - 完整架构与能力文档 v3.1
+# Magellan Trading System - 完整架构与能力文档 v3.2
 
-> **文档更新日期**: 2026-01-06
-> **适用版本**: dev 分支 (LangGraph + ExecutorAgent 增强版 + 生产环境支持)
+> **文档更新日期**: 2026-01-15
+> **适用版本**: dev 分支 (LangGraph + ExecutorAgent + RiskAssessor LLM + 并行执行)
 
 ## 📋 目录
 
@@ -63,6 +63,8 @@
 | **用户偏好学习** | 从 SEMI_AUTO 决策中学习用户的杠杆和方向偏好 |
 | **ATR 动态止损** | 基于市场波动率自适应计算止损价格 |
 | **优雅降级** | 服务故障时自动降级，确保系统稳定运行 |
+| **🆕 方向中性化** | Agent 输出 bullish/bearish 分数而非 long/short，消除语言偏见 |
+| **🆕 回声室检测** | 当 80%+ Agent 同意时自动降低置信度，防止群体思维 |
 
 ---
 
@@ -484,13 +486,41 @@ def _validate_stop_loss(direction, entry_price, sl_price, leverage, margin):
 ```python
 workflow_nodes = [
     "market_analysis_node",    # 市场数据收集
-    "signal_generation_node",  # Agent 投票
-    "risk_assessment_node",    # 风险评估
-    "consensus_node",          # 共识达成
+    "signal_generation_node",  # Agent 投票 (5 Agent 并行执行)
+    "risk_assessment_node",    # 风险评估 (RiskAssessor LLM)
+    "consensus_node",          # 共识达成 (Leader LLM)
     "execution_node",          # 执行交易 (ExecutorAgent)
     "reflection_node",         # 反思记录
     "react_fallback_node"      # 错误恢复
 ]
+```
+
+### 节点 LLM 调用详情
+
+| 节点 | LLM 调用 | 说明 |
+|------|----------|------|
+| `signal_generation_node` | 5 个分析 Agent | 并行执行，通过 config 传递 |
+| `risk_assessment_node` | RiskAssessor Agent | 调用 `_generate_llm_risk_assessment()` |
+| `consensus_node` | Leader Agent | 调用 `_generate_llm_leader_summary()` |
+| `execution_node` | ExecutorAgent | 工具调用决策 |
+
+### 消息广播机制
+
+每个节点通过 `config["on_message"]` 回调将 Agent 消息广播到前端：
+
+```python
+# 从 config 获取回调
+on_message = config.get("configurable", {}).get("on_message")
+
+# 广播消息
+if on_message:
+    await on_message({
+        "agent_id": "RiskAssessor",
+        "agent_name": "Risk Manager",
+        "content": risk_message,
+        "message_type": "risk_assessment",
+        "timestamp": datetime.now().isoformat()
+    })
 ```
 
 ### 条件边
@@ -834,60 +864,29 @@ docker logs trading-service 2>&1 | grep -E "REAL|demo"
 
 ## 改进建议与未来规划
 
-### ⚡ P0 优先级: Agent 并行执行 (下一阶段重点)
+### ✅ 已完成: Agent 并行执行 (2026-01-15)
 
-**当前问题**:
+**实现状态**: ✅ 已完成
 
-- `signal_generation_node` 使用占位符投票
-- Agents 顺序执行，总时间 = Σ(各Agent时间)
-- 实际并行注释: "In real implementation, call agents here"
+**实现位置**: `trading_meeting.py` 的 `run_with_graph()` 方法
 
-**改进方案**:
+**实现方式**:
 
 ```python
-# 改进后的 signal_generation_node
-async def signal_generation_node(state: TradingState) -> Dict[str, Any]:
-    """并行执行所有分析 Agents"""
-    agent_configs = [
-        ("technical_analyst", TAConfig),
-        ("fundamental_analyst", FundConfig),
-        ("onchain_analyst", ChainConfig),
-        ("macro_analyst", MacroConfig),
-        ("sentiment_analyst", SentimentConfig),
-    ]
-    
-    # 并行创建和执行所有 Agents
-    tasks = []
-    for agent_id, config in agent_configs:
-        agent = create_agent(agent_id, config)
-        tasks.append(agent.analyze(state.get("market_data")))
-    
-    # 等待所有 Agents 完成
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    # 收集有效投票
-    votes = []
-    for result in results:
-        if isinstance(result, Exception):
-            logger.error(f"Agent failed: {result}")
-        else:
-            votes.append(result)
-    
-    return {"agent_votes": votes}
+# 使用 RateLimiter 批量并行执行
+results = await rate_limiter.execute_all_batches(
+    get_agents_func=self._get_agent_by_id,
+    prompt=vote_prompt,
+    run_agent_func=self._run_agent_turn,
+    parse_vote_func=self._parse_vote_with_fallback
+)
 ```
 
-**预期收益**:
+**收益**:
 
-- 5 个 Agents × 10s 每个 → 从 50s 降到 ~15s
-- 更快的交易决策响应
-- 更好的市场机会捕捉
-
-**实现步骤**:
-
-1. 将 Agent 初始化移到 LangGraph 外部
-2. 在 `signal_generation_node` 使用 `asyncio.gather()`
-3. 添加超时控制 (单 Agent timeout 30s)
-4. 添加错误隔离 (单 Agent 失败不影响其他)
+- 5 个 Agents 并行执行，总时间从 ~50s 降到 ~15s
+- 批量控制避免 API 限流
+- 单 Agent 失败自动降级为 fallback 投票
 
 ---
 
@@ -952,6 +951,100 @@ async def signal_generation_node(state: TradingState) -> Dict[str, Any]:
 
 - 基于 ATR 动态计算
 - 移动止损 (trailing stop)
+
+---
+
+## 🆕 Anti-Bias System (防偏见系统)
+
+> **新增于**: 2026-01-16  
+> **目的**: 从制度层面消除交易决策中的 LONG 偏见
+
+### 背景
+
+深度代码审计发现系统存在多处隐性 LONG 偏见：
+
+- Agent Prompt 中的语言暗示
+- JSON 选项顺序导致的 LLM 首位偏见
+- 投票平局时的处理逻辑
+- 高共识时的群体思维风险
+
+### 方案 A: 方向中性化 (Direction Neutralization)
+
+**原理**: Agent 不再直接输出 `direction: "long/short"`，而是输出两个独立分数：
+
+```json
+{
+  "bullish_score": 75,  // 看多论据强度 (0-100)
+  "bearish_score": 45,  // 看空论据强度 (0-100)
+  "confidence": 70
+}
+```
+
+**方向计算逻辑**:
+
+```python
+threshold = 15  # 可配置阈值
+diff = bullish_score - bearish_score
+
+if diff >= threshold:    # bullish 75 - bearish 45 = 30 >= 15
+    direction = "long"
+elif diff <= -threshold: # 差值 <= -15
+    direction = "short"
+else:
+    direction = "hold"   # 差值在 [-15, 15] 之间
+```
+
+**核心优势**:
+
+- 消除 `long/short` 词汇带来的语言偏见
+- 强制 Agent 同时评估多空双方论据
+- 阈值可调节，增加系统灵活性
+
+**文件位置**: `app/core/trading/anti_bias.py` - `DirectionNeutralizer` 类
+
+### 方案 B: 回声室检测器 (Echo Chamber Detector)
+
+**原理**: 当投票共识过高 (≥80%) 时，自动降低置信度并警告可能的群体思维。
+
+**检测阈值**:
+
+| 共识比例 | 状态 | 置信度惩罚 |
+|---------|------|-----------|
+| < 80% | 正常 | 无 |
+| 80-94% | 轻度回声室 | -15% |
+| ≥ 95% | 严重回声室 | -30% |
+
+**处理流程**:
+
+1. 统计各方向投票数
+2. 计算最高共识比例
+3. 如超过阈值，应用置信度惩罚
+4. 在 Leader 总结中添加警告
+5. 记录到 state 供前端显示
+
+**示例输出**:
+
+```
+⚠️ ECHO CHAMBER DETECTED: 83% consensus on LONG.
+Confidence reduced by 15%. High agreement may indicate groupthink.
+```
+
+**文件位置**:
+
+- `app/core/trading/anti_bias.py` - `EchoChamberDetector` 类
+- `app/core/trading/orchestration/nodes.py` - `consensus_node`
+
+### State 输出字段
+
+Echo Chamber 检测结果会添加到 consensus_node 的输出 state 中：
+
+```python
+{
+    "echo_chamber_detected": True/False,
+    "echo_chamber_warning": "警告消息或 None",
+    "echo_chamber_consensus_ratio": 0.83  # 共识比例
+}
+```
 
 ---
 
@@ -1155,4 +1248,28 @@ LLM_GATEWAY_URL=http://llm_gateway:8003
 
 ---
 
-*最后更新: 2026-01-06 by Antigravity AI Assistant*
+## 更新记录 (2026-01-15)
+
+### 🆕 RiskAssessor LLM 集成
+
+**变更**: `risk_assessment_node` 现在调用真正的 RiskAssessor LLM 进行风险评估
+
+**文件**:
+
+- `nodes.py`: 添加 `_generate_llm_risk_assessment()` 函数
+- `graph.py`: 添加 `risk_agent` 参数传递
+- `trading_meeting.py`: 传递 RiskAssessor agent 到 graph.run()
+
+### 🆕 初始资金调整
+
+**变更**: 模拟交易初始资金从 $10,000 调整为 $5,000，与 OKX 模拟盘一致
+
+**文件**: `trading_models.py`, `paper_trader.py`, `okx_trader.py`, `AutoTradingView.vue`
+
+### ✅ Agent 并行执行已完成
+
+**变更**: 5 个分析 Agent 现在并行执行投票收集
+
+---
+
+*最后更新: 2026-01-15 by Antigravity AI Assistant*

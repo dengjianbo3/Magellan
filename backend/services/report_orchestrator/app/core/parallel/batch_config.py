@@ -26,7 +26,7 @@ AGENT_BATCHES: List[List[str]] = [
     
     # Batch 3: On-chain & Quant (mixed APIs)
     # On-chain uses blockchain APIs, Quant uses various data sources
-    ["OnchainAnalyst", "QuantStrategist"],
+    ["OnchainAnalyst", "QuantStrategist", "ContrarianAnalyst"],
 ]
 
 # Agent to batch mapping for quick lookup

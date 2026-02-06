@@ -42,7 +42,7 @@ def _get_env_float(key: str, default: float) -> float:
 @dataclass
 class PaperTraderConfig:
     """Paper Trader Configuration"""
-    initial_balance: float = 10000.0
+    initial_balance: float = 5000.0  # Match OKX demo account
     max_leverage: int = 20
     min_price: float = 1000.0  # Min price limit (for price simulation)
     max_price: float = 500000.0  # Max price limit (for price simulation)
@@ -129,9 +129,9 @@ class PaperTrade:
 @dataclass
 class PaperAccount:
     """Simulated Account"""
-    initial_balance: float = 10000.0
-    balance: float = 10000.0  # Available balance
-    total_equity: float = 10000.0  # Total equity (balance + unrealized PnL)
+    initial_balance: float = 5000.0  # Match OKX demo account
+    balance: float = 5000.0  # Available balance
+    total_equity: float = 5000.0  # Total equity (balance + unrealized PnL)
     used_margin: float = 0.0  # Used margin
     unrealized_pnl: float = 0.0
     realized_pnl: float = 0.0  # Realized PnL
@@ -171,7 +171,7 @@ class PaperTrader(BaseTrader):
 
     def __init__(
         self,
-        initial_balance: float = 10000.0,
+        initial_balance: float = 5000.0,  # Match OKX demo account
         redis_url: str = "redis://redis:6379",
         demo_mode: bool = False,  # False = use real CoinGecko price, True = simulated price
         config: PaperTraderConfig = None
@@ -882,7 +882,7 @@ class PaperTrader(BaseTrader):
 _paper_trader: Optional[PaperTrader] = None
 
 
-async def get_paper_trader(initial_balance: float = 10000.0) -> PaperTrader:
+async def get_paper_trader(initial_balance: float = 5000.0) -> PaperTrader:  # Match OKX demo account
     """Get or create Paper Trader singleton"""
     global _paper_trader
     if _paper_trader is None:

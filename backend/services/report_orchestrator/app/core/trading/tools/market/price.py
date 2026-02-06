@@ -75,7 +75,7 @@ class GetFundingRateTool(BaseTool):
     """
     
     name = "get_funding_rate"
-    description = "Get current funding rate for perpetual swap. Positive means longs pay shorts (bearish signal), negative means shorts pay longs (bullish signal)"
+    description = "Get current funding rate for perpetual swap. Returns rate value and payment direction (positive = longs pay shorts, negative = shorts pay longs)"
     category = ToolCategory.MARKET
     
     @property
@@ -110,13 +110,13 @@ class GetFundingRateTool(BaseTool):
                         funding_rate = float(rate_data.get("fundingRate", 0))
                         next_rate = float(rate_data.get("nextFundingRate", 0))
                         
-                        # Interpret the rate  
-                        if funding_rate > 0.0001:  # > 0.01%
-                            interpretation = "Positive (longs pay) - Bearish signal, market may be overleveraged long"
-                        elif funding_rate < -0.0001:  # < -0.01%
-                            interpretation = "Negative (shorts pay) - Bullish signal, market may be overleveraged short"
+                        # Provide objective description without directional interpretation
+                        if funding_rate > 0:
+                            interpretation = f"Positive ({funding_rate*100:.4f}%) - Longs pay shorts"
+                        elif funding_rate < 0:
+                            interpretation = f"Negative ({funding_rate*100:.4f}%) - Shorts pay longs"
                         else:
-                            interpretation = "Neutral - Market is balanced"
+                            interpretation = "Zero - No funding payment"
                         
                         return ToolResult.success_result({
                             "symbol": symbol,
@@ -145,7 +145,7 @@ class GetFearGreedTool(BaseTool):
     """
     
     name = "get_fear_greed_index"
-    description = "Get Fear & Greed Index for crypto market. 0-25=Extreme Fear (potential buy), 75-100=Extreme Greed (potential sell)"
+    description = "Get Fear & Greed Index for crypto market. Returns index value 0-100 with classification (Extreme Fear/Fear/Neutral/Greed/Extreme Greed)"
     category = ToolCategory.MARKET
     
     @property
@@ -168,17 +168,9 @@ class GetFearGreedTool(BaseTool):
                         value = int(fng_data.get("value", 50))
                         classification = fng_data.get("value_classification", "Neutral")
                         
-                        # Add trading interpretation
-                        if value <= 25:
-                            interpretation = "Extreme Fear - Potential contrarian buy signal, market may be oversold"
-                        elif value <= 45:
-                            interpretation = "Fear - Market is cautious, could be accumulation zone"
-                        elif value <= 55:
-                            interpretation = "Neutral - Market is balanced, no clear signal"
-                        elif value <= 75:
-                            interpretation = "Greed - Market is optimistic, be cautious with new longs"
-                        else:
-                            interpretation = "Extreme Greed - Potential contrarian sell signal, market may be overbought"
+                        # Provide objective description without directional interpretation
+                        # Agent should determine trading implications based on context
+                        interpretation = f"Fear & Greed Index: {value} ({classification})"
                         
                         return ToolResult.success_result({
                             "value": value,

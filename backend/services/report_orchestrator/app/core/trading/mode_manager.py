@@ -93,6 +93,13 @@ class PendingTrade:
         return datetime.now() > self.expires_at
 
 
+@dataclass
+class PendingTradeResponse:
+    """Response from add_pending_trade with trade_id for frontend access."""
+    trade_id: str
+    pending_trade: PendingTrade
+
+
 class TradingModeManager:
     """
     Manages trading mode and execution decisions.
@@ -249,6 +256,56 @@ class TradingModeManager:
             logger.error("pending_trade_create_failed", error=str(e))
         
         return pending
+    
+    async def add_pending_trade(
+        self,
+        direction: str,
+        leverage: int,
+        entry_price: float,
+        take_profit: float,
+        stop_loss: float,
+        confidence: int,
+        reasoning: str,
+        amount_percent: float = 0.5,
+        symbol: str = "BTC-USDT-SWAP"
+    ) -> "PendingTradeResponse":
+        """
+        Public method to add a pending trade for SEMI_AUTO mode.
+        
+        Creates a pending trade entry in Redis for user confirmation.
+        
+        Args:
+            direction: Trade direction ('long' or 'short')
+            leverage: Leverage multiplier
+            entry_price: Entry price
+            take_profit: Take profit price
+            stop_loss: Stop loss price
+            confidence: Confidence percentage (0-100)
+            reasoning: Trade reasoning/analysis
+            amount_percent: Position size as percentage of balance
+            symbol: Trading symbol
+            
+        Returns:
+            PendingTradeResponse with trade_id
+        """
+        # Construct signal dict
+        signal = {
+            "direction": direction,
+            "leverage": leverage,
+            "entry_price": entry_price,
+            "take_profit_price": take_profit,
+            "stop_loss_price": stop_loss,
+            "confidence": confidence,
+            "reasoning": reasoning,
+            "amount_percent": amount_percent,
+            "symbol": symbol,
+        }
+        
+        # Create pending trade using internal method
+        pending = await self._create_pending_trade(signal)
+        
+        # Return response with trade_id attribute
+        return PendingTradeResponse(trade_id=pending.id, pending_trade=pending)
     
     async def get_pending_trade(self, trade_id: str) -> Optional[PendingTrade]:
         """Get a specific pending trade by ID."""

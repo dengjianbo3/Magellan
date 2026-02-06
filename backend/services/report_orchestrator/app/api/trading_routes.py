@@ -836,7 +836,8 @@ class TradingSystem:
 
         for client_id, ws in self._ws_clients.items():
             try:
-                await ws.send_text(json.dumps(message))
+                # Use default=str to handle datetime objects
+                await ws.send_text(json.dumps(message, default=str))
             except Exception as e:
                 logger.error(f"[BROADCAST] Failed to send to {client_id}: {e}")
                 dead_clients.append(client_id)
@@ -1048,6 +1049,133 @@ async def get_discussion_messages(limit: int = Query(default=100, le=200)):
     """Get discussion messages history for state restoration"""
     system = await get_trading_system()
     return {"messages": system._discussion_messages[-limit:]}
+
+
+# ===== SEMI_AUTO Mode: Pending Trade Management =====
+
+@router.get("/pending")
+async def get_pending_trades():
+    """Get all pending trades waiting for user confirmation (SEMI_AUTO mode)"""
+    from app.core.trading.mode_manager import get_mode_manager
+    mode_manager = get_mode_manager()
+    pending_trades = await mode_manager.get_pending_trades()
+    return {
+        "pending_trades": [t.to_dict() for t in pending_trades],
+        "count": len(pending_trades)
+    }
+
+
+@router.get("/pending/{trade_id}")
+async def get_pending_trade(trade_id: str):
+    """Get a specific pending trade by ID"""
+    from app.core.trading.mode_manager import get_mode_manager
+    mode_manager = get_mode_manager()
+    pending_trade = await mode_manager.get_pending_trade(trade_id)
+    if pending_trade:
+        return {"pending_trade": pending_trade.to_dict()}
+    raise HTTPException(status_code=404, detail=f"Pending trade {trade_id} not found")
+
+
+@router.post("/pending/{trade_id}/confirm")
+async def confirm_pending_trade(
+    trade_id: str,
+    user_id: str = Query(default="frontend", description="User confirming the trade"),
+    leverage: Optional[int] = Query(default=None, description="Optional: override leverage"),
+    tp_percent: Optional[float] = Query(default=None, description="Optional: override TP%"),
+    sl_percent: Optional[float] = Query(default=None, description="Optional: override SL%")
+):
+    """
+    Confirm a pending trade for execution (SEMI_AUTO mode).
+    
+    Optionally modify parameters before execution.
+    """
+    from app.core.trading.mode_manager import get_mode_manager
+    mode_manager = get_mode_manager()
+    
+    # Build modifications dict if any overrides provided
+    modifications = {}
+    if leverage is not None:
+        modifications["leverage"] = leverage
+    if tp_percent is not None:
+        modifications["tp_percent"] = tp_percent
+    if sl_percent is not None:
+        modifications["sl_percent"] = sl_percent
+    
+    # Confirm and get the final signal
+    final_signal = await mode_manager.confirm_trade(
+        trade_id=trade_id,
+        user_id=user_id,
+        modifications=modifications if modifications else None
+    )
+    
+    if not final_signal:
+        raise HTTPException(status_code=404, detail=f"Pending trade {trade_id} not found or already processed")
+    
+    # Execute the confirmed trade
+    system = await get_trading_system()
+    if system.paper_trader:
+        # Convert dict to TradingSignal
+        signal = TradingSignal(**final_signal) if isinstance(final_signal, dict) else final_signal
+        
+        trade_result = await system._execute_signal(signal)
+        
+        # Broadcast confirmation and execution
+        await system._broadcast({
+            "type": "trade_confirmed",
+            "trade_id": trade_id,
+            "signal": signal.model_dump() if hasattr(signal, 'model_dump') else final_signal,
+            "trade_result": trade_result,
+            "confirmed_by": user_id
+        })
+        
+        logger.info(f"[HITL] Trade {trade_id} confirmed by {user_id} and executed")
+        
+        return {
+            "success": True,
+            "trade_id": trade_id,
+            "confirmed_by": user_id,
+            "trade_result": trade_result
+        }
+    
+    raise HTTPException(status_code=500, detail="Trading system not initialized")
+
+
+@router.post("/pending/{trade_id}/reject")
+async def reject_pending_trade(
+    trade_id: str,
+    user_id: str = Query(default="frontend", description="User rejecting the trade"),
+    reason: str = Query(default="", description="Reason for rejection")
+):
+    """Reject a pending trade (SEMI_AUTO mode)"""
+    from app.core.trading.mode_manager import get_mode_manager
+    mode_manager = get_mode_manager()
+    
+    success = await mode_manager.reject_trade(
+        trade_id=trade_id,
+        user_id=user_id,
+        reason=reason
+    )
+    
+    if success:
+        # Broadcast rejection
+        system = await get_trading_system()
+        await system._broadcast({
+            "type": "trade_rejected",
+            "trade_id": trade_id,
+            "rejected_by": user_id,
+            "reason": reason
+        })
+        
+        logger.info(f"[HITL] Trade {trade_id} rejected by {user_id}: {reason}")
+        
+        return {
+            "success": True,
+            "trade_id": trade_id,
+            "rejected_by": user_id,
+            "reason": reason
+        }
+    
+    raise HTTPException(status_code=404, detail=f"Pending trade {trade_id} not found or already processed")
 
 
 @router.get("/equity")

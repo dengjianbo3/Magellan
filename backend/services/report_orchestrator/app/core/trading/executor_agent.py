@@ -37,6 +37,9 @@ from app.core.trading.funding import (
     TradeViability
 )
 
+# ATR dynamic stop-loss
+from app.core.trading.atr_stop_loss import calculate_dynamic_sl, get_atr_calculator
+
 logger = logging.getLogger(__name__)
 
 # ========== Config from Environment ==========
@@ -701,8 +704,27 @@ Analyze the consensus and make a decisive action."""
         position = await self._get_position_info()
         available_margin = await self._get_available_margin()
         
+        # Calculate TP using fixed percentage
         tp_price = current_price * (1 + tp_percent / 100)
-        sl_price = current_price * (1 - sl_percent / 100)
+        
+        # Calculate SL using ATR dynamic stop-loss (if available)
+        try:
+            atr_result = await calculate_dynamic_sl(
+                direction="long",
+                entry_price=current_price,
+                leverage=leverage,
+                symbol=self.symbol
+            )
+            if atr_result and atr_result.stop_loss_price > 0:
+                sl_price = atr_result.stop_loss_price
+                logger.info(f"[ExecutorAgent] [ATR] Using dynamic SL: ${sl_price:,.2f} ({atr_result.sl_percent:.2f}%), ATR={atr_result.atr_value:.2f}")
+            else:
+                # Fallback to fixed percentage
+                sl_price = current_price * (1 - sl_percent / 100)
+                logger.info(f"[ExecutorAgent] ATR unavailable, using fixed SL: ${sl_price:,.2f} ({sl_percent}%)")
+        except Exception as e:
+            logger.warning(f"[ExecutorAgent] ATR calculation failed: {e}, using fixed SL")
+            sl_price = current_price * (1 - sl_percent / 100)
         
         action_taken = "open_long"
         trade_result = None
@@ -850,8 +872,27 @@ Analyze the consensus and make a decisive action."""
         position = await self._get_position_info()
         available_margin = await self._get_available_margin()
         
+        # Calculate TP using fixed percentage
         tp_price = current_price * (1 - tp_percent / 100)
-        sl_price = current_price * (1 + sl_percent / 100)
+        
+        # Calculate SL using ATR dynamic stop-loss (if available)
+        try:
+            atr_result = await calculate_dynamic_sl(
+                direction="short",
+                entry_price=current_price,
+                leverage=leverage,
+                symbol=self.symbol
+            )
+            if atr_result and atr_result.stop_loss_price > 0:
+                sl_price = atr_result.stop_loss_price
+                logger.info(f"[ExecutorAgent] [ATR] Using dynamic SL: ${sl_price:,.2f} ({atr_result.sl_percent:.2f}%), ATR={atr_result.atr_value:.2f}")
+            else:
+                # Fallback to fixed percentage
+                sl_price = current_price * (1 + sl_percent / 100)
+                logger.info(f"[ExecutorAgent] ATR unavailable, using fixed SL: ${sl_price:,.2f} ({sl_percent}%)")
+        except Exception as e:
+            logger.warning(f"[ExecutorAgent] ATR calculation failed: {e}, using fixed SL")
+            sl_price = current_price * (1 + sl_percent / 100)
         
         action_taken = "open_short"
         trade_result = None

@@ -568,6 +568,49 @@ agents:
       - Glassnode (需API key)
       - DefiLlama (免费API)
 
+  - agent_id: contrarian_analyst
+    type: atomic
+    scope: [roundtable, analysis]
+    name:
+      zh: 逆向分析师
+      en: Contrarian Analyst
+    description:
+      zh: 挑战主流观点，识别被忽视的风险和机会，避免群体思维
+      en: Challenge mainstream views, identify overlooked risks and opportunities, prevent groupthink
+    class_path: app.core.roundtable.investment_agents.create_contrarian_analyst
+    capabilities:
+      - 挑战主流共识
+      - 识别被忽视的风险信号
+      - 发现被忽视的机会信号
+      - 寻找预期外的情景
+      - 历史类比分析
+    inputs:
+      - symbol: 交易标的
+      - market_consensus: 当前市场共识 (可选)
+      - target_data: 目标数据 (可选)
+    outputs:
+      contrarian_score: 共识风险评分 (高分=需警惕共识)
+      overlooked_risks: 被忽视的风险
+      overlooked_opportunities: 被忽视的机会
+      alternative_scenarios: 替代情景
+      consensus_warning: 共识警告
+    quick_mode_support: true
+    estimated_duration:
+      quick: 20
+      standard: 60
+      comprehensive: 120
+    tags: [contrarian, risk, consensus, anti-groupthink]
+    notes: |
+      此Agent用于:
+      - 防止群体思维
+      - 识别被忽视的信号(多空均衡)
+      - 挑战主流观点
+      
+      设计原则:
+      - 不预设方向偏见(不强制做空)
+      - 同时寻找被忽视的多头和空头信号
+      - 基于证据质疑共识
+
   # ============================================
   # 特殊Agent层 (Special Agents)
   # 特定场景专用 - 不可复用到其他场景

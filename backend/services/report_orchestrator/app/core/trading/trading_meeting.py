@@ -299,8 +299,14 @@ class TradingMeeting(Meeting):
             logger.info("[LangGraph] Collecting agent votes...")
             votes = []
             
-            # Get analysis agents (same as traditional flow)
-            vote_agent_ids = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "OnchainAnalyst", "QuantStrategist"]
+            # Get analysis agents (dynamic from loaded agents)
+            # Filter out system agents (Leader, RiskAssessor, TradeExecutor)
+            # Note: self.agents is dict {name: agent}, but _get_agent_by_id uses agent.id
+            system_agents = {'Leader', 'RiskAssessor', 'TradeExecutor'}
+            vote_agent_ids = [
+                agent.id for agent in self.agents.values() 
+                if agent.id not in system_agents
+            ]
             
             # Build vote prompt with position context
             position_info = ""
@@ -321,7 +327,7 @@ Based on your expertise, provide your trading recommendation.
 
 ```json
 {{
-  "direction": "<long|short|hold|close>",
+  "direction": "<hold|long|short|close>",
   "confidence": 75,
   "leverage": 6,
   "take_profit_percent": 8.0,
@@ -432,8 +438,10 @@ Based on your expertise, provide your trading recommendation.
                 position_context=position_context,
                 agent_votes=votes,
                 agent_weights=agent_weights,
-                leader_agent=self._get_agent_by_id("Leader"),  # 🔧 Pass Leader agent for summary generation
-                trade_executor=self._trade_executor  # 🔧 NEW: Pass TradeExecutor for execution decisions
+                leader_agent=self._get_agent_by_id("Leader"),  # Pass Leader agent for summary generation
+                risk_agent=self._get_agent_by_id("RiskAssessor"),  # 🆕 Pass RiskAssessor agent for LLM risk assessment
+                trade_executor=self._trade_executor,  # Pass TradeExecutor for execution decisions
+                on_message=self.on_message  # Pass message callback for broadcasting to frontend
             )
             
             # Extract final signal from graph state
@@ -1254,13 +1262,13 @@ First explain your analysis reasoning, then output a JSON trading signal at the 
 **JSON must be valid format, placed in a ```json code block:**
 
 ⚠️ **CRITICAL**: The example below uses placeholder values. You MUST choose `direction` based on YOUR analysis:
-- If market is BULLISH → `"direction": "long"`
-- If market is BEARISH → `"direction": "short"`  
-- If market is UNCLEAR → `"direction": "hold"`
+- If YOUR analysis shows BEARISH conditions → `"direction": "short"`
+- If YOUR analysis shows BULLISH conditions → `"direction": "long"`
+- If market direction is UNCLEAR → `"direction": "hold"`
 
 ```json
 {{
-  "direction": "<long|short|hold - choose based on YOUR analysis, NOT this example>",
+  "direction": "<YOUR CHOICE: short|long|hold - based on YOUR analysis>",
   "confidence": 75,
   "leverage": 6,
   "take_profit_percent": 8.0,
@@ -1270,9 +1278,9 @@ First explain your analysis reasoning, then output a JSON trading signal at the 
 ```
 
 **direction field options**:
-- `"long"`: Go long / Buy
-- `"short"`: Go short / Sell
-- `"hold"`: Wait / No action
+- `"short"`: Go short / Sell (bearish view)
+- `"long"`: Go long / Buy (bullish view)
+- `"hold"`: Wait / No action (unclear direction)
 - `"add_long"`: Add to long position (when already long)
 - `"add_short"`: Add to short position (when already short)
 - `"close"`: Close position
@@ -1314,6 +1322,7 @@ First explain your analysis reasoning, then output a JSON trading signal at the 
 
         risk_agent = self._get_agent_by_id("RiskAssessor")
         if risk_agent:
+            logger.info(f"[Phase 3] RiskAssessor found, running risk assessment...")
             prompt = f"""Here are the expert voting results:
 
 {votes_summary}
@@ -1333,6 +1342,10 @@ If not approved, explain your reasons.
 - Your responsibility is to assess risk, NOT to execute trades
 """
             await self._run_agent_turn(risk_agent, prompt)
+        else:
+            # Log available agent IDs for debugging
+            available_ids = [agent.id for agent in self.agents.values()]
+            logger.warning(f"[Phase 3] RiskAssessor not found! Available agent IDs: {available_ids}")
     
     def _generate_risk_context(self, position_context: PositionContext) -> str:
         """
@@ -1431,8 +1444,11 @@ Please provide comprehensive risk assessment and recommendations!
         # Use Leader for meeting summary
         leader = self._get_agent_by_id("Leader")
         if not leader:
-            logger.error("Leader not found")
+            available_ids = [agent.id for agent in self.agents.values()]
+            logger.error(f"[Phase 4] Leader not found! Available agent IDs: {available_ids}")
             return None
+        else:
+            logger.info(f"[Phase 4] Leader found, running consensus phase...")
 
         # Generate position-aware decision guidance
         decision_guidance = self._generate_decision_guidance(position_context)

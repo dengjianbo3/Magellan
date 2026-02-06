@@ -50,6 +50,7 @@ def create_trading_agents(toolkit=None) -> List[Any]:
         "macro_economist",      # Macro economic analysis
         "sentiment_analyst",    # Market sentiment, fear/greed index
         "onchain_analyst",      # On-chain data, whale monitoring
+        "contrarian_analyst",   # Challenge consensus, prevent groupthink
         "risk_assessor",        # Risk assessment (analysis only)
         "quant_strategist",     # Quantitative analysis
     ]

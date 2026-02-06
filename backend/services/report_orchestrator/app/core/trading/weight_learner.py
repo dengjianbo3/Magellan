@@ -114,8 +114,9 @@ class AgentWeightLearner:
             "TechnicalAnalyst",
             "FundamentalAnalyst",
             "SentimentAnalyst",
-            "RiskManager",
             "OnchainAnalyst",
+            "ContrarianAnalyst",
+            "RiskManager",
         ]
         
         weights = {}
@@ -330,8 +331,9 @@ class AgentWeightLearner:
             "TechnicalAnalyst",
             "FundamentalAnalyst", 
             "SentimentAnalyst",
-            "RiskManager",
             "OnchainAnalyst",
+            "ContrarianAnalyst",
+            "RiskManager",
         ]
         
         result = {}
