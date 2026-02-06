@@ -129,9 +129,9 @@ def add_trace_id(logger, method_name, event_dict):
 
 **验收标准**:
 
-- [ ] 所有日志为 JSON 格式
-- [ ] 每个交易周期有唯一 trace_id
-- [ ] 错误日志包含完整 stack trace
+- [x] 所有日志为 JSON 格式
+- [x] 每个交易周期有唯一 trace_id
+- [x] 错误日志包含完整 stack trace
 
 ---
 
@@ -239,9 +239,9 @@ async def signal_generation_node(state: TradingState):
 
 **验收标准**:
 
-- [ ] 5 Agent 执行完成时间 < 25s
-- [ ] 不触发 API 速率限制
-- [ ] 失败 Agent 使用 fallback vote
+- [x] 5 Agent 执行完成时间 < 25s
+- [x] 不触发 API 速率限制
+- [x] 失败 Agent 使用 fallback vote
 
 ---
 

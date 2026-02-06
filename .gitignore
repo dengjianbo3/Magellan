@@ -53,3 +53,18 @@ playwright-report/
 
 # Debug files
 DEBUG_*.md
+
+# Temporary runtime files
+logs.txt
+startup_logs.txt
+post_reload_logs.txt
+analysis_debug.log
+analysis_round.log
+full_debug.log
+last_trade.json
+recent_messages.json
+
+# Coverage reports
+htmlcov/
+.coverage
+coverage.xml
