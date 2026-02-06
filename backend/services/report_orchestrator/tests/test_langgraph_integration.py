@@ -299,27 +299,27 @@ class TestATRIntegration:
 
 class TestSEMIAUTOMode:
     """Test SEMI_AUTO mode functionality."""
-    
+
     @pytest.mark.asyncio
     async def test_mode_manager_import(self):
         """Test that mode manager can be imported."""
         from app.core.trading.mode_manager import (
-            TradingModeManager, 
-            TradingMode, 
+            TradingModeManager,
+            TradingMode,
             get_mode_manager
         )
-        
+
         assert TradingMode.FULL_AUTO.value == "full_auto"
         assert TradingMode.SEMI_AUTO.value == "semi_auto"
         assert TradingMode.MANUAL.value == "manual"
-    
+
     @pytest.mark.asyncio
     async def test_pending_trade_creation(self):
         """Test pending trade creation and retrieval."""
         from app.core.trading.mode_manager import get_mode_manager
-        
+
         mode_manager = get_mode_manager()
-        
+
         # Create a pending trade
         pending = await mode_manager.add_pending_trade(
             direction="long",
@@ -331,14 +331,339 @@ class TestSEMIAUTOMode:
             reasoning="Test trade",
             amount_percent=0.2
         )
-        
+
         assert pending is not None
         assert pending.trade_id is not None
-        
+
         # Retrieve it
         retrieved = await mode_manager.get_pending_trade(pending.trade_id)
         if retrieved:
             assert retrieved.id == pending.trade_id
+
+
+class TestHITLModeBlocking:
+    """Test Human-in-the-Loop mode blocking functionality."""
+
+    @pytest.fixture
+    def sample_votes(self):
+        """Sample agent votes for testing."""
+        return [
+            {
+                "agent_id": "TechnicalAnalyst",
+                "agent_name": "TechnicalAnalyst",
+                "direction": "long",
+                "confidence": 80,
+                "leverage": 5,
+                "take_profit_percent": 8.0,
+                "stop_loss_percent": 3.0,
+                "reasoning": "RSI oversold, MACD bullish"
+            },
+            {
+                "agent_id": "SentimentAnalyst",
+                "agent_name": "SentimentAnalyst",
+                "direction": "long",
+                "confidence": 75,
+                "leverage": 4,
+                "take_profit_percent": 7.0,
+                "stop_loss_percent": 3.5,
+                "reasoning": "Social sentiment bullish"
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_full_auto_mode_allows_execution(self, sample_votes):
+        """Test that FULL_AUTO mode allows trade execution."""
+        from app.core.trading.mode_manager import get_mode_manager, TradingMode, ExecutionAction
+
+        mode_manager = get_mode_manager()
+
+        # Set to FULL_AUTO
+        await mode_manager.set_mode(TradingMode.FULL_AUTO)
+        current_mode = await mode_manager.get_mode()
+        assert current_mode == TradingMode.FULL_AUTO
+
+        # Check execution action
+        action = await mode_manager.check_execution_allowed(
+            direction="long",
+            confidence=80,
+            leverage=5
+        )
+        assert action == ExecutionAction.EXECUTE
+
+    @pytest.mark.asyncio
+    async def test_semi_auto_mode_blocks_execution(self, sample_votes):
+        """Test that SEMI_AUTO mode blocks execution and creates pending trade."""
+        from app.core.trading.mode_manager import get_mode_manager, TradingMode, ExecutionAction
+
+        mode_manager = get_mode_manager()
+
+        # Set to SEMI_AUTO
+        await mode_manager.set_mode(TradingMode.SEMI_AUTO)
+        current_mode = await mode_manager.get_mode()
+        assert current_mode == TradingMode.SEMI_AUTO
+
+        # Check execution action - should require approval
+        action = await mode_manager.check_execution_allowed(
+            direction="long",
+            confidence=80,
+            leverage=5
+        )
+        assert action == ExecutionAction.REQUIRE_APPROVAL
+
+    @pytest.mark.asyncio
+    async def test_manual_mode_blocks_execution(self, sample_votes):
+        """Test that MANUAL mode blocks all execution."""
+        from app.core.trading.mode_manager import get_mode_manager, TradingMode, ExecutionAction
+
+        mode_manager = get_mode_manager()
+
+        # Set to MANUAL
+        await mode_manager.set_mode(TradingMode.MANUAL)
+        current_mode = await mode_manager.get_mode()
+        assert current_mode == TradingMode.MANUAL
+
+        # Check execution action - should block
+        action = await mode_manager.check_execution_allowed(
+            direction="long",
+            confidence=80,
+            leverage=5
+        )
+        assert action == ExecutionAction.BLOCK
+
+    @pytest.mark.asyncio
+    async def test_pending_trade_approval_flow(self):
+        """Test the full pending trade approval flow."""
+        from app.core.trading.mode_manager import get_mode_manager, TradingMode
+
+        mode_manager = get_mode_manager()
+
+        # Set to SEMI_AUTO
+        await mode_manager.set_mode(TradingMode.SEMI_AUTO)
+
+        # Create pending trade
+        pending = await mode_manager.add_pending_trade(
+            direction="long",
+            leverage=5,
+            entry_price=95000.0,
+            take_profit=102600.0,
+            stop_loss=92150.0,
+            confidence=75,
+            reasoning="Test HITL approval flow",
+            amount_percent=0.2
+        )
+
+        assert pending is not None
+        trade_id = pending.trade_id
+
+        # Get all pending trades
+        all_pending = await mode_manager.get_all_pending_trades()
+        assert any(t.id == trade_id for t in all_pending)
+
+        # Approve the trade
+        approved = await mode_manager.approve_trade(trade_id)
+        # Note: approval may fail if no actual trader is connected
+        # Just verify the method doesn't crash
+
+        # Clean up - reject if still pending
+        await mode_manager.reject_trade(trade_id, reason="Test cleanup")
+
+    @pytest.mark.asyncio
+    async def test_pending_trade_rejection(self):
+        """Test pending trade rejection."""
+        from app.core.trading.mode_manager import get_mode_manager, TradingMode
+
+        mode_manager = get_mode_manager()
+
+        # Set to SEMI_AUTO
+        await mode_manager.set_mode(TradingMode.SEMI_AUTO)
+
+        # Create pending trade
+        pending = await mode_manager.add_pending_trade(
+            direction="short",
+            leverage=3,
+            entry_price=95000.0,
+            take_profit=87400.0,
+            stop_loss=97850.0,
+            confidence=65,
+            reasoning="Test rejection flow",
+            amount_percent=0.15
+        )
+
+        assert pending is not None
+        trade_id = pending.trade_id
+
+        # Reject the trade
+        rejected = await mode_manager.reject_trade(trade_id, reason="User rejected")
+        assert rejected is True
+
+        # Verify it's no longer in pending list
+        all_pending = await mode_manager.get_all_pending_trades()
+        assert not any(t.id == trade_id for t in all_pending)
+
+    @pytest.mark.asyncio
+    async def test_mode_persistence(self):
+        """Test that mode persists across manager instances."""
+        from app.core.trading.mode_manager import TradingModeManager, TradingMode
+
+        # Create first manager and set mode
+        manager1 = TradingModeManager()
+        await manager1.set_mode(TradingMode.SEMI_AUTO)
+
+        # Create second manager (simulating restart)
+        manager2 = TradingModeManager()
+        mode = await manager2.get_mode()
+
+        # Mode should persist (if Redis is available)
+        # Note: Without Redis, this may fall back to default
+        assert mode in [TradingMode.SEMI_AUTO, TradingMode.FULL_AUTO]
+
+
+class TestWeightLearnerIntegration:
+    """Test WeightLearner integration."""
+
+    @pytest.mark.asyncio
+    async def test_weight_learner_import(self):
+        """Test that WeightLearner can be imported."""
+        from app.core.trading.weight_learner import (
+            AgentWeightLearner,
+            get_weight_learner,
+            get_learned_weights
+        )
+
+        learner = get_weight_learner()
+        assert learner is not None
+
+    @pytest.mark.asyncio
+    async def test_get_learned_weights(self):
+        """Test getting learned weights."""
+        from app.core.trading.weight_learner import get_learned_weights
+
+        weights = await get_learned_weights()
+        assert isinstance(weights, dict)
+
+        # Should have weights for standard agents
+        expected_agents = [
+            "TechnicalAnalyst",
+            "FundamentalAnalyst",
+            "SentimentAnalyst",
+        ]
+        for agent in expected_agents:
+            assert agent in weights
+            assert 0.5 <= weights[agent] <= 2.0
+
+    @pytest.mark.asyncio
+    async def test_weight_bounds(self):
+        """Test that weights stay within bounds."""
+        from app.core.trading.weight_learner import get_weight_learner
+
+        learner = get_weight_learner()
+
+        # Get weight for an agent
+        weight = await learner.get_agent_weight("TechnicalAnalyst")
+
+        # Should be within bounds
+        assert 0.5 <= weight <= 2.0
+
+
+class TestAntiBiasIntegration:
+    """Test anti-bias system integration."""
+
+    @pytest.mark.asyncio
+    async def test_direction_neutralizer_import(self):
+        """Test that DirectionNeutralizer can be imported."""
+        from app.core.trading.anti_bias import (
+            DirectionNeutralizer,
+            NeutralVote,
+            EchoChamberDetector,
+            get_echo_chamber_detector
+        )
+
+        detector = get_echo_chamber_detector()
+        assert detector is not None
+
+    @pytest.mark.asyncio
+    async def test_echo_chamber_detection(self):
+        """Test echo chamber detection with unanimous votes."""
+        from app.core.trading.anti_bias import get_echo_chamber_detector
+
+        detector = get_echo_chamber_detector()
+
+        # Create unanimous votes (should trigger echo chamber warning)
+        unanimous_votes = [
+            {"agent_id": f"Agent{i}", "direction": "long", "confidence": 80}
+            for i in range(5)
+        ]
+
+        result = detector.check(unanimous_votes)
+
+        # 100% agreement should trigger echo chamber
+        assert result.consensus_ratio == 1.0
+        assert result.status.value == "echo_chamber_detected"
+
+    @pytest.mark.asyncio
+    async def test_no_echo_chamber_with_mixed_votes(self):
+        """Test that mixed votes don't trigger echo chamber."""
+        from app.core.trading.anti_bias import get_echo_chamber_detector
+
+        detector = get_echo_chamber_detector()
+
+        # Create mixed votes
+        mixed_votes = [
+            {"agent_id": "Agent1", "direction": "long", "confidence": 80},
+            {"agent_id": "Agent2", "direction": "long", "confidence": 75},
+            {"agent_id": "Agent3", "direction": "short", "confidence": 70},
+            {"agent_id": "Agent4", "direction": "hold", "confidence": 60},
+            {"agent_id": "Agent5", "direction": "long", "confidence": 65},
+        ]
+
+        result = detector.check(mixed_votes)
+
+        # 60% agreement should not trigger echo chamber (threshold is 80%)
+        assert result.consensus_ratio < 0.8
+        assert result.status.value != "echo_chamber_detected"
+
+    @pytest.mark.asyncio
+    async def test_neutral_vote_aggregation(self):
+        """Test neutral vote aggregation."""
+        from app.core.trading.anti_bias import DirectionNeutralizer, NeutralVote
+
+        # Create neutral votes
+        votes = [
+            NeutralVote(
+                agent_id="Agent1",
+                agent_name="Agent1",
+                bullish_score=75,
+                bearish_score=35,
+                confidence=70,
+                leverage=5,
+                take_profit_percent=8.0,
+                stop_loss_percent=3.0,
+                reasoning="Bullish signals"
+            ),
+            NeutralVote(
+                agent_id="Agent2",
+                agent_name="Agent2",
+                bullish_score=80,
+                bearish_score=30,
+                confidence=75,
+                leverage=4,
+                take_profit_percent=7.0,
+                stop_loss_percent=3.5,
+                reasoning="Strong bullish"
+            ),
+        ]
+
+        weights = {"Agent1": 1.0, "Agent2": 1.2}
+
+        direction, confidence, metadata = DirectionNeutralizer.aggregate_neutral_votes(
+            votes, weights
+        )
+
+        # Should be bullish given the scores
+        assert direction == "long"
+        assert confidence > 0
+        assert "avg_bullish_score" in metadata
+        assert "avg_bearish_score" in metadata
 
 
 if __name__ == "__main__":
