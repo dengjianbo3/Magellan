@@ -3,7 +3,7 @@ Trading Mode Manager - HITL (Human-in-the-Loop) Core
 
 Manages three trading modes:
 - FULL_AUTO: Execute trades automatically
-- SEMI_AUTO: Wait for user confirmation before execution  
+- SEMI_AUTO: Wait for user confirmation before execution
 - MANUAL: Analysis only, no trade execution
 
 Phase 1.3 of the architecture evolution roadmap.
@@ -19,6 +19,8 @@ import json
 
 import redis.asyncio as redis
 import structlog
+
+from .trading_config import get_infra_config
 
 logger = structlog.get_logger(__name__)
 
@@ -120,8 +122,8 @@ class TradingModeManager:
     async def _ensure_redis(self) -> Optional[redis.Redis]:
         """Ensure Redis connection exists."""
         if self.redis is None:
-            import os
-            redis_url = os.environ.get("REDIS_URL", "redis://redis:6379")
+            # Use centralized config for Redis URL
+            redis_url = get_infra_config().redis_url
             try:
                 self.redis = redis.from_url(redis_url, decode_responses=True)
                 await self.redis.ping()

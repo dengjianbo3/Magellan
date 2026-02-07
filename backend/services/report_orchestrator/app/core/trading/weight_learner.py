@@ -19,6 +19,8 @@ import json
 import redis.asyncio as redis
 import structlog
 
+from .trading_config import get_weight_config, get_infra_config, WeightLearningConfig as ConfigWeightLearning
+
 logger = structlog.get_logger(__name__)
 
 
@@ -31,11 +33,11 @@ class AgentPerformance:
     correct_predictions: int = 0
     accuracy: float = 0.0
     last_updated: Optional[datetime] = None
-    
+
     # Recent performance (last 20 trades)
     recent_correct: int = 0
     recent_total: int = 0
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "agent_name": self.agent_name,
@@ -48,44 +50,41 @@ class AgentPerformance:
         }
 
 
-@dataclass
-class WeightLearningConfig:
-    """Configuration for weight learning."""
-    min_weight: float = 0.5
-    max_weight: float = 2.0
-    default_weight: float = 1.0
-    learning_rate: float = 0.1
-    recent_window: int = 20  # Number of recent trades to consider
-    min_trades_for_adjustment: int = 5  # Minimum trades before adjusting
+# Alias for backward compatibility
+WeightLearningConfig = ConfigWeightLearning
 
 
 class AgentWeightLearner:
     """
     Learns and adjusts agent weights based on prediction accuracy.
-    
+
     After each trade outcome, the system:
     1. Compares agent predictions to actual result
     2. Updates accuracy metrics
     3. Adjusts weights using exponential smoothing
+
+    Now uses centralized configuration from trading_config.py.
     """
-    
+
     REDIS_KEY_PREFIX = "agent_weights:"
     REDIS_KEY_PERFORMANCE = "agent_performance:"
     REDIS_KEY_HISTORY = "agent_history:"
-    
+
     def __init__(
         self,
         config: Optional[WeightLearningConfig] = None,
         redis_client: Optional[redis.Redis] = None,
     ):
-        self.config = config or WeightLearningConfig()
+        # Use centralized config if not provided
+        self.config = config or get_weight_config()
         self.redis = redis_client
         self._performance_cache: Dict[str, AgentPerformance] = {}
-    
+
     async def _ensure_redis(self) -> Optional[redis.Redis]:
         """Ensure Redis connection exists."""
         if self.redis is None:
-            redis_url = os.environ.get("REDIS_URL", "redis://redis:6379")
+            # Use centralized config for Redis URL
+            redis_url = get_infra_config().redis_url
             try:
                 self.redis = redis.from_url(redis_url, decode_responses=True)
                 await self.redis.ping()
