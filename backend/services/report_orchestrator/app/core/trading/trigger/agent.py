@@ -25,9 +25,11 @@ except ImportError:
 # 复用现有的 LLMHelper
 try:
     from app.core.llm_helper import LLMHelper
+    from app.core.trading.trading_config import get_infra_config
 except ImportError:
     # 独立运行时的回退
     LLMHelper = None
+    get_infra_config = None
 
 logger = logging.getLogger(__name__)
 
@@ -93,18 +95,19 @@ class TriggerAgent:
         ta_calculator: Optional[TACalculator] = None,
         llm_helper: Optional["LLMHelper"] = None,
         paper_trader = None,  # 新增: 用于获取仓位信息
-        llm_gateway_url: str = "http://llm_gateway:8003",
+        llm_gateway_url: str = None,
         confidence_threshold: int = None
     ):
         self.news_crawler = news_crawler or NewsCrawler()
         self.ta_calculator = ta_calculator or TACalculator()
         self.paper_trader = paper_trader  # 新增
-        
+
         # 复用现有的 LLMHelper
         if llm_helper:
             self.llm_helper = llm_helper
         elif LLMHelper:
-            self.llm_helper = LLMHelper(llm_gateway_url=llm_gateway_url, timeout=60)
+            gateway_url = llm_gateway_url or (get_infra_config().llm_gateway_url if get_infra_config else "http://llm_gateway:8003")
+            self.llm_helper = LLMHelper(llm_gateway_url=gateway_url, timeout=60)
         else:
             self.llm_helper = None  # 独立运行模式
         

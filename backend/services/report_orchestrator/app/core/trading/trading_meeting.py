@@ -424,7 +424,7 @@ Based on your expertise, provide your trading recommendation.
                         safety_guard=self._safety_guard,
                         on_message=self.on_message,
                         symbol=getattr(self.config, 'symbol', 'BTC-USDT-SWAP'),
-                        llm_gateway_url="http://llm_gateway:8003"
+                        llm_gateway_url=None  # Uses centralized config
                     )
                     logger.info("[LangGraph] ✅ ExecutorAgent initialized (unified agent architecture)")
                 else:
@@ -3269,11 +3269,11 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
 
 ## Risk Management
 - Always check liquidity before large orders
-- Reduce leverage if slippage is high  
+- Reduce leverage if slippage is high
 - Abort if estimated slippage > 1%
 
 You MUST call a tool based on meeting results!""",
-            llm_gateway_url=leader.llm_gateway_url if hasattr(leader, 'llm_gateway_url') else "http://llm_gateway:8003",
+            llm_gateway_url=leader.llm_gateway_url if hasattr(leader, 'llm_gateway_url') else None,  # Uses centralized config
             temperature=0.3
         )
 

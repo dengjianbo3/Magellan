@@ -23,6 +23,7 @@ from app.core.roundtable.rewoo_agent import ReWOOAgent
 from app.core.roundtable.tool import FunctionTool
 from app.models.trading_models import TradingSignal
 from app.core.trading.price_service import get_current_btc_price
+from app.core.trading.trading_config import get_infra_config
 from app.core.trading.decision_store import TradingDecision, TradingDecisionStore
 
 # Funding fee awareness imports
@@ -112,23 +113,23 @@ class ExecutorAgent(ReWOOAgent):
         safety_guard=None,
         on_message: Optional[Callable] = None,
         symbol: str = "BTC-USDT-SWAP",
-        llm_gateway_url: str = "http://llm_gateway:8003"
+        llm_gateway_url: str = None
     ):
         """
         Initialize ExecutorAgent.
-        
+
         Args:
             toolkit: Trading toolkit with trading functions
             paper_trader: Paper trading client
             safety_guard: Optional SafetyGuard for risk checks
             on_message: Callback for progress messages
             symbol: Trading symbol
-            llm_gateway_url: LLM gateway service URL
+            llm_gateway_url: LLM gateway service URL (uses config if None)
         """
         super().__init__(
             name="TradeExecutor",
             role_prompt=self._get_executor_role_prompt(),
-            llm_gateway_url=llm_gateway_url,
+            llm_gateway_url=llm_gateway_url or get_infra_config().llm_gateway_url,
             model="gpt-4",
             temperature=1.0  # Match other ReWOO agents - low temp (0.3) caused instability
         )
