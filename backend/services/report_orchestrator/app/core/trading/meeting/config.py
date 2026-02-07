@@ -41,7 +41,7 @@ class MeetingConfig:
     
     # Execution parameters - read from env
     max_leverage: int = field(default_factory=lambda: _get_env_int("MAX_LEVERAGE", 20))
-    default_leverage: int = field(default_factory=lambda: _get_env_int(\"DEFAULT_LEVERAGE\", 5))
+    default_leverage: int = field(default_factory=lambda: _get_env_int("DEFAULT_LEVERAGE", 5))
     min_position_percent: float = field(default_factory=lambda: _get_env_float("MIN_POSITION_PERCENT", 10) / 100)
     max_position_percent: float = field(default_factory=lambda: _get_env_float("MAX_POSITION_PERCENT", 30) / 100)
     
