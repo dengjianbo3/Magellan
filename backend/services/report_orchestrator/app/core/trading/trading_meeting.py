@@ -957,11 +957,11 @@ Experts, please begin your analysis.
         # Run analysis agents (using agent names from ReWOO agents)
         # Phase 3: Added OnchainAnalyst for on-chain data analysis
         analysis_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "OnchainAnalyst"]
-        
+
         # Debug: Log available agents (safely handle both Agent objects and strings)
         available_agent_ids = [getattr(a, 'id', str(a)) for a in self.agents.values()]
-        print(f"[TradingMeeting] Available agents in self.agents: {available_agent_ids}")
-        print(f"[TradingMeeting] Looking for analysis agents: {analysis_agents}")
+        logger.debug(f"[TradingMeeting] Available agents in self.agents: {available_agent_ids}")
+        logger.debug(f"[TradingMeeting] Looking for analysis agents: {analysis_agents}")
 
         # Position context for all analysts
         position_hint = position_context.to_summary()
@@ -1128,8 +1128,8 @@ Provide your analysis and views based on real data."""
             await self._run_sequential_signal_generation(position_context)
         
         # Summary of collected votes
-        print(f"[VOTE_DEBUG] Total votes collected: {len(self._agent_votes)} from AGENT_BATCHES")
-        print(f"[VOTE_DEBUG] Voting agents: {[v.agent_name for v in self._agent_votes]}")
+        logger.debug(f"[VOTE_DEBUG] Total votes collected: {len(self._agent_votes)} from AGENT_BATCHES")
+        logger.debug(f"[VOTE_DEBUG] Voting agents: {[v.agent_name for v in self._agent_votes]}")
 
     async def _run_sequential_signal_generation(self, position_context: PositionContext):
         """
@@ -1149,20 +1149,20 @@ Provide your analysis and views based on real data."""
                 vote = self._parse_vote_json(agent_id, agent.name, response)
                 if vote:
                     self._agent_votes.append(vote)
-                    print(f"[VOTE_DEBUG] ✅ {agent.name} vote recorded: {vote.direction} (confidence: {vote.confidence}%)")
+                    logger.debug(f"[VOTE_DEBUG] ✅ {agent.name} vote recorded: {vote.direction} (confidence: {vote.confidence}%)")
                 else:
                     # Fallback when JSON parsing fails
                     logger.warning(f"[{agent.name}] JSON parsing failed, attempting text parsing fallback")
                     vote = self._parse_vote_fallback(agent_id, agent.name, response)
                     if vote:
                         self._agent_votes.append(vote)
-                        print(f"[VOTE_DEBUG] ⚠️ {agent.name} vote recorded via fallback: {vote.direction}")
+                        logger.debug(f"[VOTE_DEBUG] ⚠️ {agent.name} vote recorded via fallback: {vote.direction}")
                     else:
                         # Both parsing methods failed
-                        print(f"[VOTE_DEBUG] ❌ {agent.name} vote FAILED - both JSON and fallback parsing failed")
+                        logger.debug(f"[VOTE_DEBUG] ❌ {agent.name} vote FAILED - both JSON and fallback parsing failed")
                         logger.error(f"[{agent.name}] Failed to parse vote from response (length: {len(response)} chars)")
             else:
-                print(f"[VOTE_DEBUG] ❌ {agent_id} agent not found in self.agents")
+                logger.debug(f"[VOTE_DEBUG] ❌ {agent_id} agent not found in self.agents")
 
     async def _run_parallel_signal_generation(self, position_context: PositionContext):
         """
@@ -1193,15 +1193,15 @@ Provide your analysis and views based on real data."""
         for result in results:
             if result.success and result.vote:
                 self._agent_votes.append(result.vote)
-                print(f"[VOTE_DEBUG] ✅ {result.agent_name} vote: {result.vote.direction} ({result.vote.confidence}%) [{result.duration_ms:.0f}ms]")
+                logger.debug(f"[VOTE_DEBUG] ✅ {result.agent_name} vote: {result.vote.direction} ({result.vote.confidence}%) [{result.duration_ms:.0f}ms]")
             elif result.is_fallback:
                 # Generate fallback vote for failed agents
                 fallback_vote = self._generate_fallback_vote(result.agent_id, result.agent_name)
                 if fallback_vote:
                     self._agent_votes.append(fallback_vote)
-                    print(f"[VOTE_DEBUG] ⚠️ {result.agent_name} fallback vote: hold (30%)")
+                    logger.debug(f"[VOTE_DEBUG] ⚠️ {result.agent_name} fallback vote: hold (30%)")
             else:
-                print(f"[VOTE_DEBUG] ❌ {result.agent_name} failed: {result.error}")
+                logger.debug(f"[VOTE_DEBUG] ❌ {result.agent_name} failed: {result.error}")
         
         total_time = (time.time() - start_time) * 1000
         logger.info(f"[ParallelSignalGen] ✅ Completed in {total_time:.0f}ms, collected {len(self._agent_votes)} votes")
