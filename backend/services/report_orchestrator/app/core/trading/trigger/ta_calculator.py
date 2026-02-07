@@ -7,10 +7,15 @@ Technical Analysis Calculator - 多周期技术分析计算器
 import asyncio
 import aiohttp
 import logging
-import os
 from datetime import datetime
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
+
+# Import centralized config
+try:
+    from ..trading_config import get_infra_config
+except ImportError:
+    get_infra_config = None
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +73,8 @@ class TACalculator:
     
     def __init__(self, symbol: str = "BTC-USDT-SWAP"):
         self.symbol = symbol
-        self.base_url = "https://www.okx.com"
+        # Use centralized config for OKX base URL
+        self.base_url = get_infra_config().okx_base_url if get_infra_config else "https://www.okx.com"
         self._last_data: Optional[TAData] = None
     
     async def calculate(self, timeframes: List[str] = None) -> TAData:

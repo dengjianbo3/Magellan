@@ -10,10 +10,11 @@ Phase 2.2 of the architecture evolution roadmap.
 from dataclasses import dataclass
 from typing import Optional, List, Tuple
 from datetime import datetime
-import os
 
 import httpx
 import structlog
+
+from .trading_config import get_infra_config
 
 logger = structlog.get_logger(__name__)
 
@@ -73,10 +74,7 @@ class ATRStopLossCalculator:
         okx_base_url: Optional[str] = None,
     ):
         self.config = config or ATRConfig()
-        self.okx_base_url = okx_base_url or os.environ.get(
-            "OKX_BASE_URL", 
-            "https://www.okx.com"
-        )
+        self.okx_base_url = okx_base_url or get_infra_config().okx_base_url
         self._http_client: Optional[httpx.AsyncClient] = None
         self._atr_cache: dict = {}  # symbol -> (atr, timestamp)
     

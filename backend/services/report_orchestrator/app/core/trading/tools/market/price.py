@@ -8,6 +8,7 @@ from typing import List
 import logging
 
 from ..base import BaseTool, ToolResult, ToolParameter, ToolCategory
+from ...trading_config import get_infra_config
 
 logger = logging.getLogger(__name__)
 
@@ -93,14 +94,15 @@ class GetFundingRateTool(BaseTool):
     async def execute(self, **kwargs) -> ToolResult:
         """Fetch funding rate."""
         symbol = kwargs.get("symbol", "BTC-USDT-SWAP")
-        
+
         try:
             # Try to get from OKX API
             import httpx
-            
+
             async with httpx.AsyncClient() as client:
                 # OKX funding rate endpoint
-                url = f"https://www.okx.com/api/v5/public/funding-rate?instId={symbol}"
+                base_url = get_infra_config().okx_base_url
+                url = f"{base_url}/api/v5/public/funding-rate?instId={symbol}"
                 response = await client.get(url, timeout=10)
                 
                 if response.status_code == 200:

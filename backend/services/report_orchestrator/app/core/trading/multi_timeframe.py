@@ -17,10 +17,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Optional, Dict, List, Tuple, Any
-import os
 
 import httpx
 import structlog
+
+from .trading_config import get_infra_config
 
 logger = structlog.get_logger(__name__)
 
@@ -99,10 +100,7 @@ class MultiTimeframeAnalyzer:
     """
     
     def __init__(self, okx_base_url: Optional[str] = None):
-        self.okx_base_url = okx_base_url or os.environ.get(
-            "OKX_BASE_URL", 
-            "https://www.okx.com"
-        )
+        self.okx_base_url = okx_base_url or get_infra_config().okx_base_url
         self._http_client: Optional[httpx.AsyncClient] = None
     
     async def _get_client(self) -> httpx.AsyncClient:

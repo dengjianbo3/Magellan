@@ -22,6 +22,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
+# Import centralized config
+try:
+    from ..trading_config import get_infra_config
+except ImportError:
+    get_infra_config = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -130,17 +136,17 @@ class FastMonitor:
     ):
         self.symbol = symbol
         self.config = config or FastMonitorConfig()
-        self.base_url = "https://www.okx.com"
-        
+        self.base_url = get_infra_config().okx_base_url if get_infra_config else "https://www.okx.com"
+
         # 价格历史 (用于计算变化)
         self._price_history: deque = deque(maxlen=60)  # 60个数据点
         self._last_price_time: Optional[datetime] = None
-        
+
         # 缓存数据
         self._last_funding_rate: Optional[float] = None
         self._last_open_interest: Optional[float] = None
         self._last_oi_time: Optional[datetime] = None
-        
+
         logger.info(f"[FastMonitor] Initialized for {symbol}")
     
     async def check(self) -> FastTriggerResult:
