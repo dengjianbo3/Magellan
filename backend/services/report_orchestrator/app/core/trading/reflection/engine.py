@@ -14,6 +14,9 @@ from typing import List, Dict, Optional, Any
 
 import redis.asyncio as redis
 
+# Import centralized config
+from ..trading_config import get_infra_config
+
 logger = logging.getLogger(__name__)
 
 
@@ -90,15 +93,15 @@ class TradeReflection:
 class ReflectionMemory:
     """
     Persistent storage for reflections.
-    
+
     Stores reflections in Redis for:
     - Historical analysis
     - Context injection into future trading decisions
     - Agent weight adjustments
     """
-    
-    def __init__(self, redis_url: str = "redis://redis:6379"):
-        self.redis_url = redis_url
+
+    def __init__(self, redis_url: str = None):
+        self.redis_url = redis_url or get_infra_config().redis_url
         self._redis: Optional[redis.Redis] = None
         self.key_prefix = "trading:reflection"
     
@@ -200,8 +203,8 @@ class AgentWeightAdjuster:
         This class is kept for backward compatibility but will be removed.
     """
 
-    def __init__(self, redis_url: str = "redis://redis:6379"):
-        self.redis_url = redis_url
+    def __init__(self, redis_url: str = None):
+        self.redis_url = redis_url or get_infra_config().redis_url
         self._redis: Optional[redis.Redis] = None
         self.key_prefix = "trading:weights"
 
@@ -306,7 +309,7 @@ class ReflectionEngine:
     def __init__(
         self,
         llm_service: Any = None,
-        redis_url: str = "redis://redis:6379"
+        redis_url: str = None
     ):
         self.llm = llm_service
         self.memory = ReflectionMemory(redis_url)
