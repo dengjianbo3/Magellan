@@ -17,6 +17,8 @@ from typing import Optional, Dict, List, Any
 from dataclasses import dataclass, asdict, field
 import redis.asyncio as redis
 
+from .trading_config import get_infra_config
+
 logger = logging.getLogger(__name__)
 
 
@@ -418,8 +420,8 @@ class AgentMemoryStore:
     - Generate learning insights
     """
 
-    def __init__(self, redis_url: str = "redis://redis:6379"):
-        self.redis_url = redis_url
+    def __init__(self, redis_url: str = None):
+        self.redis_url = redis_url or get_infra_config().redis_url
         self._redis: Optional[redis.Redis] = None
         self._local_cache: Dict[str, AgentMemory] = {}
         self.key_prefix = "trading:agent_memory:"
@@ -611,8 +613,8 @@ class PredictionStore:
     Used for generating reflections when closing positions
     """
 
-    def __init__(self, redis_url: str = "redis://redis:6379"):
-        self.redis_url = redis_url
+    def __init__(self, redis_url: str = None):
+        self.redis_url = redis_url or get_infra_config().redis_url
         self._redis: Optional[redis.Redis] = None
         self._local_cache: Dict[str, List[AgentPrediction]] = {}  # trade_id -> predictions
         self.key_prefix = "trading:predictions:"

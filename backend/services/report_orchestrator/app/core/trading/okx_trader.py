@@ -16,6 +16,7 @@ import redis.asyncio as redis
 
 from app.core.trading.okx_client import OKXClient, get_okx_client
 from app.core.trading.trading_logger import get_trading_logger, TradingLogger
+from app.core.trading.trading_config import get_infra_config
 
 logger = logging.getLogger(__name__)
 
@@ -70,15 +71,15 @@ class OKXTrader:
     Uses OKX demo trading API.
     """
 
-    def __init__(self, initial_balance: float = 5000.0, demo_mode: bool = True, config: OKXTraderConfig = None,  # Match OKX demo account
-                 redis_url: str = "redis://redis:6379"):
+    def __init__(self, initial_balance: float = 5000.0, demo_mode: bool = True, config: OKXTraderConfig = None,
+                 redis_url: str = None):
         self.config = config or OKXTraderConfig(initial_balance=initial_balance, demo_mode=demo_mode)
         self.initial_balance = self.config.initial_balance
         self.demo_mode = self.config.demo_mode
-        self.redis_url = redis_url
+        self.redis_url = redis_url or get_infra_config().redis_url
         self._redis: Optional[redis.Redis] = None
         self._key_prefix = "okx_trader:"
-        
+
         self._okx_client: Optional[OKXClient] = None
         self._initialized = False
 

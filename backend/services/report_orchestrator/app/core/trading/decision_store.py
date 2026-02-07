@@ -12,6 +12,8 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 import redis.asyncio as redis
 
+from .trading_config import get_infra_config
+
 logger = logging.getLogger(__name__)
 
 
@@ -125,18 +127,18 @@ class TradingDecision:
 class TradingDecisionStore:
     """
     Redis store for trading decisions.
-    
+
     Features:
     - Save decisions with automatic expiry (30 days)
     - Load recent decisions for frontend
     - Query by trade_id
-    
+
     Key pattern: trading:decisions:<trade_id>
     List key for recent: trading:decisions:recent (LPUSH sorted list)
     """
-    
-    def __init__(self, redis_url: str = "redis://redis:6379"):
-        self.redis_url = redis_url
+
+    def __init__(self, redis_url: str = None):
+        self.redis_url = redis_url or get_infra_config().redis_url
         self._redis: Optional[redis.Redis] = None
         self.key_prefix = "trading:decisions:"
         self.recent_list_key = "trading:decisions:recent"
@@ -263,7 +265,7 @@ class TradingDecisionStore:
 _decision_store: Optional[TradingDecisionStore] = None
 
 
-async def get_decision_store(redis_url: str = "redis://redis:6379") -> TradingDecisionStore:
+async def get_decision_store(redis_url: str = None) -> TradingDecisionStore:
     """Get or create the decision store singleton"""
     global _decision_store
     if _decision_store is None:

@@ -171,7 +171,7 @@ class TradingMeeting(Meeting):
             if self.llm_service:
                 self._reflection_engine = ReflectionEngine(
                     llm_service=self.llm_service,
-                    redis_url="redis://redis:6379"  # Default Redis URL
+                    redis_url=None  # Uses centralized config
                 )
                 logger.info("[TradingMeeting] ✅ ReflectionEngine initialized")
                 

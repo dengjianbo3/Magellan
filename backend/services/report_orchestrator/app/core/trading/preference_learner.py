@@ -22,6 +22,8 @@ import json
 import redis.asyncio as redis
 import structlog
 
+from .trading_config import get_infra_config
+
 logger = structlog.get_logger(__name__)
 
 
@@ -145,11 +147,11 @@ class UserPreferenceLearner:
     def __init__(self, redis_client: Optional[redis.Redis] = None):
         self.redis = redis_client
         self._prefs_cache: Dict[str, UserPreferences] = {}
-    
+
     async def _ensure_redis(self) -> Optional[redis.Redis]:
         """Ensure Redis connection exists."""
         if self.redis is None:
-            redis_url = os.environ.get("REDIS_URL", "redis://redis:6379")
+            redis_url = get_infra_config().redis_url
             try:
                 self.redis = redis.from_url(redis_url, decode_responses=True)
                 await self.redis.ping()

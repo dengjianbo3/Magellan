@@ -24,6 +24,7 @@ import redis.asyncio as redis
 
 from app.core.trading.price_service import get_price_service, PriceService
 from app.core.trading.base_trader import BaseTrader
+from app.core.trading.trading_config import get_infra_config
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +47,15 @@ class PaperTraderConfig:
     max_leverage: int = 20
     min_price: float = 1000.0  # Min price limit (for price simulation)
     max_price: float = 500000.0  # Max price limit (for price simulation)
-    redis_url: str = "redis://redis:6379"
+    redis_url: str = None  # Will use centralized config if None
     demo_mode: bool = False  # False = use real CoinGecko price, True = simulated price
     # Default TP/SL percentages - read from environment variables
     default_tp_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_TP_PERCENT", 5.0))
     default_sl_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_SL_PERCENT", 2.0))
+
+    def __post_init__(self):
+        if self.redis_url is None:
+            self.redis_url = get_infra_config().redis_url
 
 
 @dataclass
@@ -172,7 +177,7 @@ class PaperTrader(BaseTrader):
     def __init__(
         self,
         initial_balance: float = 5000.0,  # Match OKX demo account
-        redis_url: str = "redis://redis:6379",
+        redis_url: str = None,
         demo_mode: bool = False,  # False = use real CoinGecko price, True = simulated price
         config: PaperTraderConfig = None
     ):

@@ -13,22 +13,24 @@ from typing import Optional, Dict, Any, List
 
 import redis.asyncio as redis
 
+from .trading_config import get_infra_config
+
 logger = logging.getLogger(__name__)
 
 
 class TradingLogger:
     """
     Redis-based trading logger for debugging and audit trail.
-    
+
     Key Structure:
     - trading:decisions:latest - Last 100 decision records (LIST)
     - trading:positions:latest - Last 100 position events (LIST)
     """
-    
+
     MAX_ENTRIES = 100  # Keep last 100 entries
-    
-    def __init__(self, redis_url: str = "redis://redis:6379"):
-        self.redis_url = redis_url
+
+    def __init__(self, redis_url: str = None):
+        self.redis_url = redis_url or get_infra_config().redis_url
         self._redis: Optional[redis.Redis] = None
         self._initialized = False
         
@@ -217,10 +219,10 @@ class TradingLogger:
 _trading_logger: Optional[TradingLogger] = None
 
 
-async def get_trading_logger(redis_url: str = "redis://redis:6379") -> TradingLogger:
+async def get_trading_logger(redis_url: str = None) -> TradingLogger:
     """Get or create the singleton TradingLogger instance."""
     global _trading_logger
-    
+
     if _trading_logger is None:
         _trading_logger = TradingLogger(redis_url)
         await _trading_logger.initialize()
