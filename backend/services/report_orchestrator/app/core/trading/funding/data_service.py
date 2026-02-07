@@ -12,6 +12,7 @@ import aiohttp
 
 from .models import FundingRate, FundingBill, RateTrend
 from .config import get_funding_config
+from ..trading_config import get_infra_config
 
 logger = logging.getLogger(__name__)
 
@@ -19,19 +20,18 @@ logger = logging.getLogger(__name__)
 class FundingDataService:
     """
     Funding Rate Data Service
-    
+
     Fetches funding rate data from OKX API including:
     - Current funding rate
     - Historical rates (for trend analysis)
     - Position funding bills
     """
-    
-    BASE_URL = "https://www.okx.com"
-    
+
     def __init__(self):
         self.config = get_funding_config()
+        self.base_url = get_infra_config().okx_base_url
         self._session: Optional[aiohttp.ClientSession] = None
-        
+
         # API credentials (for authenticated endpoints like bills)
         self.api_key = os.getenv("OKX_API_KEY", "")
         self.secret_key = os.getenv("OKX_SECRET_KEY", "")
@@ -68,7 +68,7 @@ class FundingDataService:
         try:
             await self._ensure_session()
             
-            url = f"{self.BASE_URL}/api/v5/public/funding-rate?instId={symbol}"
+            url = f"{self.base_url}/api/v5/public/funding-rate?instId={symbol}"
             proxy = self._get_proxy()
             
             async with self._session.get(url, proxy=proxy) as resp:
@@ -139,7 +139,7 @@ class FundingDataService:
             # Calculate limit (3 per day for 8h intervals)
             limit = min(hours // 8 + 1, 100)  # Max 100 records
             
-            url = f"{self.BASE_URL}/api/v5/public/funding-rate-history?instId={symbol}&limit={limit}"
+            url = f"{self.base_url}/api/v5/public/funding-rate-history?instId={symbol}&limit={limit}"
             proxy = self._get_proxy()
             
             async with self._session.get(url, proxy=proxy) as resp:

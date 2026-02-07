@@ -19,6 +19,7 @@ from typing import Optional, Dict, List, Any
 from app.models.trading_models import (
     Position, AccountBalance, MarketData
 )
+from app.core.trading.trading_config import get_infra_config
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +36,15 @@ class OKXClient:
     - Get market data
     """
 
-    BASE_URL = "https://www.okx.com"
-
     def __init__(
         self,
         api_key: Optional[str] = None,
         secret_key: Optional[str] = None,
         passphrase: Optional[str] = None,
-        demo_mode: Optional[bool] = None  # Changed to Optional to detect if explicitly passed
+        demo_mode: Optional[bool] = None,  # Changed to Optional to detect if explicitly passed
+        base_url: Optional[str] = None
     ):
+        self.base_url = base_url or get_infra_config().okx_base_url
         self.api_key = api_key or os.getenv("OKX_API_KEY", "")
         self.secret_key = secret_key or os.getenv("OKX_SECRET_KEY", "")
         self.passphrase = passphrase or os.getenv("OKX_PASSPHRASE", "")
@@ -262,7 +263,7 @@ class OKXClient:
             self._session = aiohttp.ClientSession(timeout=timeout)
 
         body_str = json.dumps(body) if body else ''
-        url = self.BASE_URL + path
+        url = self.base_url + path
         proxy = self._get_proxy()
         
         last_error = None
@@ -428,7 +429,7 @@ class OKXClient:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 # Use public API for ticker
                 inst_id = symbol  # e.g., "BTC-USDT-SWAP"
-                url = f"{self.BASE_URL}/api/v5/market/ticker?instId={inst_id}"
+                url = f"{self.base_url}/api/v5/market/ticker?instId={inst_id}"
 
                 async with session.get(url, proxy=proxy) as resp:
                     data = await resp.json()
@@ -1006,7 +1007,7 @@ class OKXClient:
                 }
                 bar = bar_map.get(timeframe.lower(), '4H')
 
-                url = f"{self.BASE_URL}/api/v5/market/candles?instId={symbol}&bar={bar}&limit={limit}"
+                url = f"{self.base_url}/api/v5/market/candles?instId={symbol}&bar={bar}&limit={limit}"
 
                 async with session.get(url, proxy=proxy) as resp:
                     data = await resp.json()
