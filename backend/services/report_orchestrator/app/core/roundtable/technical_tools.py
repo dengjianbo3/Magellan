@@ -21,6 +21,12 @@ from ...models.technical_models import (
     signal_to_score, score_to_signal
 )
 
+# Import centralized config
+try:
+    from ..trading.trading_config import get_infra_config
+except ImportError:
+    get_infra_config = None
+
 
 class TechnicalAnalysisTools:
     """
@@ -35,10 +41,17 @@ class TechnicalAnalysisTools:
     """
 
     def __init__(self):
-        # API endpoints - OKX first (available in mainland China), then Binance, finally CoinGecko
-        self.okx_api = "https://www.okx.com/api/v5"
-        self.binance_api = "https://api.binance.com/api/v3"
-        self.coingecko_api = "https://api.coingecko.com/api/v3"
+        # API endpoints from centralized config
+        if get_infra_config:
+            infra = get_infra_config()
+            self.okx_api = f"{infra.okx_base_url}/api/v5"
+            self.binance_api = f"{infra.binance_base_url}/api/v3"
+            self.coingecko_api = f"{infra.coingecko_base_url}/api/v3"
+        else:
+            # Fallback defaults
+            self.okx_api = "https://www.okx.com/api/v5"
+            self.binance_api = "https://api.binance.com/api/v3"
+            self.coingecko_api = "https://api.coingecko.com/api/v3"
 
         # Timeout configuration
         self.timeout = 30.0

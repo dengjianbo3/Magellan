@@ -19,6 +19,7 @@ except ImportError:
 
 from app.core.roundtable.tool import FunctionTool
 from app.core.trading.price_service import get_current_btc_price, PriceServiceError
+from app.core.trading.trading_config import get_infra_config
 
 logger = logging.getLogger(__name__)
 
@@ -474,10 +475,11 @@ class TradingToolkit:
         try:
             # Fetch REAL price from Binance API
             import httpx
+            binance_url = f"{get_infra_config().binance_base_url}/api/v3/ticker/24hr"
             async with httpx.AsyncClient(timeout=10.0) as client:
                 # Get 24h ticker data from Binance
                 response = await client.get(
-                    "https://api.binance.com/api/v3/ticker/24hr",
+                    binance_url,
                     params={"symbol": "BTCUSDT"}
                 )
 
@@ -578,9 +580,10 @@ class TradingToolkit:
 
             # Fetch REAL klines from Binance
             import httpx
+            binance_klines_url = f"{get_infra_config().binance_base_url}/api/v3/klines"
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.get(
-                    "https://api.binance.com/api/v3/klines",
+                    binance_klines_url,
                     params={
                         "symbol": "BTCUSDT",
                         "interval": interval,
@@ -696,9 +699,10 @@ class TradingToolkit:
             }
             interval = interval_map.get(timeframe, "4h")
 
+            binance_klines_url = f"{get_infra_config().binance_base_url}/api/v3/klines"
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.get(
-                    "https://api.binance.com/api/v3/klines",
+                    binance_klines_url,
                     params={
                         "symbol": "BTCUSDT",
                         "interval": interval,
@@ -1469,10 +1473,11 @@ class TradingToolkit:
             # Map timeframe to OKX format
             tf_map = {'1m': '1m', '5m': '5m', '15m': '15m', '1h': '1H', '4h': '4H', '1d': '1D'}
             okx_tf = tf_map.get(timeframe.lower(), '4H')
-            
+
+            okx_candles_url = f"{get_infra_config().okx_base_url}/api/v5/market/candles"
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.get(
-                    "https://www.okx.com/api/v5/market/candles",
+                    okx_candles_url,
                     params={"instId": api_symbol, "bar": okx_tf, "limit": "100"}
                 )
                 
@@ -1557,10 +1562,11 @@ class TradingToolkit:
         try:
             import httpx
             clean_symbol = symbol.upper().replace('-USDT', '').replace('/USDT', '').replace('USDT', '').strip()
-            
+
+            binance_depth_url = f"{get_infra_config().binance_base_url}/api/v3/depth"
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
-                    "https://api.binance.com/api/v3/depth",
+                    binance_depth_url,
                     params={"symbol": f"{clean_symbol}USDT", "limit": min(depth * 5, 100)}
                 )
                 

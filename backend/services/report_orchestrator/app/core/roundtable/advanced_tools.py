@@ -11,6 +11,12 @@ import logging
 
 from .tool import Tool
 
+# Import centralized config
+try:
+    from ..trading.trading_config import get_infra_config
+except ImportError:
+    get_infra_config = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -507,13 +513,22 @@ Supported exchanges:
 Supported pairs: BTC, ETH and other major cryptocurrencies"""
         )
 
+        # Build exchange URLs from centralized config
+        if get_infra_config:
+            infra = get_infra_config()
+            binance_base = infra.binance_base_url
+            okx_base = infra.okx_base_url
+        else:
+            binance_base = "https://api.binance.com"
+            okx_base = "https://www.okx.com"
+
         self.exchanges = {
             "binance": {
-                "ticker": "https://api.binance.com/api/v3/ticker/24hr",
-                "price": "https://api.binance.com/api/v3/ticker/price"
+                "ticker": f"{binance_base}/api/v3/ticker/24hr",
+                "price": f"{binance_base}/api/v3/ticker/price"
             },
             "okx": {
-                "ticker": "https://www.okx.com/api/v5/market/ticker"
+                "ticker": f"{okx_base}/api/v5/market/ticker"
             },
             "coinbase": {
                 "ticker": "https://api.coinbase.com/v2/prices/{symbol}/spot"
@@ -751,9 +766,13 @@ Use cases:
     async def _get_binance_orderbook(self, symbol: str, limit: int = 100) -> Dict[str, Any]:
         """Get Binance orderbook"""
         try:
+            if get_infra_config:
+                binance_url = f"{get_infra_config().binance_base_url}/api/v3/depth"
+            else:
+                binance_url = "https://api.binance.com/api/v3/depth"
             async with httpx.AsyncClient(timeout=10) as client:
                 response = await client.get(
-                    "https://api.binance.com/api/v3/depth",
+                    binance_url,
                     params={"symbol": f"{symbol}USDT", "limit": limit}
                 )
                 if response.status_code == 200:
@@ -767,9 +786,13 @@ Use cases:
     async def _get_okx_orderbook(self, symbol: str, limit: int = 100) -> Dict[str, Any]:
         """Get OKX orderbook (fallback)"""
         try:
+            if get_infra_config:
+                okx_url = f"{get_infra_config().okx_base_url}/api/v5/market/books"
+            else:
+                okx_url = "https://www.okx.com/api/v5/market/books"
             async with httpx.AsyncClient(timeout=10) as client:
                 response = await client.get(
-                    "https://www.okx.com/api/v5/market/books",
+                    okx_url,
                     params={"instId": f"{symbol}-USDT", "sz": str(min(limit, 400))}
                 )
                 if response.status_code == 200:
