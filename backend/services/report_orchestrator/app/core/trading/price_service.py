@@ -257,7 +257,7 @@ class PriceService:
                 limit = hours // 24
 
             response = await client.get(
-                "https://api.binance.com/api/v3/klines",
+                f"{self.binance_url.rsplit('/api', 1)[0]}/api/v3/klines",
                 params={
                     "symbol": "BTCUSDT",
                     "interval": interval,
@@ -290,7 +290,7 @@ class PriceService:
             days = max(1, hours // 24)
 
             response = await client.get(
-                "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
+                f"{self.coingecko_url.rsplit('/api', 1)[0]}/api/v3/coins/bitcoin/market_chart",
                 params={
                     "vs_currency": "usd",
                     "days": days
