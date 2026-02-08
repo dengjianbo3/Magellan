@@ -350,3 +350,32 @@ class ArbitrageConfig:
 
 
 ARBITRAGE = ArbitrageConfig()
+
+
+# =============================================================================
+# Trigger Agent
+# =============================================================================
+
+@dataclass(frozen=True)
+class TriggerConfig:
+    """Trigger agent parameters."""
+    # Confidence threshold for triggering main analysis
+    DEFAULT_CONFIDENCE_THRESHOLD: int = 70
+
+    # LLM timeout
+    LLM_TIMEOUT: int = 60
+
+    # Mock LLM thresholds
+    RSI_LOW_THRESHOLD: int = 25
+    RSI_HIGH_THRESHOLD: int = 75
+    PRICE_CHANGE_THRESHOLD: float = 1.5
+
+    # Confidence calculation
+    BASE_CONFIDENCE: int = 60
+    CONFIDENCE_PER_EVENT: int = 15
+    MAX_CONFIDENCE: int = 95
+    LOW_CONFIDENCE_MIN: int = 20
+    LOW_CONFIDENCE_MAX: int = 40
+
+
+TRIGGER = TriggerConfig()
