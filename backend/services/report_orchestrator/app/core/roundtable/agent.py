@@ -605,15 +605,56 @@ After tool execution, you will receive results to continue the discussion.
             Analysis result dictionary
         """
         context = context or {}
-        
-        # Check if BP data is available from bp_parser step
+
+        # Build analysis prompt
+        analysis_prompt = self._build_analysis_prompt(target, context)
+
+        # Create messages for LLM
+        messages = [
+            {"role": "system", "content": self._get_system_prompt()},
+            {"role": "user", "content": analysis_prompt}
+        ]
+
+        try:
+            # Call LLM for analysis
+            llm_response = await self._call_llm(messages)
+            content = self._extract_llm_content(llm_response)
+
+            # Handle tool calls if present
+            content = await self._process_analyze_tool_calls(content, messages)
+
+            # Return structured result
+            return {
+                "agent": self.name,
+                "analysis": content,
+                "score": self._extract_score(content),
+                "recommendation": self._extract_recommendation(content),
+                "raw_output": content
+            }
+
+        except Exception as e:
+            print(f"[Agent:{self.name}] analyze() failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "agent": self.name,
+                "error": str(e),
+                "analysis": f"Analysis failed: {str(e)}"
+            }
+
+    def _build_analysis_prompt(self, target: Dict[str, Any], context: Dict[str, Any]) -> str:
+        """Build analysis prompt based on available data."""
         bp_parser_result = context.get('bp_parser_result', {})
         bp_data = bp_parser_result.get('bp_data', {}) if bp_parser_result else {}
-        
-        # Build analysis prompt based on whether BP data is available
+
         if bp_data:
-            # BP-CENTRIC ANALYSIS: Use BP as the primary data source
-            analysis_prompt = f"""## 商业计划书 (BP) 核心分析
+            return self._build_bp_centric_prompt(target, bp_data)
+        else:
+            return self._build_standard_prompt(target)
+
+    def _build_bp_centric_prompt(self, target: Dict[str, Any], bp_data: Dict) -> str:
+        """Build BP-centric analysis prompt."""
+        return f"""## 商业计划书 (BP) 核心分析
 
 **重要**: 以下分析必须以商业计划书内容为核心数据来源。你的任务是验证和扩展 BP 中的信息，而非搜索公司名称获取无关信息。
 
@@ -641,9 +682,10 @@ After tool execution, you will receive results to continue the discussion.
 4. 优势分析
 5. 评分 (1-10)
 6. 投资建议"""
-        else:
-            # Fallback: Original prompt without BP data
-            analysis_prompt = f"""Please analyze the following investment target:
+
+    def _build_standard_prompt(self, target: Dict[str, Any]) -> str:
+        """Build standard analysis prompt without BP data."""
+        return f"""Please analyze the following investment target:
 
 {json.dumps(target, ensure_ascii=False, indent=2)}
 
@@ -656,105 +698,49 @@ Please provide analysis from your professional perspective, including:
 
 Please use tools to obtain necessary data to support your analysis."""
 
-        # Create a virtual analysis message
-        messages = [
-            {
-                "role": "system",
-                "content": self._get_system_prompt()
-            },
-            {
-                "role": "user",
-                "content": analysis_prompt
-            }
-        ]
+    def _extract_llm_content(self, llm_response: Any) -> str:
+        """Extract content from LLM response with type handling."""
+        print(f"[Agent:{self.name}] 🔍 DEBUG: llm_response type = {type(llm_response)}")
 
-        # Call LLM for analysis
-        try:
-            llm_response = await self._call_llm(messages)
+        if isinstance(llm_response, str):
+            print(f"[Agent:{self.name}] ✅ Response is string, using directly")
+            return llm_response
+        elif isinstance(llm_response, dict) and "choices" in llm_response:
+            print(f"[Agent:{self.name}] ✅ Response is dict with 'choices', extracting content")
+            return llm_response["choices"][0]["message"].get("content", "")
+        else:
+            print(f"[Agent:{self.name}] ⚠️ WARNING: Unexpected llm_response type: {type(llm_response)}")
+            return str(llm_response)
 
-            # Detailed log: print response type and content
-            print(f"[Agent:{self.name}] 🔍 DEBUG: llm_response type = {type(llm_response)}")
-            print(f"[Agent:{self.name}] 🔍 DEBUG: llm_response = {str(llm_response)[:200]}")
+    async def _process_analyze_tool_calls(self, content: str, messages: List[Dict]) -> str:
+        """Process tool calls in analyze() and return updated content."""
+        import re
 
-            # Safely extract content - handle possible type issues
-            if isinstance(llm_response, str):
-                # If response is string, use directly
-                print(f"[Agent:{self.name}] ✅ Response is string, using directly")
-                content = llm_response
-            elif isinstance(llm_response, dict) and "choices" in llm_response:
-                # Standard format
-                print(f"[Agent:{self.name}] ✅ Response is dict with 'choices', extracting content")
-                choice = llm_response["choices"][0]
-                content = choice["message"].get("content", "")
-            else:
-                # Unknown format, try to convert to string
-                print(f"[Agent:{self.name}] ⚠️ WARNING: Unexpected llm_response type: {type(llm_response)}")
-                print(f"[Agent:{self.name}] ⚠️ WARNING: Full response: {llm_response}")
-                content = str(llm_response)
+        if not self.tools:
+            return content
 
-            # Detect and execute tool calls
-            import re
-            tool_pattern = r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]'
-            tool_matches = re.findall(tool_pattern, content)
+        tool_pattern = r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]'
+        tool_matches = re.findall(tool_pattern, content)
 
-            if tool_matches and self.tools:
-                tool_results = []
-                for tool_name, params_str in tool_matches:
-                    if tool_name in self.tools:
-                        try:
-                            # Parse arguments
-                            params = {}
-                            param_pattern = r'(\w+)="([^"]*)"'
-                            param_matches = re.findall(param_pattern, params_str)
-                            for key, value in param_matches:
-                                params[key] = value
+        if not tool_matches:
+            return content
 
-                            # Execute tool
-                            tool_result = await self.tools[tool_name].execute(**params)
-                            tool_results.append(f"[{tool_name}]: {tool_result}")
-                        except Exception as e:
-                            tool_results.append(f"[{tool_name} Error]: {str(e)}")
+        tool_results = []
+        for tool_name, params_str in tool_matches:
+            if tool_name in self.tools:
+                result = await self._execute_legacy_tool(tool_name, params_str)
+                tool_results.append(f"[{tool_name}]: {result}")
 
-                # If there are tool results, perform second round analysis
-                if tool_results:
-                    follow_up_messages = messages + [
-                        {
-                            "role": "assistant",
-                            "content": content
-                        },
-                        {
-                            "role": "user",
-                            "content": f"Tool results:\n{chr(10).join(tool_results)}\n\nPlease provide final analysis conclusion based on this data."
-                        }
-                    ]
-                    llm_response = await self._call_llm(follow_up_messages)
-                    
-                    # Safely handle second round response
-                    if isinstance(llm_response, str):
-                        content = llm_response
-                    elif isinstance(llm_response, dict) and "choices" in llm_response:
-                        content = llm_response["choices"][0]["message"].get("content", "")
-                    else:
-                        content = str(llm_response)
+        # If there are tool results, perform second round analysis
+        if tool_results:
+            follow_up_messages = messages + [
+                {"role": "assistant", "content": content},
+                {"role": "user", "content": f"Tool results:\n{chr(10).join(tool_results)}\n\nPlease provide final analysis conclusion based on this data."}
+            ]
+            llm_response = await self._call_llm(follow_up_messages)
+            content = self._extract_llm_content(llm_response)
 
-            # Return structured result
-            return {
-                "agent": self.name,
-                "analysis": content,
-                "score": self._extract_score(content),
-                "recommendation": self._extract_recommendation(content),
-                "raw_output": content
-            }
-
-        except Exception as e:
-            print(f"[Agent:{self.name}] analyze() failed: {e}")
-            import traceback
-            traceback.print_exc()
-            return {
-                "agent": self.name,
-                "error": str(e),
-                "analysis": f"Analysis failed: {str(e)}"
-            }
+        return content
 
     def _extract_score(self, content: str) -> float:
         """Extract score from analysis content"""
