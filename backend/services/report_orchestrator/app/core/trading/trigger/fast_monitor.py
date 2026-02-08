@@ -26,12 +26,19 @@ from typing import Dict, List, Optional, Any
 try:
     from ..trading_config import get_infra_config
     from ..constants import PRICE, VOLUME, RSI, CACHE
+    from ..indicators import (
+        calculate_rsi,
+        calculate_ema,
+        get_closes_from_candles
+    )
+    USE_SHARED_INDICATORS = True
 except ImportError:
     get_infra_config = None
     PRICE = None
     VOLUME = None
     RSI = None
     CACHE = None
+    USE_SHARED_INDICATORS = False
 
 logger = logging.getLogger(__name__)
 
@@ -589,16 +596,21 @@ class FastMonitor:
         return (current - prev) / prev * 100
     
     def _calculate_rsi(self, candles: List[Dict], period: int = 14) -> float:
-        """计算 RSI"""
+        """计算 RSI - 使用共享模块"""
         if len(candles) < period + 1:
             return 50.0
-        
+
+        if USE_SHARED_INDICATORS:
+            closes = get_closes_from_candles(candles, reverse=True)
+            return calculate_rsi(closes, period)
+
+        # Fallback to local implementation
         closes = [c.get("close", 0) for c in candles]
-        closes.reverse()  # OKX 返回新到旧，反转
-        
+        closes.reverse()
+
         gains = []
         losses = []
-        
+
         for i in range(1, len(closes)):
             diff = closes[i] - closes[i-1]
             if diff > 0:
@@ -607,35 +619,40 @@ class FastMonitor:
             else:
                 gains.append(0)
                 losses.append(abs(diff))
-        
+
         if len(gains) < period:
             return 50.0
-        
+
         avg_gain = sum(gains[:period]) / period
         avg_loss = sum(losses[:period]) / period
-        
+
         if avg_loss == 0:
             return 100.0
-        
+
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
-        
+
         return round(rsi, 2)
-    
+
     def _calculate_ema(self, candles: List[Dict], period: int) -> float:
-        """计算 EMA"""
+        """计算 EMA - 使用共享模块"""
+        if USE_SHARED_INDICATORS:
+            closes = get_closes_from_candles(candles, reverse=True)
+            return calculate_ema(closes, period)
+
+        # Fallback to local implementation
         closes = [c.get("close", 0) for c in candles]
         closes.reverse()
-        
+
         if len(closes) < period:
             return closes[-1] if closes else 0.0
-        
+
         multiplier = 2 / (period + 1)
         ema = sum(closes[:period]) / period
-        
+
         for i in range(period, len(closes)):
             ema = (closes[i] - ema) * multiplier + ema
-        
+
         return ema
     
     def get_status(self) -> Dict:
