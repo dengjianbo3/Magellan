@@ -13,8 +13,9 @@ from typing import List, Dict, Optional, Any
 
 import redis.asyncio as redis
 
-# Import centralized config
+# Import centralized config and constants
 from ..trading_config import get_infra_config
+from ..constants import CONSENSUS, CONFIDENCE
 
 logger = logging.getLogger(__name__)
 
@@ -207,12 +208,12 @@ class AgentWeightAdjuster:
         self._redis: Optional[redis.Redis] = None
         self.key_prefix = "trading:weights"
 
-        # Weight adjustment parameters
+        # Weight adjustment parameters from constants
         self.correct_bonus = 0.05  # +5% for correct prediction
         self.incorrect_penalty = 0.03  # -3% for incorrect prediction
-        self.min_weight = 0.5  # Minimum weight multiplier
-        self.max_weight = 2.0  # Maximum weight multiplier
-        self.default_weight = 1.0
+        self.min_weight = CONSENSUS.MIN_AGENT_WEIGHT
+        self.max_weight = CONSENSUS.MAX_AGENT_WEIGHT
+        self.default_weight = CONSENSUS.DEFAULT_AGENT_WEIGHT
 
         logger.warning(
             "AgentWeightAdjuster is deprecated. Use AgentWeightLearner instead."
@@ -546,12 +547,12 @@ Provide a 2-3 sentence reflection on:
             # Generate simple lesson based on outcome
             if direction in ("long", "short"):
                 if is_win:
-                    if confidence >= 70:
+                    if confidence >= CONFIDENCE.HIGH:
                         lessons[agent_id] = f"High confidence {direction} prediction validated."
                     else:
                         lessons[agent_id] = f"Low confidence but correct. Consider increasing confidence in similar setups."
                 else:
-                    if confidence >= 70:
+                    if confidence >= CONFIDENCE.HIGH:
                         lessons[agent_id] = f"High confidence {direction} prediction failed. Review analysis criteria."
                     else:
                         lessons[agent_id] = f"Low confidence and incorrect. Analysis approach may need adjustment."
