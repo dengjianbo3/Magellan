@@ -20,7 +20,7 @@
 
 | 类别 | 原始问题数 | 已修复 | 状态 |
 |------|-----------|--------|------|
-| 超长函数 | 25 | 2 | 🟡 进行中 |
+| 超长函数 | 25 | 5 | 🟡 进行中 |
 | 重复代码 | 8 | 4 | 🟡 进行中 |
 | 魔法数字 | 110+ | 80+ | ✅ 大部分完成 |
 | 未使用导入 | 7 | 7 | ✅ 完成 |
@@ -35,9 +35,9 @@
 |------|------|------|----------|------|
 | `trading_tools.py` | `_build_tools()` | **379行** | 🔴 严重 | ✅ 已拆分为6个方法 |
 | `agent.py` (trigger) | `check()` | **139行** | 🔴 严重 | ✅ 已拆分为6个方法 |
-| `agent.py` (roundtable) | `_call_llm()` | **143行** | 🔴 严重 | 待处理 |
-| `agent.py` (roundtable) | `_parse_llm_response()` | **136行** | 🔴 严重 | 待处理 |
-| `agent.py` (roundtable) | `analyze()` | **165行** | 🔴 严重 | 待处理 |
+| `agent.py` (roundtable) | `_call_llm()` | **143行** | 🔴 严重 | ✅ 已拆分为5个方法 |
+| `agent.py` (roundtable) | `_parse_llm_response()` | **136行** | 🔴 严重 | ✅ 已拆分为5个方法 |
+| `agent.py` (roundtable) | `analyze()` | **165行** | 🔴 严重 | ✅ 已拆分为6个方法 |
 | `advanced_tools.py` | `execute()` (PersonBackgroundTool) | **129行** | 🟠 高 | 待处理 |
 | `advanced_tools.py` | `execute()` (RegulationSearchTool) | **137行** | 🟠 高 | 待处理 |
 | `advanced_tools.py` | `execute()` (OrderbookAnalyzerTool) | **122行** | 🟠 高 | 待处理 |
