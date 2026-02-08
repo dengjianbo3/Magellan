@@ -5,10 +5,9 @@ Implements the Reflexion pattern for learning from trade outcomes.
 Generates insights and updates agent weights based on trade results.
 """
 
-import asyncio
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 

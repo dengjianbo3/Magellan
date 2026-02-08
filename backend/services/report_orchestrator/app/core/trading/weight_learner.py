@@ -10,10 +10,9 @@ Weight Range: 0.5 - 2.0 (default: 1.0)
 Learning Rate: 0.1 per trade outcome
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Optional, Dict, List, Any
-import os
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional, Dict, Any
 import json
 
 import redis.asyncio as redis
