@@ -17,6 +17,14 @@ except ImportError:
     from news_crawler import NewsItem
     from ta_calculator import TAData
 
+# Import constants
+try:
+    from ..constants import TRIGGER, PRICE, RSI
+except ImportError:
+    TRIGGER = None
+    PRICE = None
+    RSI = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -87,12 +95,18 @@ class TriggerScorer:
         rsi_high: int = None,
         trigger_threshold: int = None
     ):
-        # Read from env vars with defaults
-        self.price_change_15m_threshold = price_change_15m_threshold or _get_env_float("SCORER_PRICE_CHANGE_15M", 1.5)
-        self.price_change_1h_threshold = price_change_1h_threshold or _get_env_float("SCORER_PRICE_CHANGE_1H", 3.0)
-        self.rsi_low = rsi_low or _get_env_int("SCORER_RSI_LOW", 25)
-        self.rsi_high = rsi_high or _get_env_int("SCORER_RSI_HIGH", 75)
-        self.trigger_threshold = trigger_threshold or _get_env_int("SCORER_TRIGGER_THRESHOLD", 60)
+        # Use constants with env var fallback
+        default_price_15m = PRICE.SPIKE_15M if PRICE else 1.5
+        default_price_1h = 3.0  # Not in PRICE constants yet
+        default_rsi_low = TRIGGER.RSI_LOW_THRESHOLD if TRIGGER else 25
+        default_rsi_high = TRIGGER.RSI_HIGH_THRESHOLD if TRIGGER else 75
+        default_trigger = 60
+
+        self.price_change_15m_threshold = price_change_15m_threshold or _get_env_float("SCORER_PRICE_CHANGE_15M", default_price_15m)
+        self.price_change_1h_threshold = price_change_1h_threshold or _get_env_float("SCORER_PRICE_CHANGE_1H", default_price_1h)
+        self.rsi_low = rsi_low or _get_env_int("SCORER_RSI_LOW", default_rsi_low)
+        self.rsi_high = rsi_high or _get_env_int("SCORER_RSI_HIGH", default_rsi_high)
+        self.trigger_threshold = trigger_threshold or _get_env_int("SCORER_TRIGGER_THRESHOLD", default_trigger)
     
     def calculate(
         self,
