@@ -2,6 +2,7 @@
 Technical Analysis Calculator - 多周期技术分析计算器
 
 计算 RSI, MACD, 成交量等技术指标，支持 15m/1h/4h 多周期。
+Uses shared indicators module to eliminate code duplication.
 """
 
 import asyncio
@@ -15,11 +16,22 @@ from typing import Dict, List, Optional, Tuple
 try:
     from ..trading_config import get_infra_config
     from ..constants import RSI, MACD, TIMEFRAMES
+    from ..indicators import (
+        calculate_rsi,
+        calculate_ema,
+        calculate_macd,
+        detect_macd_crossover,
+        detect_volume_spike,
+        determine_trend,
+        get_closes_from_candles
+    )
+    USE_SHARED_INDICATORS = True
 except ImportError:
     get_infra_config = None
     RSI = None
     MACD = None
     TIMEFRAMES = None
+    USE_SHARED_INDICATORS = False
 
 logger = logging.getLogger(__name__)
 
@@ -196,18 +208,24 @@ class TACalculator:
         return {}
     
     def _calculate_rsi(self, candles: List[Dict], period: int = None) -> float:
-        """计算 RSI"""
+        """计算 RSI - 使用共享模块"""
         if period is None:
             period = RSI.PERIOD if RSI else 14
+
+        if USE_SHARED_INDICATORS:
+            closes = get_closes_from_candles(candles, reverse=True)
+            return calculate_rsi(closes, period)
+
+        # Fallback to local implementation
         if len(candles) < period + 1:
             return float(RSI.NEUTRAL if RSI else 50)
-        
+
         closes = [c["close"] for c in candles]
-        closes.reverse()  # OKX 返回的是新到旧，需要反转
-        
+        closes.reverse()
+
         gains = []
         losses = []
-        
+
         for i in range(1, len(closes)):
             diff = closes[i] - closes[i-1]
             if diff > 0:
@@ -216,30 +234,35 @@ class TACalculator:
             else:
                 gains.append(0)
                 losses.append(abs(diff))
-        
+
         if len(gains) < period:
             return 50.0
-        
+
         avg_gain = sum(gains[:period]) / period
         avg_loss = sum(losses[:period]) / period
-        
+
         if avg_loss == 0:
             return 100.0
-        
+
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
-        
+
         return round(rsi, 2)
-    
+
     def _calculate_macd(self, candles: List[Dict]) -> Tuple[float, float]:
-        """计算 MACD"""
+        """计算 MACD - 使用共享模块"""
         slow_period = MACD.SLOW_PERIOD if MACD else 26
         fast_period = MACD.FAST_PERIOD if MACD else 12
-        signal_period = MACD.SIGNAL_PERIOD if MACD else 9
 
         if len(candles) < slow_period:
             return 0.0, 0.0
 
+        if USE_SHARED_INDICATORS:
+            closes = get_closes_from_candles(candles, reverse=True)
+            macd, signal, _ = calculate_macd(closes, fast_period, slow_period)
+            return macd, signal
+
+        # Fallback to local implementation
         closes = [c["close"] for c in candles]
         closes.reverse()
 
@@ -247,12 +270,17 @@ class TACalculator:
         ema_slow = self._ema(closes, slow_period)
 
         macd = ema_fast - ema_slow
-        signal = self._ema([macd], signal_period) if macd else 0  # 简化
+        signal = self._ema([macd], MACD.SIGNAL_PERIOD if MACD else 9) if macd else 0
 
         return round(macd, 2), round(signal, 2)
-    
+
     def _calculate_ema(self, candles: List[Dict], period: int) -> float:
-        """计算 EMA"""
+        """计算 EMA - 使用共享模块"""
+        if USE_SHARED_INDICATORS:
+            closes = get_closes_from_candles(candles, reverse=True)
+            return calculate_ema(closes, period)
+
+        # Fallback to local implementation
         closes = [c["close"] for c in candles]
         closes.reverse()
         return self._ema(closes, period)
@@ -271,17 +299,21 @@ class TACalculator:
         return ema
     
     def _detect_macd_crossover(self, candles: List[Dict]) -> bool:
-        """检测 MACD 金叉/死叉"""
-        fast_period = MACD.FAST_PERIOD if MACD else 12
+        """检测 MACD 金叉/死叉 - 使用共享模块"""
         slow_period = MACD.SLOW_PERIOD if MACD else 26
 
         if len(candles) < slow_period + 4:
             return False
 
+        if USE_SHARED_INDICATORS:
+            closes = get_closes_from_candles(candles, reverse=True)
+            return detect_macd_crossover(closes)
+
+        # Fallback to local implementation
+        fast_period = MACD.FAST_PERIOD if MACD else 12
         closes = [c["close"] for c in candles]
         closes.reverse()
 
-        # 计算当前和前一根的 MACD
         current_ema_fast = self._ema(closes, fast_period)
         current_ema_slow = self._ema(closes, slow_period)
         current_macd = current_ema_fast - current_ema_slow
@@ -289,32 +321,40 @@ class TACalculator:
         prev_ema_fast = self._ema(closes[:-1], fast_period)
         prev_ema_slow = self._ema(closes[:-1], slow_period)
         prev_macd = prev_ema_fast - prev_ema_slow
-        
-        # 简化：只检测是否有符号变化
+
         return (current_macd > 0 and prev_macd <= 0) or (current_macd < 0 and prev_macd >= 0)
-    
+
     def _detect_volume_spike(self, candles: List[Dict], threshold: float = 2.0) -> bool:
-        """检测成交量异常"""
+        """检测成交量异常 - 使用共享模块"""
         if len(candles) < 20:
             return False
-        
+
+        if USE_SHARED_INDICATORS:
+            volumes = [c["volume"] for c in candles]
+            return detect_volume_spike(volumes, threshold, lookback=20)
+
+        # Fallback to local implementation
         volumes = [c["volume"] for c in candles]
-        current_vol = volumes[0]  # 最新一根
+        current_vol = volumes[0]
         avg_vol = sum(volumes[1:20]) / 19
-        
+
         return current_vol > avg_vol * threshold
-    
+
     def _determine_trend(self, candles: List[Dict]) -> str:
-        """判断趋势"""
+        """判断趋势 - 使用共享模块"""
         if len(candles) < 10:
             return "neutral"
-        
+
+        if USE_SHARED_INDICATORS:
+            closes = [c["close"] for c in candles[:10]]
+            return determine_trend(closes, lookback=10, threshold_percent=1.0)
+
+        # Fallback to local implementation
         closes = [c["close"] for c in candles[:10]]
-        
-        # 简单判断：当前价格 vs 10 根 K 线前
-        if closes[0] > closes[-1] * 1.01:  # 上涨 1%+
+
+        if closes[0] > closes[-1] * 1.01:
             return "bullish"
-        elif closes[0] < closes[-1] * 0.99:  # 下跌 1%+
+        elif closes[0] < closes[-1] * 0.99:
             return "bearish"
         return "neutral"
     
