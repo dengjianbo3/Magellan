@@ -11,11 +11,15 @@ from datetime import datetime
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-# Import centralized config
+# Import centralized config and constants
 try:
     from ..trading_config import get_infra_config
+    from ..constants import RSI, MACD, TIMEFRAMES
 except ImportError:
     get_infra_config = None
+    RSI = None
+    MACD = None
+    TIMEFRAMES = None
 
 logger = logging.getLogger(__name__)
 
@@ -191,10 +195,12 @@ class TACalculator:
         
         return {}
     
-    def _calculate_rsi(self, candles: List[Dict], period: int = 14) -> float:
+    def _calculate_rsi(self, candles: List[Dict], period: int = None) -> float:
         """计算 RSI"""
+        if period is None:
+            period = RSI.PERIOD if RSI else 14
         if len(candles) < period + 1:
-            return 50.0
+            return float(RSI.NEUTRAL if RSI else 50)
         
         closes = [c["close"] for c in candles]
         closes.reverse()  # OKX 返回的是新到旧，需要反转
@@ -227,18 +233,22 @@ class TACalculator:
     
     def _calculate_macd(self, candles: List[Dict]) -> Tuple[float, float]:
         """计算 MACD"""
-        if len(candles) < 26:
+        slow_period = MACD.SLOW_PERIOD if MACD else 26
+        fast_period = MACD.FAST_PERIOD if MACD else 12
+        signal_period = MACD.SIGNAL_PERIOD if MACD else 9
+
+        if len(candles) < slow_period:
             return 0.0, 0.0
-        
+
         closes = [c["close"] for c in candles]
         closes.reverse()
-        
-        ema_12 = self._ema(closes, 12)
-        ema_26 = self._ema(closes, 26)
-        
-        macd = ema_12 - ema_26
-        signal = self._ema([macd], 9) if macd else 0  # 简化
-        
+
+        ema_fast = self._ema(closes, fast_period)
+        ema_slow = self._ema(closes, slow_period)
+
+        macd = ema_fast - ema_slow
+        signal = self._ema([macd], signal_period) if macd else 0  # 简化
+
         return round(macd, 2), round(signal, 2)
     
     def _calculate_ema(self, candles: List[Dict], period: int) -> float:
@@ -262,20 +272,23 @@ class TACalculator:
     
     def _detect_macd_crossover(self, candles: List[Dict]) -> bool:
         """检测 MACD 金叉/死叉"""
-        if len(candles) < 30:
+        fast_period = MACD.FAST_PERIOD if MACD else 12
+        slow_period = MACD.SLOW_PERIOD if MACD else 26
+
+        if len(candles) < slow_period + 4:
             return False
-        
+
         closes = [c["close"] for c in candles]
         closes.reverse()
-        
+
         # 计算当前和前一根的 MACD
-        current_ema12 = self._ema(closes, 12)
-        current_ema26 = self._ema(closes, 26)
-        current_macd = current_ema12 - current_ema26
-        
-        prev_ema12 = self._ema(closes[:-1], 12)
-        prev_ema26 = self._ema(closes[:-1], 26)
-        prev_macd = prev_ema12 - prev_ema26
+        current_ema_fast = self._ema(closes, fast_period)
+        current_ema_slow = self._ema(closes, slow_period)
+        current_macd = current_ema_fast - current_ema_slow
+
+        prev_ema_fast = self._ema(closes[:-1], fast_period)
+        prev_ema_slow = self._ema(closes[:-1], slow_period)
+        prev_macd = prev_ema_fast - prev_ema_slow
         
         # 简化：只检测是否有符号变化
         return (current_macd > 0 and prev_macd <= 0) or (current_macd < 0 and prev_macd >= 0)

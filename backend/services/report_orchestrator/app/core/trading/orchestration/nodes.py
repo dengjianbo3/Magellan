@@ -21,6 +21,7 @@ from app.core.trading.mode_manager import (
     TradingMode,
     ExecutionAction,
 )
+from app.core.trading.constants import CONFIDENCE, LEVERAGE
 
 # Observability imports
 from app.core.observability.logging import get_logger, TradingLogger
@@ -173,12 +174,12 @@ async def risk_assessment_node(state: TradingState, config: RunnableConfig = Non
             logger.info("[Node: risk_assessment] ⚠️ No RiskAssessor agent, using threshold logic fallback...")
             avg_confidence = _calculate_avg_confidence(votes)
             
-            # Determine risk level
-            if avg_confidence >= 75:
+            # Determine risk level based on confidence thresholds
+            if avg_confidence >= CONFIDENCE.HIGH:
                 risk_level = "low"
-            elif avg_confidence >= 55:
+            elif avg_confidence >= CONFIDENCE.MEDIUM:
                 risk_level = "medium"
-            elif avg_confidence >= 40:
+            elif avg_confidence >= CONFIDENCE.LOW:
                 risk_level = "high"
             else:
                 risk_level = "extreme"
@@ -918,23 +919,23 @@ def _generate_leader_summary(votes: List[Dict], direction: str, confidence: int)
 
 def _calculate_leverage(confidence: int) -> int:
     """Calculate leverage based on confidence."""
-    if confidence >= 85:
-        return 10
-    elif confidence >= 75:
+    if confidence >= LEVERAGE.HIGH_CONFIDENCE:
+        return LEVERAGE.HIGH_LEVERAGE
+    elif confidence >= LEVERAGE.MEDIUM_CONFIDENCE:
         return 7
-    elif confidence >= 65:
-        return 5
+    elif confidence >= LEVERAGE.LOW_CONFIDENCE:
+        return LEVERAGE.MEDIUM_LEVERAGE
     else:
-        return 3
+        return LEVERAGE.LOW_LEVERAGE
 
 
 def _calculate_amount(confidence: int) -> float:
     """Calculate position amount percent based on confidence."""
-    if confidence >= 85:
+    if confidence >= LEVERAGE.HIGH_CONFIDENCE:
         return 0.30
-    elif confidence >= 75:
+    elif confidence >= LEVERAGE.MEDIUM_CONFIDENCE:
         return 0.25
-    elif confidence >= 65:
+    elif confidence >= LEVERAGE.LOW_CONFIDENCE:
         return 0.20
     else:
         return 0.15
