@@ -12,6 +12,15 @@ import logging
 from typing import Dict, Optional
 from dataclasses import dataclass
 
+# Import constants
+try:
+    from .constants import CONSENSUS, LEVERAGE, CONFIDENCE, RISK
+except ImportError:
+    CONSENSUS = None
+    LEVERAGE = None
+    CONFIDENCE = None
+    RISK = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,17 +38,22 @@ class WeightConfig:
     min_weight: float = 0.5           # Minimum weight
     max_weight: float = 2.0           # Maximum weight
     min_trades_for_weight: int = 5    # Minimum trades before applying weights
-    
+
     @classmethod
     def from_env(cls) -> 'WeightConfig':
         """Load configuration from environment variables"""
+        # Use constants with env var fallback
+        default_min = CONSENSUS.MIN_AGENT_WEIGHT if CONSENSUS else 0.5
+        default_max = CONSENSUS.MAX_AGENT_WEIGHT if CONSENSUS else 2.0
+        default_base = CONSENSUS.DEFAULT_AGENT_WEIGHT if CONSENSUS else 1.0
+
         return cls(
             enabled=os.getenv('AGENT_WEIGHT_ENABLED', 'true').lower() == 'true',
-            base_weight=float(os.getenv('AGENT_WEIGHT_BASE', '1.0')),
+            base_weight=float(os.getenv('AGENT_WEIGHT_BASE', str(default_base))),
             accuracy_factor=float(os.getenv('AGENT_WEIGHT_ACCURACY_FACTOR', '0.5')),
             recency_factor=float(os.getenv('AGENT_WEIGHT_RECENCY_FACTOR', '0.3')),
-            min_weight=float(os.getenv('AGENT_WEIGHT_MIN', '0.5')),
-            max_weight=float(os.getenv('AGENT_WEIGHT_MAX', '2.0')),
+            min_weight=float(os.getenv('AGENT_WEIGHT_MIN', str(default_min))),
+            max_weight=float(os.getenv('AGENT_WEIGHT_MAX', str(default_max))),
             min_trades_for_weight=int(os.getenv('AGENT_WEIGHT_MIN_TRADES', '5')),
         )
 
@@ -130,9 +144,11 @@ def calculate_confidence_from_votes(
     Returns:
         int: Confidence 0-100
     """
+    min_confidence = CONFIDENCE.MINIMUM if CONFIDENCE else 30
+
     if not votes:
-        logger.warning("[Confidence] No vote data, using minimum confidence 30%")
-        return 30
+        logger.warning(f"[Confidence] No vote data, using minimum confidence {min_confidence}%")
+        return min_confidence
 
     # FIX: Ensure votes is dict type
     if isinstance(votes, list):
@@ -141,7 +157,7 @@ def calculate_confidence_from_votes(
             votes = {v.agent_name: v.direction for v in votes if hasattr(v, 'agent_name') and hasattr(v, 'direction')}
         except Exception as e:
             logger.error(f"[Confidence] Unable to convert votes: {e}")
-            return 30
+            return min_confidence
 
     # Default weights
     if weights is None:
@@ -172,7 +188,11 @@ def calculate_confidence_from_votes(
     # Calculate consensus ratio (0.0 - 1.0)
     consensus_ratio = target_weight / total_weight if total_weight > 0 else 0
 
-    # Map consensus ratio to confidence
+    # Map consensus ratio to confidence using constants
+    high_conf = CONFIDENCE.HIGH if CONFIDENCE else 75
+    medium_conf = CONFIDENCE.MEDIUM if CONFIDENCE else 55
+    low_conf = CONFIDENCE.LOW if CONFIDENCE else 40
+
     # 1.0 (unanimous) -> 90%
     # 0.75 -> 75%
     # 0.5 (split) -> 50%
@@ -180,11 +200,11 @@ def calculate_confidence_from_votes(
     if consensus_ratio >= 0.9:
         confidence = 90
     elif consensus_ratio >= 0.75:
-        confidence = 75 + int((consensus_ratio - 0.75) * 60)  # 75-90
+        confidence = high_conf + int((consensus_ratio - 0.75) * 60)  # 75-90
     elif consensus_ratio >= 0.5:
         confidence = 50 + int((consensus_ratio - 0.5) * 100)  # 50-75
     else:
-        confidence = 30
+        confidence = min_confidence
 
     logger.info(
         f"[Confidence] Votes: long={long_count}({long_weight:.1f}w), "
@@ -194,7 +214,7 @@ def calculate_confidence_from_votes(
     return confidence
 
 
-def calculate_leverage_from_confidence(confidence: int, max_leverage: int = 20) -> int:
+def calculate_leverage_from_confidence(confidence: int, max_leverage: int = None) -> int:
     """
     Calculate appropriate leverage based on confidence.
 
@@ -213,16 +233,24 @@ def calculate_leverage_from_confidence(confidence: int, max_leverage: int = 20) 
     Returns:
         int: Recommended leverage multiplier
     """
-    if confidence >= 85:
-        leverage = 10
-    elif confidence >= 75:
+    # Use constants with fallback
+    if max_leverage is None:
+        max_leverage = LEVERAGE.MAX_LEVERAGE if LEVERAGE else 20
+
+    high_conf = LEVERAGE.HIGH_CONFIDENCE if LEVERAGE else 85
+    med_conf = LEVERAGE.MEDIUM_CONFIDENCE if LEVERAGE else 75
+    low_conf = LEVERAGE.LOW_CONFIDENCE if LEVERAGE else 65
+
+    if confidence >= high_conf:
+        leverage = LEVERAGE.HIGH_LEVERAGE if LEVERAGE else 10
+    elif confidence >= med_conf:
         leverage = 8
-    elif confidence >= 65:
+    elif confidence >= low_conf:
         leverage = 6
     elif confidence >= 55:
-        leverage = 5
+        leverage = LEVERAGE.MEDIUM_LEVERAGE if LEVERAGE else 5
     elif confidence >= 45:
-        leverage = 3
+        leverage = LEVERAGE.LOW_LEVERAGE if LEVERAGE else 3
     else:
         leverage = 2
 
@@ -250,13 +278,19 @@ def calculate_amount_from_confidence(confidence: int) -> float:
     Returns:
         float: Position ratio 0.0-1.0
     """
-    if confidence >= 85:
+    # Use constants for thresholds
+    high_conf = CONFIDENCE.VERY_HIGH if CONFIDENCE else 85
+    med_high_conf = CONFIDENCE.HIGH if CONFIDENCE else 75
+    med_conf = CONFIDENCE.MODERATE if CONFIDENCE else 65
+    low_conf = CONFIDENCE.MEDIUM if CONFIDENCE else 55
+
+    if confidence >= high_conf:
         amount = 0.60
-    elif confidence >= 75:
+    elif confidence >= med_high_conf:
         amount = 0.50
-    elif confidence >= 65:
+    elif confidence >= med_conf:
         amount = 0.40
-    elif confidence >= 55:
+    elif confidence >= low_conf:
         amount = 0.30
     else:
         amount = 0.20
