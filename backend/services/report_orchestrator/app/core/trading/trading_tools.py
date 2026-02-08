@@ -64,9 +64,15 @@ class TradingToolkit:
         self._build_tools()
 
     def _build_tools(self):
-        """Build all trading tools"""
+        """Build all trading tools by category."""
+        self._build_market_data_tools()
+        self._build_account_tools()
+        self._build_execution_tools()
+        self._build_analysis_tools()
+        self._build_advanced_tools()
 
-        # Market Data Tools
+    def _build_market_data_tools(self):
+        """Build market data retrieval tools."""
         self._tools['get_market_price'] = FunctionTool(
             name="get_market_price",
             description=f"Get current market price and 24h data including price, change percentage, and volume",
@@ -128,7 +134,8 @@ class TradingToolkit:
             func=self._calculate_indicators
         )
 
-        # Account Tools
+    def _build_account_tools(self):
+        """Build account management tools."""
         self._tools['get_account_balance'] = FunctionTool(
             name="get_account_balance",
             description=(
@@ -156,7 +163,23 @@ class TradingToolkit:
             func=self._get_current_position
         )
 
-        # Trading Execution Tools
+        self._tools['get_trade_history'] = FunctionTool(
+            name="get_trade_history",
+            description="Get historical trade records",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "default": 20
+                    }
+                }
+            },
+            func=self._get_trade_history
+        )
+
+    def _build_execution_tools(self):
+        """Build trading execution tools."""
         self._tools['open_long'] = FunctionTool(
             name="open_long",
             description=f"Open long position (buy). ⚠️ MUST provide all 4 parameters: leverage, amount_usdt, tp_percent, sl_percent! Call will fail if any parameter is missing!",
@@ -256,7 +279,6 @@ class TradingToolkit:
             func=self._close_position
         )
 
-        # Hold Decision Tool
         self._tools['hold'] = FunctionTool(
             name="hold",
             description="Decide to hold/wait, no trading action. Call this when market is unclear or risk is too high",
@@ -273,7 +295,8 @@ class TradingToolkit:
             func=self._hold
         )
 
-        # Analysis Tools
+    def _build_analysis_tools(self):
+        """Build market analysis tools."""
         self._tools['get_fear_greed_index'] = FunctionTool(
             name="get_fear_greed_index",
             description="Get crypto Fear & Greed Index reflecting market sentiment",
@@ -296,22 +319,6 @@ class TradingToolkit:
             func=self._get_funding_rate
         )
 
-        self._tools['get_trade_history'] = FunctionTool(
-            name="get_trade_history",
-            description="Get historical trade records",
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "limit": {
-                        "type": "integer",
-                        "default": 20
-                    }
-                }
-            },
-            func=self._get_trade_history
-        )
-
-        # Web Search Tool - Tavily
         self._tools['tavily_search'] = FunctionTool(
             name="tavily_search",
             description="Search for crypto news and market info using Tavily search engine, get latest market updates, major events, regulatory news, etc.",
@@ -350,7 +357,8 @@ class TradingToolkit:
             func=self._tavily_search
         )
 
-        # Smart Execution Analysis Tool
+    def _build_advanced_tools(self):
+        """Build advanced analysis and execution tools."""
         self._tools['analyze_execution_conditions'] = FunctionTool(
             name="analyze_execution_conditions",
             description=(
@@ -382,7 +390,6 @@ class TradingToolkit:
             func=self._analyze_execution_conditions
         )
 
-        # Technical Analysis Tool (comprehensive)
         self._tools['technical_analysis'] = FunctionTool(
             name="technical_analysis",
             description=(
@@ -418,7 +425,6 @@ class TradingToolkit:
             func=self._technical_analysis
         )
 
-        # Orderbook Analyzer Tool
         self._tools['orderbook_analyzer'] = FunctionTool(
             name="orderbook_analyzer",
             description=(
