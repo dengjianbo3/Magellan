@@ -22,11 +22,16 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-# Import centralized config
+# Import centralized config and constants
 try:
     from ..trading_config import get_infra_config
+    from ..constants import PRICE, VOLUME, RSI, CACHE
 except ImportError:
     get_infra_config = None
+    PRICE = None
+    VOLUME = None
+    RSI = None
+    CACHE = None
 
 logger = logging.getLogger(__name__)
 
@@ -98,27 +103,35 @@ class FastMonitorConfig:
     """
     
     def __init__(self):
+        # Get default values from constants if available
+        price_spike_1m = PRICE.SPIKE_1M if PRICE else 1.5
+        price_spike_5m = PRICE.SPIKE_5M if PRICE else 2.5
+        price_spike_15m = PRICE.SPIKE_15M if PRICE else 3.5
+        volume_spike = VOLUME.SPIKE_MULTIPLIER if VOLUME else 2.0
+        rsi_overbought = RSI.OVERBOUGHT if RSI else 70
+        rsi_oversold = RSI.OVERSOLD if RSI else 30
+
         # ===== 价格急变 =====
-        self.PRICE_SPIKE_1M = _get_env_float("MONITOR_PRICE_SPIKE_1M", 1.5)       # 1分钟变动 ±1.5%
-        self.PRICE_SPIKE_5M = _get_env_float("MONITOR_PRICE_SPIKE_5M", 2.5)       # 5分钟变动 ±2.5%
-        self.PRICE_SPIKE_15M = _get_env_float("MONITOR_PRICE_SPIKE_15M", 4.0)     # 15分钟变动 ±4.0%
-        
+        self.PRICE_SPIKE_1M = _get_env_float("MONITOR_PRICE_SPIKE_1M", price_spike_1m)
+        self.PRICE_SPIKE_5M = _get_env_float("MONITOR_PRICE_SPIKE_5M", price_spike_5m)
+        self.PRICE_SPIKE_15M = _get_env_float("MONITOR_PRICE_SPIKE_15M", 4.0)
+
         # ===== 成交量异常 =====
-        self.VOLUME_SPIKE_5M = _get_env_float("MONITOR_VOLUME_SPIKE_5M", 3.0)     # 5分钟成交量 > 3x 均值
-        self.VOLUME_SPIKE_1M = _get_env_float("MONITOR_VOLUME_SPIKE_1M", 5.0)     # 1分钟成交量 > 5x 均值
-        
+        self.VOLUME_SPIKE_5M = _get_env_float("MONITOR_VOLUME_SPIKE_5M", 3.0)
+        self.VOLUME_SPIKE_1M = _get_env_float("MONITOR_VOLUME_SPIKE_1M", 5.0)
+
         # ===== 资金费率 =====
-        self.FUNDING_RATE_EXTREME = _get_env_float("MONITOR_FUNDING_EXTREME", 0.1)    # 资金费率 > 0.1% (每8h)
-        self.FUNDING_RATE_CHANGE = _get_env_float("MONITOR_FUNDING_CHANGE", 0.05)     # 资金费率变化 > 0.05%
-        
+        self.FUNDING_RATE_EXTREME = _get_env_float("MONITOR_FUNDING_EXTREME", 0.1)
+        self.FUNDING_RATE_CHANGE = _get_env_float("MONITOR_FUNDING_CHANGE", 0.05)
+
         # ===== 持仓量 =====
-        self.OI_CHANGE_15M = _get_env_float("MONITOR_OI_CHANGE_15M", 3.0)         # 15分钟 OI 变化 > 3%
-        self.OI_CHANGE_1H = _get_env_float("MONITOR_OI_CHANGE_1H", 5.0)           # 1小时 OI 变化 > 5%
-        
+        self.OI_CHANGE_15M = _get_env_float("MONITOR_OI_CHANGE_15M", 3.0)
+        self.OI_CHANGE_1H = _get_env_float("MONITOR_OI_CHANGE_1H", 5.0)
+
         # ===== 技术指标 =====
-        self.RSI_OVERBOUGHT = _get_env_int("MONITOR_RSI_OVERBOUGHT", 85)          # RSI > 85 极端超买
-        self.RSI_OVERSOLD = _get_env_int("MONITOR_RSI_OVERSOLD", 15)              # RSI < 15 极端超卖
-        self.EMA_DEVIATION = _get_env_float("MONITOR_EMA_DEVIATION", 5.0)         # 价格 vs EMA20 偏离 > 5%
+        self.RSI_OVERBOUGHT = _get_env_int("MONITOR_RSI_OVERBOUGHT", 85)
+        self.RSI_OVERSOLD = _get_env_int("MONITOR_RSI_OVERSOLD", 15)
+        self.EMA_DEVIATION = _get_env_float("MONITOR_EMA_DEVIATION", 5.0)
 
 
 class FastMonitor:
@@ -139,7 +152,8 @@ class FastMonitor:
         self.base_url = get_infra_config().okx_base_url if get_infra_config else "https://www.okx.com"
 
         # 价格历史 (用于计算变化)
-        self._price_history: deque = deque(maxlen=60)  # 60个数据点
+        history_maxlen = CACHE.PRICE_HISTORY_MAXLEN if CACHE else 60
+        self._price_history: deque = deque(maxlen=history_maxlen)
         self._last_price_time: Optional[datetime] = None
 
         # 缓存数据
