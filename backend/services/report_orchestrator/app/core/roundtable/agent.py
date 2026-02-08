@@ -268,138 +268,116 @@ After tool execution, you will receive results to continue the discussion.
         Returns:
             LLM response
         """
+        # Check if tools are available
+        has_tools = len(self.tools) > 0
+
+        if has_tools:
+            return await self._call_llm_with_tools(messages, max_retries)
+        else:
+            return await self._call_llm_without_tools(messages, max_retries)
+
+    async def _call_llm_with_tools(self, messages: List[Dict[str, str]], max_retries: int) -> Dict[str, Any]:
+        """Call LLM with tool calling support."""
+        import asyncio
+
+        tools_schema = self.get_tools_schema()
+        request_data = {
+            "messages": messages,
+            "tools": tools_schema,
+            "tool_choice": "auto",
+            "temperature": self.temperature
+        }
+
+        print(f"[Agent:{self.name}] Using Tool Calling with {len(tools_schema)} tools")
+
+        return await self._execute_llm_request(
+            f"{self.llm_gateway_url}/v1/chat/completions",
+            request_data,
+            max_retries
+        )
+
+    async def _call_llm_without_tools(self, messages: List[Dict[str, str]], max_retries: int) -> Dict[str, Any]:
+        """Call LLM without tools (backward compatibility)."""
+        # Convert to LLM Gateway format
+        history = []
+        for msg in messages:
+            role = msg["role"]
+            content = msg["content"]
+            if role == "system" or role == "user":
+                history.append({"role": "user", "parts": [content]})
+            elif role == "assistant":
+                history.append({"role": "model", "parts": [content]})
+
+        request_data = {
+            "history": history,
+            "temperature": self.temperature
+        }
+
+        result = await self._execute_llm_request(
+            f"{self.llm_gateway_url}/chat",
+            request_data,
+            max_retries
+        )
+
+        # Convert response format to OpenAI compatible format
+        return self._convert_to_openai_format(result)
+
+    def _convert_to_openai_format(self, result: Any) -> Dict[str, Any]:
+        """Convert LLM Gateway response to OpenAI format."""
+        if isinstance(result, str):
+            content = result
+        elif isinstance(result, dict):
+            # If already in OpenAI format, return as-is
+            if "choices" in result:
+                return result
+            content = result.get("content", str(result))
+        else:
+            content = str(result)
+
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": content
+                    }
+                }
+            ]
+        }
+
+    async def _execute_llm_request(self, url: str, request_data: Dict, max_retries: int) -> Dict[str, Any]:
+        """Execute LLM request with retry logic."""
         import asyncio
 
         last_exception = None
 
-        # Check if tools are available
-        has_tools = len(self.tools) > 0
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient(timeout=180.0) as client:
+                    response = await client.post(url, json=request_data)
+                    response.raise_for_status()
+                    result = response.json()
+                    print(f"[Agent:{self.name}] LLM response type: {type(result)}")
+                    return result
 
-        # If tools available, use new Tool Calling endpoint
-        if has_tools:
-            # Use OpenAI compatible /v1/chat/completions endpoint
-            tools_schema = self.get_tools_schema()
+            except httpx.ReadTimeout as e:
+                last_exception = e
+                print(f"[Agent:{self.name}] LLM timeout on attempt {attempt + 1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** (attempt + 1)
+                    print(f"[Agent:{self.name}] Retrying in {wait_time} seconds...")
+                    await asyncio.sleep(wait_time)
+                continue
 
-            request_data = {
-                "messages": messages,  # Pass OpenAI format messages directly
-                "tools": tools_schema,
-                "tool_choice": "auto",
-                "temperature": self.temperature
-            }
+            except Exception as e:
+                last_exception = e
+                print(f"[Agent:{self.name}] LLM call failed on attempt {attempt + 1}/{max_retries}: {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2)
+                continue
 
-            print(f"[Agent:{self.name}] Using Tool Calling with {len(tools_schema)} tools")
-
-            for attempt in range(max_retries):
-                try:
-                    async with httpx.AsyncClient(timeout=180.0) as client:
-                        response = await client.post(
-                            f"{self.llm_gateway_url}/v1/chat/completions",
-                            json=request_data
-                        )
-                        response.raise_for_status()
-                        result = response.json()
-
-                        # result is already in OpenAI format
-                        return result
-
-                except httpx.ReadTimeout as e:
-                    last_exception = e
-                    print(f"[Agent:{self.name}] LLM timeout on attempt {attempt + 1}/{max_retries}")
-                    if attempt < max_retries - 1:
-                        wait_time = 2 ** (attempt + 1)
-                        print(f"[Agent:{self.name}] Retrying in {wait_time} seconds...")
-                        await asyncio.sleep(wait_time)
-                    continue
-
-                except Exception as e:
-                    last_exception = e
-                    print(f"[Agent:{self.name}] LLM call failed on attempt {attempt + 1}/{max_retries}: {e}")
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(2)
-                    continue
-
-            # All retries failed
-            print(f"[Agent:{self.name}] All {max_retries} LLM call attempts failed")
-            raise last_exception
-
-        else:
-            # No tools, use old /chat endpoint (backward compatibility)
-            # Convert to LLM Gateway format
-            # LLM Gateway expects: {"history": [{"role": "user", "parts": ["text"]}]}
-            history = []
-            for msg in messages:
-                role = msg["role"]
-                content = msg["content"]
-                # Convert role: system/user/assistant -> user/model
-                if role == "system" or role == "user":
-                    history.append({"role": "user", "parts": [content]})
-                elif role == "assistant":
-                    history.append({"role": "model", "parts": [content]})
-
-            request_data = {
-                "history": history,
-                "temperature": self.temperature  # Pass temperature parameter
-            }
-
-            for attempt in range(max_retries):
-                try:
-                    async with httpx.AsyncClient(timeout=180.0) as client:
-                        response = await client.post(
-                            f"{self.llm_gateway_url}/chat",
-                            json=request_data
-                        )
-                        response.raise_for_status()
-                        result = response.json()
-
-                        # Debug: print response type and content
-                        print(f"[Agent:{self.name}] LLM response type: {type(result)}")
-
-                        # Convert response format to be compatible with OpenAI format parsing
-                        # LLM Gateway returns: {"content": "text"}
-                        # Convert to: {"choices": [{"message": {"content": "text"}}]}
-
-                        # Handle two possible response formats
-                        if isinstance(result, str):
-                            # If result is string, use directly
-                            content = result
-                        elif isinstance(result, dict):
-                            # If dict, extract content field
-                            content = result.get("content", str(result))
-                        else:
-                            # Other types, convert to string
-                            content = str(result)
-
-                        return {
-                            "choices": [
-                                {
-                                    "message": {
-                                        "role": "assistant",
-                                        "content": content
-                                    }
-                                }
-                            ]
-                        }
-
-                except httpx.ReadTimeout as e:
-                    last_exception = e
-                    print(f"[Agent:{self.name}] LLM timeout on attempt {attempt + 1}/{max_retries}")
-                    if attempt < max_retries - 1:
-                        # Exponential backoff: 2s, 4s, 8s...
-                        wait_time = 2 ** (attempt + 1)
-                        print(f"[Agent:{self.name}] Retrying in {wait_time} seconds...")
-                        await asyncio.sleep(wait_time)
-                    continue
-
-                except Exception as e:
-                    last_exception = e
-                    print(f"[Agent:{self.name}] LLM call failed on attempt {attempt + 1}/{max_retries}: {e}")
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(2)
-                    continue
-
-            # All retries failed
-            print(f"[Agent:{self.name}] All {max_retries} LLM call attempts failed")
-            raise last_exception
+        print(f"[Agent:{self.name}] All {max_retries} LLM call attempts failed")
+        raise last_exception
 
     async def _parse_llm_response(self, llm_response: Dict[str, Any]) -> List[Message]:
         """
@@ -419,106 +397,15 @@ After tool execution, you will receive results to continue the discussion.
 
             # Check if there are native tool_calls (OpenAI format)
             if message.get("tool_calls") and self.tools:
-                # Native Tool Calling
-                self.status = "tool_using"
-                tool_results = []
-
-                for tool_call in message["tool_calls"]:
-                    tool_name = tool_call["function"]["name"]
-                    tool_args_str = tool_call["function"]["arguments"]
-
-                    if tool_name in self.tools:
-                        print(f"[Agent:{self.name}] Native Tool Calling: {tool_name}")
-
-                        try:
-                            # Parse JSON arguments
-                            import json
-                            tool_args = json.loads(tool_args_str) if isinstance(tool_args_str, str) else tool_args_str
-
-                            print(f"[Agent:{self.name}] Tool arguments: {tool_args}")
-
-                            # Execute tool
-                            tool_result = await self.tools[tool_name].execute(**tool_args)
-                            print(f"[Agent:{self.name}] Tool {tool_name} result: {tool_result}")
-
-                            # Collect tool results
-                            if isinstance(tool_result, dict) and "summary" in tool_result:
-                                tool_results.append(f"\n[{tool_name} Result]: {tool_result['summary']}")
-                            else:
-                                tool_results.append(f"\n[{tool_name} Result]: {str(tool_result)[:500]}")
-
-                        except Exception as e:
-                            print(f"[Agent:{self.name}] Tool execution failed: {e}")
-                            tool_results.append(f"\n[{tool_name} Error]: {str(e)}")
-                    else:
-                        print(f"[Agent:{self.name}] Unknown tool: {tool_name}")
-
-                # Return tool results as message
-                if tool_results:
-                    combined_result = "".join(tool_results)
-                    messages_to_send.append(Message(
-                        agent_name=self.name,
-                        content=combined_result,
-                        message_type=MessageType.INFORMATION
-                    ))
-
-                self.status = "idle"
-                return messages_to_send
+                return await self._handle_native_tool_calls(message["tool_calls"])
 
             # Extract text content
             content = message.get("content", "")
 
-            # Backward compatibility: detect custom format tool calls [USE_TOOL: tool_name(params)]
-            import re
-            tool_pattern = r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]'
-            tool_matches = re.findall(tool_pattern, content)
-
-            if tool_matches and self.tools:
-                # Tool call detected (DEPRECATED backward compatibility mode)
-                print(f"[Agent:{self.name}] ⚠️ DEPRECATED: Legacy [USE_TOOL:] format detected. "
-                      "This will be removed in future versions. LLM should use native tool_calls.")
-                self.status = "tool_using"
-                tool_results = []
-
-                for tool_name, params_str in tool_matches:
-                    if tool_name in self.tools:
-                        print(f"[Agent:{self.name}] Legacy tool calling: {tool_name}")
-
-                        # Parse arguments
-                        try:
-                            # Support double and single quotes: key="value" or key='value'
-                            params = {}
-                            # Try double quotes first
-                            param_pattern_double = r'(\w+)="([^"]*)"'
-                            param_matches = re.findall(param_pattern_double, params_str)
-                            # Then try single quotes
-                            if not param_matches:
-                                param_pattern_single = r"(\w+)='([^']*)'"
-                                param_matches = re.findall(param_pattern_single, params_str)
-
-                            for key, value in param_matches:
-                                params[key] = value
-
-                            # Execute tool
-                            tool_result = await self.tools[tool_name].execute(**params)
-                            print(f"[Agent:{self.name}] Tool {tool_name} result: {tool_result}")
-
-                            # Collect tool results
-                            if isinstance(tool_result, dict) and "summary" in tool_result:
-                                tool_results.append(f"\n[{tool_name} Result]: {tool_result['summary']}")
-                            else:
-                                tool_results.append(f"\n[{tool_name} Result]: {str(tool_result)[:500]}")
-
-                        except Exception as tool_error:
-                            print(f"[Agent:{self.name}] Tool {tool_name} error: {tool_error}")
-                            tool_results.append(f"\n[{tool_name} Error]: {str(tool_error)}")
-
-                # If there are tool results, add them to content
-                if tool_results:
-                    content += "\n\n" + "\n".join(tool_results)
+            # Backward compatibility: detect custom format tool calls
+            content = await self._handle_legacy_tool_calls(content)
 
             if content:
-                # Analyze message type and target recipient
                 message_type, recipient = self._analyze_message_intent(content)
 
                 msg = Message(
@@ -537,6 +424,122 @@ After tool execution, you will receive results to continue the discussion.
             traceback.print_exc()
 
         return messages_to_send
+
+    async def _handle_native_tool_calls(self, tool_calls: List[Dict]) -> List[Message]:
+        """Handle native OpenAI format tool calls."""
+        import json
+
+        messages_to_send = []
+        self.status = "tool_using"
+        tool_results = []
+
+        for tool_call in tool_calls:
+            tool_name = tool_call["function"]["name"]
+            tool_args_str = tool_call["function"]["arguments"]
+
+            if tool_name in self.tools:
+                print(f"[Agent:{self.name}] Native Tool Calling: {tool_name}")
+                result = await self._execute_single_tool(tool_name, tool_args_str)
+                tool_results.append(result)
+            else:
+                print(f"[Agent:{self.name}] Unknown tool: {tool_name}")
+
+        if tool_results:
+            combined_result = "".join(tool_results)
+            messages_to_send.append(Message(
+                agent_name=self.name,
+                content=combined_result,
+                message_type=MessageType.INFORMATION
+            ))
+
+        self.status = "idle"
+        return messages_to_send
+
+    async def _execute_single_tool(self, tool_name: str, tool_args: Any) -> str:
+        """Execute a single tool and return formatted result."""
+        import json
+
+        try:
+            # Parse JSON arguments if string
+            if isinstance(tool_args, str):
+                tool_args = json.loads(tool_args)
+
+            print(f"[Agent:{self.name}] Tool arguments: {tool_args}")
+
+            # Execute tool
+            tool_result = await self.tools[tool_name].execute(**tool_args)
+            print(f"[Agent:{self.name}] Tool {tool_name} result: {tool_result}")
+
+            # Format result
+            if isinstance(tool_result, dict) and "summary" in tool_result:
+                return f"\n[{tool_name} Result]: {tool_result['summary']}"
+            else:
+                return f"\n[{tool_name} Result]: {str(tool_result)[:500]}"
+
+        except Exception as e:
+            print(f"[Agent:{self.name}] Tool execution failed: {e}")
+            return f"\n[{tool_name} Error]: {str(e)}"
+
+    async def _handle_legacy_tool_calls(self, content: str) -> str:
+        """Handle legacy [USE_TOOL:] format (deprecated)."""
+        import re
+
+        if not self.tools:
+            return content
+
+        tool_pattern = r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]'
+        tool_matches = re.findall(tool_pattern, content)
+
+        if not tool_matches:
+            return content
+
+        print(f"[Agent:{self.name}] ⚠️ DEPRECATED: Legacy [USE_TOOL:] format detected. "
+              "This will be removed in future versions. LLM should use native tool_calls.")
+
+        self.status = "tool_using"
+        tool_results = []
+
+        for tool_name, params_str in tool_matches:
+            if tool_name in self.tools:
+                print(f"[Agent:{self.name}] Legacy tool calling: {tool_name}")
+                result = await self._execute_legacy_tool(tool_name, params_str)
+                tool_results.append(result)
+
+        if tool_results:
+            content += "\n\n" + "\n".join(tool_results)
+
+        return content
+
+    async def _execute_legacy_tool(self, tool_name: str, params_str: str) -> str:
+        """Execute a legacy format tool call."""
+        import re
+
+        try:
+            # Parse arguments - support double and single quotes
+            params = {}
+            param_pattern_double = r'(\w+)="([^"]*)"'
+            param_matches = re.findall(param_pattern_double, params_str)
+
+            if not param_matches:
+                param_pattern_single = r"(\w+)='([^']*)'"
+                param_matches = re.findall(param_pattern_single, params_str)
+
+            for key, value in param_matches:
+                params[key] = value
+
+            # Execute tool
+            tool_result = await self.tools[tool_name].execute(**params)
+            print(f"[Agent:{self.name}] Tool {tool_name} result: {tool_result}")
+
+            # Format result
+            if isinstance(tool_result, dict) and "summary" in tool_result:
+                return f"[{tool_name} Result]: {tool_result['summary']}"
+            else:
+                return f"[{tool_name} Result]: {str(tool_result)[:500]}"
+
+        except Exception as tool_error:
+            print(f"[Agent:{self.name}] Tool {tool_name} error: {tool_error}")
+            return f"[{tool_name} Error]: {str(tool_error)}"
 
     def _analyze_message_intent(self, content: str) -> tuple[MessageType, str]:
         """
