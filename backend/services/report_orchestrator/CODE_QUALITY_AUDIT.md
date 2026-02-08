@@ -1,6 +1,7 @@
 # 代码质量审查报告
 
 **审查日期**: 2025-02-08
+**最后更新**: 2025-02-08
 **审查范围**: Trading System 核心模块
 **代码总行数**: ~8,800 行
 
@@ -15,27 +16,36 @@
 | roundtable | 6 | 4,628 | 33 | 16 | 12 | 5 |
 | **总计** | **22** | **~11,600** | **230+** | **58** | **120** | **52** |
 
+### ✅ 修复进度
+
+| 类别 | 原始问题数 | 已修复 | 状态 |
+|------|-----------|--------|------|
+| 超长函数 | 25 | 2 | 🟡 进行中 |
+| 重复代码 | 8 | 4 | 🟡 进行中 |
+| 魔法数字 | 110+ | 80+ | ✅ 大部分完成 |
+| 未使用导入 | 7 | 7 | ✅ 完成 |
+
 ---
 
 ## 高优先级问题汇总
 
 ### 1. 超长函数 (>50行) - 25个实例
 
-| 文件 | 函数 | 行数 | 严重程度 |
-|------|------|------|----------|
-| `trading_tools.py` | `_build_tools()` | **379行** | 🔴 严重 |
-| `agent.py` (trigger) | `check()` | **139行** | 🔴 严重 |
-| `agent.py` (roundtable) | `_call_llm()` | **143行** | 🔴 严重 |
-| `agent.py` (roundtable) | `_parse_llm_response()` | **136行** | 🔴 严重 |
-| `agent.py` (roundtable) | `analyze()` | **165行** | 🔴 严重 |
-| `advanced_tools.py` | `execute()` (PersonBackgroundTool) | **129行** | 🟠 高 |
-| `advanced_tools.py` | `execute()` (RegulationSearchTool) | **137行** | 🟠 高 |
-| `advanced_tools.py` | `execute()` (OrderbookAnalyzerTool) | **122行** | 🟠 高 |
-| `technical_tools.py` | `full_analysis()` | **116行** | 🟠 高 |
-| `scheduler.py` | `run_check()` | **104行** | 🟠 高 |
-| `meeting.py` | `run()` | **101行** | 🟠 高 |
-| `fast_monitor.py` | `check()` | **84行** | 🟡 中 |
-| `ta_calculator.py` | `calculate()` | **66行** | 🟡 中 |
+| 文件 | 函数 | 行数 | 严重程度 | 状态 |
+|------|------|------|----------|------|
+| `trading_tools.py` | `_build_tools()` | **379行** | 🔴 严重 | ✅ 已拆分为6个方法 |
+| `agent.py` (trigger) | `check()` | **139行** | 🔴 严重 | ✅ 已拆分为6个方法 |
+| `agent.py` (roundtable) | `_call_llm()` | **143行** | 🔴 严重 | 待处理 |
+| `agent.py` (roundtable) | `_parse_llm_response()` | **136行** | 🔴 严重 | 待处理 |
+| `agent.py` (roundtable) | `analyze()` | **165行** | 🔴 严重 | 待处理 |
+| `advanced_tools.py` | `execute()` (PersonBackgroundTool) | **129行** | 🟠 高 | 待处理 |
+| `advanced_tools.py` | `execute()` (RegulationSearchTool) | **137行** | 🟠 高 | 待处理 |
+| `advanced_tools.py` | `execute()` (OrderbookAnalyzerTool) | **122行** | 🟠 高 | 待处理 |
+| `technical_tools.py` | `full_analysis()` | **116行** | 🟠 高 | 待处理 |
+| `scheduler.py` | `run_check()` | **104行** | 🟠 高 | 待处理 |
+| `meeting.py` | `run()` | **101行** | 🟠 高 | 待处理 |
+| `fast_monitor.py` | `check()` | **84行** | 🟡 中 | 待处理 |
+| `ta_calculator.py` | `calculate()` | **66行** | 🟡 中 | 待处理 |
 
 **建议**: 将大函数拆分为更小的、单一职责的方法。
 
@@ -43,12 +53,13 @@
 
 ### 2. 重复代码模式 - 8个实例
 
-#### 2.1 RSI/EMA 计算重复
-- `trigger/ta_calculator.py` (lines 194-226, 244-261)
-- `trigger/fast_monitor.py` (lines 577-625)
-- `trading_tools.py` (lines 724-750)
+#### 2.1 RSI/EMA 计算重复 ✅ 已修复
+- ~~`trigger/ta_calculator.py` (lines 194-226, 244-261)~~ → 使用 `indicators.py`
+- ~~`trigger/fast_monitor.py` (lines 577-625)~~ → 使用 `indicators.py`
+- ~~`multi_timeframe.py`~~ → 使用 `indicators.py`
+- `trading_tools.py` (lines 724-750) - 无重复代码
 
-**建议**: 提取到共享工具模块 `utils/indicators.py`
+**解决方案**: 创建了 `app/core/trading/indicators.py` 共享模块
 
 #### 2.2 Agent 配置重复
 - `trading_agents.py` (lines 120-190) - 6个几乎相同的配置块
@@ -64,36 +75,27 @@
 
 ---
 
-### 3. 硬编码魔法数字 - 110+ 实例
+### 3. 硬编码魔法数字 - 110+ 实例 ✅ 大部分已修复
 
-#### 高频出现的魔法数字
+**解决方案**: 创建了 `app/core/trading/constants.py` 集中管理常量
 
-| 类别 | 示例 | 文件 |
-|------|------|------|
-| 置信度阈值 | `75, 55, 40` | `orchestration/nodes.py` |
-| RSI 周期 | `14` | 多个文件 |
-| MACD 参数 | `12, 26, 9` | 多个文件 |
-| 超时时间 | `10, 30, 60` | 多个文件 |
-| 重试次数 | `3, 5` | 多个文件 |
-| 权重范围 | `0.5, 2.0` | `reflection/engine.py` |
+#### 已迁移到 constants.py 的文件:
+- ✅ `orchestration/nodes.py` - 置信度/杠杆阈值
+- ✅ `trigger/ta_calculator.py` - RSI/MACD 参数
+- ✅ `trigger/fast_monitor.py` - 价格/成交量阈值
+- ✅ `trigger/scorer.py` - RSI/价格阈值
+- ✅ `trigger/agent.py` - 触发器配置
+- ✅ `reflection/engine.py` - 权重边界
+- ✅ `vote_calculator.py` - 置信度/杠杆阈值
+- ✅ `confidence_validator.py` - 最小置信度
 
-**建议**: 在 `trading_config.py` 中定义常量:
-
+#### constants.py 包含的配置类:
 ```python
-# 技术指标参数
-class IndicatorConfig:
-    RSI_PERIOD = 14
-    MACD_FAST = 12
-    MACD_SLOW = 26
-    MACD_SIGNAL = 9
-    BB_PERIOD = 20
-    BB_STD_DEV = 2.0
-
-# 置信度阈值
-class ConfidenceThresholds:
-    HIGH = 75
-    MEDIUM = 55
-    LOW = 40
+RSI, MACD, BOLLINGER_BANDS, EMA, KDJ, ADX, ATR  # 技术指标
+CONFIDENCE, LEVERAGE  # 交易阈值
+TIMEFRAMES, PRICE, VOLUME, FUNDING_RATE  # 市场数据
+CONSENSUS, RETRY, CACHE, RISK, SCORING  # 系统配置
+API_LIMITS, ARBITRAGE, TRIGGER  # 其他
 ```
 
 ---
