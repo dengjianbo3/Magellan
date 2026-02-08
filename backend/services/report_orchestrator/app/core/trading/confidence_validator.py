@@ -7,16 +7,22 @@ Validates confidence levels against minimum thresholds for trading decisions.
 from typing import Tuple
 import logging
 
+# Import constants
+try:
+    from .constants import CONFIDENCE
+except ImportError:
+    CONFIDENCE = None
+
 logger = logging.getLogger(__name__)
 
 
 class ConfidenceValidator:
     """Validates trading decisions against confidence thresholds."""
-    
-    # Default thresholds
-    MIN_CONFIDENCE_OPEN = 65    # Minimum to open new position
+
+    # Default thresholds (use constants if available)
+    MIN_CONFIDENCE_OPEN = CONFIDENCE.MODERATE if CONFIDENCE else 65    # Minimum to open new position
     MIN_CONFIDENCE_CLOSE = 50   # Minimum to close position
-    
+
     def __init__(
         self,
         min_open: int = None,
@@ -24,14 +30,14 @@ class ConfidenceValidator:
     ):
         """
         Initialize validator with custom thresholds.
-        
+
         Args:
             min_open: Minimum confidence to open position (default: 65)
             min_close: Minimum confidence to close position (default: 50)
         """
         self.min_open = min_open or self.MIN_CONFIDENCE_OPEN
         self.min_close = min_close or self.MIN_CONFIDENCE_CLOSE
-        
+
         logger.info(
             f"[ConfidenceValidator] Initialized - "
             f"MIN_OPEN={self.min_open}, MIN_CLOSE={self.min_close}"
