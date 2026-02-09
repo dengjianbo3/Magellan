@@ -170,82 +170,101 @@ class FastMonitor:
 
         logger.info(f"[FastMonitor] Initialized for {symbol}")
     
+    async def _fetch_all_market_data(self, session) -> Dict[str, Any]:
+        """并行获取所有市场数据"""
+        tasks = [
+            self._fetch_ticker(session),
+            self._fetch_candles(session, "1m", 10),
+            self._fetch_candles(session, "5m", 25),
+            self._fetch_candles(session, "15m", 50),
+            self._fetch_funding_rate(session),
+            self._fetch_open_interest(session),
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        return {
+            "ticker": results[0] if not isinstance(results[0], Exception) else {},
+            "candles_1m": results[1] if not isinstance(results[1], Exception) else [],
+            "candles_5m": results[2] if not isinstance(results[2], Exception) else [],
+            "candles_15m": results[3] if not isinstance(results[3], Exception) else [],
+            "funding_data": results[4] if not isinstance(results[4], Exception) else {},
+            "oi_data": results[5] if not isinstance(results[5], Exception) else {},
+        }
+
+    def _run_all_checks(self, data: Dict[str, Any]) -> List[FastTriggerCondition]:
+        """执行所有条件检测"""
+        triggered_conditions = []
+        current_price = float(data["ticker"].get("last", 0)) if data["ticker"] else 0
+
+        # 1. 价格急变检测
+        triggered_conditions.extend(self._check_price_spikes(
+            data["candles_1m"], data["candles_5m"], data["candles_15m"]
+        ))
+
+        # 2. 成交量异常检测
+        triggered_conditions.extend(self._check_volume_spikes(
+            data["candles_1m"], data["candles_5m"]
+        ))
+
+        # 3. 资金费率检测
+        triggered_conditions.extend(self._check_funding_rate(data["funding_data"]))
+
+        # 4. 持仓量变化检测
+        triggered_conditions.extend(self._check_open_interest(data["oi_data"]))
+
+        # 5. RSI 极端值检测
+        triggered_conditions.extend(self._check_rsi_extreme(data["candles_15m"]))
+
+        # 6. EMA 偏离检测
+        triggered_conditions.extend(self._check_ema_deviation(
+            data["candles_15m"], current_price
+        ))
+
+        return triggered_conditions
+
+    def _determine_max_urgency(self, conditions: List[FastTriggerCondition]) -> str:
+        """确定最高紧急程度"""
+        urgency_order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+        max_urgency = "low"
+        for cond in conditions:
+            if urgency_order.get(cond.urgency, 0) > urgency_order.get(max_urgency, 0):
+                max_urgency = cond.urgency
+        return max_urgency
+
+    def _build_trigger_result(
+        self,
+        conditions: List[FastTriggerCondition]
+    ) -> FastTriggerResult:
+        """构建触发结果"""
+        max_urgency = self._determine_max_urgency(conditions)
+        return FastTriggerResult(
+            should_trigger=len(conditions) > 0,
+            conditions=conditions,
+            urgency=max_urgency,
+            timestamp=datetime.now().isoformat()
+        )
+
     async def check(self) -> FastTriggerResult:
         """
         执行所有硬条件检测
-        
+
         Returns:
             FastTriggerResult - 包含是否触发及触发条件详情
         """
         triggered_conditions: List[FastTriggerCondition] = []
-        
+
         try:
             async with aiohttp.ClientSession() as session:
-                # 并行获取所有需要的数据
-                tasks = [
-                    self._fetch_ticker(session),
-                    self._fetch_candles(session, "1m", 10),
-                    self._fetch_candles(session, "5m", 25),
-                    self._fetch_candles(session, "15m", 50),
-                    self._fetch_funding_rate(session),
-                    self._fetch_open_interest(session),
-                ]
-                
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                ticker = results[0] if not isinstance(results[0], Exception) else {}
-                candles_1m = results[1] if not isinstance(results[1], Exception) else []
-                candles_5m = results[2] if not isinstance(results[2], Exception) else []
-                candles_15m = results[3] if not isinstance(results[3], Exception) else []
-                funding_data = results[4] if not isinstance(results[4], Exception) else {}
-                oi_data = results[5] if not isinstance(results[5], Exception) else {}
-                
-                current_price = float(ticker.get("last", 0)) if ticker else 0
-                
-                # 1. 价格急变检测
-                price_conditions = self._check_price_spikes(
-                    candles_1m, candles_5m, candles_15m
-                )
-                triggered_conditions.extend(price_conditions)
-                
-                # 2. 成交量异常检测
-                volume_conditions = self._check_volume_spikes(candles_1m, candles_5m)
-                triggered_conditions.extend(volume_conditions)
-                
-                # 3. 资金费率检测
-                funding_conditions = self._check_funding_rate(funding_data)
-                triggered_conditions.extend(funding_conditions)
-                
-                # 4. 持仓量变化检测
-                oi_conditions = self._check_open_interest(oi_data)
-                triggered_conditions.extend(oi_conditions)
-                
-                # 5. RSI 极端值检测
-                rsi_conditions = self._check_rsi_extreme(candles_15m)
-                triggered_conditions.extend(rsi_conditions)
-                
-                # 6. EMA 偏离检测
-                ema_conditions = self._check_ema_deviation(candles_15m, current_price)
-                triggered_conditions.extend(ema_conditions)
-                
+                data = await self._fetch_all_market_data(session)
+                triggered_conditions = self._run_all_checks(data)
+
         except Exception as e:
             logger.error(f"[FastMonitor] Check failed: {e}")
             import traceback
             traceback.print_exc()
-        
-        # 确定最高紧急程度
-        urgency_order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
-        max_urgency = "low"
-        for cond in triggered_conditions:
-            if urgency_order.get(cond.urgency, 0) > urgency_order.get(max_urgency, 0):
-                max_urgency = cond.urgency
-        
-        result = FastTriggerResult(
-            should_trigger=len(triggered_conditions) > 0,
-            conditions=triggered_conditions,
-            urgency=max_urgency,
-            timestamp=datetime.now().isoformat()
-        )
+
+        result = self._build_trigger_result(triggered_conditions)
         
         if result.should_trigger:
             conditions_str = ", ".join([c.name for c in triggered_conditions])

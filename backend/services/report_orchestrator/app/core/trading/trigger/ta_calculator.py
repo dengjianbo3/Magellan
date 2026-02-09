@@ -83,81 +83,95 @@ class TAData:
 class TACalculator:
     """
     技术分析计算器
-    
+
     使用 OKX 公开 API 获取 K 线数据并计算指标。
     """
-    
+
     def __init__(self, symbol: str = "BTC-USDT-SWAP"):
         self.symbol = symbol
         # Use centralized config for OKX base URL
         self.base_url = get_infra_config().okx_base_url if get_infra_config else "https://www.okx.com"
         self._last_data: Optional[TAData] = None
-    
+
+    async def _fetch_all_candles(self, session) -> Dict[str, Any]:
+        """并行获取所有周期的K线数据"""
+        tasks = [
+            self._fetch_candles(session, "15m", 50),
+            self._fetch_candles(session, "1H", 50),
+            self._fetch_candles(session, "4H", 20),
+            self._fetch_ticker(session)
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        return {
+            "candles_15m": results[0] if not isinstance(results[0], Exception) else [],
+            "candles_1h": results[1] if not isinstance(results[1], Exception) else [],
+            "candles_4h": results[2] if not isinstance(results[2], Exception) else [],
+            "ticker": results[3] if not isinstance(results[3], Exception) else {},
+        }
+
+    def _calculate_15m_indicators(self, data: TAData, candles: List[Dict]) -> None:
+        """计算15分钟周期指标"""
+        if not candles:
+            return
+        data.rsi_15m = self._calculate_rsi(candles)
+        macd, signal = self._calculate_macd(candles)
+        data.macd_15m = macd
+        data.macd_signal_15m = signal
+        data.macd_crossover = self._detect_macd_crossover(candles)
+        data.volume_spike = self._detect_volume_spike(candles)
+        data.trend_15m = self._determine_trend(candles)
+        data.price_change_15m = self._calculate_price_change(candles, 1)
+
+    def _calculate_1h_indicators(self, data: TAData, candles: List[Dict]) -> None:
+        """计算1小时周期指标"""
+        if not candles:
+            return
+        data.rsi_1h = self._calculate_rsi(candles)
+        data.ema_20_1h = self._calculate_ema(candles, 20)
+        data.ema_50_1h = self._calculate_ema(candles, 50)
+        data.trend_1h = self._determine_trend(candles)
+        data.price_change_1h = self._calculate_price_change(candles, 1)
+
+    def _calculate_4h_indicators(self, data: TAData, candles: List[Dict]) -> None:
+        """计算4小时周期指标"""
+        if not candles:
+            return
+        data.trend_4h = self._determine_trend(candles)
+        data.support_4h, data.resistance_4h = self._find_support_resistance(candles)
+        data.price_change_4h = self._calculate_price_change(candles, 1)
+
     async def calculate(self, timeframes: List[str] = None) -> TAData:
         """
         计算多周期技术指标
-        
+
         Args:
             timeframes: 要计算的周期列表，如 ["15m", "1h", "4h"]
         """
         if timeframes is None:
             timeframes = ["15m", "1H", "4H"]
-        
+
         data = TAData()
-        
+
         try:
             async with aiohttp.ClientSession() as session:
-                # 并行获取各周期 K 线
-                tasks = [
-                    self._fetch_candles(session, "15m", 50),
-                    self._fetch_candles(session, "1H", 50),
-                    self._fetch_candles(session, "4H", 20),
-                    self._fetch_ticker(session)
-                ]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                candles_15m = results[0] if not isinstance(results[0], Exception) else []
-                candles_1h = results[1] if not isinstance(results[1], Exception) else []
-                candles_4h = results[2] if not isinstance(results[2], Exception) else []
-                ticker = results[3] if not isinstance(results[3], Exception) else {}
-                
-                # 计算 15m 指标
-                if candles_15m:
-                    data.rsi_15m = self._calculate_rsi(candles_15m)
-                    macd, signal = self._calculate_macd(candles_15m)
-                    data.macd_15m = macd
-                    data.macd_signal_15m = signal
-                    data.macd_crossover = self._detect_macd_crossover(candles_15m)
-                    data.volume_spike = self._detect_volume_spike(candles_15m)
-                    data.trend_15m = self._determine_trend(candles_15m)
-                    data.price_change_15m = self._calculate_price_change(candles_15m, 1)
-                
-                # 计算 1h 指标
-                if candles_1h:
-                    data.rsi_1h = self._calculate_rsi(candles_1h)
-                    data.ema_20_1h = self._calculate_ema(candles_1h, 20)
-                    data.ema_50_1h = self._calculate_ema(candles_1h, 50)
-                    data.trend_1h = self._determine_trend(candles_1h)
-                    data.price_change_1h = self._calculate_price_change(candles_1h, 1)
-                
-                # 计算 4h 指标
-                if candles_4h:
-                    data.trend_4h = self._determine_trend(candles_4h)
-                    data.support_4h, data.resistance_4h = self._find_support_resistance(candles_4h)
-                    data.price_change_4h = self._calculate_price_change(candles_4h, 1)
-                
-                # 当前价格
-                if ticker:
-                    data.current_price = float(ticker.get("last", 0))
-                
+                market_data = await self._fetch_all_candles(session)
+
+                self._calculate_15m_indicators(data, market_data["candles_15m"])
+                self._calculate_1h_indicators(data, market_data["candles_1h"])
+                self._calculate_4h_indicators(data, market_data["candles_4h"])
+
+                if market_data["ticker"]:
+                    data.current_price = float(market_data["ticker"].get("last", 0))
+
                 self._last_data = data
                 logger.info(f"[TA] RSI(15m)={data.rsi_15m:.1f}, MACD_cross={data.macd_crossover}, Vol_spike={data.volume_spike}")
-                
+
         except Exception as e:
             logger.error(f"[TA] Error calculating indicators: {e}")
             if self._last_data:
                 return self._last_data
-        
+
         return data
     
     async def _fetch_candles(self, session: aiohttp.ClientSession, bar: str, limit: int) -> List[Dict]:

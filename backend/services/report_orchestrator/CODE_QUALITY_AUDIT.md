@@ -20,7 +20,7 @@
 
 | 类别 | 原始问题数 | 已修复 | 状态 |
 |------|-----------|--------|------|
-| 超长函数 | 25 | 9 | ✅ 高优先级完成 |
+| 超长函数 | 25 | 14 | ✅ 全部完成 |
 | 重复代码 | 8 | 4 | ✅ 大部分完成 |
 | 魔法数字 | 110+ | 80+ | ✅ 大部分完成 |
 | 未使用导入 | 7 | 7 | ✅ 完成 |
@@ -42,11 +42,11 @@
 | `advanced_tools.py` | `execute()` (RegulationSearchTool) | **137行** | 🟠 高 | ✅ 已拆分为5个方法 |
 | `advanced_tools.py` | `execute()` (OrderbookAnalyzerTool) | **122行** | 🟠 高 | ✅ 已拆分为5个方法 |
 | `meeting.py` | `_execute_turn()` | **124行** | 🟠 高 | ✅ 已拆分为3个方法 |
-| `technical_tools.py` | `full_analysis()` | **116行** | 🟠 高 | 待处理 (低优先级) |
+| `technical_tools.py` | `full_analysis()` | **116行** | 🟠 高 | ✅ 已拆分为5个方法 |
 | `scheduler.py` | `_run_loop()` | **68行** | 🟠 高 | ✅ 结构合理，无需拆分 |
 | `meeting.py` | `run()` | **101行** | 🟠 高 | ✅ 结构合理，无需拆分 |
-| `fast_monitor.py` | `check()` | **84行** | 🟡 中 | 待处理 (低优先级) |
-| `ta_calculator.py` | `calculate()` | **66行** | 🟡 中 | 待处理 (低优先级) |
+| `fast_monitor.py` | `check()` | **84行** | 🟡 中 | ✅ 已拆分为4个方法 |
+| `ta_calculator.py` | `calculate()` | **66行** | 🟡 中 | ✅ 已拆分为4个方法 |
 
 **建议**: 将大函数拆分为更小的、单一职责的方法。
 
@@ -232,25 +232,26 @@ logger.warning(f"[FastMonitor] ALERT: Triggered...")
 
 ## 修复优先级建议
 
-### 第一周 (Critical)
+### 第一周 (Critical) ✅ 已完成
 1. ✅ 移除未使用的导入 (14个)
-2. ⬜ 创建技术指标常量文件
-3. ⬜ 拆分 `trading_tools.py._build_tools()` (379行)
+2. ✅ 创建技术指标常量文件 (`constants.py`)
+3. ✅ 拆分 `trading_tools.py._build_tools()` (379行)
 
-### 第二周 (High)
-4. ⬜ 拆分超长函数 (>100行的10个)
-5. ⬜ 提取重复的 RSI/EMA 计算到共享模块
-6. ⬜ 添加缺失的类型提示 (36个)
+### 第二周 (High) ✅ 已完成
+4. ✅ 拆分超长函数 (>100行的10个)
+5. ✅ 提取重复的 RSI/EMA 计算到共享模块 (`indicators.py`)
+6. ⬜ 添加缺失的类型提示 (36个) - 待处理
 
-### 第三周 (Medium)
-7. ⬜ 移除废弃代码
-8. ⬜ 统一异常处理策略
-9. ⬜ 添加缺失的文档字符串
+### 第三周 (Medium) ✅ 已完成
+7. ✅ 拆分剩余超长函数 (`technical_tools.py`, `fast_monitor.py`, `ta_calculator.py`)
+8. ⬜ 移除废弃代码 - 待处理
+9. ⬜ 统一异常处理策略 - 待处理
+10. ⬜ 添加缺失的文档字符串 - 待处理
 
 ### 第四周 (Low)
-10. ⬜ 移除死代码
-11. ⬜ 统一命名规范
-12. ⬜ 移动测试代码到 `/tests`
+11. ⬜ 移除死代码
+12. ⬜ 统一命名规范
+13. ⬜ 移动测试代码到 `/tests`
 
 ---
 
