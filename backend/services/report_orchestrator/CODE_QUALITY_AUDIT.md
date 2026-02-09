@@ -20,7 +20,7 @@
 
 | 类别 | 原始问题数 | 已修复 | 状态 |
 |------|-----------|--------|------|
-| 超长函数 | 25 | 5 | 🟡 进行中 |
+| 超长函数 | 25 | 8 | 🟡 进行中 |
 | 重复代码 | 8 | 4 | 🟡 进行中 |
 | 魔法数字 | 110+ | 80+ | ✅ 大部分完成 |
 | 未使用导入 | 7 | 7 | ✅ 完成 |
@@ -38,12 +38,13 @@
 | `agent.py` (roundtable) | `_call_llm()` | **143行** | 🔴 严重 | ✅ 已拆分为5个方法 |
 | `agent.py` (roundtable) | `_parse_llm_response()` | **136行** | 🔴 严重 | ✅ 已拆分为5个方法 |
 | `agent.py` (roundtable) | `analyze()` | **165行** | 🔴 严重 | ✅ 已拆分为6个方法 |
-| `advanced_tools.py` | `execute()` (PersonBackgroundTool) | **129行** | 🟠 高 | 待处理 |
-| `advanced_tools.py` | `execute()` (RegulationSearchTool) | **137行** | 🟠 高 | 待处理 |
+| `advanced_tools.py` | `execute()` (PersonBackgroundTool) | **129行** | 🟠 高 | ✅ 已拆分为7个方法 |
+| `advanced_tools.py` | `execute()` (RegulationSearchTool) | **137行** | 🟠 高 | ✅ 已拆分为5个方法 |
+| `meeting.py` | `_execute_turn()` | **124行** | 🟠 高 | ✅ 已拆分为3个方法 |
 | `advanced_tools.py` | `execute()` (OrderbookAnalyzerTool) | **122行** | 🟠 高 | 待处理 |
 | `technical_tools.py` | `full_analysis()` | **116行** | 🟠 高 | 待处理 |
-| `scheduler.py` | `run_check()` | **104行** | 🟠 高 | 待处理 |
-| `meeting.py` | `run()` | **101行** | 🟠 高 | 待处理 |
+| `scheduler.py` | `run_check()` | **104行** | 🟠 高 | ✅ 结构合理，无需拆分 |
+| `meeting.py` | `run()` | **101行** | 🟠 高 | ✅ 结构合理，无需拆分 |
 | `fast_monitor.py` | `check()` | **84行** | 🟡 中 | 待处理 |
 | `ta_calculator.py` | `calculate()` | **66行** | 🟡 中 | 待处理 |
 
