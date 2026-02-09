@@ -925,10 +925,8 @@ Use cases:
         Returns:
             Orderbook analysis results
         """
-        # Normalize symbol - handle formats like BTC/USDT, BTC-USDT, BTCUSDT, BTC
-        symbol = symbol.upper()
-        symbol = symbol.replace('-USDT', '').replace('/USDT', '').replace('USDT', '')
-        symbol = symbol.replace('-', '').replace('/', '').strip()
+        # Normalize symbol
+        symbol = self._normalize_symbol(symbol)
 
         try:
             # Get orderbook with fallback
@@ -941,11 +939,9 @@ Use cases:
                     "summary": f"Failed to get {symbol} orderbook (Binance/OKX/Bybit)"
                 }
 
-            # Get source exchange
+            # Parse orderbook data
             exchange = orderbook.get("_exchange", "Unknown")
-
-            bids = [[float(p), float(q)] for p, q in orderbook.get("bids", [])[:depth]]
-            asks = [[float(p), float(q)] for p, q in orderbook.get("asks", [])[:depth]]
+            bids, asks = self._parse_orderbook_data(orderbook, depth)
 
             if not bids or not asks:
                 return {
@@ -954,71 +950,17 @@ Use cases:
                     "summary": f"{symbol} orderbook has no data"
                 }
 
-            # Calculate total bid/ask volume
-            total_bid_volume = sum(q for _, q in bids)
-            total_ask_volume = sum(q for _, q in asks)
+            # Analyze orderbook
+            analysis = self._analyze_orderbook(bids, asks, symbol)
 
-            # Calculate bid/ask pressure ratio
-            pressure_ratio = total_bid_volume / total_ask_volume if total_ask_volume > 0 else 0
-
-            # Find large orders (>3x average)
-            avg_bid = total_bid_volume / len(bids)
-            avg_ask = total_ask_volume / len(asks)
-
-            large_bids = [[p, q] for p, q in bids if q > avg_bid * 3]
-            large_asks = [[p, q] for p, q in asks if q > avg_ask * 3]
-
-            # Calculate support and resistance levels
-            bid_prices = [p for p, _ in bids]
-            ask_prices = [p for p, _ in asks]
-
-            best_bid = max(bid_prices) if bid_prices else 0
-            best_ask = min(ask_prices) if ask_prices else 0
-            spread = (best_ask - best_bid) / best_bid * 100 if best_bid > 0 else 0
-
-            # Find price with max volume as key support/resistance
-            support_level = max(bids, key=lambda x: x[1])[0] if bids else 0
-            resistance_level = max(asks, key=lambda x: x[1])[0] if asks else 0
-
-            summary = f"""【Orderbook Analysis】{symbol}/USDT ({exchange})
-
-📊 Current Quote:
-  Best Bid: ${best_bid:,.2f}
-  Best Ask: ${best_ask:,.2f}
-  Spread: {spread:.4f}%
-
-📈 Depth Stats (Top {depth} levels):
-  Total Bid Volume: {total_bid_volume:,.2f} {symbol}
-  Total Ask Volume: {total_ask_volume:,.2f} {symbol}
-  Bid/Ask Ratio: {pressure_ratio:.2f}
-
-🎯 Key Levels:
-  Major Support: ${support_level:,.2f}
-  Major Resistance: ${resistance_level:,.2f}
-
-🐋 Large Order Monitor:
-  Large Buy Orders: {len(large_bids)}
-  Large Sell Orders: {len(large_asks)}
-
-💡 Market Sentiment:
-  {"🟢 Bullish (Strong Bids)" if pressure_ratio > 1.2 else "🔴 Bearish (Strong Asks)" if pressure_ratio < 0.8 else "⚪ Neutral (Balanced)"}
-  {"⚠️ Large buy order support detected" if large_bids else ""}
-  {"⚠️ Large sell order pressure detected" if large_asks else ""}"""
+            # Build summary
+            summary = self._build_orderbook_summary(symbol, exchange, depth, analysis)
 
             return {
                 "success": True,
                 "data": {
                     "symbol": symbol,
-                    "best_bid": best_bid,
-                    "best_ask": best_ask,
-                    "spread_percent": spread,
-                    "total_bid_volume": total_bid_volume,
-                    "total_ask_volume": total_ask_volume,
-                    "pressure_ratio": pressure_ratio,
-                    "support_level": support_level,
-                    "resistance_level": resistance_level,
-                    "large_bids": large_bids,
-                    "large_asks": large_asks,
+                    **analysis,
                     "bids": bids[:10],
                     "asks": asks[:10]
                 },
@@ -1031,6 +973,93 @@ Use cases:
                 "error": str(e),
                 "summary": f"Orderbook analysis failed: {str(e)}"
             }
+
+    def _normalize_symbol(self, symbol: str) -> str:
+        """Normalize symbol format."""
+        symbol = symbol.upper()
+        symbol = symbol.replace('-USDT', '').replace('/USDT', '').replace('USDT', '')
+        symbol = symbol.replace('-', '').replace('/', '').strip()
+        return symbol
+
+    def _parse_orderbook_data(self, orderbook: Dict, depth: int):
+        """Parse bids and asks from orderbook."""
+        bids = [[float(p), float(q)] for p, q in orderbook.get("bids", [])[:depth]]
+        asks = [[float(p), float(q)] for p, q in orderbook.get("asks", [])[:depth]]
+        return bids, asks
+
+    def _analyze_orderbook(self, bids: List, asks: List, symbol: str) -> Dict[str, Any]:
+        """Analyze orderbook data and return metrics."""
+        # Calculate total volumes
+        total_bid_volume = sum(q for _, q in bids)
+        total_ask_volume = sum(q for _, q in asks)
+
+        # Calculate pressure ratio
+        pressure_ratio = total_bid_volume / total_ask_volume if total_ask_volume > 0 else 0
+
+        # Find large orders (>3x average)
+        avg_bid = total_bid_volume / len(bids)
+        avg_ask = total_ask_volume / len(asks)
+        large_bids = [[p, q] for p, q in bids if q > avg_bid * 3]
+        large_asks = [[p, q] for p, q in asks if q > avg_ask * 3]
+
+        # Calculate price levels
+        bid_prices = [p for p, _ in bids]
+        ask_prices = [p for p, _ in asks]
+        best_bid = max(bid_prices) if bid_prices else 0
+        best_ask = min(ask_prices) if ask_prices else 0
+        spread = (best_ask - best_bid) / best_bid * 100 if best_bid > 0 else 0
+
+        # Find support/resistance levels
+        support_level = max(bids, key=lambda x: x[1])[0] if bids else 0
+        resistance_level = max(asks, key=lambda x: x[1])[0] if asks else 0
+
+        return {
+            "best_bid": best_bid,
+            "best_ask": best_ask,
+            "spread_percent": spread,
+            "total_bid_volume": total_bid_volume,
+            "total_ask_volume": total_ask_volume,
+            "pressure_ratio": pressure_ratio,
+            "support_level": support_level,
+            "resistance_level": resistance_level,
+            "large_bids": large_bids,
+            "large_asks": large_asks
+        }
+
+    def _build_orderbook_summary(self, symbol: str, exchange: str, depth: int, analysis: Dict) -> str:
+        """Build summary string for orderbook analysis."""
+        pressure_ratio = analysis["pressure_ratio"]
+        large_bids = analysis["large_bids"]
+        large_asks = analysis["large_asks"]
+
+        sentiment = "🟢 Bullish (Strong Bids)" if pressure_ratio > 1.2 else \
+                   "🔴 Bearish (Strong Asks)" if pressure_ratio < 0.8 else \
+                   "⚪ Neutral (Balanced)"
+
+        return f"""【Orderbook Analysis】{symbol}/USDT ({exchange})
+
+📊 Current Quote:
+  Best Bid: ${analysis['best_bid']:,.2f}
+  Best Ask: ${analysis['best_ask']:,.2f}
+  Spread: {analysis['spread_percent']:.4f}%
+
+📈 Depth Stats (Top {depth} levels):
+  Total Bid Volume: {analysis['total_bid_volume']:,.2f} {symbol}
+  Total Ask Volume: {analysis['total_ask_volume']:,.2f} {symbol}
+  Bid/Ask Ratio: {pressure_ratio:.2f}
+
+🎯 Key Levels:
+  Major Support: ${analysis['support_level']:,.2f}
+  Major Resistance: ${analysis['resistance_level']:,.2f}
+
+🐋 Large Order Monitor:
+  Large Buy Orders: {len(large_bids)}
+  Large Sell Orders: {len(large_asks)}
+
+💡 Market Sentiment:
+  {sentiment}
+  {"⚠️ Large buy order support detected" if large_bids else ""}
+  {"⚠️ Large sell order pressure detected" if large_asks else ""}"""
 
     def to_schema(self) -> Dict[str, Any]:
         return {
