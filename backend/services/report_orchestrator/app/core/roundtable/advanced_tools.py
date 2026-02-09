@@ -129,81 +129,127 @@ Note: Uses public information sources, does not include LinkedIn private data"""
 
         try:
             # Build search query
-            base_query = name
-            if company:
-                base_query += f" {company}"
-            if role:
-                base_query += f" {role}"
+            base_query = self._build_search_query(name, company, role)
 
-            # Execute multiple searches in parallel
-            tasks = [
-                self._search_web(f"{base_query} resume background education", 5),
-                self._search_web(f"{base_query} startup funding investment", 3),
-                self._search_web(f"{base_query} interview news coverage", 3),
-                self._search_github(name)
-            ]
+            # Execute searches and gather results
+            background_results, startup_results, media_results, github_info = await self._gather_search_results(base_query, name)
 
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            background_results = results[0] if not isinstance(results[0], Exception) else []
-            startup_results = results[1] if not isinstance(results[1], Exception) else []
-            media_results = results[2] if not isinstance(results[2], Exception) else []
-            github_info = results[3] if not isinstance(results[3], Exception) else {"found": False}
-
-            # Extract key information
-            profile = {
-                "name": name,
-                "company": company,
-                "role": role,
-                "education": [],
-                "work_history": [],
-                "startup_history": [],
-                "media_coverage": [],
-                "github": github_info if github_info.get("found") else None,
-                "sources": []
-            }
-
-            # Parse background information
-            all_content = ""
-            for result in background_results + startup_results:
-                all_content += result.get("content", "") + "\n"
-                profile["sources"].append({
-                    "title": result.get("title", ""),
-                    "url": result.get("url", "")
-                })
-
-            # Extract education background
-            edu_patterns = [
-                r"毕业于([^\s,，。]+(?:大学|学院|University|College))",
-                r"([^\s,，。]+(?:大学|学院|University|College))\s*(?:毕业|学士|硕士|博士|MBA|PhD)",
-                r"(?:本科|硕士|博士|MBA)\s*[：:]\s*([^\s,，。]+)"
-            ]
-            for pattern in edu_patterns:
-                matches = re.findall(pattern, all_content)
-                profile["education"].extend([m for m in matches if m not in profile["education"]])
-
-            # Extract startup history
-            startup_patterns = [
-                r"创办(?:了)?([^\s,，。]+(?:公司|科技|网络))",
-                r"(?:联合)?创始人[^\s]*([^\s,，。]+(?:公司|科技|网络))",
-                r"创立(?:了)?([^\s,，。]+)"
-            ]
-            for pattern in startup_patterns:
-                matches = re.findall(pattern, all_content)
-                profile["startup_history"].extend([m for m in matches if m not in profile["startup_history"] and len(m) > 2])
-
-            # Add media coverage
-            for result in media_results[:3]:
-                profile["media_coverage"].append({
-                    "title": result.get("title", ""),
-                    "url": result.get("url", ""),
-                    "date": result.get("published_date", "")
-                })
+            # Build profile from results
+            profile = self._build_profile(name, company, role, background_results, startup_results, media_results, github_info)
 
             # Build summary
-            summary = f"""【Person Background Check】{name}
-{"Company: " + company if company else ""}
-{"Role: " + role if role else ""}
+            summary = self._build_summary(profile, github_info)
+
+            return {
+                "success": True,
+                "data": profile,
+                "summary": summary
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "summary": f"Person background check failed: {str(e)}"
+            }
+
+    def _build_search_query(self, name: str, company: str, role: str) -> str:
+        """Build search query from person info."""
+        base_query = name
+        if company:
+            base_query += f" {company}"
+        if role:
+            base_query += f" {role}"
+        return base_query
+
+    async def _gather_search_results(self, base_query: str, name: str):
+        """Execute multiple searches in parallel."""
+        tasks = [
+            self._search_web(f"{base_query} resume background education", 5),
+            self._search_web(f"{base_query} startup funding investment", 3),
+            self._search_web(f"{base_query} interview news coverage", 3),
+            self._search_github(name)
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        background_results = results[0] if not isinstance(results[0], Exception) else []
+        startup_results = results[1] if not isinstance(results[1], Exception) else []
+        media_results = results[2] if not isinstance(results[2], Exception) else []
+        github_info = results[3] if not isinstance(results[3], Exception) else {"found": False}
+
+        return background_results, startup_results, media_results, github_info
+
+    def _build_profile(self, name: str, company: str, role: str,
+                       background_results: List, startup_results: List,
+                       media_results: List, github_info: Dict) -> Dict[str, Any]:
+        """Build profile from search results."""
+        profile = {
+            "name": name,
+            "company": company,
+            "role": role,
+            "education": [],
+            "work_history": [],
+            "startup_history": [],
+            "media_coverage": [],
+            "github": github_info if github_info.get("found") else None,
+            "sources": []
+        }
+
+        # Parse background information
+        all_content = ""
+        for result in background_results + startup_results:
+            all_content += result.get("content", "") + "\n"
+            profile["sources"].append({
+                "title": result.get("title", ""),
+                "url": result.get("url", "")
+            })
+
+        # Extract education and startup history
+        profile["education"] = self._extract_education(all_content)
+        profile["startup_history"] = self._extract_startup_history(all_content)
+
+        # Add media coverage
+        for result in media_results[:3]:
+            profile["media_coverage"].append({
+                "title": result.get("title", ""),
+                "url": result.get("url", ""),
+                "date": result.get("published_date", "")
+            })
+
+        return profile
+
+    def _extract_education(self, content: str) -> List[str]:
+        """Extract education background from content."""
+        education = []
+        edu_patterns = [
+            r"毕业于([^\s,，。]+(?:大学|学院|University|College))",
+            r"([^\s,，。]+(?:大学|学院|University|College))\s*(?:毕业|学士|硕士|博士|MBA|PhD)",
+            r"(?:本科|硕士|博士|MBA)\s*[：:]\s*([^\s,，。]+)"
+        ]
+        for pattern in edu_patterns:
+            matches = re.findall(pattern, content)
+            education.extend([m for m in matches if m not in education])
+        return education
+
+    def _extract_startup_history(self, content: str) -> List[str]:
+        """Extract startup history from content."""
+        startup_history = []
+        startup_patterns = [
+            r"创办(?:了)?([^\s,，。]+(?:公司|科技|网络))",
+            r"(?:联合)?创始人[^\s]*([^\s,，。]+(?:公司|科技|网络))",
+            r"创立(?:了)?([^\s,，。]+)"
+        ]
+        for pattern in startup_patterns:
+            matches = re.findall(pattern, content)
+            startup_history.extend([m for m in matches if m not in startup_history and len(m) > 2])
+        return startup_history
+
+    def _build_summary(self, profile: Dict, github_info: Dict) -> str:
+        """Build summary string from profile."""
+        return f"""【Person Background Check】{profile['name']}
+{"Company: " + profile['company'] if profile['company'] else ""}
+{"Role: " + profile['role'] if profile['role'] else ""}
 
 📚 Education:
 {chr(10).join(f"  • {e}" for e in profile["education"][:3]) if profile["education"] else "  No public education info found"}
@@ -218,19 +264,6 @@ Note: Uses public information sources, does not include LinkedIn private data"""
 {chr(10).join(f"  • {m['title'][:40]}" for m in profile["media_coverage"][:3]) if profile["media_coverage"] else "  No relevant coverage found"}
 
 📋 Sources: {len(profile["sources"])} public sources"""
-
-            return {
-                "success": True,
-                "data": profile,
-                "summary": summary
-            }
-
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "summary": f"Person background check failed: {str(e)}"
-            }
 
     def _format_github(self, info: Dict) -> str:
         """Format GitHub info"""
@@ -347,96 +380,17 @@ Data sources: Government public regulation databases + Official websites"""
 
         try:
             # Build search query
-            type_keywords = {
-                "law": "law legislation",
-                "regulation": "regulation rules",
-                "interpretation": "judicial interpretation",
-                "policy": "policy notice guidance",
-                "all": ""
-            }
+            base_query = self._build_regulation_query(keywords, law_type, industry)
 
-            industry_keywords = {
-                "fintech": "finance payment lending",
-                "healthcare": "medical pharmaceutical",
-                "ecommerce": "e-commerce online trading",
-                "ai": "artificial intelligence algorithm data",
-                "crypto": "cryptocurrency digital assets",
-                "education": "education training"
-            }
+            # Execute searches
+            gov_results, general_results = await self._search_regulations(base_query)
 
-            base_query = keywords
-            if law_type != "all" and law_type in type_keywords:
-                base_query += f" {type_keywords[law_type]}"
-            if industry and industry in industry_keywords:
-                base_query += f" {industry_keywords[industry]}"
+            # Process and merge results
+            regulations = self._process_regulation_results(gov_results, general_results)
 
-            # Search government websites
-            gov_query = f"{base_query} site:gov.cn"
-            general_query = f"{base_query} regulation law"
-
-            tasks = [
-                self._search_web(gov_query, 5),
-                self._search_web(general_query, 5)
-            ]
-
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            gov_results = results[0] if not isinstance(results[0], Exception) else []
-            general_results = results[1] if not isinstance(results[1], Exception) else []
-
-            # Merge results, prioritize government sources
-            regulations = []
-            seen_urls = set()
-
-            # Process government sources
-            for result in gov_results:
-                url = result.get("url", "")
-                if url not in seen_urls:
-                    seen_urls.add(url)
-                    regulations.append({
-                        "title": result.get("title", ""),
-                        "content": result.get("content", "")[:300],
-                        "url": url,
-                        "source_type": "Government",
-                        "date": result.get("published_date", "")
-                    })
-
-            # Process general sources (non-government)
-            for result in general_results:
-                url = result.get("url", "")
-                if url not in seen_urls:
-                    seen_urls.add(url)
-                    is_gov = any(domain in url for domain in self.gov_domains)
-                    regulations.append({
-                        "title": result.get("title", ""),
-                        "content": result.get("content", "")[:300],
-                        "url": url,
-                        "source_type": "Government" if is_gov else "Other",
-                        "date": result.get("published_date", "")
-                    })
-
-            # Classification stats
+            # Build summary
             gov_count = sum(1 for r in regulations if r["source_type"] == "Government")
-
-            summary = f"""【Regulation Search Results】Keywords: {keywords}
-
-📋 Search Type: {law_type}
-🏭 Industry: {industry or "General"}
-📊 Results Found: {len(regulations)} (Government sources: {gov_count})
-
-📜 Related Regulations:
-"""
-            for i, reg in enumerate(regulations[:5], 1):
-                summary += f"\n{i}. [{reg['source_type']}] {reg['title'][:50]}"
-                if reg.get("date"):
-                    summary += f" ({reg['date']})"
-
-            summary += f"""
-
-⚠️ Notes:
-- Verify the latest version and effective status of regulations
-- Consult professional lawyers for complex legal issues
-- Government sources are more authoritative"""
+            summary = self._build_regulation_summary(keywords, law_type, industry, regulations, gov_count)
 
             return {
                 "success": True,
@@ -457,6 +411,109 @@ Data sources: Government public regulation databases + Official websites"""
                 "error": str(e),
                 "summary": f"Regulation search failed: {str(e)}"
             }
+
+    def _build_regulation_query(self, keywords: str, law_type: str, industry: str) -> str:
+        """Build search query for regulations."""
+        type_keywords = {
+            "law": "law legislation",
+            "regulation": "regulation rules",
+            "interpretation": "judicial interpretation",
+            "policy": "policy notice guidance",
+            "all": ""
+        }
+
+        industry_keywords = {
+            "fintech": "finance payment lending",
+            "healthcare": "medical pharmaceutical",
+            "ecommerce": "e-commerce online trading",
+            "ai": "artificial intelligence algorithm data",
+            "crypto": "cryptocurrency digital assets",
+            "education": "education training"
+        }
+
+        base_query = keywords
+        if law_type != "all" and law_type in type_keywords:
+            base_query += f" {type_keywords[law_type]}"
+        if industry and industry in industry_keywords:
+            base_query += f" {industry_keywords[industry]}"
+
+        return base_query
+
+    async def _search_regulations(self, base_query: str):
+        """Search government and general sources."""
+        gov_query = f"{base_query} site:gov.cn"
+        general_query = f"{base_query} regulation law"
+
+        tasks = [
+            self._search_web(gov_query, 5),
+            self._search_web(general_query, 5)
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        gov_results = results[0] if not isinstance(results[0], Exception) else []
+        general_results = results[1] if not isinstance(results[1], Exception) else []
+
+        return gov_results, general_results
+
+    def _process_regulation_results(self, gov_results: List, general_results: List) -> List[Dict]:
+        """Process and merge regulation search results."""
+        regulations = []
+        seen_urls = set()
+
+        # Process government sources first
+        for result in gov_results:
+            url = result.get("url", "")
+            if url not in seen_urls:
+                seen_urls.add(url)
+                regulations.append({
+                    "title": result.get("title", ""),
+                    "content": result.get("content", "")[:300],
+                    "url": url,
+                    "source_type": "Government",
+                    "date": result.get("published_date", "")
+                })
+
+        # Process general sources
+        for result in general_results:
+            url = result.get("url", "")
+            if url not in seen_urls:
+                seen_urls.add(url)
+                is_gov = any(domain in url for domain in self.gov_domains)
+                regulations.append({
+                    "title": result.get("title", ""),
+                    "content": result.get("content", "")[:300],
+                    "url": url,
+                    "source_type": "Government" if is_gov else "Other",
+                    "date": result.get("published_date", "")
+                })
+
+        return regulations
+
+    def _build_regulation_summary(self, keywords: str, law_type: str, industry: str,
+                                   regulations: List[Dict], gov_count: int) -> str:
+        """Build summary for regulation search results."""
+        summary = f"""【Regulation Search Results】Keywords: {keywords}
+
+📋 Search Type: {law_type}
+🏭 Industry: {industry or "General"}
+📊 Results Found: {len(regulations)} (Government sources: {gov_count})
+
+📜 Related Regulations:
+"""
+        for i, reg in enumerate(regulations[:5], 1):
+            summary += f"\n{i}. [{reg['source_type']}] {reg['title'][:50]}"
+            if reg.get("date"):
+                summary += f" ({reg['date']})"
+
+        summary += """
+
+⚠️ Notes:
+- Verify the latest version and effective status of regulations
+- Consult professional lawyers for complex legal issues
+- Government sources are more authoritative"""
+
+        return summary
 
     def to_schema(self) -> Dict[str, Any]:
         return {
