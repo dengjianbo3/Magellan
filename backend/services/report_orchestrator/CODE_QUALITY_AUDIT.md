@@ -20,8 +20,8 @@
 
 | 类别 | 原始问题数 | 已修复 | 状态 |
 |------|-----------|--------|------|
-| 超长函数 | 25 | 8 | 🟡 进行中 |
-| 重复代码 | 8 | 4 | 🟡 进行中 |
+| 超长函数 | 25 | 9 | ✅ 高优先级完成 |
+| 重复代码 | 8 | 4 | ✅ 大部分完成 |
 | 魔法数字 | 110+ | 80+ | ✅ 大部分完成 |
 | 未使用导入 | 7 | 7 | ✅ 完成 |
 
@@ -40,13 +40,13 @@
 | `agent.py` (roundtable) | `analyze()` | **165行** | 🔴 严重 | ✅ 已拆分为6个方法 |
 | `advanced_tools.py` | `execute()` (PersonBackgroundTool) | **129行** | 🟠 高 | ✅ 已拆分为7个方法 |
 | `advanced_tools.py` | `execute()` (RegulationSearchTool) | **137行** | 🟠 高 | ✅ 已拆分为5个方法 |
+| `advanced_tools.py` | `execute()` (OrderbookAnalyzerTool) | **122行** | 🟠 高 | ✅ 已拆分为5个方法 |
 | `meeting.py` | `_execute_turn()` | **124行** | 🟠 高 | ✅ 已拆分为3个方法 |
-| `advanced_tools.py` | `execute()` (OrderbookAnalyzerTool) | **122行** | 🟠 高 | 待处理 |
-| `technical_tools.py` | `full_analysis()` | **116行** | 🟠 高 | 待处理 |
-| `scheduler.py` | `run_check()` | **104行** | 🟠 高 | ✅ 结构合理，无需拆分 |
+| `technical_tools.py` | `full_analysis()` | **116行** | 🟠 高 | 待处理 (低优先级) |
+| `scheduler.py` | `_run_loop()` | **68行** | 🟠 高 | ✅ 结构合理，无需拆分 |
 | `meeting.py` | `run()` | **101行** | 🟠 高 | ✅ 结构合理，无需拆分 |
-| `fast_monitor.py` | `check()` | **84行** | 🟡 中 | 待处理 |
-| `ta_calculator.py` | `calculate()` | **66行** | 🟡 中 | 待处理 |
+| `fast_monitor.py` | `check()` | **84行** | 🟡 中 | 待处理 (低优先级) |
+| `ta_calculator.py` | `calculate()` | **66行** | 🟡 中 | 待处理 (低优先级) |
 
 **建议**: 将大函数拆分为更小的、单一职责的方法。
 
