@@ -6,8 +6,8 @@ Trigger Scorer - 触发评分系统
 
 import logging
 import os
-from dataclasses import dataclass
-from typing import List, Dict
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Any
 
 # 支持独立运行和作为模块导入
 try:
@@ -57,7 +57,7 @@ class TriggerScore:
     price_score: int = 0
     ta_score: int = 0
     total: int = 0
-    details: Dict = None
+    details: Optional[Dict[str, Any]] = field(default=None)
     
     def __post_init__(self):
         if self.details is None:

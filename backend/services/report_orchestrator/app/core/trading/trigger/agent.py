@@ -10,7 +10,10 @@ import logging
 import os
 from datetime import datetime
 from dataclasses import dataclass, field
-from typing import Tuple, Dict, List, Optional
+from typing import Tuple, Dict, List, Optional, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.core.trading.paper_trader import PaperTrader
 
 # 支持独立运行和作为模块导入
 try:
@@ -97,13 +100,13 @@ class TriggerAgent:
         news_crawler: Optional[NewsCrawler] = None,
         ta_calculator: Optional[TACalculator] = None,
         llm_helper: Optional["LLMHelper"] = None,
-        paper_trader = None,  # 新增: 用于获取仓位信息
-        llm_gateway_url: str = None,
-        confidence_threshold: int = None
+        paper_trader: Optional["PaperTrader"] = None,
+        llm_gateway_url: Optional[str] = None,
+        confidence_threshold: Optional[int] = None
     ):
         self.news_crawler = news_crawler or NewsCrawler()
         self.ta_calculator = ta_calculator or TACalculator()
-        self.paper_trader = paper_trader  # 新增
+        self.paper_trader = paper_trader
 
         # 复用现有的 LLMHelper
         if llm_helper:

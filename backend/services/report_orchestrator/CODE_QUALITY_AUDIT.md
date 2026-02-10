@@ -156,14 +156,14 @@ except json.JSONDecodeError as e:
 
 ---
 
-### 7. 缺失类型提示 - 36个实例
+### 7. 缺失类型提示 - 36个实例 ✅ 部分已修复
 
-| 文件 | 问题 |
-|------|------|
-| `trading_agents.py:18` | `toolkit=None` 缺少类型 |
-| `anti_bias.py:348` | `check_result` 缺少类型 |
-| `trigger/agent.py:97` | `paper_trader` 缺少类型 |
-| `trigger/scorer.py:52` | `details: Dict = None` 应为 `Optional[Dict]` |
+| 文件 | 问题 | 状态 |
+|------|------|------|
+| `trading_agents.py:18` | `toolkit=None` 缺少类型 | ✅ 已修复 |
+| `anti_bias.py:348` | `check_result` 缺少类型 | ✅ 已有类型 |
+| `trigger/agent.py:97` | `paper_trader` 缺少类型 | ✅ 已修复 |
+| `trigger/scorer.py:52` | `details: Dict = None` 应为 `Optional[Dict]` | ✅ 已修复 |
 
 **建议**: 添加完整的类型注解
 

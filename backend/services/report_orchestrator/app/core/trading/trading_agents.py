@@ -7,7 +7,11 @@ Following the atomic agent design principle:
 - This module only orchestrates them with trading tools
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.core.trading.trading_tools import TradingToolkit
+
 from app.core.agent_registry import get_registry
 from app.core.roundtable.investment_agents import create_leader
 import logging
@@ -15,7 +19,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def create_trading_agents(toolkit=None) -> List[Any]:
+def create_trading_agents(toolkit: Optional["TradingToolkit"] = None) -> List[Any]:
     """
     Create trading agents by loading atomic agents from AgentRegistry
     and adding trading-specific tools.
