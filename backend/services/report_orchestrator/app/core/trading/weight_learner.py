@@ -38,6 +38,19 @@ class AgentPerformance:
     recent_total: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert performance metrics to dictionary format.
+
+        Returns:
+            Dict containing:
+                - agent_name: Agent identifier
+                - current_weight: Current voting weight (0.5-2.0)
+                - total_predictions: Total number of predictions made
+                - correct_predictions: Number of correct predictions
+                - accuracy: Overall accuracy percentage
+                - recent_accuracy: Accuracy over last 20 trades
+                - last_updated: ISO timestamp of last update
+        """
         return {
             "agent_name": self.agent_name,
             "current_weight": round(self.current_weight, 3),

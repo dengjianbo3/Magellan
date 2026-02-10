@@ -193,12 +193,14 @@ except Exception as e:
 
 ### 1. 缺失或不完整的文档字符串 - 20+ 实例
 
+### 1. 缺失或不完整的文档字符串 - 20+ 实例 ✅ 主要已修复
+
 需要添加文档的公共 API:
-- `weight_learner.py`: `AgentPerformance.to_dict()`
-- `reflection/engine.py`: `TradeReflection.to_dict()`, `from_dict()`
-- `trading_tools.py`: `calculate_rsi()`, `calculate_ema()`
-- `trigger/agent.py`: 构造函数参数
-- `trigger/fast_monitor.py`: 构造函数参数
+- ✅ `weight_learner.py`: `AgentPerformance.to_dict()` - 已添加
+- ✅ `reflection/engine.py`: `TradeReflection.to_dict()`, `from_dict()` - 已添加
+- `trading_tools.py`: `calculate_rsi()`, `calculate_ema()` - 使用 indicators.py
+- ✅ `trigger/agent.py`: 构造函数参数 - 已添加
+- ✅ `trigger/fast_monitor.py`: 构造函数参数 - 已添加
 
 ### 2. 命名不一致 - 15+ 实例
 
@@ -257,7 +259,7 @@ logger.warning(f"[FastMonitor] ALERT: Triggered...")
 7. ✅ 拆分剩余超长函数 (`technical_tools.py`, `fast_monitor.py`, `ta_calculator.py`)
 8. ✅ 移除废弃代码 - AgentWeightAdjuster 已替换为 AgentWeightLearner
 9. ✅ 统一异常处理策略 - 创建 `exceptions.py`，更新 trigger 模块
-10. ⬜ 添加缺失的文档字符串 - 待处理
+10. ✅ 添加缺失的文档字符串 - 主要公共 API 已添加
 
 ### 架构问题修复 ✅ 部分完成
 11. ✅ 实现 SEMI_AUTO 模式交易执行 (`trading_mode.py`)

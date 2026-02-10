@@ -144,16 +144,35 @@ class FastMonitorConfig:
 class FastMonitor:
     """
     快速硬条件监控器
-    
-    每 1-5 分钟运行一次，检测市场异常情况
-    无 LLM 调用开销，纯规则计算
+
+    每 1-5 分钟运行一次，检测市场异常情况。
+    无 LLM 调用开销，纯规则计算。
+
+    检测条件包括:
+        - 价格急变 (1m/5m/15m)
+        - 成交量异常
+        - 资金费率极端值
+        - 持仓量变化
+        - RSI 超买/超卖
+
+    Attributes:
+        symbol: 交易对符号
+        config: 监控配置阈值
+        base_url: OKX API 基础 URL
     """
-    
+
     def __init__(
         self,
         symbol: str = "BTC-USDT-SWAP",
         config: FastMonitorConfig = None
     ):
+        """
+        初始化快速监控器。
+
+        Args:
+            symbol: 交易对符号，默认 "BTC-USDT-SWAP"
+            config: 监控配置，默认使用 FastMonitorConfig()
+        """
         self.symbol = symbol
         self.config = config or FastMonitorConfig()
         self.base_url = get_infra_config().okx_base_url if get_infra_config else "https://www.okx.com"

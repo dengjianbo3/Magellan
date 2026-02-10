@@ -98,11 +98,18 @@ class TriggerContext:
 class TriggerAgent:
     """
     LLM 驱动的触发器代理
-    
+
     使用 LLM 深度分析新闻和指标，决定是否触发主分析。
     复用项目现有的 LLMHelper 进行 LLM 调用。
+
+    Attributes:
+        news_crawler: 新闻爬虫实例
+        ta_calculator: 技术分析计算器实例
+        paper_trader: 模拟交易器实例 (用于获取仓位信息)
+        llm_helper: LLM 调用助手
+        confidence_threshold: 触发置信度阈值 (0-100)
     """
-    
+
     def __init__(
         self,
         news_crawler: Optional[NewsCrawler] = None,
@@ -112,6 +119,17 @@ class TriggerAgent:
         llm_gateway_url: Optional[str] = None,
         confidence_threshold: Optional[int] = None
     ):
+        """
+        初始化触发器代理。
+
+        Args:
+            news_crawler: 新闻爬虫实例，默认创建新实例
+            ta_calculator: 技术分析计算器，默认创建新实例
+            llm_helper: LLM 调用助手，默认根据环境自动创建
+            paper_trader: 模拟交易器，用于获取当前仓位信息
+            llm_gateway_url: LLM 网关 URL，默认从配置读取
+            confidence_threshold: 触发置信度阈值 (0-100)，默认从环境变量读取
+        """
         self.news_crawler = news_crawler or NewsCrawler()
         self.ta_calculator = ta_calculator or TACalculator()
         self.paper_trader = paper_trader

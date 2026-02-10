@@ -51,6 +51,16 @@ class TradeReflection:
     incorrect_predictions: List[str]  # agent IDs that predicted wrong
     
     def to_dict(self) -> dict:
+        """
+        Convert reflection to dictionary format for serialization.
+
+        Returns:
+            Dict containing all reflection fields including:
+                - trade_id, timestamp, direction, entry/exit prices
+                - pnl, pnl_percent, close_reason, is_win
+                - reflection_text, lessons, agent_votes
+                - correct_predictions, incorrect_predictions
+        """
         return {
             "trade_id": self.trade_id,
             "timestamp": self.timestamp.isoformat(),
@@ -68,9 +78,22 @@ class TradeReflection:
             "correct_predictions": self.correct_predictions,
             "incorrect_predictions": self.incorrect_predictions
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> "TradeReflection":
+        """
+        Create TradeReflection instance from dictionary.
+
+        Args:
+            data: Dictionary containing reflection fields.
+                  Required: trade_id, direction, entry_price, exit_price,
+                           leverage, pnl, pnl_percent, close_reason, is_win
+                  Optional: timestamp, reflection_text, lessons, agent_votes,
+                           correct_predictions, incorrect_predictions
+
+        Returns:
+            TradeReflection instance
+        """
         timestamp = data.get("timestamp")
         if isinstance(timestamp, str):
             timestamp = datetime.fromisoformat(timestamp)
