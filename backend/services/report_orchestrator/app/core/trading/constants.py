@@ -5,7 +5,28 @@ Centralized constants for technical indicators, thresholds, and configuration va
 Replaces hardcoded magic numbers throughout the codebase.
 """
 
+import os
 from dataclasses import dataclass
+
+
+# =============================================================================
+# Trading Symbol Configuration
+# =============================================================================
+
+@dataclass(frozen=True)
+class SymbolConfig:
+    """Default trading symbol configuration."""
+    # Default trading pair - can be overridden via TRADING_SYMBOL env var
+    DEFAULT: str = "BTC-USDT-SWAP"
+
+    @staticmethod
+    def get_default() -> str:
+        """Get default symbol from environment or use hardcoded default."""
+        return os.getenv("TRADING_SYMBOL", "BTC-USDT-SWAP")
+
+
+# Singleton instance for easy access
+SYMBOL = SymbolConfig()
 
 
 # =============================================================================

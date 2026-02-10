@@ -1016,10 +1016,21 @@ class OKXTrader:
                 logger.error(f"Error closing position: {e}")
                 return {'success': False, 'error': str(e)}
 
-    async def check_tp_sl(self) -> Optional[str]:
+    async def check_tp_sl(self, auto_close: bool = False) -> Optional[str]:
         """
         Check if TP/SL is hit.
-        Note: OKX handles TP/SL server-side, but we still check for local tracking.
+
+        Note: OKX handles TP/SL server-side via algo orders, so auto_close
+        defaults to False. This method is mainly for local tracking and
+        triggering callbacks.
+
+        Args:
+            auto_close: If True, close position locally (not recommended for OKX
+                       as it may conflict with server-side TP/SL orders).
+                       Default is False for OKX.
+
+        Returns:
+            "tp", "sl", or None
         """
         if not self._position:
             return None
@@ -1030,11 +1041,15 @@ class OKXTrader:
         if self._position.take_profit_price:
             if self._position.direction == "long" and price >= self._position.take_profit_price:
                 logger.info(f"Take profit hit: {price} >= {self._position.take_profit_price}")
+                if auto_close:
+                    await self.close_position(reason="tp")
                 if self.on_tp_hit:
                     await self.on_tp_hit(self._position, price)
                 return "tp"
             elif self._position.direction == "short" and price <= self._position.take_profit_price:
                 logger.info(f"Take profit hit: {price} <= {self._position.take_profit_price}")
+                if auto_close:
+                    await self.close_position(reason="tp")
                 if self.on_tp_hit:
                     await self.on_tp_hit(self._position, price)
                 return "tp"
@@ -1043,11 +1058,15 @@ class OKXTrader:
         if self._position.stop_loss_price:
             if self._position.direction == "long" and price <= self._position.stop_loss_price:
                 logger.info(f"Stop loss hit: {price} <= {self._position.stop_loss_price}")
+                if auto_close:
+                    await self.close_position(reason="sl")
                 if self.on_sl_hit:
                     await self.on_sl_hit(self._position, price)
                 return "sl"
             elif self._position.direction == "short" and price >= self._position.stop_loss_price:
                 logger.info(f"Stop loss hit: {price} >= {self._position.stop_loss_price}")
+                if auto_close:
+                    await self.close_position(reason="sl")
                 if self.on_sl_hit:
                     await self.on_sl_hit(self._position, price)
                 return "sl"

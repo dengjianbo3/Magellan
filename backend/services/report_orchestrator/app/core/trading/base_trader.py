@@ -10,6 +10,13 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 
+# Import default symbol from constants
+try:
+    from .constants import SYMBOL
+    DEFAULT_SYMBOL = SYMBOL.get_default()
+except ImportError:
+    DEFAULT_SYMBOL = "BTC-USDT-SWAP"
+
 logger = logging.getLogger(__name__)
 
 
@@ -79,8 +86,8 @@ class BaseTrader(ABC):
             ...
     """
     
-    def __init__(self, symbol: str = "BTC-USDT-SWAP"):
-        self.symbol = symbol
+    def __init__(self, symbol: str = None):
+        self.symbol = symbol or DEFAULT_SYMBOL
         self._position: Optional[Position] = None
         self._current_price: float = 0.0
         self._on_position_closed_callback = None
@@ -242,11 +249,35 @@ class BaseTrader(ABC):
     async def get_trade_history(self, limit: int = 20) -> list:
         """
         Get trade history.
-        
+
         Default implementation: returns empty list
         """
         return []
-    
+
+    async def check_tp_sl(self, auto_close: bool = True) -> Optional[str]:
+        """
+        Check if TP/SL is triggered.
+
+        This method checks if the current price has hit take profit or stop loss levels.
+
+        IMPORTANT: Behavior is now unified across all traders:
+        - Returns "tp" if take profit is hit
+        - Returns "sl" if stop loss is hit
+        - Returns "liquidation" if liquidation price is hit
+        - Returns None if no trigger
+
+        Args:
+            auto_close: If True, automatically close position when TP/SL is hit.
+                       If False, only return the trigger status without closing.
+                       Default is True for backward compatibility with PaperTrader.
+                       OKX handles TP/SL server-side, so auto_close may be ignored.
+
+        Returns:
+            "tp", "sl", "liquidation", or None
+        """
+        # Default implementation - subclasses should override
+        return None
+
     def has_position(self) -> bool:
         """Check if there's an open position"""
         return self._position is not None

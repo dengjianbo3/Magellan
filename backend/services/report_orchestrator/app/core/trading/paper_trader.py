@@ -646,52 +646,67 @@ class PaperTrader(BaseTrader):
                 "reason": reason
             }
 
-    async def check_tp_sl(self) -> Optional[str]:
-        """Check if TP/SL is triggered"""
+    async def check_tp_sl(self, auto_close: bool = True) -> Optional[str]:
+        """
+        Check if TP/SL is triggered.
+
+        Args:
+            auto_close: If True (default), automatically close position when
+                       TP/SL is hit. If False, only return the trigger status.
+
+        Returns:
+            "tp", "sl", "liquidation", or None
+        """
         if not self._position:
             return None
 
         current_price = await self.get_current_price(self._position.symbol)
-        
-        # 🔧 FIX: Save position reference before close_position sets it to None
+
+        # Save position reference before close_position sets it to None
         position = self._position
 
         if position.direction == "long":
             # Long: price above TP or below SL
             if position.take_profit_price and current_price >= position.take_profit_price:
-                await self.close_position(reason="tp")
+                if auto_close:
+                    await self.close_position(reason="tp")
                 if self.on_tp_hit:
                     await self.on_tp_hit(position, current_price)
                 return "tp"
 
             if position.stop_loss_price and current_price <= position.stop_loss_price:
-                await self.close_position(reason="sl")
+                if auto_close:
+                    await self.close_position(reason="sl")
                 if self.on_sl_hit:
                     await self.on_sl_hit(position, current_price)
                 return "sl"
 
             # Check liquidation
             if current_price <= position.calculate_liquidation_price():
-                await self.close_position(reason="liquidation")
+                if auto_close:
+                    await self.close_position(reason="liquidation")
                 return "liquidation"
 
         else:  # short
             # Short: price below TP or above SL
             if position.take_profit_price and current_price <= position.take_profit_price:
-                await self.close_position(reason="tp")
+                if auto_close:
+                    await self.close_position(reason="tp")
                 if self.on_tp_hit:
                     await self.on_tp_hit(position, current_price)
                 return "tp"
 
             if position.stop_loss_price and current_price >= position.stop_loss_price:
-                await self.close_position(reason="sl")
+                if auto_close:
+                    await self.close_position(reason="sl")
                 if self.on_sl_hit:
                     await self.on_sl_hit(position, current_price)
                 return "sl"
 
             # Check liquidation
             if current_price >= position.calculate_liquidation_price():
-                await self.close_position(reason="liquidation")
+                if auto_close:
+                    await self.close_position(reason="liquidation")
                 return "liquidation"
 
         return None
