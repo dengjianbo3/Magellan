@@ -38,14 +38,22 @@ class NodeResult(str, Enum):
 
 @dataclass
 class AgentVoteState:
-    """Agent vote in the workflow state."""
+    """
+    Agent vote in the workflow state.
+
+    This is a simplified representation for LangGraph state.
+    For full functionality, use domain.vote.AgentVote.
+    """
     agent_id: str
     agent_name: str
     direction: str
     confidence: int
     reasoning: str
     weight: float = 1.0
-    
+    leverage: int = 1
+    take_profit_percent: float = 5.0
+    stop_loss_percent: float = 2.0
+
     def to_dict(self) -> dict:
         return {
             "agent_id": self.agent_id,
@@ -53,8 +61,56 @@ class AgentVoteState:
             "direction": self.direction,
             "confidence": self.confidence,
             "reasoning": self.reasoning,
-            "weight": self.weight
+            "weight": self.weight,
+            "leverage": self.leverage,
+            "take_profit_percent": self.take_profit_percent,
+            "stop_loss_percent": self.stop_loss_percent
         }
+
+    @classmethod
+    def from_domain_vote(cls, vote: "AgentVote", weight: float = 1.0) -> "AgentVoteState":
+        """Create from domain AgentVote model."""
+        from ..domain.vote import AgentVote as DomainAgentVote
+        if isinstance(vote, DomainAgentVote):
+            return cls(
+                agent_id=vote.agent_id,
+                agent_name=vote.agent_name,
+                direction=vote.direction.value,
+                confidence=vote.confidence,
+                reasoning=vote.reasoning,
+                weight=weight,
+                leverage=vote.leverage,
+                take_profit_percent=vote.take_profit_percent,
+                stop_loss_percent=vote.stop_loss_percent
+            )
+        # Handle dict-like input
+        return cls(
+            agent_id=vote.get("agent_id", ""),
+            agent_name=vote.get("agent_name", ""),
+            direction=vote.get("direction", "hold"),
+            confidence=vote.get("confidence", 0),
+            reasoning=vote.get("reasoning", ""),
+            weight=weight,
+            leverage=vote.get("leverage", 1),
+            take_profit_percent=vote.get("take_profit_percent", 5.0),
+            stop_loss_percent=vote.get("stop_loss_percent", 2.0)
+        )
+
+    def to_domain_vote(self) -> "AgentVote":
+        """Convert to domain AgentVote model."""
+        from ..domain.vote import AgentVote, Vote, VoteDirection
+        return AgentVote(
+            agent_id=self.agent_id,
+            agent_name=self.agent_name,
+            vote=Vote(
+                direction=VoteDirection.from_string(self.direction),
+                confidence=self.confidence,
+                leverage=self.leverage,
+                take_profit_percent=self.take_profit_percent,
+                stop_loss_percent=self.stop_loss_percent,
+                reasoning=self.reasoning
+            )
+        )
 
 
 @dataclass

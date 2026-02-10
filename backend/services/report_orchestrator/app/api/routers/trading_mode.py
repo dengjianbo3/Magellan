@@ -7,8 +7,9 @@ Provides endpoints for:
 - Confirming or rejecting pending trades
 """
 
+import logging
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -18,6 +19,10 @@ from app.core.trading.mode_manager import (
     PendingTrade,
     get_mode_manager,
 )
+from app.core.trading.paper_trader import get_paper_trader
+from app.core.trading.price_service import get_current_btc_price
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/trading", tags=["Trading Mode"])
 
@@ -87,6 +92,134 @@ class RejectTradeRequest(BaseModel):
     """Request to reject a pending trade."""
     user_id: str
     reason: Optional[str] = ""
+
+
+# ============================================================================
+# Trade Execution Helper
+# ============================================================================
+
+async def execute_confirmed_trade(signal: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Execute a confirmed trade signal.
+
+    Args:
+        signal: The confirmed trade signal containing direction, leverage, etc.
+
+    Returns:
+        Execution result with success status and details
+    """
+    direction = signal.get("direction", "").lower()
+
+    # Skip execution for hold signals
+    if direction == "hold" or direction == "":
+        logger.info("[TradeExecution] Hold signal - no trade to execute")
+        return {
+            "success": True,
+            "action": "hold",
+            "message": "No trade executed (hold signal)"
+        }
+
+    # Get paper trader instance
+    paper_trader = get_paper_trader()
+
+    # Get current price for TP/SL calculation
+    current_price = await get_current_btc_price()
+    if not current_price or current_price <= 0:
+        logger.error("[TradeExecution] Failed to get current price")
+        return {
+            "success": False,
+            "error": "Failed to get current price"
+        }
+
+    # Extract trade parameters
+    leverage = signal.get("leverage", 5)
+    amount_percent = signal.get("amount_percent", 0.2)  # Default 20%
+    tp_percent = signal.get("take_profit_percent", 5.0)
+    sl_percent = signal.get("stop_loss_percent", 2.0)
+
+    # Get account status for position sizing
+    status = await paper_trader.get_status()
+    available_balance = status.get("available_balance", 0)
+
+    if available_balance <= 0:
+        logger.error("[TradeExecution] No available balance")
+        return {
+            "success": False,
+            "error": "Insufficient balance"
+        }
+
+    # Calculate position size in USDT
+    amount_usdt = available_balance * amount_percent
+
+    # Calculate TP/SL prices
+    if direction == "long":
+        tp_price = current_price * (1 + tp_percent / 100)
+        sl_price = current_price * (1 - sl_percent / 100)
+    else:  # short
+        tp_price = current_price * (1 - tp_percent / 100)
+        sl_price = current_price * (1 + sl_percent / 100)
+
+    logger.info(
+        f"[TradeExecution] Executing {direction.upper()} trade: "
+        f"leverage={leverage}x, amount=${amount_usdt:.2f}, "
+        f"TP=${tp_price:.2f}, SL=${sl_price:.2f}"
+    )
+
+    try:
+        # Execute the trade
+        if direction == "long":
+            result = await paper_trader.open_long(
+                symbol="BTC-USDT-SWAP",
+                leverage=leverage,
+                amount_usdt=amount_usdt,
+                tp_price=tp_price,
+                sl_price=sl_price
+            )
+        elif direction == "short":
+            result = await paper_trader.open_short(
+                symbol="BTC-USDT-SWAP",
+                leverage=leverage,
+                amount_usdt=amount_usdt,
+                tp_price=tp_price,
+                sl_price=sl_price
+            )
+        else:
+            return {
+                "success": False,
+                "error": f"Invalid direction: {direction}"
+            }
+
+        if result.get("success"):
+            logger.info(
+                f"[TradeExecution] ✅ Trade executed successfully: "
+                f"{direction.upper()} @ ${result.get('entry_price', 0):.2f}"
+            )
+            return {
+                "success": True,
+                "action": direction,
+                "entry_price": result.get("entry_price"),
+                "size": result.get("size"),
+                "leverage": leverage,
+                "tp_price": tp_price,
+                "sl_price": sl_price,
+                "message": f"Successfully opened {direction} position"
+            }
+        else:
+            error_msg = result.get("error", "Unknown error")
+            logger.error(f"[TradeExecution] ❌ Trade failed: {error_msg}")
+            return {
+                "success": False,
+                "error": error_msg
+            }
+
+    except Exception as e:
+        logger.error(f"[TradeExecution] ❌ Exception during trade execution: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 
 # ============================================================================
@@ -229,11 +362,12 @@ async def get_pending_trade(trade_id: str):
 async def confirm_pending_trade(trade_id: str, request: ConfirmTradeRequest):
     """
     Confirm a pending trade for execution.
-    
+
     Optionally modify leverage, TP, or SL before execution.
+    This endpoint actually executes the trade after confirmation.
     """
     manager = get_mode_manager()
-    
+
     # Build modifications dict
     modifications = {}
     if request.leverage is not None:
@@ -242,26 +376,42 @@ async def confirm_pending_trade(trade_id: str, request: ConfirmTradeRequest):
         modifications["take_profit_percent"] = request.take_profit_percent
     if request.stop_loss_percent is not None:
         modifications["stop_loss_percent"] = request.stop_loss_percent
-    
+
     signal = await manager.confirm_trade(
         trade_id=trade_id,
         user_id=request.user_id,
         modifications=modifications if modifications else None
     )
-    
+
     if signal is None:
         raise HTTPException(
             status_code=404,
             detail="Trade not found, expired, or already processed"
         )
-    
-    # TODO: Trigger actual trade execution here
-    # For now, return the confirmed signal
-    
+
+    # Execute the confirmed trade
+    execution_result = await execute_confirmed_trade(signal)
+
+    if not execution_result.get("success"):
+        # Trade confirmation succeeded but execution failed
+        logger.error(
+            f"[ConfirmTrade] Trade {trade_id} confirmed but execution failed: "
+            f"{execution_result.get('error')}"
+        )
+        return ConfirmTradeResponse(
+            success=False,
+            trade_id=trade_id,
+            message=f"Trade confirmed but execution failed: {execution_result.get('error')}",
+            executed_signal=signal
+        )
+
+    # Merge execution result into signal for response
+    signal["execution_result"] = execution_result
+
     return ConfirmTradeResponse(
         success=True,
         trade_id=trade_id,
-        message="Trade confirmed and queued for execution",
+        message=f"Trade confirmed and executed: {execution_result.get('message', 'Success')}",
         executed_signal=signal
     )
 

@@ -143,8 +143,13 @@ class TechnicalIndicators(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now)
 
 
-class AgentVote(BaseModel):
-    """Individual agent's vote on trading decision"""
+class AgentVotePydantic(BaseModel):
+    """
+    Pydantic model for API validation of agent votes.
+
+    Note: For internal use, prefer domain.vote.AgentVote (dataclass).
+    This model is kept for API request/response validation.
+    """
     agent_id: str
     agent_name: str
     direction: Literal["long", "short", "hold"]
@@ -166,6 +171,27 @@ class AgentVote(BaseModel):
         if v > max_leverage:
             raise ValueError(f'suggested_leverage must be <= {max_leverage} (MAX_LEVERAGE from config)')
         return v
+
+    def to_domain_vote(self) -> "AgentVote":
+        """Convert to domain AgentVote model."""
+        from app.core.trading.domain.vote import AgentVote, Vote, VoteDirection
+        return AgentVote(
+            agent_id=self.agent_id,
+            agent_name=self.agent_name,
+            vote=Vote(
+                direction=VoteDirection.from_string(self.direction),
+                confidence=self.confidence,
+                leverage=self.suggested_leverage,
+                take_profit_percent=self.suggested_tp_percent,
+                stop_loss_percent=self.suggested_sl_percent,
+                reasoning=self.reasoning
+            )
+        )
+
+
+# Backward compatibility alias - DEPRECATED, use domain.vote.AgentVote instead
+# This alias allows existing code to continue working while we migrate
+AgentVote = AgentVotePydantic
 
 
 class TradingSessionState(BaseModel):

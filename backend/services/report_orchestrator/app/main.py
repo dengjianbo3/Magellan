@@ -1546,13 +1546,91 @@ async def websocket_conversation_endpoint(websocket: WebSocket):
                         "message": f"正在快速获取「{company_name}」的基本信息..."
                     })
 
-                    # TODO: Implement quick overview logic
-                    # For now, send a simple response
-                    await websocket.send_json({
-                        "type": "quick_overview_result",
-                        "company_name": company_name,
-                        "summary": "快速概览功能即将推出..."
-                    })
+                    try:
+                        async with httpx.AsyncClient(timeout=30.0) as client:
+                            # Step 1: Get company basic info
+                            await websocket.send_json({
+                                "type": "quick_overview_progress",
+                                "step": "fetching_data",
+                                "message": "正在获取公司数据..."
+                            })
+
+                            public_data_resp = await client.post(
+                                f"{EXTERNAL_DATA_URL}/get_company_info",
+                                json={"ticker": company_name}
+                            )
+
+                            if public_data_resp.status_code != 200:
+                                raise Exception(f"无法获取公司信息: {public_data_resp.status_code}")
+
+                            response_data = public_data_resp.json()
+
+                            # Handle ambiguity - return options to user
+                            if response_data.get('status') == 'multiple_options':
+                                await websocket.send_json({
+                                    "type": "quick_overview_ambiguity",
+                                    "company_name": company_name,
+                                    "options": response_data.get('data', []),
+                                    "message": "找到多个匹配的公司，请选择："
+                                })
+                                continue
+
+                            public_data = response_data.get('data', {})
+
+                            # Step 2: Generate quick summary with LLM
+                            await websocket.send_json({
+                                "type": "quick_overview_progress",
+                                "step": "generating_summary",
+                                "message": "正在生成概览..."
+                            })
+
+                            prompt = f"""请根据以下公司数据，生成一份简洁的快速概览（不超过200字）。
+包含：公司名称、主营业务、市值/估值、近期表现亮点。
+
+公司数据:
+{json.dumps(public_data, ensure_ascii=False, indent=2)}
+
+请用中文回复，格式简洁明了。"""
+
+                            summary = await call_llm_gateway(client, [{"role": "user", "parts": [prompt]}])
+
+                            # Build quick overview result
+                            overview_result = {
+                                "company_name": public_data.get('company_name', company_name),
+                                "ticker": public_data.get('ticker', company_name),
+                                "summary": summary,
+                                "key_metrics": {
+                                    "market_cap": public_data.get('market_cap'),
+                                    "sector": public_data.get('sector'),
+                                    "industry": public_data.get('industry'),
+                                    "price": public_data.get('current_price'),
+                                    "change_percent": public_data.get('price_change_percent'),
+                                },
+                                "generated_at": datetime.now().isoformat()
+                            }
+
+                            await websocket.send_json({
+                                "type": "quick_overview_result",
+                                "company_name": overview_result["company_name"],
+                                "ticker": overview_result["ticker"],
+                                "summary": overview_result["summary"],
+                                "key_metrics": overview_result["key_metrics"],
+                                "generated_at": overview_result["generated_at"]
+                            })
+
+                            print(f"[CONVERSATION] Quick overview completed for: {company_name}", flush=True)
+
+                    except Exception as overview_error:
+                        print(f"[CONVERSATION] Quick overview failed: {overview_error}", flush=True)
+                        import traceback
+                        traceback.print_exc()
+
+                        await websocket.send_json({
+                            "type": "quick_overview_error",
+                            "company_name": company_name,
+                            "error": str(overview_error),
+                            "message": f"快速概览获取失败: {str(overview_error)}"
+                        })
 
                 elif action == "free_chat":
                     # Free chat mode
