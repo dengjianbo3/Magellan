@@ -13,6 +13,12 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Set
 from bs4 import BeautifulSoup
 
+# Import custom exceptions
+try:
+    from ..exceptions import NewsServiceError
+except ImportError:
+    NewsServiceError = Exception
+
 logger = logging.getLogger(__name__)
 
 
@@ -143,17 +149,23 @@ class NewsCrawler:
                 if response.status != 200:
                     logger.warning(f"{source['name']} returned {response.status}")
                     return []
-                
+
                 html = await response.text()
-                
+
                 # Decrypt 使用 Next.js JSON 嵌入
                 if source.get("use_json"):
                     return self._parse_json_embedded(html, source)
-                
+
                 return self._parse_html(html, source)
-                
+
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error fetching {source['name']}: {e}")
+            return []
+        except asyncio.TimeoutError as e:
+            logger.error(f"Timeout fetching {source['name']}: {e}")
+            return []
         except Exception as e:
-            logger.error(f"Error fetching {source['name']}: {e}")
+            logger.error(f"Unexpected error fetching {source['name']}: {type(e).__name__}: {e}")
             return []
     
     def _parse_json_embedded(self, html: str, source: Dict) -> List[NewsItem]:
@@ -202,8 +214,14 @@ class NewsCrawler:
             
             logger.debug(f"[{source['name']}] Parsed {len(news_items)} articles from JSON")
             
+        except json.JSONDecodeError as e:
+            logger.debug(f"[{source['name']}] JSON decode error: {e}")
+            return self._parse_html(html, source)
+        except (KeyError, TypeError, IndexError) as e:
+            logger.debug(f"[{source['name']}] JSON structure error: {e}")
+            return self._parse_html(html, source)
         except Exception as e:
-            logger.debug(f"[{source['name']}] JSON parse error: {e}")
+            logger.debug(f"[{source['name']}] JSON parse error: {type(e).__name__}: {e}")
             return self._parse_html(html, source)
         
         return news_items

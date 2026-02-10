@@ -17,6 +17,9 @@ import redis.asyncio as redis
 from ..trading_config import get_infra_config
 from ..constants import CONSENSUS, CONFIDENCE
 
+# Import weight learner for agent weight management
+from ..weight_learner import get_weight_learner, AgentWeightLearner
+
 logger = logging.getLogger(__name__)
 
 
@@ -191,101 +194,10 @@ class ReflectionMemory:
         }
 
 
-class AgentWeightAdjuster:
-    """
-    Adjusts agent weights based on prediction accuracy.
-
-    Agents that consistently predict correctly get higher weights.
-    Agents that consistently predict wrong get lower weights.
-
-    .. deprecated::
-        Use AgentWeightLearner from weight_learner.py instead.
-        This class is kept for backward compatibility but will be removed.
-    """
-
-    def __init__(self, redis_url: str = None):
-        self.redis_url = redis_url or get_infra_config().redis_url
-        self._redis: Optional[redis.Redis] = None
-        self.key_prefix = "trading:weights"
-
-        # Weight adjustment parameters from constants
-        self.correct_bonus = 0.05  # +5% for correct prediction
-        self.incorrect_penalty = 0.03  # -3% for incorrect prediction
-        self.min_weight = CONSENSUS.MIN_AGENT_WEIGHT
-        self.max_weight = CONSENSUS.MAX_AGENT_WEIGHT
-        self.default_weight = CONSENSUS.DEFAULT_AGENT_WEIGHT
-
-        logger.warning(
-            "AgentWeightAdjuster is deprecated. Use AgentWeightLearner instead."
-        )
-    
-    async def _get_redis(self) -> redis.Redis:
-        if self._redis is None:
-            self._redis = await redis.from_url(self.redis_url)
-        return self._redis
-    
-    async def get_weight(self, agent_id: str) -> float:
-        """Get current weight for an agent."""
-        r = await self._get_redis()
-        key = f"{self.key_prefix}:{agent_id}"
-        weight = await r.get(key)
-        if weight:
-            return float(weight.decode() if isinstance(weight, bytes) else weight)
-        return self.default_weight
-    
-    async def set_weight(self, agent_id: str, weight: float) -> None:
-        """Set weight for an agent."""
-        r = await self._get_redis()
-        key = f"{self.key_prefix}:{agent_id}"
-        clamped_weight = max(self.min_weight, min(self.max_weight, weight))
-        await r.set(key, str(clamped_weight))
-    
-    async def get_all_weights(self) -> Dict[str, float]:
-        """Get weights for all agents."""
-        r = await self._get_redis()
-        pattern = f"{self.key_prefix}:*"
-        keys = await r.keys(pattern)
-        
-        weights = {}
-        for key in keys:
-            key_str = key.decode() if isinstance(key, bytes) else key
-            agent_id = key_str.replace(f"{self.key_prefix}:", "")
-            weights[agent_id] = await self.get_weight(agent_id)
-        
-        return weights
-    
-    async def adjust_weights(
-        self,
-        correct_agents: List[str],
-        incorrect_agents: List[str]
-    ) -> Dict[str, float]:
-        """
-        Adjust weights based on prediction accuracy.
-        
-        Args:
-            correct_agents: Agent IDs that predicted correctly
-            incorrect_agents: Agent IDs that predicted incorrectly
-            
-        Returns:
-            New weights for all adjusted agents
-        """
-        new_weights = {}
-        
-        for agent_id in correct_agents:
-            current = await self.get_weight(agent_id)
-            new_weight = current + self.correct_bonus
-            await self.set_weight(agent_id, new_weight)
-            new_weights[agent_id] = min(self.max_weight, new_weight)
-            logger.info(f"[WEIGHT] {agent_id}: {current:.2f} -> {new_weights[agent_id]:.2f} (+correct)")
-        
-        for agent_id in incorrect_agents:
-            current = await self.get_weight(agent_id)
-            new_weight = current - self.incorrect_penalty
-            await self.set_weight(agent_id, new_weight)
-            new_weights[agent_id] = max(self.min_weight, new_weight)
-            logger.info(f"[WEIGHT] {agent_id}: {current:.2f} -> {new_weights[agent_id]:.2f} (-incorrect)")
-        
-        return new_weights
+# DEPRECATED: AgentWeightAdjuster is replaced by AgentWeightLearner
+# This alias is kept for backward compatibility only
+# Will be removed in a future version
+AgentWeightAdjuster = AgentWeightLearner
 
 
 class ReflectionEngine:
@@ -313,9 +225,8 @@ class ReflectionEngine:
     ):
         self.llm = llm_service
         self.memory = ReflectionMemory(redis_url)
-        self.weight_adjuster = AgentWeightAdjuster(redis_url)
-        # 🆕 P0: Use unified WeightLearner for more sophisticated weight learning
-        self._weight_learner = None
+        # Use AgentWeightLearner instead of deprecated AgentWeightAdjuster
+        self._weight_learner = get_weight_learner()
     
     async def reflect_on_trade(
         self,
@@ -421,14 +332,8 @@ class ReflectionEngine:
         # Store reflection
         await self.memory.store_reflection(reflection)
 
-        # Adjust weights using legacy adjuster (for backward compatibility)
-        await self.weight_adjuster.adjust_weights(correct_agents, incorrect_agents)
-
-        # 🆕 P0: Also update WeightLearner for more sophisticated learning
+        # Update agent weights using WeightLearner
         try:
-            from app.core.trading.weight_learner import get_weight_learner
-            weight_learner = get_weight_learner()
-
             # Build agent predictions dict
             agent_predictions = {}
             for vote in agent_votes:
@@ -447,7 +352,7 @@ class ReflectionEngine:
                 outcome = "neutral"
 
             # Record to WeightLearner
-            await weight_learner.record_trade_outcome(
+            await self._weight_learner.record_trade_outcome(
                 agent_predictions=agent_predictions,
                 actual_outcome=outcome,
                 trade_direction=direction

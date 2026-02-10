@@ -30,12 +30,20 @@ try:
     from app.core.llm_helper import LLMHelper
     from app.core.trading.trading_config import get_infra_config
     from app.core.trading.constants import TRIGGER, RETRY
+    from app.core.trading.exceptions import (
+        TriggerError, NewsServiceError, TechnicalAnalysisError, LLMError
+    )
 except ImportError:
     # 独立运行时的回退
     LLMHelper = None
     get_infra_config = None
     TRIGGER = None
     RETRY = None
+    # Define fallback exceptions
+    TriggerError = Exception
+    NewsServiceError = Exception
+    TechnicalAnalysisError = Exception
+    LLMError = Exception
 
 logger = logging.getLogger(__name__)
 
@@ -168,12 +176,26 @@ class TriggerAgent:
 
             return should_trigger, context
 
-        except Exception as e:
-            logger.error(f"[TriggerAgent] Check failed: {e}")
+        except LLMError as e:
+            logger.error(f"[TriggerAgent] LLM analysis failed: {e}")
             return False, TriggerContext(
                 should_trigger=False,
                 trigger_time=datetime.now().isoformat(),
-                reasoning=f"Error: {str(e)}"
+                reasoning=f"LLM Error: {str(e)}"
+            )
+        except TriggerError as e:
+            logger.error(f"[TriggerAgent] Trigger system error: {e}")
+            return False, TriggerContext(
+                should_trigger=False,
+                trigger_time=datetime.now().isoformat(),
+                reasoning=f"Trigger Error: {str(e)}"
+            )
+        except Exception as e:
+            logger.error(f"[TriggerAgent] Unexpected error: {e}")
+            return False, TriggerContext(
+                should_trigger=False,
+                trigger_time=datetime.now().isoformat(),
+                reasoning=f"Unexpected Error: {str(e)}"
             )
 
     async def _gather_market_data(self) -> Tuple[List, TAData]:
@@ -187,13 +209,19 @@ class TriggerAgent:
             return_exceptions=True
         )
 
-        # 处理异常
+        # 处理异常 - 使用具体异常类型进行日志记录
         if isinstance(news_items, Exception):
-            logger.warning(f"[TriggerAgent] News fetch failed: {news_items}")
+            if isinstance(news_items, NewsServiceError):
+                logger.warning(f"[TriggerAgent] News service error: {news_items}")
+            else:
+                logger.warning(f"[TriggerAgent] News fetch failed: {news_items}")
             news_items = []
 
         if isinstance(ta_data, Exception):
-            logger.warning(f"[TriggerAgent] TA calculation failed: {ta_data}")
+            if isinstance(ta_data, TechnicalAnalysisError):
+                logger.warning(f"[TriggerAgent] TA calculation error: {ta_data}")
+            else:
+                logger.warning(f"[TriggerAgent] TA calculation failed: {ta_data}")
             ta_data = TAData()
 
         return news_items, ta_data
@@ -218,8 +246,10 @@ class TriggerAgent:
                         "size_usd": position.get("position_value", 0.0)
                     }
                     logger.info(f"[TriggerAgent] Position: {position_data['direction']}, PnL: {position_data['pnl_percent']:.2f}%")
+            except (ConnectionError, TimeoutError) as e:
+                logger.warning(f"[TriggerAgent] Position fetch network error: {e}")
             except Exception as e:
-                logger.warning(f"[TriggerAgent] Position fetch failed: {e}")
+                logger.warning(f"[TriggerAgent] Position fetch failed: {type(e).__name__}: {e}")
 
         return position_data
 

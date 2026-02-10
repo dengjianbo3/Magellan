@@ -130,29 +130,40 @@ API_LIMITS, ARBITRAGE, TRIGGER  # 其他
 
 ---
 
-### 6. 异常处理问题 - 30+ 实例
+### 6. 异常处理问题 - 30+ 实例 ✅ 大部分已修复
 
-#### 6.1 过于宽泛的异常捕获
+#### 6.1 过于宽泛的异常捕获 ✅ 已修复
 ```python
 # 问题代码
 except Exception as e:
     logger.error(f"Error: {e}")
     return None
 
-# 建议修改
-except (httpx.RequestError, asyncio.TimeoutError) as e:
+# 已修改为具体异常类型
+except aiohttp.ClientError as e:
     logger.error(f"Network error: {e}")
     return None
-except json.JSONDecodeError as e:
-    logger.error(f"Parse error: {e}")
+except (ValueError, KeyError, IndexError) as e:
+    logger.error(f"Data parsing error: {e}")
+    return None
+except Exception as e:
+    logger.error(f"Unexpected error: {type(e).__name__}: {e}")
     return None
 ```
 
-#### 6.2 不一致的错误处理策略
-- `trigger/agent.py`: 返回安全默认值
-- `trigger/scheduler.py`: 重新抛出异常
+#### 6.2 不一致的错误处理策略 ✅ 已统一
+- ✅ `trigger/agent.py`: 使用 LLMError, TriggerError 等具体异常
+- ✅ `trigger/scheduler.py`: 使用 TriggerError, LLMError 并统一重新抛出
+- ✅ `trigger/ta_calculator.py`: 使用 aiohttp.ClientError 等网络异常
+- ✅ `trigger/news_crawler.py`: 使用 aiohttp.ClientError, json.JSONDecodeError 等
 
-**建议**: 统一错误处理策略
+#### 6.3 新增 exceptions.py 模块
+创建了集中的异常定义文件 `app/core/trading/exceptions.py`：
+- `TradingError` - 基础交易异常
+- `MarketDataError`, `PriceServiceError`, `CandleDataError` - 市场数据异常
+- `TriggerError`, `NewsServiceError`, `TechnicalAnalysisError` - 触发器异常
+- `LLMError`, `LLMTimeoutError`, `LLMParseError` - LLM 服务异常
+- `SafetyCheckError`, `RiskLimitExceededError`, `CooldownActiveError` - 安全检查异常
 
 ---
 
@@ -244,8 +255,8 @@ logger.warning(f"[FastMonitor] ALERT: Triggered...")
 
 ### 第三周 (Medium) ✅ 已完成
 7. ✅ 拆分剩余超长函数 (`technical_tools.py`, `fast_monitor.py`, `ta_calculator.py`)
-8. ⬜ 移除废弃代码 - 待处理
-9. ⬜ 统一异常处理策略 - 待处理
+8. ✅ 移除废弃代码 - AgentWeightAdjuster 已替换为 AgentWeightLearner
+9. ✅ 统一异常处理策略 - 创建 `exceptions.py`，更新 trigger 模块
 10. ⬜ 添加缺失的文档字符串 - 待处理
 
 ### 架构问题修复 ✅ 部分完成

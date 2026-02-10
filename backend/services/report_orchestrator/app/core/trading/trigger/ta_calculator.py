@@ -25,6 +25,7 @@ try:
         determine_trend,
         get_closes_from_candles
     )
+    from ..exceptions import TechnicalAnalysisError, MarketDataError
     USE_SHARED_INDICATORS = True
 except ImportError:
     get_infra_config = None
@@ -32,6 +33,8 @@ except ImportError:
     MACD = None
     TIMEFRAMES = None
     USE_SHARED_INDICATORS = False
+    TechnicalAnalysisError = Exception
+    MarketDataError = Exception
 
 logger = logging.getLogger(__name__)
 
@@ -167,8 +170,16 @@ class TACalculator:
                 self._last_data = data
                 logger.info(f"[TA] RSI(15m)={data.rsi_15m:.1f}, MACD_cross={data.macd_crossover}, Vol_spike={data.volume_spike}")
 
+        except aiohttp.ClientError as e:
+            logger.error(f"[TA] Network error calculating indicators: {e}")
+            if self._last_data:
+                return self._last_data
+        except (ValueError, KeyError, TypeError) as e:
+            logger.error(f"[TA] Data parsing error: {e}")
+            if self._last_data:
+                return self._last_data
         except Exception as e:
-            logger.error(f"[TA] Error calculating indicators: {e}")
+            logger.error(f"[TA] Unexpected error calculating indicators: {type(e).__name__}: {e}")
             if self._last_data:
                 return self._last_data
 
@@ -200,8 +211,12 @@ class TACalculator:
                             }
                             for c in result.get("data", [])
                         ]
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error fetching {bar} candles: {e}")
+        except (ValueError, KeyError, IndexError) as e:
+            logger.error(f"Data parsing error for {bar} candles: {e}")
         except Exception as e:
-            logger.error(f"Error fetching {bar} candles: {e}")
+            logger.error(f"Unexpected error fetching {bar} candles: {type(e).__name__}: {e}")
         
         return []
     
@@ -216,8 +231,12 @@ class TACalculator:
                     result = await response.json()
                     if result.get("code") == "0" and result.get("data"):
                         return result["data"][0]
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error fetching ticker: {e}")
+        except (ValueError, KeyError, IndexError) as e:
+            logger.error(f"Data parsing error for ticker: {e}")
         except Exception as e:
-            logger.error(f"Error fetching ticker: {e}")
+            logger.error(f"Unexpected error fetching ticker: {type(e).__name__}: {e}")
         
         return {}
     
