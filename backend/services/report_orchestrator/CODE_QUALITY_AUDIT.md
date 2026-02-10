@@ -240,7 +240,7 @@ logger.warning(f"[FastMonitor] ALERT: Triggered...")
 ### 第二周 (High) ✅ 已完成
 4. ✅ 拆分超长函数 (>100行的10个)
 5. ✅ 提取重复的 RSI/EMA 计算到共享模块 (`indicators.py`)
-6. ⬜ 添加缺失的类型提示 (36个) - 待处理
+6. ✅ 添加缺失的类型提示 (部分完成)
 
 ### 第三周 (Medium) ✅ 已完成
 7. ✅ 拆分剩余超长函数 (`technical_tools.py`, `fast_monitor.py`, `ta_calculator.py`)
@@ -248,10 +248,17 @@ logger.warning(f"[FastMonitor] ALERT: Triggered...")
 9. ⬜ 统一异常处理策略 - 待处理
 10. ⬜ 添加缺失的文档字符串 - 待处理
 
+### 架构问题修复 ✅ 部分完成
+11. ✅ 实现 SEMI_AUTO 模式交易执行 (`trading_mode.py`)
+12. ✅ 统一 AgentVote 模型 (添加转换方法)
+13. ✅ 实现快速概览功能 (`main.py`)
+14. ✅ 统一 check_tp_sl() 行为 (`base_trader.py`, `paper_trader.py`, `okx_trader.py`)
+15. ✅ 添加 Symbol 配置 (`constants.py` - SYMBOL.get_default())
+
 ### 第四周 (Low)
-11. ⬜ 移除死代码
-12. ⬜ 统一命名规范
-13. ⬜ 移动测试代码到 `/tests`
+16. ⬜ 移除死代码
+17. ⬜ 统一命名规范
+18. ⬜ 移动测试代码到 `/tests`
 
 ---
 
