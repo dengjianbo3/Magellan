@@ -101,19 +101,17 @@ API_LIMITS, ARBITRAGE, TRIGGER  # 其他
 
 ---
 
-### 4. 未使用的导入 - 14个实例
+### 4. 未使用的导入 - 14个实例 ✅ 已清理
 
-| 文件 | 未使用导入 |
-|------|-----------|
-| `anti_bias.py` | `import random` |
-| `weight_learner.py` | `from dataclasses import field` |
-| `weight_learner.py` | `from datetime import timedelta` |
-| `weight_learner.py` | `from typing import List` |
-| `weight_learner.py` | `import os` |
-| `reflection/engine.py` | `import asyncio` |
-| `reflection/engine.py` | `from dataclasses import field` |
-
-**建议**: 运行 `autoflake` 或手动删除
+| 文件 | 未使用导入 | 状态 |
+|------|-----------|------|
+| `anti_bias.py` | `import random` | ✅ 已移除 |
+| `weight_learner.py` | `from dataclasses import field` | ✅ 已移除 |
+| `weight_learner.py` | `from datetime import timedelta` | ✅ 已移除 |
+| `weight_learner.py` | `from typing import List` | ✅ 已移除 |
+| `weight_learner.py` | `import os` | ✅ 已移除 |
+| `reflection/engine.py` | `import asyncio` | ✅ 已移除 |
+| `reflection/engine.py` | `from dataclasses import field` | ✅ 已移除 |
 
 ---
 
@@ -180,12 +178,12 @@ except Exception as e:
 
 ---
 
-### 8. 死代码 - 5个实例
+### 8. 死代码 - 5个实例 ✅ 已清理
 
-| 文件 | 位置 | 问题 |
-|------|------|------|
-| `fast_monitor.py:141-143` | `_price_history`, `_last_price_time` | 初始化但从未使用 |
-| `meeting.py:245` | `should_leader_speak = True` | 总是 True，条件冗余 |
+| 文件 | 位置 | 问题 | 状态 |
+|------|------|------|------|
+| `fast_monitor.py:141-143` | `_last_price_time` | 初始化但从未使用 | ✅ 已移除 |
+| `meeting.py:245` | `should_leader_speak = True` | 总是 True，条件冗余 | ✅ 已清理 |
 
 ---
 
