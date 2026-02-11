@@ -560,7 +560,7 @@ class PaperTrader(BaseTrader):
         await self._save_state()
 
         logger.info(
-            f"✅ [TRADE_LOCK] Position opened: {direction.upper()} {size:.6f} BTC @ ${current_price:.2f}, "
+            f"[OK] [TRADE_LOCK] Position opened: {direction.upper()} {size:.6f} BTC @ ${current_price:.2f}, "
             f"leverage: {leverage}x, margin: ${amount_usdt:.2f}, "
             f"remaining: ${self._account.balance:.2f}"
         )

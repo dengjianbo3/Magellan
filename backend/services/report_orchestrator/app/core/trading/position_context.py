@@ -113,14 +113,14 @@ class PositionContext:
 📊 **Current Position Status**: No Position
 - Available Balance: ${:.2f} USDT
 - Total Equity: ${:.2f} USDT
-- Status: ✅ Free to open new position
+- Status: [OK] Free to open new position
 """.format(self.available_balance, self.total_equity)
 
         # P&L emoji
         pnl_emoji = "📈" if self.unrealized_pnl >= 0 else "📉"
 
         # Position status
-        position_status = "✅ Can add more" if self.can_add_position else "❌ Max position reached"
+        position_status = "[OK] Can add more" if self.can_add_position else "[FAIL] Max position reached"
 
         # Risk level
         if self.distance_to_liquidation_percent > 50:

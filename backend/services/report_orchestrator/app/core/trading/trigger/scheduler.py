@@ -148,7 +148,7 @@ class TriggerScheduler:
                 if fast_result.should_trigger:
                     self._fast_trigger_count += 1
                     conditions_str = ", ".join([c.name for c in fast_result.conditions])
-                    logger.info(f"[TriggerScheduler] ⚡ FastMonitor triggered: [{conditions_str}] urgency={fast_result.urgency}")
+                    logger.info(f"[TriggerScheduler] [FAST] FastMonitor triggered: [{conditions_str}] urgency={fast_result.urgency}")
                 else:
                     logger.debug("[TriggerScheduler] FastMonitor: No hard conditions triggered")
             except TriggerError as e:
@@ -208,7 +208,7 @@ class TriggerScheduler:
             
             # ========== Layer 3: 触发完整分析 ==========
             self._trigger_count += 1
-            logger.info(f"[TriggerScheduler] 🎯 TRIGGER! Confidence={context.confidence}%, Urgency={context.urgency}")
+            logger.info(f"[TriggerScheduler] [TARGET] TRIGGER! Confidence={context.confidence}%, Urgency={context.urgency}")
             
             # 释放 Check 锁
             self.trigger_lock.release_check()

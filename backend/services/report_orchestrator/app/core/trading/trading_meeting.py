@@ -125,7 +125,7 @@ class TradingMeeting(Meeting):
         if self.config.use_langgraph:
             try:
                 self._trading_graph = TradingGraph()
-                logger.info("[TradingMeeting] ✅ LangGraph workflow enabled")
+                logger.info("[TradingMeeting] [OK] LangGraph workflow enabled")
             except Exception as e:
                 logger.warning(f"[TradingMeeting] LangGraph initialization failed: {e}")
 
@@ -153,7 +153,7 @@ class TradingMeeting(Meeting):
                     config=self.config,
                     min_confidence=getattr(self.config, 'min_confidence', 60)
                 )
-                logger.info("[TradingMeeting] ✅ SafetyGuard initialized")
+                logger.info("[TradingMeeting] [OK] SafetyGuard initialized")
             
             # Initialize TradeExecutor
             if paper_trader and self.llm_service:
@@ -165,7 +165,7 @@ class TradingMeeting(Meeting):
                     on_message=self.on_message,
                     symbol=getattr(self.config, 'symbol', 'BTC-USDT-SWAP')
                 )
-                logger.info("[TradingMeeting] ✅ TradeExecutor initialized")
+                logger.info("[TradingMeeting] [OK] TradeExecutor initialized")
             
             # Initialize ReflectionEngine
             if self.llm_service:
@@ -173,7 +173,7 @@ class TradingMeeting(Meeting):
                     llm_service=self.llm_service,
                     redis_url=None  # Uses centralized config
                 )
-                logger.info("[TradingMeeting] ✅ ReflectionEngine initialized")
+                logger.info("[TradingMeeting] [OK] ReflectionEngine initialized")
                 
         except Exception as e:
             logger.warning(f"[TradingMeeting] Failed to initialize refactored modules: {e}")
@@ -370,7 +370,7 @@ Based on your expertise, provide your trading recommendation.
                             'stop_loss_percent': getattr(vote, 'stop_loss_percent', 3.0)
                         }
                         votes.append(vote_dict)
-                        logger.info(f"[LangGraph] ✅ {result.agent_name}: {vote_dict.get('direction', 'unknown')} ({vote_dict.get('confidence', 0)}%) [{result.duration_ms:.0f}ms]")
+                        logger.info(f"[LangGraph] [OK] {result.agent_name}: {vote_dict.get('direction', 'unknown')} ({vote_dict.get('confidence', 0)}%) [{result.duration_ms:.0f}ms]")
                     elif result.is_fallback:
                         # Use fallback vote
                         votes.append({
@@ -406,9 +406,9 @@ Based on your expertise, provide your trading recommendation.
                                     'stop_loss_percent': getattr(vote, 'stop_loss_percent', 3.0)
                                 }
                                 votes.append(vote_dict)
-                                logger.info(f"[LangGraph] ✅ {agent.name}: {vote_dict.get('direction', 'unknown')} ({vote_dict.get('confidence', 0)}%)")
+                                logger.info(f"[LangGraph] [OK] {agent.name}: {vote_dict.get('direction', 'unknown')} ({vote_dict.get('confidence', 0)}%)")
                         except Exception as e:
-                            logger.warning(f"[LangGraph] ❌ {agent.name} vote failed: {e}")
+                            logger.warning(f"[LangGraph] [FAIL] {agent.name} vote failed: {e}")
                 
                 logger.info(f"[LangGraph] Collected {len(votes)} votes (SEQUENTIAL)")
             
@@ -426,7 +426,7 @@ Based on your expertise, provide your trading recommendation.
                         symbol=getattr(self.config, 'symbol', 'BTC-USDT-SWAP'),
                         llm_gateway_url=None  # Uses centralized config
                     )
-                    logger.info("[LangGraph] ✅ ExecutorAgent initialized (unified agent architecture)")
+                    logger.info("[LangGraph] [OK] ExecutorAgent initialized (unified agent architecture)")
                 else:
                     logger.warning("[LangGraph] ⚠️ Cannot init ExecutorAgent: paper_trader not available")
 
@@ -466,14 +466,14 @@ Based on your expertise, provide your trading recommendation.
                 )
                 
                 self._final_signal = signal
-                logger.info(f"[TradingMeeting] ✅ LangGraph complete: {signal.direction.upper()}")
+                logger.info(f"[TradingMeeting] [OK] LangGraph complete: {signal.direction.upper()}")
                 return signal
             
             logger.warning("[TradingMeeting] ⚠️ No signal from LangGraph")
             return None
             
         except Exception as e:
-            logger.error(f"[TradingMeeting] ❌ LangGraph failed: {e}", exc_info=True)
+            logger.error(f"[TradingMeeting] [FAIL] LangGraph failed: {e}", exc_info=True)
             logger.info("[TradingMeeting] Falling back to traditional flow")
             # Fall through to return None - caller will handle
             return None
@@ -510,7 +510,7 @@ Trades: {memory.winning_trades}W / {memory.losing_trades}L
 Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄️ "}{max(getattr(memory, 'consecutive_wins', 0), getattr(memory, 'consecutive_losses', 0))} trades
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 CURRENT FOCUS
+[TARGET] CURRENT FOCUS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {focus}
@@ -537,7 +537,7 @@ Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄
         if consecutive_losses >= 3:
             return "⚠️ RISK CONTROL - Reduce position sizes, tighten stops, avoid revenge trading"
         elif win_rate < 40:
-            return "🎯 ACCURACY - Focus on high-confidence setups only (>70%)"
+            return "[TARGET] ACCURACY - Focus on high-confidence setups only (>70%)"
         elif consecutive_wins >= 3:
             return "💰 CAPITALIZE - Trending well, maintain discipline, don't overtrade"
         elif win_rate >= 60:
@@ -604,7 +604,7 @@ Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄
                             close_reason=reason,
                             agent_votes=agent_votes
                         )
-                        logger.info(f"✅ [ReflectionEngine] Generated reflection: {'WIN' if reflection.is_win else 'LOSS'}")
+                        logger.info(f"[OK] [ReflectionEngine] Generated reflection: {'WIN' if reflection.is_win else 'LOSS'}")
                         logger.info(f"   Correct predictions: {reflection.correct_predictions}")
                         logger.info(f"   Incorrect predictions: {reflection.incorrect_predictions}")
                     except Exception as re_error:
@@ -626,7 +626,7 @@ Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄
                 )
 
                 if reflections:
-                    logger.info(f"✅ Generated {len(reflections)} agent reflections")
+                    logger.info(f"[OK] Generated {len(reflections)} agent reflections")
                     for r in reflections:
                         status = "correct" if r.prediction_was_correct else "incorrect"
                         logger.info(f"  - {r.agent_name}: prediction {status}, lesson: {r.lessons_learned[0] if r.lessons_learned else 'none'}")
@@ -646,7 +646,7 @@ Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄
         # Register callback
         paper_trader.on_position_closed = on_position_closed_with_reflection
         paper_trader._reflection_callback_registered = True  # Mark as registered
-        logger.info("✅ Registered position closed callback for agent reflection")
+        logger.info("[OK] Registered position closed callback for agent reflection")
 
     async def _record_agent_predictions_for_trade(self, market_price: float = 0.0):
         """
@@ -903,7 +903,7 @@ Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄
 - **Current Price**: ${position_context.current_price:.2f}
 - {pnl_emoji} **Unrealized PnL**: ${position_context.unrealized_pnl:.2f} ({position_context.unrealized_pnl_percent:+.2f}%)
 - **Position Size**: {position_context.current_position_percent*100:.1f}% / {position_context.max_position_percent*100:.1f}%
-- **Status**: {'✅ Can add more' if position_context.can_add_position else '❌ Max position reached'}
+- **Status**: {'[OK] Can add more' if position_context.can_add_position else '[FAIL] Max position reached'}
 - **Holding Duration**: {position_context.holding_duration_hours:.1f} hours
 
 ⚠️ **All experts please consider current position when analyzing!**
@@ -915,7 +915,7 @@ Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄
 - **Position**: No position
 - **Available Balance**: ${position_context.available_balance:.2f} USDT
 - **Total Equity**: ${position_context.total_equity:.2f} USDT
-- **Status**: ✅ Free to open position
+- **Status**: [OK] Free to open position
 """
 
         return f"""# Trading Analysis Meeting
@@ -1149,7 +1149,7 @@ Provide your analysis and views based on real data."""
                 vote = self._parse_vote_json(agent_id, agent.name, response)
                 if vote:
                     self._agent_votes.append(vote)
-                    logger.debug(f"[VOTE_DEBUG] ✅ {agent.name} vote recorded: {vote.direction} (confidence: {vote.confidence}%)")
+                    logger.debug(f"[VOTE_DEBUG] [OK] {agent.name} vote recorded: {vote.direction} (confidence: {vote.confidence}%)")
                 else:
                     # Fallback when JSON parsing fails
                     logger.warning(f"[{agent.name}] JSON parsing failed, attempting text parsing fallback")
@@ -1159,10 +1159,10 @@ Provide your analysis and views based on real data."""
                         logger.debug(f"[VOTE_DEBUG] ⚠️ {agent.name} vote recorded via fallback: {vote.direction}")
                     else:
                         # Both parsing methods failed
-                        logger.debug(f"[VOTE_DEBUG] ❌ {agent.name} vote FAILED - both JSON and fallback parsing failed")
+                        logger.debug(f"[VOTE_DEBUG] [FAIL] {agent.name} vote FAILED - both JSON and fallback parsing failed")
                         logger.error(f"[{agent.name}] Failed to parse vote from response (length: {len(response)} chars)")
             else:
-                logger.debug(f"[VOTE_DEBUG] ❌ {agent_id} agent not found in self.agents")
+                logger.debug(f"[VOTE_DEBUG] [FAIL] {agent_id} agent not found in self.agents")
 
     async def _run_parallel_signal_generation(self, position_context: PositionContext):
         """
@@ -1193,7 +1193,7 @@ Provide your analysis and views based on real data."""
         for result in results:
             if result.success and result.vote:
                 self._agent_votes.append(result.vote)
-                logger.debug(f"[VOTE_DEBUG] ✅ {result.agent_name} vote: {result.vote.direction} ({result.vote.confidence}%) [{result.duration_ms:.0f}ms]")
+                logger.debug(f"[VOTE_DEBUG] [OK] {result.agent_name} vote: {result.vote.direction} ({result.vote.confidence}%) [{result.duration_ms:.0f}ms]")
             elif result.is_fallback:
                 # Generate fallback vote for failed agents
                 fallback_vote = self._generate_fallback_vote(result.agent_id, result.agent_name)
@@ -1201,10 +1201,10 @@ Provide your analysis and views based on real data."""
                     self._agent_votes.append(fallback_vote)
                     logger.debug(f"[VOTE_DEBUG] ⚠️ {result.agent_name} fallback vote: hold (30%)")
             else:
-                logger.debug(f"[VOTE_DEBUG] ❌ {result.agent_name} failed: {result.error}")
+                logger.debug(f"[VOTE_DEBUG] [FAIL] {result.agent_name} failed: {result.error}")
         
         total_time = (time.time() - start_time) * 1000
-        logger.info(f"[ParallelSignalGen] ✅ Completed in {total_time:.0f}ms, collected {len(self._agent_votes)} votes")
+        logger.info(f"[ParallelSignalGen] [OK] Completed in {total_time:.0f}ms, collected {len(self._agent_votes)} votes")
 
     def _parse_vote_with_fallback(self, agent_id: str, agent_name: str, response: str):
         """
@@ -1383,7 +1383,7 @@ If not approved, explain your reasons.
         if abs(position_context.distance_to_tp_percent) < 5:
             warnings.append(f"⚠️ Near Take Profit (only {abs(position_context.distance_to_tp_percent):.1f}%)")
         if abs(position_context.distance_to_sl_percent) < 5:
-            warnings.append(f"🚨 Near Stop Loss (only {abs(position_context.distance_to_sl_percent):.1f}%)")
+            warnings.append(f"[ALERT] Near Stop Loss (only {abs(position_context.distance_to_sl_percent):.1f}%)")
 
         warnings_text = "\n".join(warnings) if warnings else "No special warnings"
 
@@ -1517,11 +1517,11 @@ Suggested leverage is..., position size is...
 My confidence is approximately...%"
 
 ⚠️ **Important Reminders**:
-- ✅ Express your summary and recommendations in natural language
-- ✅ Include expert opinions, your judgment, recommended strategy
-- ✅ **ALWAYS include your recommended TP% and SL% values**
-- ✅ No need for markers like "【Final Decision】"
-- ✅ Your summary will be passed to the Trade Executor
+- [OK] Express your summary and recommendations in natural language
+- [OK] Include expert opinions, your judgment, recommended strategy
+- [OK] **ALWAYS include your recommended TP% and SL% values**
+- [OK] No need for markers like "【Final Decision】"
+- [OK] Your summary will be passed to the Trade Executor
 
 Please begin your summary!
 """
@@ -1609,7 +1609,7 @@ Please begin your summary!
 
         if near_sl:
             guidance += f"""
-🚨 **Near Stop Loss**: Only {abs(position_context.distance_to_sl_percent):.1f}% from SL price
+[ALERT] **Near Stop Loss**: Only {abs(position_context.distance_to_sl_percent):.1f}% from SL price
 """
 
         guidance += f"""
@@ -1630,8 +1630,8 @@ Please begin your summary!
 - Holding duration of {position_context.holding_duration_hours:.1f} hours should NOT become "sunk cost" affecting decisions
 
 **Prohibited Behaviors**:
-- ❌ Do not force-find reasons to hold just because already in {direction} position
-- ❌ Do not ignore majority expert's reversal recommendations
+- [FAIL] Do not force-find reasons to hold just because already in {direction} position
+- [FAIL] Do not ignore majority expert's reversal recommendations
 """
 
         return guidance
@@ -1666,14 +1666,14 @@ Currently has {direction.upper()} position (in {pnl_status}), but please **do NO
 4. What signals support **reversing** (close {direction} and open {opposite})?
 
 **Prohibited**:
-- ❌ Do not lean towards {direction} just because already in {direction} position
-- ❌ Do not avoid recommending close or reverse
-- ❌ Do not use "can continue holding" to avoid giving clear judgment
+- [FAIL] Do not lean towards {direction} just because already in {direction} position
+- [FAIL] Do not avoid recommending close or reverse
+- [FAIL] Do not use "can continue holding" to avoid giving clear judgment
 
 **Encouraged**:
-- ✅ If you see reversal signals, say it directly
-- ✅ If market direction contradicts position, clearly recommend close/reverse
-- ✅ Give clear directional judgment, don't be ambiguous
+- [OK] If you see reversal signals, say it directly
+- [OK] If market direction contradicts position, clearly recommend close/reverse
+- [OK] Give clear directional judgment, don't be ambiguous
 """
 
     def _get_decision_options_for_analysts(self, position_context: PositionContext) -> str:
@@ -1917,7 +1917,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                 )
 
             decision_text = match.group(1)
-            logger.info(f"[SignalExtraction] ✅ Found Final Decision section")
+            logger.info(f"[SignalExtraction] [OK] Found Final Decision section")
             logger.info(f"[SignalExtraction] Decision text: {decision_text[:200]}...")
 
             # Extract fields using regex - try multiple patterns (English first, Chinese fallback)
@@ -2027,7 +2027,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                 agents_consensus=consensus
             )
             
-            logger.info(f"[SignalExtraction] ✅ Signal extracted: {signal}")
+            logger.info(f"[SignalExtraction] [OK] Signal extracted: {signal}")
             return signal
             
         except Exception as e:
@@ -2363,11 +2363,11 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             self._final_signal = final_signal
             
         except Exception as e:
-            logger.error(f"[ExecutionPhase] ❌ Execution phase failed: {e}", exc_info=True)
+            logger.error(f"[ExecutionPhase] [FAIL] Execution phase failed: {e}", exc_info=True)
             self._add_message(
                 agent_id="system",
                 agent_name="System",
-                content=f"❌ Trade execution phase failed: {str(e)}",
+                content=f"[FAIL] Trade execution phase failed: {str(e)}",
                 message_type="error"
             )
             # Return hold signal
@@ -2687,7 +2687,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                     action_taken = "add_to_long"
                                     entry_price = result.get("executed_price", current_price)
                                     final_reasoning = f"Add to long success: original entry ${existing_entry:.2f}, added ${add_amount:.2f}(unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
-                                    logger.info(f"[TradeExecutor] ✅ Add to long success")
+                                    logger.info(f"[TradeExecutor] [OK] Add to long success")
                                 else:
                                     # Add failed, maintain original position
                                     trade_success = True
@@ -2710,7 +2710,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                 final_reasoning = f"⚠️ Near liquidation (liq price ${liquidation_price:.2f}), maintaining long (unrealized loss ${unrealized_pnl:.2f}). {reasoning}"
                             else:
                                 final_reasoning = f"Full position (available ${true_available_margin:.2f}), maintaining long (entry ${existing_entry:.2f}, unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
-                            logger.info(f"[TradeExecutor] ✅ Full position/cannot add, maintaining long")
+                            logger.info(f"[TradeExecutor] [OK] Full position/cannot add, maintaining long")
                     
                     # 📌 Scenario 2: Have short position (opposite direction) -> Close short -> Open long
                     elif current_direction == "short":
@@ -2734,7 +2734,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                         
                             if close_result.get("success"):
                                 pnl = close_result.get("pnl", 0)
-                                logger.info(f"[TradeExecutor] ✅ Close short success, PnL=${pnl:.2f}")
+                                logger.info(f"[TradeExecutor] [OK] Close short success, PnL=${pnl:.2f}")
                                 
                                 # 🔧 Re-get true available margin (balance changed after closing)
                                 account = await toolkit.paper_trader.get_account()
@@ -2768,7 +2768,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                         action_taken = "reverse_short_to_long"
                                         entry_price = result.get("executed_price", current_price)
                                         final_reasoning = f"Reverse success: closed short (PnL=${pnl:.2f}) -> opened long ${amount_usdt:.2f}. {reasoning}"
-                                        logger.info(f"[TradeExecutor] ✅ Reverse to long success")
+                                        logger.info(f"[TradeExecutor] [OK] Reverse to long success")
                                     else:
                                         trade_success = True  # Close success counts as partial success
                                         action_taken = "close_short_only"
@@ -2813,7 +2813,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                 action_taken = "new_long"
                                 entry_price = result.get("executed_price", current_price)
                                 final_reasoning = f"Open long success: ${amount_usdt:.2f}, {leverage}x leverage, SL ${stop_loss:.2f}. {reasoning}"
-                                logger.info(f"[TradeExecutor] ✅ Open long success: entry ${entry_price:.2f}")
+                                logger.info(f"[TradeExecutor] [OK] Open long success: entry ${entry_price:.2f}")
                             else:
                                 final_reasoning = f"Open long failed: {result.get('error')}. {reasoning}"
                         else:
@@ -2839,7 +2839,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             )
             
             status = "Success" if trade_success else "Failed"
-            return f"✅ Long {status}({action_taken}): {leverage}x leverage, {amount_percent*100:.0f}% position, entry ${entry_price:,.2f}"
+            return f"[OK] Long {status}({action_taken}): {leverage}x leverage, {amount_percent*100:.0f}% position, entry ${entry_price:,.2f}"
         
         async def open_short_tool(leverage: int = None, amount_percent: float = None,
                                  confidence: int = None, reasoning: str = "") -> str:
@@ -3007,7 +3007,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                     action_taken = "add_to_short"
                                     entry_price = result.get("executed_price", current_price)
                                     final_reasoning = f"Add to short success: original entry ${existing_entry:.2f}, added ${add_amount:.2f}(unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
-                                    logger.info(f"[TradeExecutor] ✅ Add to short success")
+                                    logger.info(f"[TradeExecutor] [OK] Add to short success")
                                 else:
                                     trade_success = True
                                     action_taken = "maintain_short"
@@ -3027,7 +3027,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                 final_reasoning = f"⚠️ Near liquidation (liq price ${liquidation_price:.2f}), maintaining short (unrealized loss ${unrealized_pnl:.2f}). {reasoning}"
                             else:
                                 final_reasoning = f"Full position (available ${true_available_margin:.2f}), maintaining short (entry ${existing_entry:.2f}, unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
-                            logger.info(f"[TradeExecutor] ✅ Full position/cannot add, maintaining short")
+                            logger.info(f"[TradeExecutor] [OK] Full position/cannot add, maintaining short")
                     
                     # 📌 Scenario 2: Have long position (opposite direction) -> Close long -> Open short
                     elif current_direction == "long":
@@ -3051,7 +3051,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                         
                             if close_result.get("success"):
                                 pnl = close_result.get("pnl", 0)
-                                logger.info(f"[TradeExecutor] ✅ Close long success, PnL=${pnl:.2f}")
+                                logger.info(f"[TradeExecutor] [OK] Close long success, PnL=${pnl:.2f}")
                                 
                                 # 🔧 Re-get true available margin
                                 account = await toolkit.paper_trader.get_account()
@@ -3085,7 +3085,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                         action_taken = "reverse_long_to_short"
                                         entry_price = result.get("executed_price", current_price)
                                         final_reasoning = f"Reverse success: closed long (PnL=${pnl:.2f}) -> opened short ${amount_usdt:.2f}. {reasoning}"
-                                        logger.info(f"[TradeExecutor] ✅ Reverse to short success")
+                                        logger.info(f"[TradeExecutor] [OK] Reverse to short success")
                                     else:
                                         trade_success = True
                                         action_taken = "close_long_only"
@@ -3129,7 +3129,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                                 action_taken = "new_short"
                                 entry_price = result.get("executed_price", current_price)
                                 final_reasoning = f"Open short success: ${amount_usdt:.2f}, {leverage}x leverage, SL ${stop_loss:.2f}. {reasoning}"
-                                logger.info(f"[TradeExecutor] ✅ Open short success: entry ${entry_price:.2f}")
+                                logger.info(f"[TradeExecutor] [OK] Open short success: entry ${entry_price:.2f}")
                             else:
                                 final_reasoning = f"Open short failed: {result.get('error')}. {reasoning}"
                         else:
@@ -3154,7 +3154,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
             )
             
             status = "Success" if trade_success else "Failed"
-            return f"✅ Short {status}({action_taken}): {leverage}x leverage, {amount_percent*100:.0f}% position, entry ${entry_price:,.2f}"
+            return f"[OK] Short {status}({action_taken}): {leverage}x leverage, {amount_percent*100:.0f}% position, entry ${entry_price:,.2f}"
         
         async def close_position_tool(reasoning: str = "") -> str:
             """
@@ -3178,7 +3178,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                     if result.get("success"):
                         close_success = True
                         pnl = result.get("pnl", 0)
-                        logger.info(f"[TradeExecutor] ✅ Close position success, PnL: ${pnl:.2f}")
+                        logger.info(f"[TradeExecutor] [OK] Close position success, PnL: ${pnl:.2f}")
                     else:
                         error_msg = result.get("error", "Unknown error")
                         logger.error(f"[TradeExecutor] Close position failed: {error_msg}")
@@ -3202,7 +3202,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                 timestamp=datetime.now()
             )
             
-            return f"✅ Close {'Success' if close_success else 'Failed'}" + (f" (PnL: ${pnl:.2f})" if close_success else "")
+            return f"[OK] Close {'Success' if close_success else 'Failed'}" + (f" (PnL: ${pnl:.2f})" if close_success else "")
         
         async def hold_tool(reason: str = "Market unclear, choosing to hold") -> str:
             """
@@ -3212,7 +3212,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                 reason: Hold reason
             """
             current_price = await get_current_price()
-            logger.info(f"[TradeExecutor] ✅ Decided to hold: {reason}")
+            logger.info(f"[TradeExecutor] [OK] Decided to hold: {reason}")
             
             execution_result["signal"] = TradingSignal(
                 direction="hold",
@@ -3348,7 +3348,7 @@ You MUST call a tool based on meeting results!""",
                 # Validate direction - NO DEFAULT BIAS
                 direction_lower = direction.lower()
                 if direction_lower not in ["long", "short"]:
-                    return f"❌ Error: Invalid direction '{direction}'. Must be 'long' or 'short'."
+                    return f"[FAIL] Error: Invalid direction '{direction}'. Must be 'long' or 'short'."
                 
                 analysis = await analyze_execution(
                     amount_usdt=float(amount_usdt),
@@ -3386,7 +3386,7 @@ You MUST call a tool based on meeting results!""",
             }
         ))
 
-        logger.info(f"[TradeExecutor] ✅ Agent created successfully, registered {len(trade_executor.tools)} trading tools")
+        logger.info(f"[TradeExecutor] [OK] Agent created successfully, registered {len(trade_executor.tools)} trading tools")
         
         # Wrapper class providing run() method that returns TradingSignal
         class TradeExecutorWrapper:
@@ -3429,7 +3429,7 @@ You MUST call a tool based on meeting results!""",
                     
                     # Step 3: Handle native tool_calls (OpenAI format)
                     if tool_calls:
-                        logger.info(f"[TradeExecutor] 🎯 Detected native Tool Calls: {len(tool_calls)}")
+                        logger.info(f"[TradeExecutor] [TARGET] Detected native Tool Calls: {len(tool_calls)}")
                         for tc in tool_calls:
                             func = tc.get("function", {})
                             tool_name = func.get("name", "")
@@ -3450,7 +3450,7 @@ You MUST call a tool based on meeting results!""",
                     
                     if legacy_matches:
                         logger.warning(f"[TradeExecutor] ⚠️ DEPRECATED: Legacy [USE_TOOL: xxx] format detected. This will be removed in future versions.")
-                        logger.info(f"[TradeExecutor] 🎯 Detected Legacy Tool Calls: {len(legacy_matches)}")
+                        logger.info(f"[TradeExecutor] [TARGET] Detected Legacy Tool Calls: {len(legacy_matches)}")
                         for tool_name, params_str in legacy_matches:
                             if tool_name in self.tools:
                                 try:
@@ -3483,7 +3483,7 @@ You MUST call a tool based on meeting results!""",
                     # Step 5: Check if there are tool execution results
                     if self.result["signal"]:
                         signal = self.result["signal"]
-                        logger.info(f"[TradeExecutor] ✅ Tool execution complete: {signal.direction}")
+                        logger.info(f"[TradeExecutor] [OK] Tool execution complete: {signal.direction}")
                         # Clear result container for next use
                         self.result["signal"] = None
                         return signal
@@ -3493,7 +3493,7 @@ You MUST call a tool based on meeting results!""",
                     return await self._infer_from_text(content or "")
                     
                 except Exception as e:
-                    logger.error(f"[TradeExecutor] ❌ Execution failed: {e}", exc_info=True)
+                    logger.error(f"[TradeExecutor] [FAIL] Execution failed: {e}", exc_info=True)
                     current_price = await get_current_price()
                     return TradingSignal(
                         direction="hold",
@@ -3829,7 +3829,7 @@ Please reference your historical performance and lessons learned in your analysi
             # ReWOO agents handle tool execution internally via analyze_with_rewoo
             native_tool_calls = getattr(self, '_pending_native_tool_calls', [])
             if native_tool_calls and hasattr(agent, 'tools') and agent.tools and not isinstance(agent, ReWOOAgent):
-                logger.info(f"[{agent.name}] 🎯 Detected native Tool Calls: {len(native_tool_calls)}")
+                logger.info(f"[{agent.name}] [TARGET] Detected native Tool Calls: {len(native_tool_calls)}")
                 tool_results = []
                 
                 for tc in native_tool_calls:
@@ -4074,7 +4074,7 @@ Please provide your comprehensive analysis conclusion based on the tool results 
             self._add_message(
                 agent_id="system",
                 agent_name="System",
-                content=f"❌ {agent.name} analysis failed: {str(e)[:100]}",
+                content=f"[FAIL] {agent.name} analysis failed: {str(e)[:100]}",
                 message_type="error"
             )
             return ""
@@ -4173,7 +4173,7 @@ Please provide your comprehensive analysis conclusion based on the tool results 
             tp_percent = max(0.1, min(tp_percent, 50.0))
             sl_percent = max(0.1, min(sl_percent, 50.0))
 
-            logger.info(f"[{agent_name}] ✅ JSON parsed successfully: direction={direction}, confidence={confidence}%, leverage={leverage}x")
+            logger.info(f"[{agent_name}] [OK] JSON parsed successfully: direction={direction}, confidence={confidence}%, leverage={leverage}x")
 
             return AgentVote(
                 agent_id=agent_id,

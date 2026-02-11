@@ -204,7 +204,7 @@ class TradeExecutor:
                     # Step 3: OBSERVE - Check result
                     if self._result.get("signal"):
                         signal = self._result["signal"]
-                        logger.info(f"[ReAct] ✅ Success: {signal.direction.upper()}")
+                        logger.info(f"[ReAct] [OK] Success: {signal.direction.upper()}")
                         return signal
                     else:
                         observations.append(f"Action {action} executed but no signal generated")
@@ -660,7 +660,7 @@ Choose ONE action and execute it. Be decisive but cautious.
         confidence: int = 70
     ):
         """Execute position opening."""
-        # ✅ Confidence validation
+        # [OK] Confidence validation
         if confidence < self.MIN_CONFIDENCE_OPEN:
             logger.warning(
                 f"[SafetyGuard] Confidence {confidence}% below minimum {self.MIN_CONFIDENCE_OPEN}% - "
@@ -749,7 +749,7 @@ Choose ONE action and execute it. Be decisive but cautious.
     
     async def _tool_close_position(self, reason: str = "", confidence: int = 100):
         """Close position tool."""
-        # ✅ Confidence validation        
+        # [OK] Confidence validation        
         if confidence < self.MIN_CONFIDENCE_CLOSE:
             logger.warning(
                 f"[SafetyGuard] Confidence {confidence}% below minimum {self.MIN_CONFIDENCE_CLOSE}% - "

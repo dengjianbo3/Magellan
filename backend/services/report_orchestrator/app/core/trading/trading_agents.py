@@ -66,7 +66,7 @@ def create_trading_agents(toolkit: Optional["TradingToolkit"] = None) -> List[An
             # Pass language='en' for English output (better for LLM understanding)
             agent = registry.create_agent(agent_id, language='en')
             agents.append(agent)
-            logger.info(f"✅ Loaded agent '{agent_id}' -> name='{agent.name}', id='{agent.id}'")
+            logger.info(f"[OK] Loaded agent '{agent_id}' -> name='{agent.name}', id='{agent.id}'")
         except Exception as e:
             logger.error(f"Failed to load agent '{agent_id}' from registry: {e}")
             import traceback
@@ -84,7 +84,7 @@ def create_trading_agents(toolkit: Optional["TradingToolkit"] = None) -> List[An
     # Register trading tools if toolkit provided
     if toolkit:
         analysis_tools = toolkit.get_analysis_tools()
-        # ❌ REMOVED: execution_tools - Leader no longer executes trades
+        # [FAIL] REMOVED: execution_tools - Leader no longer executes trades
         # execution_tools = toolkit.get_execution_tools()
 
         for agent in agents:

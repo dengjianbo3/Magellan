@@ -57,14 +57,30 @@ class TriggerLock:
         self._cooldown_until: Optional[datetime] = None
         self._last_analysis_time: Optional[datetime] = None
     
-    @property
-    def state(self) -> str:
-        # 自动检查冷却是否过期
+    def _check_cooldown_expired(self) -> bool:
+        """
+        检查冷却期是否已过期，如果过期则更新状态。
+
+        Returns:
+            True if cooldown expired and state was updated
+        """
         if self._state == "cooldown" and self._cooldown_until:
             if datetime.now() >= self._cooldown_until:
                 self._state = "idle"
                 self._cooldown_until = None
                 logger.info("[Lock] Cooldown expired, state -> idle")
+                return True
+        return False
+
+    @property
+    def state(self) -> str:
+        """
+        获取当前锁状态。
+
+        Note: 此属性会自动检查冷却期是否过期并更新状态。
+        如果需要无副作用的状态读取，使用 _state 属性。
+        """
+        self._check_cooldown_expired()
         return self._state
     
     async def acquire_check(self) -> bool:

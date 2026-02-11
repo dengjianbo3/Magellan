@@ -69,14 +69,14 @@ async def run_with_graph(
             )
             
             self._final_signal = signal
-            logger.info(f"[TradingMeeting] ✅ LangGraph execution complete: {signal.direction.upper()}")
+            logger.info(f"[TradingMeeting] [OK] LangGraph execution complete: {signal.direction.upper()}")
             return signal
         
         logger.warning("[TradingMeeting] ⚠️ No signal from LangGraph, returning None")
         return None
         
     except Exception as e:
-        logger.error(f"[TradingMeeting] ❌ LangGraph execution failed: {e}", exc_info=True)
+        logger.error(f"[TradingMeeting] [FAIL] LangGraph execution failed: {e}", exc_info=True)
         # Fallback to traditional flow
         logger.info("[TradingMeeting] Falling back to traditional execution...")
         return None
@@ -124,7 +124,7 @@ Trades: {memory.winning_trades}W / {memory.losing_trades}L
 Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄️ "}{max(getattr(memory, 'consecutive_wins', 0), getattr(memory, 'consecutive_losses', 0))} trades
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 CURRENT FOCUS
+[TARGET] CURRENT FOCUS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {focus}
@@ -153,7 +153,7 @@ def _calculate_focus_area(self, memory) -> str:
     if consecutive_losses >= 3:
         return "⚠️ RISK CONTROL - Reduce position sizes, tighten stops, avoid revenge trading"
     elif win_rate < 40:
-        return "🎯 ACCURACY - Focus on high-confidence setups only (>70%)"
+        return "[TARGET] ACCURACY - Focus on high-confidence setups only (>70%)"
     elif consecutive_wins >= 3:
         return "💰 CAPITALIZE - Trending well, maintain discipline, don't overtrade"
     elif win_rate >= 60:

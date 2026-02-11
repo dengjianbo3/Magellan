@@ -507,7 +507,7 @@ Provide a 2-3 sentence reflection on:
         lines = ["## Recent Trade Reflections (Learn from these):"]
         
         for r in reflections:
-            outcome = "✅ WIN" if r.is_win else "❌ LOSS"
+            outcome = "[OK] WIN" if r.is_win else "[FAIL] LOSS"
             lines.append(
                 f"\n### Trade {r.trade_id[:8]}: {r.direction.upper()} {outcome}"
             )

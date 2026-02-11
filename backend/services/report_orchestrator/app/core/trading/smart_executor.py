@@ -438,7 +438,7 @@ class SlicedExecutor:
                             if volatility_recheck.get("should_abort"):
                                 result.status = "aborted"
                                 result.abort_reason = f"Volatility too high: {volatility_recheck.get('volatility_percent', 0):.2f}%"
-                                logger.error(f"[SmartExecutor] ❌ Aborting due to sustained volatility")
+                                logger.error(f"[SmartExecutor] [FAIL] Aborting due to sustained volatility")
                                 break
             
             # Calculate final metrics

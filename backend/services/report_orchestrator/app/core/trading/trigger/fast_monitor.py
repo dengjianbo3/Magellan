@@ -177,10 +177,9 @@ class FastMonitor:
         self.config = config or FastMonitorConfig()
         self.base_url = get_infra_config().okx_base_url if get_infra_config else "https://www.okx.com"
 
-        # 价格历史 (用于计算变化)
+        # 价格历史 (用于计算变化和状态报告)
         history_maxlen = CACHE.PRICE_HISTORY_MAXLEN if CACHE else 60
         self._price_history: deque = deque(maxlen=history_maxlen)
-        self._last_price_time: Optional[datetime] = None
 
         # 缓存数据
         self._last_funding_rate: Optional[float] = None
@@ -287,9 +286,9 @@ class FastMonitor:
         
         if result.should_trigger:
             conditions_str = ", ".join([c.name for c in triggered_conditions])
-            logger.warning(f"[FastMonitor] 🚨 Triggered: {conditions_str} (Urgency: {max_urgency})")
+            logger.warning(f"[FastMonitor] [ALERT] Triggered: {conditions_str} (Urgency: {max_urgency})")
         else:
-            logger.debug("[FastMonitor] ✅ No triggers")
+            logger.debug("[FastMonitor] [OK] No triggers")
         
         return result
     

@@ -123,7 +123,7 @@ class OKXTrader:
         if self._initialized:
             return
 
-        # 🚨 Mode confirmation logging
+        # [ALERT] Mode confirmation logging
         if self.demo_mode:
             logger.info("=" * 60)
             logger.info("🧪 INITIALIZING OKX DEMO TRADER")
@@ -131,7 +131,7 @@ class OKXTrader:
             logger.info("=" * 60)
         else:
             logger.warning("=" * 60)
-            logger.warning("🚨🚨🚨 WARNING: REAL TRADING MODE ACTIVE 🚨🚨🚨")
+            logger.warning("[ALERT][ALERT][ALERT] WARNING: REAL TRADING MODE ACTIVE [ALERT][ALERT][ALERT]")
             logger.warning("   REAL FUNDS ARE AT RISK!")
             logger.warning("   Make sure you have:")
             logger.warning("   - API key with LIMITED permissions (no withdrawal)")
@@ -219,18 +219,18 @@ class OKXTrader:
                 # 🆕 CRITICAL FIX: Final validation - ensure TP/SL makes sense for direction
                 if tp_price and pos.entry_price:
                     if pos.direction == "long" and tp_price < pos.entry_price:
-                        logger.critical(f"[TP/SL_VALIDATION] ❌ WRONG DIRECTION TP! LONG position has TP below entry: TP=${tp_price:.2f} < entry=${pos.entry_price:.2f}")
+                        logger.critical(f"[TP/SL_VALIDATION] [FAIL] WRONG DIRECTION TP! LONG position has TP below entry: TP=${tp_price:.2f} < entry=${pos.entry_price:.2f}")
                         self._position.take_profit_price = None
                     elif pos.direction == "short" and tp_price > pos.entry_price:
-                        logger.critical(f"[TP/SL_VALIDATION] ❌ WRONG DIRECTION TP! SHORT position has TP above entry: TP=${tp_price:.2f} > entry=${pos.entry_price:.2f}")
+                        logger.critical(f"[TP/SL_VALIDATION] [FAIL] WRONG DIRECTION TP! SHORT position has TP above entry: TP=${tp_price:.2f} > entry=${pos.entry_price:.2f}")
                         self._position.take_profit_price = None
                         
                 if sl_price and pos.entry_price:
                     if pos.direction == "long" and sl_price > pos.entry_price:
-                        logger.critical(f"[TP/SL_VALIDATION] ❌ WRONG DIRECTION SL! LONG position has SL above entry: SL=${sl_price:.2f} > entry=${pos.entry_price:.2f}")
+                        logger.critical(f"[TP/SL_VALIDATION] [FAIL] WRONG DIRECTION SL! LONG position has SL above entry: SL=${sl_price:.2f} > entry=${pos.entry_price:.2f}")
                         self._position.stop_loss_price = None
                     elif pos.direction == "short" and sl_price < pos.entry_price:
-                        logger.critical(f"[TP/SL_VALIDATION] ❌ WRONG DIRECTION SL! SHORT position has SL below entry: SL=${sl_price:.2f} < entry=${pos.entry_price:.2f}")
+                        logger.critical(f"[TP/SL_VALIDATION] [FAIL] WRONG DIRECTION SL! SHORT position has SL below entry: SL=${sl_price:.2f} < entry=${pos.entry_price:.2f}")
                         self._position.stop_loss_price = None
                 
                 logger.info(f"Synced position: {pos.direction} {pos.size} BTC @ ${pos.entry_price}, TP=${self._position.take_profit_price}, SL=${self._position.stop_loss_price}")
@@ -800,7 +800,7 @@ class OKXTrader:
             loss_percent = abs(self._daily_pnl) / self.initial_balance * 100
             if self._daily_pnl < 0 and loss_percent >= self._max_daily_loss_percent:
                 self._is_trading_halted = True
-                logger.warning(f"🚨 [DailyLimit] TRADING HALTED: Daily loss {loss_percent:.1f}% >= {self._max_daily_loss_percent}%")
+                logger.warning(f"[ALERT] [DailyLimit] TRADING HALTED: Daily loss {loss_percent:.1f}% >= {self._max_daily_loss_percent}%")
                 return False, f"Trading halted: daily loss {loss_percent:.1f}% exceeds {self._max_daily_loss_percent}% limit"
 
         return True, ""

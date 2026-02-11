@@ -118,7 +118,7 @@ class TradeReflection:
 
     def get_summary_for_prompt(self) -> str:
         """Generate enhanced summary for prompt injection with market context"""
-        emoji = "✅" if self.pnl > 0 else "❌"
+        emoji = "[OK]" if self.pnl > 0 else "[FAIL]"
         direction_text = "Long" if self.direction == "long" else "Short" if self.direction == "short" else "Hold"
 
         summary = f"{emoji} Last trade: {direction_text} BTC, "
@@ -131,13 +131,13 @@ class TradeReflection:
         if self.market_condition:
             condition_emoji = {
                 "trending_up": "📈", "trending_down": "📉", 
-                "ranging": "↔️", "volatile": "⚡", "calm": "😌"
+                "ranging": "↔️", "volatile": "[FAST]", "calm": "😌"
             }.get(self.market_condition, "")
             summary += f"\nMarket: {condition_emoji} {self.market_condition}"
         
         # Add timing evaluation
         if self.entry_timing:
-            timing_emoji = {"excellent": "🎯", "good": "👍", "neutral": "➖", "poor": "👎", "terrible": "💀"}.get(self.entry_timing, "")
+            timing_emoji = {"excellent": "[TARGET]", "good": "👍", "neutral": "➖", "poor": "👎", "terrible": "💀"}.get(self.entry_timing, "")
             summary += f" | Entry: {timing_emoji} {self.entry_timing}"
 
         # Add lesson
@@ -385,7 +385,7 @@ class AgentMemory:
 
         # 6. Strengths and weaknesses
         if self.strengths:
-            context_parts.append("\n## ✅ Your Strengths")
+            context_parts.append("\n## [OK] Your Strengths")
             for s in self.strengths[:3]:
                 context_parts.append(f"- {s}")
 

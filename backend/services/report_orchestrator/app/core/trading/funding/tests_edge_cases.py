@@ -24,11 +24,11 @@ class TestResults:
     
     def ok(self, name):
         self.passed += 1
-        print(f"  ✅ {name}")
+        print(f"  [OK] {name}")
     
     def fail(self, name, expected, actual):
         self.failed += 1
-        print(f"  ❌ {name}: expected {expected}, got {actual}")
+        print(f"  [FAIL] {name}: expected {expected}, got {actual}")
 
 
 def test_edge_zero_rate():
@@ -346,9 +346,9 @@ def run_edge_tests():
     print(f"Edge Case Results: {total_passed}/{total} passed")
     
     if total_failed == 0:
-        print("✅ ALL EDGE CASE TESTS PASSED!")
+        print("[OK] ALL EDGE CASE TESTS PASSED!")
     else:
-        print(f"❌ {total_failed} EDGE CASE TESTS FAILED")
+        print(f"[FAIL] {total_failed} EDGE CASE TESTS FAILED")
     print("="*60)
     
     return total_failed == 0

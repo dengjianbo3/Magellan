@@ -441,7 +441,7 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
                 # Check if we got a signal from tool execution
                 if self._result.get("signal"):
                     signal = self._result["signal"]
-                    logger.info(f"[ExecutorAgent] ✅ Execution complete: {signal.direction.upper()}")
+                    logger.info(f"[ExecutorAgent] [OK] Execution complete: {signal.direction.upper()}")
                     # Save decision to Redis
                     await self._save_decision(signal)
                     return signal
@@ -758,7 +758,7 @@ Analyze the consensus and make a decisive action."""
                         sl_price=sl_price
                     )
                     action_taken = "add_to_long"
-                    logger.info(f"[ExecutorAgent] ✅ Added ${add_amount:.2f} to long position")
+                    logger.info(f"[ExecutorAgent] [OK] Added ${add_amount:.2f} to long position")
                 else:
                     action_taken = "maintain_long_small_amount"
                     logger.info("[ExecutorAgent] Add amount too small, maintaining position")
@@ -773,7 +773,7 @@ Analyze the consensus and make a decisive action."""
                 # Close short first
                 close_result = await self.paper_trader.close_position(symbol=self.symbol)
                 if close_result.get("success"):
-                    logger.info("[ExecutorAgent] ✅ Closed short position")
+                    logger.info("[ExecutorAgent] [OK] Closed short position")
                     # Now open long
                     amount_usdt = min(available_margin * amount_percent, available_margin - self.SAFETY_BUFFER)
                     trade_result = await self.paper_trader.open_long(
@@ -924,7 +924,7 @@ Analyze the consensus and make a decisive action."""
                         sl_price=sl_price
                     )
                     action_taken = "add_to_short"
-                    logger.info(f"[ExecutorAgent] ✅ Added ${add_amount:.2f} to short position")
+                    logger.info(f"[ExecutorAgent] [OK] Added ${add_amount:.2f} to short position")
                 else:
                     action_taken = "maintain_short_small_amount"
                     logger.info("[ExecutorAgent] Add amount too small, maintaining position")
@@ -938,7 +938,7 @@ Analyze the consensus and make a decisive action."""
             if self.paper_trader:
                 close_result = await self.paper_trader.close_position(symbol=self.symbol)
                 if close_result.get("success"):
-                    logger.info("[ExecutorAgent] ✅ Closed long position")
+                    logger.info("[ExecutorAgent] [OK] Closed long position")
                     amount_usdt = min(available_margin * amount_percent, available_margin - self.SAFETY_BUFFER)
                     trade_result = await self.paper_trader.open_short(
                         symbol=self.symbol,
@@ -1060,10 +1060,10 @@ Analyze the consensus and make a decisive action."""
         if position.get("has_position") and self.paper_trader:
             trade_result = await self.paper_trader.close_position(symbol=self.symbol)
             if trade_result.get("success"):
-                logger.info(f"[ExecutorAgent] ✅ Closed {position.get('direction')} position")
+                logger.info(f"[ExecutorAgent] [OK] Closed {position.get('direction')} position")
                 action_taken = f"closed_{position.get('direction')}"
             else:
-                logger.error(f"[ExecutorAgent] ❌ Failed to close: {trade_result.get('error')}")
+                logger.error(f"[ExecutorAgent] [FAIL] Failed to close: {trade_result.get('error')}")
                 action_taken = "close_failed"
         else:
             logger.info("[ExecutorAgent] No position to close")
@@ -1181,7 +1181,7 @@ Analyze the consensus and make a decisive action."""
                     )
                     
                     if trade_result.get("success"):
-                        logger.info(f"[ExecutorAgent] ✅ Added ${add_amount:.2f} to long position")
+                        logger.info(f"[ExecutorAgent] [OK] Added ${add_amount:.2f} to long position")
                         action_taken = "added_to_long"
                     else:
                         logger.error(f"[ExecutorAgent] Add failed: {trade_result.get('error')}")
@@ -1284,7 +1284,7 @@ Analyze the consensus and make a decisive action."""
                     )
                     
                     if trade_result.get("success"):
-                        logger.info(f"[ExecutorAgent] ✅ Added ${add_amount:.2f} to short position")
+                        logger.info(f"[ExecutorAgent] [OK] Added ${add_amount:.2f} to short position")
                         action_taken = "added_to_short"
                     else:
                         logger.error(f"[ExecutorAgent] Add failed: {trade_result.get('error')}")
@@ -1363,7 +1363,7 @@ Analyze the consensus and make a decisive action."""
                 )
                 
                 if trade_result.get("success"):
-                    logger.info(f"[ExecutorAgent] ✅ Reduced position by {reduce_percent*100:.0f}%")
+                    logger.info(f"[ExecutorAgent] [OK] Reduced position by {reduce_percent*100:.0f}%")
                     action_taken = f"reduced_{position.get('direction')}_{reduce_percent*100:.0f}p"
                 else:
                     # Fallback to full close if partial not supported
@@ -1416,12 +1416,12 @@ Analyze the consensus and make a decisive action."""
             async def force_close_callback(symbol: str, reason: str) -> Dict:
                 """Callback to force close position when funding impact exceeds threshold."""
                 if self.paper_trader:
-                    logger.warning(f"[ExecutorAgent] 🚨 Force closing position: {reason}")
+                    logger.warning(f"[ExecutorAgent] [ALERT] Force closing position: {reason}")
                     return await self.paper_trader.close_position(symbol=symbol, reason=reason)
                 return {"success": False, "error": "No paper trader available"}
             
             monitor.register_close_callback(force_close_callback)
-            logger.info("[ExecutorAgent] ✅ Funding impact monitor callback registered")
+            logger.info("[ExecutorAgent] [OK] Funding impact monitor callback registered")
             
         except Exception as e:
             logger.warning(f"[ExecutorAgent] Failed to setup funding monitor: {e}")

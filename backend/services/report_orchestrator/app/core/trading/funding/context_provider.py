@@ -152,7 +152,7 @@ class FundingContextProvider:
 """
         else:
             context += f"""
-✅ **Normal Rate**: Funding rate impact is minimal.
+[OK] **Normal Rate**: Funding rate impact is minimal.
 - Fee costs are manageable; standard trading strategy applies.
 """
         

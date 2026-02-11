@@ -1546,7 +1546,7 @@ class TradingToolkit:
 💰 Price: ${current_price:,.2f} ({price_change:+.2f}% 24h)
 📊 RSI(14): {rsi:.1f} {'🔴 Overbought' if rsi > 70 else '🟢 Oversold' if rsi < 30 else '⚪ Neutral'}
 📈 EMA20: ${ema20:,.2f} | EMA50: ${ema50:,.2f}
-🎯 Support: ${support:,.2f} | Resistance: ${resistance:,.2f}
+[TARGET] Support: ${support:,.2f} | Resistance: ${resistance:,.2f}
 📈 Trend: {trend} ({strength})"""
 
                 logger.info(f"[TradingTools] Technical analysis: {symbol} {timeframe} -> {trend}")
@@ -1601,7 +1601,7 @@ class TradingToolkit:
                 summary = f"""📊 Orderbook: {clean_symbol}/USDT
 💰 Bid: ${best_bid:,.2f} | Ask: ${best_ask:,.2f} | Spread: {spread:.4f}%
 📊 Volume: Bid {total_bid:,.2f} | Ask {total_ask:,.2f} | Ratio: {ratio:.2f}
-🎯 Support: ${support:,.2f} | Resistance: ${resistance:,.2f}
+[TARGET] Support: ${support:,.2f} | Resistance: ${resistance:,.2f}
 💡 Sentiment: {sentiment}"""
 
                 logger.info(f"[TradingTools] Orderbook: {clean_symbol} ratio={ratio:.2f}")

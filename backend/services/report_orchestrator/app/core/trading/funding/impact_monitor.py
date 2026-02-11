@@ -205,7 +205,7 @@ class FundingImpactMonitor:
             impact: Impact assessment that triggered close
         """
         logger.warning(
-            f"[FundingMonitor] 🚨 FORCE CLOSE triggered for {position_id}: "
+            f"[FundingMonitor] [ALERT] FORCE CLOSE triggered for {position_id}: "
             f"impact={impact.impact_percent:.1f}%, reason={impact.reason}"
         )
         
@@ -215,12 +215,12 @@ class FundingImpactMonitor:
                 
                 if result and result.get('success'):
                     logger.info(
-                        f"[FundingMonitor] ✅ Position {position_id} force-closed successfully. "
+                        f"[FundingMonitor] [OK] Position {position_id} force-closed successfully. "
                         f"True PnL: ${impact.true_pnl.true_pnl:.2f}"
                     )
                 else:
                     logger.error(
-                        f"[FundingMonitor] ❌ Force close failed for {position_id}: "
+                        f"[FundingMonitor] [FAIL] Force close failed for {position_id}: "
                         f"{result.get('error') if result else 'No result'}"
                     )
             except Exception as e:

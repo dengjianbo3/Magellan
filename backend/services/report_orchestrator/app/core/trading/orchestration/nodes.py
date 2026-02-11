@@ -235,7 +235,7 @@ async def risk_assessment_node(state: TradingState, config: RunnableConfig = Non
         
         elapsed = (time.time() - start_time) * 1000
         status = "BLOCKED" if risk_blocked else risk_level.upper()
-        logger.info(f"[Node: risk_assessment] ✅ Complete in {elapsed:.0f}ms - Risk: {status}")
+        logger.info(f"[Node: risk_assessment] [OK] Complete in {elapsed:.0f}ms - Risk: {status}")
         
         return {
             "risk_assessment": risk_assessment,
@@ -247,7 +247,7 @@ async def risk_assessment_node(state: TradingState, config: RunnableConfig = Non
         }
         
     except Exception as e:
-        logger.error(f"[Node: risk_assessment] ❌ Failed: {e}")
+        logger.error(f"[Node: risk_assessment] [FAIL] Failed: {e}")
         return {
             "error": str(e),
             "error_node": "risk_assessment",
@@ -331,7 +331,7 @@ async def consensus_node(state: TradingState, config: RunnableConfig) -> Dict[st
                         echo_chamber_warning=echo_chamber_result.warning_message if echo_chamber_result and echo_chamber_result.status.value == "echo_chamber_detected" else None
                     )
                 except Exception as e:
-                    logger.error(f"[Node: consensus] ❌ Failed to generate LLM summary: {e}")
+                    logger.error(f"[Node: consensus] [FAIL] Failed to generate LLM summary: {e}")
                     leader_summary = _generate_leader_summary(votes, consensus_direction, consensus_confidence)
             else:
                 leader_summary = _generate_leader_summary(votes, consensus_direction, consensus_confidence)
@@ -356,7 +356,7 @@ async def consensus_node(state: TradingState, config: RunnableConfig) -> Dict[st
                 logger.warning(f"[Node: consensus] Failed to broadcast Leader message: {e}")
         
         elapsed = (time.time() - start_time) * 1000
-        logger.info(f"[Node: consensus] ✅ Complete in {elapsed:.0f}ms - {consensus_direction.upper()} ({consensus_confidence}%)")
+        logger.info(f"[Node: consensus] [OK] Complete in {elapsed:.0f}ms - {consensus_direction.upper()} ({consensus_confidence}%)")
         
         return {
             "leader_summary": leader_summary,
@@ -373,7 +373,7 @@ async def consensus_node(state: TradingState, config: RunnableConfig) -> Dict[st
         }
         
     except Exception as e:
-        logger.error(f"[Node: consensus] ❌ Failed: {e}")
+        logger.error(f"[Node: consensus] [FAIL] Failed: {e}")
         return {
             "error": str(e),
             "error_node": "consensus",
@@ -573,7 +573,7 @@ async def react_fallback_node(state: TradingState) -> Dict[str, Any]:
             should_fallback = False  # For now, don't retry
         
         elapsed = (time.time() - start_time) * 1000
-        logger.info(f"[Node: react_fallback] ✅ Complete in {elapsed:.0f}ms - Returning HOLD")
+        logger.info(f"[Node: react_fallback] [OK] Complete in {elapsed:.0f}ms - Returning HOLD")
         
         return {
             "final_signal": final_signal,
@@ -586,7 +586,7 @@ async def react_fallback_node(state: TradingState) -> Dict[str, Any]:
         }
         
     except Exception as e:
-        logger.error(f"[Node: react_fallback] ❌ Failed: {e}")
+        logger.error(f"[Node: react_fallback] [FAIL] Failed: {e}")
         # Ultimate fallback - just return HOLD
         return {
             "final_signal": {
@@ -633,7 +633,7 @@ async def reflection_node(state: TradingState) -> Dict[str, Any]:
             }
         
         elapsed = (time.time() - start_time) * 1000
-        logger.info(f"[Node: reflection] ✅ Complete in {elapsed:.0f}ms")
+        logger.info(f"[Node: reflection] [OK] Complete in {elapsed:.0f}ms")
         
         return {
             "reflection": reflection,
@@ -700,7 +700,7 @@ Trade execution has been blocked due to elevated risk. Recommend HOLD and wait f
     else:
         if risk_level == "low":
             message += """
-### ✅ APPROVED FOR EXECUTION
+### [OK] APPROVED FOR EXECUTION
 Risk within acceptable parameters. Trade execution may proceed with standard position sizing.
 """
         elif risk_level == "medium":
@@ -1081,11 +1081,11 @@ Suggested leverage is..., position size is...
 My confidence is approximately...%"
 
 ⚠️ **Important Reminders**:
-- ✅ Express your summary and recommendations in natural language
-- ✅ Include expert opinions, your judgment, recommended strategy
-- ✅ **ALWAYS include your recommended TP% and SL% values**
-- ✅ No need for markers like "【Final Decision】"
-- ✅ Your summary will be passed to the Trade Executor
+- [OK] Express your summary and recommendations in natural language
+- [OK] Include expert opinions, your judgment, recommended strategy
+- [OK] **ALWAYS include your recommended TP% and SL% values**
+- [OK] No need for markers like "【Final Decision】"
+- [OK] Your summary will be passed to the Trade Executor
 
 Please begin your summary!
 """

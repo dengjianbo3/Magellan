@@ -147,7 +147,7 @@ class OKXClient:
                 # Check for dangerous permissions
                 if 'withdraw' in perm.lower():
                     logger.warning("=" * 60)
-                    logger.warning("🚨 SECURITY WARNING: API KEY HAS WITHDRAW PERMISSION!")
+                    logger.warning("[ALERT] SECURITY WARNING: API KEY HAS WITHDRAW PERMISSION!")
                     logger.warning("   This is a security risk for automated trading.")
                     logger.warning("   Recommendation: Create a new API key with only 'Trade' permission.")
                     logger.warning("=" * 60)
@@ -156,7 +156,7 @@ class OKXClient:
                 # Check for trade permission
                 if 'trade' not in perm.lower() and perm:
                     logger.error("=" * 60)
-                    logger.error("❌ API KEY DOES NOT HAVE TRADE PERMISSION!")
+                    logger.error("[FAIL] API KEY DOES NOT HAVE TRADE PERMISSION!")
                     logger.error("   Trading operations will fail.")
                     logger.error("   Please update API key permissions in OKX.")
                     logger.error("=" * 60)
@@ -165,7 +165,7 @@ class OKXClient:
                 if not ip:
                     logger.warning("[API Security] ⚠️ No IP whitelist configured - consider adding for extra security")
                 else:
-                    logger.info(f"[API Security] ✅ IP whitelist active: {ip}")
+                    logger.info(f"[API Security] [OK] IP whitelist active: {ip}")
                     
         except Exception as e:
             logger.warning(f"[API Security] Could not verify API permissions: {e}")
@@ -203,12 +203,12 @@ class OKXClient:
                     })
 
                     if result.get('code') == '0':
-                        logger.info("✅ Successfully switched to Single-currency margin mode")
+                        logger.info("[OK] Successfully switched to Single-currency margin mode")
                     else:
-                        logger.error(f"❌ Failed to switch account mode: {result.get('msg')}")
+                        logger.error(f"[FAIL] Failed to switch account mode: {result.get('msg')}")
                         logger.error("   Please manually switch in OKX web/app settings")
                 else:
-                    logger.info(f"✅ OKX account mode OK (acctLv={acct_lv})")
+                    logger.info(f"[OK] OKX account mode OK (acctLv={acct_lv})")
 
                 # Check position mode
                 if pos_mode == 'net_mode':
@@ -219,7 +219,7 @@ class OKXClient:
                     })
 
                     if result.get('code') == '0':
-                        logger.info("✅ Successfully switched to long_short_mode (bidirectional position)")
+                        logger.info("[OK] Successfully switched to long_short_mode (bidirectional position)")
                     else:
                         error_msg = result.get('msg', '')
                         if '51020' in str(result):
@@ -227,7 +227,7 @@ class OKXClient:
                         else:
                             logger.error(f"Failed to switch position mode: {error_msg}")
                 else:
-                    logger.info("✅ OKX account already in long_short_mode (bidirectional position)")
+                    logger.info("[OK] OKX account already in long_short_mode (bidirectional position)")
 
         except Exception as e:
             logger.error(f"Error checking/setting account config: {e}")
@@ -762,11 +762,11 @@ class OKXClient:
                         if actual_size > 1:  # Likely in contracts not BTC
                             actual_size = actual_size * contract_val
                             
-                        logger.info(f"[OKXClient] ✅ Order {order_id} CONFIRMED: price=${actual_price:.2f}, size={actual_size:.6f}")
+                        logger.info(f"[OKXClient] [OK] Order {order_id} CONFIRMED: price=${actual_price:.2f}, size={actual_size:.6f}")
                         return actual_price, actual_size
                     
                     elif state in ['canceled', 'cancelled']:
-                        logger.error(f"[OKXClient] ❌ Order {order_id} was CANCELLED!")
+                        logger.error(f"[OKXClient] [FAIL] Order {order_id} was CANCELLED!")
                         return expected_price, 0  # Size 0 indicates failed order
                     
                     elif state == 'live':
@@ -824,9 +824,9 @@ class OKXClient:
                     'reduceOnly': 'true'  # Ensure this only reduces position
                 })
                 if result.get('code') == '0':
-                    logger.info(f"[OKXClient] ✅ Take Profit set at ${tp_price:.2f} for {sz_str} contracts")
+                    logger.info(f"[OKXClient] [OK] Take Profit set at ${tp_price:.2f} for {sz_str} contracts")
                 else:
-                    logger.error(f"[OKXClient] ❌ Failed to set TP: {result.get('msg')} (code={result.get('code')})")
+                    logger.error(f"[OKXClient] [FAIL] Failed to set TP: {result.get('msg')} (code={result.get('code')})")
 
             if sl_price:
                 result = await self._request('POST', '/api/v5/trade/order-algo', {
@@ -841,9 +841,9 @@ class OKXClient:
                     'reduceOnly': 'true'  # Ensure this only reduces position
                 })
                 if result.get('code') == '0':
-                    logger.info(f"[OKXClient] ✅ Stop Loss set at ${sl_price:.2f} for {sz_str} contracts")
+                    logger.info(f"[OKXClient] [OK] Stop Loss set at ${sl_price:.2f} for {sz_str} contracts")
                 else:
-                    logger.error(f"[OKXClient] ❌ Failed to set SL: {result.get('msg')} (code={result.get('code')})")
+                    logger.error(f"[OKXClient] [FAIL] Failed to set SL: {result.get('msg')} (code={result.get('code')})")
 
         except Exception as e:
             logger.error(f"Error setting TP/SL: {e}")

@@ -245,12 +245,12 @@ class TradingScheduler:
                     reason=reason,
                     timestamp=self._last_run
                 )
-                logger.info(f"✅ Analysis cycle #{self._run_count} completed successfully")
+                logger.info(f"[OK] Analysis cycle #{self._run_count} completed successfully")
             else:
                 logger.warning("No analysis callback registered")
 
         except Exception as e:
-            logger.error(f"❌ Error in analysis cycle #{self._run_count}: {e}", exc_info=True)
+            logger.error(f"[FAIL] Error in analysis cycle #{self._run_count}: {e}", exc_info=True)
 
         finally:
             if not self._stop_event.is_set():

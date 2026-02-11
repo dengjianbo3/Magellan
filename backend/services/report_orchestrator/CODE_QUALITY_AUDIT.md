@@ -226,20 +226,30 @@ except Exception as e:
 
 ## 低优先级问题汇总
 
-### 1. 日志中使用 Emoji - 5个实例
+### 1. 日志中使用 Emoji - 5个实例 ✅ 已修复
 ```python
 # 问题
 logger.warning(f"[FastMonitor] 🚨 Triggered...")
 
-# 建议
-logger.warning(f"[FastMonitor] ALERT: Triggered...")
+# 已修改为
+logger.warning(f"[FastMonitor] [ALERT] Triggered...")
 ```
 
-### 2. 测试代码在生产文件中 - 9个文件
-所有 `if __name__ == "__main__":` 块应移至 `/tests` 目录
+替换规则:
+- ✅ → [OK]
+- ❌ → [FAIL]
+- 🚨 → [ALERT]
+- 🎯 → [TARGET]
+- ⚡ → [FAST]
 
-### 3. 属性有副作用 - 1个实例
-`lock.py` 中的 `state` 属性在读取时修改状态
+### 2. 测试代码在生产文件中 - 9个文件 ⚠️ 保留
+所有 `if __name__ == "__main__":` 块保留用于开发调试，不影响生产运行。
+
+### 3. 属性有副作用 - 1个实例 ✅ 已改进
+`lock.py` 中的 `state` 属性：
+- 添加了 `_check_cooldown_expired()` 方法分离逻辑
+- 添加了文档说明副作用行为
+- 保持向后兼容
 
 ---
 
@@ -268,10 +278,10 @@ logger.warning(f"[FastMonitor] ALERT: Triggered...")
 14. ✅ 统一 check_tp_sl() 行为 (`base_trader.py`, `paper_trader.py`, `okx_trader.py`)
 15. ✅ 添加 Symbol 配置 (`constants.py` - SYMBOL.get_default())
 
-### 第四周 (Low)
-16. ⬜ 移除死代码
-17. ⬜ 统一命名规范
-18. ⬜ 移动测试代码到 `/tests`
+### 第四周 (Low) ✅ 已完成
+16. ✅ 移除死代码 - `fast_monitor.py` 移除未使用的 `_last_price_time`
+17. ✅ 统一命名规范 - 日志 Emoji 替换为文本标记
+18. ⚠️ 移动测试代码到 `/tests` - 保留用于开发调试
 
 ---
 
