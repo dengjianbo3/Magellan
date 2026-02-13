@@ -951,15 +951,16 @@ let ws = null;
 let countdownInterval = null;
 
 // Computed
-// Fixed initial capital - matches OKX demo account
-const INITIAL_CAPITAL = 5000;
-const initialCapital = ref(INITIAL_CAPITAL);
+// Initial capital from backend API (via account.initialBalance)
+const initialCapital = computed(() => {
+  return account.value.initialBalance || account.value.totalEquity || 10000;
+});
 
 // Trading start date - earliest trade timestamp
 const tradingStartDate = computed(() => {
   if (!tradeHistory.value || tradeHistory.value.length === 0) return null;
   // Find the earliest trade
-  const sorted = [...tradeHistory.value].sort((a, b) => 
+  const sorted = [...tradeHistory.value].sort((a, b) =>
     new Date(a.timestamp) - new Date(b.timestamp)
   );
   return sorted[0]?.timestamp ? new Date(sorted[0].timestamp) : null;
@@ -975,26 +976,24 @@ const tradingStartDateFormatted = computed(() => {
   });
 });
 
-// Total profit = current equity - initial capital
+// Total profit = current equity - initial capital (from API)
 const totalProfit = computed(() => {
-  return account.value.totalEquity - INITIAL_CAPITAL;
+  return account.value.totalEquity - initialCapital.value;
 });
 
 // Total profit percent
 const totalProfitPercent = computed(() => {
-  if (INITIAL_CAPITAL === 0) return 0;
-  return (totalProfit.value / INITIAL_CAPITAL) * 100;
+  if (initialCapital.value === 0) return 0;
+  return (totalProfit.value / initialCapital.value) * 100;
 });
 
 // Use initial_balance from account API for accurate PnL calculation
 const totalPnl = computed(() => {
-  const initial = account.value.initialBalance || account.value.totalEquity;
-  return account.value.totalEquity - initial;
+  return account.value.totalEquity - initialCapital.value;
 });
 const totalPnlPercent = computed(() => {
-  const initial = account.value.initialBalance || account.value.totalEquity;
-  if (initial === 0) return 0;
-  return (totalPnl.value / initial) * 100;
+  if (initialCapital.value === 0) return 0;
+  return (totalPnl.value / initialCapital.value) * 100;
 });
 
 // BTC benchmark data for alpha calculation

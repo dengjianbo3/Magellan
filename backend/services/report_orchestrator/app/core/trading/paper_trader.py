@@ -352,6 +352,7 @@ class PaperTrader(BaseTrader):
         true_available_margin = self._account.total_equity - self._account.used_margin
 
         return {
+            "initial_balance": self._account.initial_balance,
             "total_equity": self._account.total_equity,
             "available_balance": self._account.balance,
             "true_available_margin": true_available_margin,  # True available margin
