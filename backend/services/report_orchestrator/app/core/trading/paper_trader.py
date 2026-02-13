@@ -218,8 +218,10 @@ class PaperTrader(BaseTrader):
             self._redis = redis.from_url(self.redis_url, decode_responses=True)
             await self._redis.ping()
 
-            # Load account state
+            # Load account state (or use defaults if Redis is empty)
             await self._load_state()
+            # Persist initial state to Redis if it was empty
+            await self._save_state()
             logger.info(f"Paper trader initialized. Balance: ${self._account.balance:.2f}")
 
         except Exception as e:
