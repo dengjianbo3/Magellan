@@ -23,7 +23,11 @@ from app.core.roundtable.rewoo_agent import ReWOOAgent
 from app.core.roundtable.tool import FunctionTool
 from app.models.trading_models import TradingSignal
 from app.core.trading.price_service import get_current_btc_price
-from app.core.trading.trading_config import get_infra_config
+from app.core.trading.trading_config import (
+    get_infra_config,
+    get_env_float as _get_env_float,
+    get_env_int as _get_env_int,
+)
 from app.core.trading.decision_store import TradingDecision, TradingDecisionStore
 
 # Funding fee awareness imports
@@ -42,25 +46,6 @@ from app.core.trading.funding import (
 from app.core.trading.atr_stop_loss import calculate_dynamic_sl, get_atr_calculator
 
 logger = logging.getLogger(__name__)
-
-# ========== Config from Environment ==========
-def _get_env_float(key: str, default: float) -> float:
-    val = os.getenv(key)
-    if val:
-        try:
-            return float(val)
-        except ValueError:
-            pass
-    return default
-
-def _get_env_int(key: str, default: int) -> int:
-    val = os.getenv(key)
-    if val:
-        try:
-            return int(val)
-        except ValueError:
-            pass
-    return default
 
 # Read trading config from environment (same as TradingMeetingConfig)
 EXECUTOR_CONFIG = {
@@ -405,9 +390,27 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
         """
         self._result = {"signal": None}
         self._executed_tools = []
-        
+
+        # 🔧 FIX: HITL mode check — only execute trades in FULL_AUTO mode
+        # In SEMI_AUTO/MANUAL, temporarily disable paper_trader so tools
+        # only generate signals without actually executing trades.
+        original_paper_trader = self.paper_trader
+        try:
+            from app.core.trading.mode_manager import get_mode_manager, TradingMode
+            mode_manager = get_mode_manager()
+            current_mode = await mode_manager.get_mode()
+
+            if current_mode != TradingMode.FULL_AUTO:
+                logger.info(f"[ExecutorAgent] Mode={current_mode.value} — signal-only mode (no trade execution)")
+                self.paper_trader = None  # Disable execution, tools will only generate signals
+            else:
+                logger.info("[ExecutorAgent] Mode=full_auto — trades will be executed")
+        except Exception as e:
+            logger.warning(f"[ExecutorAgent] Failed to check trading mode: {e}, defaulting to signal-only")
+            self.paper_trader = None  # Fail-safe: don't execute
+
         logger.info("[ExecutorAgent] Starting execution phase (ReWOO pattern)...")
-        
+
         # Store context for decision saving
         self._current_context = {
             "leader_summary": leader_summary,
@@ -415,7 +418,7 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
             "position_context": position_context,
             "trigger_reason": trigger_reason or "scheduled"
         }
-        
+
         # Build query for ReWOO analysis (with async funding context)
         query = await self._build_execution_query(
             leader_summary=leader_summary,
@@ -425,61 +428,65 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
         
         # Retry parameters for LLM instability
         max_attempts = 2
-        
-        for attempt in range(1, max_attempts + 1):
-            try:
-                # Reset result for each attempt
-                self._result = {"signal": None}
-                self._executed_tools = []
-                
-                if attempt > 1:
-                    logger.info(f"[ExecutorAgent] ⟳ Retry attempt {attempt}/{max_attempts}...")
-                
-                # Use ReWOO 3-phase analysis (inherited from ReWOOAgent)
-                result = await self.analyze_with_rewoo(query, self._current_context)
-                
-                # Check if we got a signal from tool execution
-                if self._result.get("signal"):
-                    signal = self._result["signal"]
-                    logger.info(f"[ExecutorAgent] [OK] Execution complete: {signal.direction.upper()}")
-                    # Save decision to Redis
-                    await self._save_decision(signal)
-                    return signal
-                
-                # If no tool was called, try to parse decision from result text
-                if result:
-                    signal = self._parse_decision_from_text(result, position_context)
-                    if signal:
+
+        try:
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    # Reset result for each attempt
+                    self._result = {"signal": None}
+                    self._executed_tools = []
+
+                    if attempt > 1:
+                        logger.info(f"[ExecutorAgent] ⟳ Retry attempt {attempt}/{max_attempts}...")
+
+                    # Use ReWOO 3-phase analysis (inherited from ReWOOAgent)
+                    result = await self.analyze_with_rewoo(query, self._current_context)
+
+                    # Check if we got a signal from tool execution
+                    if self._result.get("signal"):
+                        signal = self._result["signal"]
+                        logger.info(f"[ExecutorAgent] [OK] Execution complete: {signal.direction.upper()}")
+                        # Save decision to Redis
                         await self._save_decision(signal)
                         return signal
-                
-                # No signal generated - retry if attempts remaining
-                if attempt < max_attempts:
-                    logger.warning(f"[ExecutorAgent] No signal on attempt {attempt}, retrying...")
-                    continue
-                
-                # All retries exhausted - fallback to HOLD
-                logger.warning("[ExecutorAgent] No signal generated after all attempts, defaulting to HOLD")
-                signal = await self._generate_hold_signal("No tool call made after retries, defaulting to HOLD")
-                await self._save_decision(signal)
-                return signal
-                    
-            except Exception as e:
-                logger.error(f"[ExecutorAgent] Execution failed on attempt {attempt}: {e}")
-                if attempt < max_attempts:
-                    logger.info(f"[ExecutorAgent] Retrying after exception...")
-                    continue
-                    
-                import traceback
-                traceback.print_exc()
-                signal = await self._generate_hold_signal(f"Execution error: {str(e)}")
-                await self._save_decision(signal)
-                return signal
-        
-        # Should not reach here, but fallback just in case
-        signal = await self._generate_hold_signal("Unexpected fallback")
-        await self._save_decision(signal)
-        return signal
+
+                    # If no tool was called, try to parse decision from result text
+                    if result:
+                        signal = self._parse_decision_from_text(result, position_context)
+                        if signal:
+                            await self._save_decision(signal)
+                            return signal
+
+                    # No signal generated - retry if attempts remaining
+                    if attempt < max_attempts:
+                        logger.warning(f"[ExecutorAgent] No signal on attempt {attempt}, retrying...")
+                        continue
+
+                    # All retries exhausted - fallback to HOLD
+                    logger.warning("[ExecutorAgent] No signal generated after all attempts, defaulting to HOLD")
+                    signal = await self._generate_hold_signal("No tool call made after retries, defaulting to HOLD")
+                    await self._save_decision(signal)
+                    return signal
+
+                except Exception as e:
+                    logger.error(f"[ExecutorAgent] Execution failed on attempt {attempt}: {e}")
+                    if attempt < max_attempts:
+                        logger.info(f"[ExecutorAgent] Retrying after exception...")
+                        continue
+
+                    import traceback
+                    traceback.print_exc()
+                    signal = await self._generate_hold_signal(f"Execution error: {str(e)}")
+                    await self._save_decision(signal)
+                    return signal
+
+            # Should not reach here, but fallback just in case
+            signal = await self._generate_hold_signal("Unexpected fallback")
+            await self._save_decision(signal)
+            return signal
+        finally:
+            # 🔧 Always restore paper_trader after execution
+            self.paper_trader = original_paper_trader
     
     async def _save_decision(self, signal: TradingSignal):
         """
