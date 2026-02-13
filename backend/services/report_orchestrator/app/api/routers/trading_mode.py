@@ -358,7 +358,7 @@ async def get_pending_trade(trade_id: str):
     )
 
 
-@router.post("/confirm/{trade_id}", response_model=ConfirmTradeResponse)
+@router.post("/pending/{trade_id}/confirm", response_model=ConfirmTradeResponse)
 async def confirm_pending_trade(trade_id: str, request: ConfirmTradeRequest):
     """
     Confirm a pending trade for execution.
@@ -392,8 +392,28 @@ async def confirm_pending_trade(trade_id: str, request: ConfirmTradeRequest):
     # Execute the confirmed trade
     execution_result = await execute_confirmed_trade(signal)
 
+    # Broadcast WebSocket event for frontend
+    try:
+        from app.services.trading_system import get_trading_system
+        system = await get_trading_system()
+        if execution_result.get("success"):
+            await system._broadcast({
+                "type": "trade_confirmed",
+                "trade_id": trade_id,
+                "signal": signal,
+                "trade_result": execution_result,
+                "confirmed_by": request.user_id
+            })
+        else:
+            await system._broadcast({
+                "type": "trade_confirm_failed",
+                "trade_id": trade_id,
+                "error": execution_result.get("error", "Unknown error")
+            })
+    except Exception as ws_err:
+        logger.warning(f"[ConfirmTrade] WebSocket broadcast failed: {ws_err}")
+
     if not execution_result.get("success"):
-        # Trade confirmation succeeded but execution failed
         logger.error(
             f"[ConfirmTrade] Trade {trade_id} confirmed but execution failed: "
             f"{execution_result.get('error')}"
@@ -416,23 +436,36 @@ async def confirm_pending_trade(trade_id: str, request: ConfirmTradeRequest):
     )
 
 
-@router.post("/reject/{trade_id}")
+@router.post("/pending/{trade_id}/reject")
 async def reject_pending_trade(trade_id: str, request: RejectTradeRequest):
     """Reject a pending trade."""
     manager = get_mode_manager()
-    
+
     success = await manager.reject_trade(
         trade_id=trade_id,
         user_id=request.user_id,
         reason=request.reason or ""
     )
-    
+
     if not success:
         raise HTTPException(
             status_code=404,
             detail="Trade not found or already processed"
         )
-    
+
+    # Broadcast WebSocket event for frontend
+    try:
+        from app.services.trading_system import get_trading_system
+        system = await get_trading_system()
+        await system._broadcast({
+            "type": "trade_rejected",
+            "trade_id": trade_id,
+            "rejected_by": request.user_id,
+            "reason": request.reason or ""
+        })
+    except Exception as ws_err:
+        logger.warning(f"[RejectTrade] WebSocket broadcast failed: {ws_err}")
+
     return {
         "success": True,
         "trade_id": trade_id,

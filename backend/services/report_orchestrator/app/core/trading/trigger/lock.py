@@ -11,18 +11,9 @@ from datetime import datetime, timedelta
 from typing import Tuple, Optional, Literal
 from dataclasses import dataclass
 
+from app.core.trading.trading_config import get_env_int as _get_env_int
+
 logger = logging.getLogger(__name__)
-
-
-def _get_env_int(key: str, default: int) -> int:
-    """Get int from environment variable"""
-    val = os.getenv(key)
-    if val:
-        try:
-            return int(val)
-        except ValueError:
-            pass
-    return default
 
 
 @dataclass
@@ -38,15 +29,18 @@ class LockStatus:
 class TriggerLock:
     """
     触发器锁管理
-    
+
     状态机:
     IDLE -> ANALYZING -> COOLDOWN -> IDLE
-    
+
     - IDLE: 可以触发
     - ANALYZING: 主分析运行中，不可触发
     - COOLDOWN: 冷却期，不可触发
     """
-    
+
+    # Maximum time a check can hold the lock before auto-release (seconds)
+    CHECK_TIMEOUT_SECONDS = 300  # 5 minutes
+
     def __init__(self, cooldown_minutes: int = None):
         # Read from env var if not provided
         if cooldown_minutes is None:
@@ -56,7 +50,8 @@ class TriggerLock:
         self._lock = asyncio.Lock()
         self._cooldown_until: Optional[datetime] = None
         self._last_analysis_time: Optional[datetime] = None
-    
+        self._check_acquired_at: Optional[datetime] = None  # Track when check was acquired
+
     def _check_cooldown_expired(self) -> bool:
         """
         检查冷却期是否已过期，如果过期则更新状态。
@@ -72,28 +67,49 @@ class TriggerLock:
                 return True
         return False
 
+    def _check_checking_timeout(self) -> bool:
+        """
+        检查 checking 状态是否超时，如果超时则自动释放。
+
+        Returns:
+            True if checking timed out and state was reset to idle
+        """
+        if self._state == "checking" and self._check_acquired_at:
+            elapsed = (datetime.now() - self._check_acquired_at).total_seconds()
+            if elapsed > self.CHECK_TIMEOUT_SECONDS:
+                self._state = "idle"
+                self._check_acquired_at = None
+                logger.warning(
+                    f"[Lock] Check timed out after {elapsed:.0f}s, "
+                    f"auto-releasing state -> idle"
+                )
+                return True
+        return False
+
     @property
     def state(self) -> str:
         """
         获取当前锁状态。
 
-        Note: 此属性会自动检查冷却期是否过期并更新状态。
+        Note: 此属性会自动检查冷却期和 checking 超时并更新状态。
         如果需要无副作用的状态读取，使用 _state 属性。
         """
         self._check_cooldown_expired()
+        self._check_checking_timeout()
         return self._state
-    
+
     async def acquire_check(self) -> bool:
         """
         尝试获取 Trigger Check 锁 (Transient)
         只在 IDLE 状态下成功
         """
         async with self._lock:
-            # 必须 check self.state property 以触发过期
+            # 必须 check self.state property 以触发过期检查（含 checking 超时）
             if self.state != "idle":
                 return False
-            
+
             self._state = "checking"
+            self._check_acquired_at = datetime.now()
             logger.debug("[Lock] Check acquired, state -> checking")
             return True
 
@@ -101,6 +117,7 @@ class TriggerLock:
         """释放 Trigger Check 锁"""
         if self._state == "checking":
             self._state = "idle"
+            self._check_acquired_at = None
             logger.debug("[Lock] Check released, state -> idle")
 
     def can_trigger(self) -> Tuple[bool, str]:

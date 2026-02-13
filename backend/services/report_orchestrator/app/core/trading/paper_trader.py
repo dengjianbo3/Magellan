@@ -24,20 +24,9 @@ import redis.asyncio as redis
 
 from app.core.trading.price_service import get_price_service, PriceService
 from app.core.trading.base_trader import BaseTrader
-from app.core.trading.trading_config import get_infra_config
+from app.core.trading.trading_config import get_infra_config, get_env_float as _get_env_float
 
 logger = logging.getLogger(__name__)
-
-
-def _get_env_float(key: str, default: float) -> float:
-    """Get float from environment variable"""
-    val = os.getenv(key)
-    if val:
-        try:
-            return float(val)
-        except ValueError:
-            pass
-    return default
 
 
 @dataclass
@@ -518,24 +507,21 @@ class PaperTrader(BaseTrader):
                         # Invalid TP/SL prices, recalculate using default percentages
                         logger.warning(
                             f"Invalid TP/SL prices (tp={tp_price}, sl={sl_price}, entry={current_price}), "
-                            f"recalculating using default percentages (adjusted for {leverage}x leverage)"
+                            f"recalculating using default price percentages"
                         )
-                        # Divide by leverage: margin_percent / leverage = price_percent
-                        price_tp_pct = self.config.default_tp_percent / leverage
-                        price_sl_pct = self.config.default_sl_percent / leverage
-                        tp_price = current_price * (1 + price_tp_pct / 100)
-                        sl_price = current_price * (1 - price_sl_pct / 100)
+                        # default_tp/sl_percent are already PRICE movement percentages
+                        # Leverage affects margin P&L, NOT price targets
+                        tp_price = current_price * (1 + self.config.default_tp_percent / 100)
+                        sl_price = current_price * (1 - self.config.default_sl_percent / 100)
                 else:  # short
                     # Short: TP should be below entry, SL should be above entry
                     if tp_price >= current_price or sl_price <= current_price:
                         logger.warning(
                             f"Invalid TP/SL prices (tp={tp_price}, sl={sl_price}, entry={current_price}), "
-                            f"recalculating using default percentages (adjusted for {leverage}x leverage)"
+                            f"recalculating using default price percentages"
                         )
-                        price_tp_pct = self.config.default_tp_percent / leverage
-                        price_sl_pct = self.config.default_sl_percent / leverage
-                        tp_price = current_price * (1 - price_tp_pct / 100)
-                        sl_price = current_price * (1 + price_sl_pct / 100)
+                        tp_price = current_price * (1 - self.config.default_tp_percent / 100)
+                        sl_price = current_price * (1 + self.config.default_sl_percent / 100)
 
 
             logger.info(f"Open position params: entry={current_price}, tp={tp_price}, sl={sl_price}")

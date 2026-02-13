@@ -323,8 +323,9 @@ class TradingModeManager:
         return None
     
     async def get_pending_trades(self) -> List[PendingTrade]:
-        """Get all pending trades."""
+        """Get all pending trades. Also cleans up expired/processed entries from Redis list."""
         trades = []
+        stale_ids = []
         try:
             redis_client = await self._ensure_redis()
             if redis_client:
@@ -333,6 +334,19 @@ class TradingModeManager:
                     trade = await self.get_pending_trade(trade_id)
                     if trade and not trade.is_expired and trade.status == "pending":
                         trades.append(trade)
+                    else:
+                        # Trade expired, processed, or deleted from Redis — mark for cleanup
+                        stale_ids.append(trade_id)
+
+                # Clean up stale entries from the list
+                if stale_ids:
+                    for stale_id in stale_ids:
+                        await redis_client.lrem(self.REDIS_KEY_PENDING_LIST, 0, stale_id)
+                    logger.info(
+                        "pending_trades_cleanup",
+                        removed_count=len(stale_ids),
+                        remaining_count=len(trades)
+                    )
         except Exception as e:
             logger.error("pending_trades_list_failed", error=str(e))
         return trades

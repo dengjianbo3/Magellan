@@ -1275,6 +1275,9 @@ async function fetchPendingTrades() {
     const data = await response.json();
     if (data.trades) {
       pendingTrades.value = data.trades;
+    } else if (data.pending_trades) {
+      // Fallback for alternative response format
+      pendingTrades.value = data.pending_trades;
     }
   } catch (e) {
     console.error('Error fetching pending trades:', e);
@@ -1284,13 +1287,13 @@ async function fetchPendingTrades() {
 // Open Pending Trade Modal for confirmation
 function openPendingTradeModal(trade) {
   pendingDecision.value = {
-    decision_id: trade.trade_id,
+    trade_id: trade.id || trade.trade_id,
     direction: trade.direction,
     leverage: trade.leverage,
     confidence: trade.confidence,
-    take_profit: trade.take_profit,
-    stop_loss: trade.stop_loss,
-    current_price: trade.entry_price,
+    take_profit: trade.take_profit_percent || trade.take_profit || 0,
+    stop_loss: trade.stop_loss_percent || trade.stop_loss || 0,
+    current_price: trade.entry_price || 0,
     reasoning: trade.reasoning || ''
   };
   modifiedLeverage.value = trade.leverage;
@@ -1481,50 +1484,81 @@ function toggleDeferReasons() {
 async function handleConfirmDecision() {
   processingDecision.value = true;
   try {
-    const decision = {
-      decision_id: pendingDecision.value.decision_id,
-      action: 'confirm',
-      original_signal: { ...pendingDecision.value },
-      modified_leverage: showModifyPanel.value ? modifiedLeverage.value : pendingDecision.value.leverage,
-      timestamp: new Date().toISOString()
-    };
-    
-    // Record decision to backend
-    await fetch('/api/trading/decision', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(decision)
-    });
-    
+    const tradeId = pendingDecision.value.trade_id;
+    const finalLeverage = showModifyPanel.value ? modifiedLeverage.value : pendingDecision.value.leverage;
+
+    if (tradeId) {
+      // SEMI_AUTO mode: Use the proper pending trade confirm API
+      const response = await fetch(`/api/trading/pending/${tradeId}/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: 'frontend',
+          leverage: showModifyPanel.value ? modifiedLeverage.value : null,
+        })
+      });
+      const result = await response.json();
+
+      if (!result.success) {
+        discussionMessages.value.push({
+          agentName: '系统',
+          content: `❌ 确认交易失败: ${result.message || result.detail || '未知错误'}`,
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      // Record to RLHF decision history (non-blocking)
+      fetch('/api/trading/decision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision_id: tradeId,
+          action: 'confirm',
+          original_signal: { ...pendingDecision.value },
+          modified_leverage: finalLeverage,
+          timestamp: new Date().toISOString()
+        })
+      }).catch(() => {});
+
+    } else {
+      // Fallback: direct execute (legacy path for non-pending trades)
+      await fetch('/api/trading/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          direction: pendingDecision.value.direction,
+          leverage: finalLeverage,
+          take_profit: pendingDecision.value.take_profit,
+          stop_loss: pendingDecision.value.stop_loss
+        })
+      });
+    }
+
     // Add to local history
     decisionHistory.value.unshift({
-      ...decision,
-      display: `${pendingDecision.value.direction.toUpperCase()} ${modifiedLeverage.value}x → ✓ 确认执行`
+      decision_id: tradeId || `decision-${Date.now()}`,
+      action: 'confirm',
+      display: `${pendingDecision.value.direction.toUpperCase()} ${finalLeverage}x → ✓ 确认执行`
     });
-    
-    // Execute the trade
-    await fetch('/api/trading/execute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        direction: pendingDecision.value.direction,
-        leverage: showModifyPanel.value ? modifiedLeverage.value : pendingDecision.value.leverage,
-        take_profit: pendingDecision.value.take_profit,
-        stop_loss: pendingDecision.value.stop_loss
-      })
-    });
-    
-    discussionMessages.value.push({
-      agentName: '系统',
-      content: `✓ 用户确认执行 ${pendingDecision.value.direction.toUpperCase()} ${showModifyPanel.value ? modifiedLeverage.value : pendingDecision.value.leverage}x`,
-      timestamp: new Date().toISOString()
-    });
-    
+
+    // Note: modal close and data refresh handled by 'trade_confirmed' WebSocket event
+    // But close modal immediately for responsiveness
     showDecisionModal.value = false;
     resetDecisionState();
-    
+
+    // Refresh data
+    fetchPosition();
+    fetchAccount();
+    fetchTradeHistory();
+
   } catch (e) {
     console.error('Error confirming decision:', e);
+    discussionMessages.value.push({
+      agentName: '系统',
+      content: `❌ 确认交易出错: ${e.message || '网络错误'}`,
+      timestamp: new Date().toISOString()
+    });
   } finally {
     processingDecision.value = false;
   }
@@ -1534,38 +1568,76 @@ async function handleDeferDecision() {
   processingDecision.value = true;
   try {
     const reason = selectedDeferReason.value === '其他' ? customDeferReason.value : selectedDeferReason.value;
-    const decision = {
-      decision_id: pendingDecision.value.decision_id,
-      action: 'defer',
-      original_signal: { ...pendingDecision.value },
-      defer_reason: reason,
-      timestamp: new Date().toISOString()
-    };
-    
-    // Record decision to backend
-    await fetch('/api/trading/decision', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(decision)
-    });
-    
+    const tradeId = pendingDecision.value.trade_id;
+
+    if (tradeId) {
+      // SEMI_AUTO mode: Use the proper pending trade reject API
+      const response = await fetch(`/api/trading/pending/${tradeId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: 'frontend',
+          reason: reason || '用户搁置'
+        })
+      });
+      const result = await response.json();
+
+      if (!result.success) {
+        discussionMessages.value.push({
+          agentName: '系统',
+          content: `❌ 拒绝交易失败: ${result.message || result.detail || '未知错误'}`,
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      // Record to RLHF decision history (non-blocking)
+      fetch('/api/trading/decision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision_id: tradeId,
+          action: 'defer',
+          original_signal: { ...pendingDecision.value },
+          defer_reason: reason,
+          timestamp: new Date().toISOString()
+        })
+      }).catch(() => {});
+
+    } else {
+      // Fallback: just record the decision (legacy path)
+      await fetch('/api/trading/decision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision_id: `decision-${Date.now()}`,
+          action: 'defer',
+          original_signal: { ...pendingDecision.value },
+          defer_reason: reason,
+          timestamp: new Date().toISOString()
+        })
+      });
+    }
+
     // Add to local history
     decisionHistory.value.unshift({
-      ...decision,
+      decision_id: tradeId || `decision-${Date.now()}`,
+      action: 'defer',
       display: `${pendingDecision.value.direction.toUpperCase()} ${pendingDecision.value.leverage}x → ✕ 搁置 (${reason})`
     });
-    
-    discussionMessages.value.push({
-      agentName: '系统',
-      content: `✕ 用户搁置决策，原因: ${reason}`,
-      timestamp: new Date().toISOString()
-    });
-    
+
+    // Note: modal close handled by 'trade_rejected' WebSocket event
     showDecisionModal.value = false;
     resetDecisionState();
-    
+    fetchPendingTrades();
+
   } catch (e) {
     console.error('Error deferring decision:', e);
+    discussionMessages.value.push({
+      agentName: '系统',
+      content: `❌ 拒绝交易出错: ${e.message || '网络错误'}`,
+      timestamp: new Date().toISOString()
+    });
   } finally {
     processingDecision.value = false;
   }
@@ -1742,13 +1814,22 @@ function connectWebSocket() {
   // In development, connect directly to backend (port 8000)
   // In production, use the same host
   const isDev = window.location.port === '5173';
-  const wsHost = isDev ? 'localhost:8000' : window.location.host;
+  const wsHost = isDev ? window.location.host : window.location.host;
   const wsUrl = `ws://${wsHost}/api/trading/ws/${sessionId}`;
 
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
     console.log('Trading WebSocket connected');
+    // Restore state after reconnection
+    fetchStatus();
+    fetchTradingMode();
+    fetchAccount();
+    fetchPosition();
+    // If in semi_auto mode, also refresh pending trades
+    if (tradingMode.value?.mode === 'semi_auto') {
+      fetchPendingTrades();
+    }
   };
 
   ws.onmessage = (event) => {
@@ -1831,11 +1912,11 @@ function handleWebSocketMessage(msg) {
     case 'signal_generated':
       isAnalyzing.value = false;
       const signal = msg.signal || {};
-      
+
       // Synthesize Leader Message content for Discussion Panel
       // We wrap the signal in valid JSON markdown so it renders as a Ticket
       const signalReasoning = signal.reasoning || msg.reasoning || 'Market analysis complete.';
-      
+
       // Construct the display payload
       const displayPayload = {
         direction: signal.direction || 'hold',
@@ -1855,38 +1936,116 @@ function handleWebSocketMessage(msg) {
          parsed: parseDiscussionContent(leaderContent),
          timestamp: new Date().toISOString()
       });
-      
+
       // Auto-scroll
       nextTick(() => {
         if (discussionContainer.value) {
           discussionContainer.value.scrollTop = discussionContainer.value.scrollHeight;
         }
       });
-      
+
       // Check if this is a HOLD signal (no action needed)
       if (msg.signal?.direction === 'hold' || !msg.signal?.direction) {
-        break; // Message already pushed above
+        break;
       }
-      
-      // Show decision confirmation modal for LONG/SHORT signals
+
+      // Mode-aware behavior:
+      // - SEMI_AUTO: Don't show modal here, wait for 'pending_trade_created' event
+      // - FULL_AUTO: Trade already executed by backend, don't show modal
+      // - MANUAL: Show info message only, no modal
+      if (msg.mode === 'semi_auto') {
+        discussionMessages.value.push({
+          agentName: '系统',
+          content: `🔔 信号生成: ${signal.direction?.toUpperCase()} ${signal.leverage}x - 等待确认...`,
+          timestamp: new Date().toISOString()
+        });
+        break; // Wait for pending_trade_created
+      } else if (msg.mode === 'manual') {
+        discussionMessages.value.push({
+          agentName: '系统',
+          content: `📊 手动模式信号: ${signal.direction?.toUpperCase()} ${signal.leverage}x - 仅供参考`,
+          timestamp: new Date().toISOString()
+        });
+        break; // Manual mode: no modal, no execution
+      }
+
+      // FULL_AUTO mode: trade already executed, show info only
+      discussionMessages.value.push({
+        agentName: '系统',
+        content: `⚡ 全自动执行: ${signal.direction?.toUpperCase()} ${signal.leverage}x`,
+        timestamp: new Date().toISOString()
+      });
+      break;
+
+    case 'pending_trade_created': {
+      // SEMI_AUTO mode: Show confirmation modal with real trade_id from backend
+      const pendingSignal = msg.signal || {};
+      const pendingReasoning = pendingSignal.reasoning || '';
+
       pendingDecision.value = {
-        decision_id: `decision-${Date.now()}`,
-        direction: signal.direction || 'long',
-        leverage: signal.leverage || 5,
-        confidence: signal.confidence || 70,
-        take_profit: signal.take_profit_price || 0,
-        stop_loss: signal.stop_loss_price || 0,
-        current_price: signal.entry_price || 0,
-        reasoning: signalReasoning
+        trade_id: msg.trade_id,
+        direction: pendingSignal.direction || 'long',
+        leverage: pendingSignal.leverage || 5,
+        confidence: pendingSignal.confidence || 70,
+        take_profit: pendingSignal.take_profit_price || 0,
+        stop_loss: pendingSignal.stop_loss_price || 0,
+        current_price: pendingSignal.entry_price || 0,
+        reasoning: pendingReasoning
       };
-      
+
       modifiedLeverage.value = pendingDecision.value.leverage;
       showDecisionModal.value = true;
 
-      
+      // Refresh pending trades list
+      fetchPendingTrades();
+
       discussionMessages.value.push({
         agentName: '系统',
-        content: `🔔 交易信号生成: ${signal.direction?.toUpperCase()} ${signal.leverage}x - 请确认执行`,
+        content: `🔔 ${msg.message || '半自动模式：请确认或拒绝此交易'}`,
+        timestamp: new Date().toISOString()
+      });
+
+      // Auto-scroll
+      nextTick(() => {
+        if (discussionContainer.value) {
+          discussionContainer.value.scrollTop = discussionContainer.value.scrollHeight;
+        }
+      });
+      break;
+    }
+
+    case 'trade_confirmed':
+      // Trade was confirmed and executed successfully
+      showDecisionModal.value = false;
+      resetDecisionState();
+      fetchPosition();
+      fetchAccount();
+      fetchTradeHistory();
+      fetchPendingTrades();
+      discussionMessages.value.push({
+        agentName: '系统',
+        content: `✅ 交易已确认执行: ${msg.signal?.direction?.toUpperCase() || ''} ${msg.signal?.leverage || ''}x (确认人: ${msg.confirmed_by || 'user'})`,
+        timestamp: new Date().toISOString()
+      });
+      break;
+
+    case 'trade_confirm_failed':
+      // Trade confirmation succeeded but execution failed
+      discussionMessages.value.push({
+        agentName: '系统',
+        content: `❌ 交易确认后执行失败: ${msg.error || '未知错误'}`,
+        timestamp: new Date().toISOString()
+      });
+      break;
+
+    case 'trade_rejected':
+      // Trade was rejected by user
+      showDecisionModal.value = false;
+      resetDecisionState();
+      fetchPendingTrades();
+      discussionMessages.value.push({
+        agentName: '系统',
+        content: `✕ 交易已拒绝${msg.reason ? ': ' + msg.reason : ''} (操作人: ${msg.rejected_by || 'user'})`,
         timestamp: new Date().toISOString()
       });
       break;
