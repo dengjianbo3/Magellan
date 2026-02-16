@@ -5,7 +5,7 @@ Analysis Module V2 - 统一数据模型
 
 from enum import Enum
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ============ 枚举定义 ============
@@ -110,6 +110,24 @@ class AnalysisConfig(BaseModel):
         default_factory=dict,
         description="场景特定参数,如早期投资的priority/risk_appetite、成长期的growth_model等"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_fields(cls, data: Any) -> Any:
+        """
+        Backward compatibility for older clients:
+        - `mode` -> `depth`
+        - `focusAreas` -> `focus_areas`
+        """
+        if not isinstance(data, dict):
+            return data
+
+        normalized = dict(data)
+        if "depth" not in normalized and "mode" in normalized:
+            normalized["depth"] = normalized["mode"]
+        if "focus_areas" not in normalized and "focusAreas" in normalized:
+            normalized["focus_areas"] = normalized["focusAreas"]
+        return normalized
 
 
 class UserPreferences(BaseModel):

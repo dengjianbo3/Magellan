@@ -51,9 +51,9 @@
             <div
               :class="[
                 'mode-card',
-                { 'selected': config.mode === 'quick' }
+                { 'selected': config.depth === 'quick' }
               ]"
-              @click="config.mode = 'quick'"
+              @click="config.depth = 'quick'"
             >
               <div class="mode-icon">
                 <span class="material-symbols-outlined">flash_on</span>
@@ -67,7 +67,7 @@
                 </div>
               </div>
               <div class="mode-check">
-                <span v-if="config.mode === 'quick'" class="material-symbols-outlined">check_circle</span>
+                <span v-if="config.depth === 'quick'" class="material-symbols-outlined">check_circle</span>
               </div>
             </div>
 
@@ -75,9 +75,9 @@
             <div
               :class="[
                 'mode-card',
-                { 'selected': config.mode === 'standard' }
+                { 'selected': config.depth === 'standard' }
               ]"
-              @click="config.mode = 'standard'"
+              @click="config.depth = 'standard'"
             >
               <div class="mode-icon">
                 <span class="material-symbols-outlined">analytics</span>
@@ -91,7 +91,7 @@
                 </div>
               </div>
               <div class="mode-check">
-                <span v-if="config.mode === 'standard'" class="material-symbols-outlined">check_circle</span>
+                <span v-if="config.depth === 'standard'" class="material-symbols-outlined">check_circle</span>
               </div>
             </div>
           </div>
@@ -107,12 +107,12 @@
               :key="index"
               :class="[
                 'focus-tag',
-                { 'selected': config.focusAreas.includes(focus) }
+                { 'selected': config.focus_areas.includes(focus) }
               ]"
               @click="toggleFocus(focus)"
             >
               <span>{{ focus }}</span>
-              <span v-if="config.focusAreas.includes(focus)" class="material-symbols-outlined">check</span>
+              <span v-if="config.focus_areas.includes(focus)" class="material-symbols-outlined">check</span>
             </div>
           </div>
         </div>
@@ -204,8 +204,8 @@ const emit = defineEmits(['analysis-start', 'back']);
 const formData = ref({});
 const fieldRefs = ref({});
 const config = ref({
-  mode: 'quick',
-  focusAreas: [],
+  depth: 'quick',
+  focus_areas: [],
   language: locale.value,
   includeComparison: false,
   includeRisks: true,
@@ -243,11 +243,11 @@ function getFocusAreas() {
 }
 
 function toggleFocus(focus) {
-  const index = config.value.focusAreas.indexOf(focus);
+  const index = config.value.focus_areas.indexOf(focus);
   if (index > -1) {
-    config.value.focusAreas.splice(index, 1);
+    config.value.focus_areas.splice(index, 1);
   } else {
-    config.value.focusAreas.push(focus);
+    config.value.focus_areas.push(focus);
   }
 }
 
@@ -306,9 +306,20 @@ async function handleSubmit() {
       }
     }
 
+    const requestConfig = {
+      depth: config.value.depth,
+      focus_areas: config.value.focus_areas,
+      language: config.value.language,
+      scenario_params: {
+        include_comparison: config.value.includeComparison,
+        include_risks: config.value.includeRisks,
+        detailed_financials: config.value.detailedFinancials
+      }
+    };
+
     emit('analysis-start', {
       target: targetData,
-      config: config.value
+      config: requestConfig
     });
   } catch (error) {
     console.error('[UnifiedForm] Error preparing form data:', error);
