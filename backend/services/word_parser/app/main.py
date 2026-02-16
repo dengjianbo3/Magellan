@@ -1,9 +1,22 @@
 # backend/services/word_parser/app/main.py
 import os
-from fastapi import FastAPI, UploadFile, File, HTTPException
+import json
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 from docx import Document
-import io
+
+# This must be the same path used by the file_service
+SHARED_VOLUME_PATH = "/var/uploads"
+
+
+class ParseRequest(BaseModel):
+    file_id: str = Field(..., description="The unique filename of the Word (.docx) file to parse.")
+
+
+class ParseResponse(BaseModel):
+    file_id: str
+    extracted_text: str
 
 app = FastAPI(
     title="Word Document Parsing Service",
@@ -11,13 +24,28 @@ app = FastAPI(
     version="1.0.0"
 )
 
+def _parse_cors_allow_origins() -> list[str]:
+    raw = (os.getenv("CORS_ALLOW_ORIGINS") or "http://localhost:5174,http://localhost:8081").strip()
+    if not raw:
+        return []
+    if raw in ("*", "all"):
+        return ["*"]
+    if raw.startswith("["):
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                return [str(x).strip() for x in data if str(x).strip()]
+        except Exception:
+            pass
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
 # --- CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_parse_cors_allow_origins(),
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+	allow_headers=["*"],
 )
 
 @app.post("/parse_word", response_model=ParseResponse, tags=["Parsing"])
@@ -32,7 +60,8 @@ async def parse_word_endpoint(request: ParseRequest):
 
     try:
         document = Document(file_path)
-        full_text = [para.text for para in document.paragraphs]
+        # Keep empty paragraphs out to reduce noisy output.
+        full_text = [para.text for para in document.paragraphs if para.text]
         return ParseResponse(file_id=request.file_id, extracted_text="\n".join(full_text))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to parse Word file {request.file_id}: {e}")

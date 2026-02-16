@@ -4,7 +4,6 @@ Funding Rate Data Service
 Provides OKX API integration for funding rate data collection.
 """
 
-import os
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
@@ -13,6 +12,8 @@ import aiohttp
 from .models import FundingRate, FundingBill, RateTrend
 from .config import get_funding_config
 from ..trading_config import get_infra_config
+from ..okx_credentials_store import get_okx_credentials_store
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +34,44 @@ class FundingDataService:
         self._session: Optional[aiohttp.ClientSession] = None
 
         # API credentials (for authenticated endpoints like bills)
-        self.api_key = os.getenv("OKX_API_KEY", "")
-        self.secret_key = os.getenv("OKX_SECRET_KEY", "")
-        self.passphrase = os.getenv("OKX_PASSPHRASE", "")
+        self.api_key = ""
+        self.secret_key = ""
+        self.passphrase = ""
+        self.demo_mode = True
         
         # Proxy for network access
         self.use_proxy = os.getenv("USE_PROXY", "false").lower() == "true"
         self.proxy_url = os.getenv("PROXY_URL", "")
+
+    async def refresh_credentials(self):
+        """
+        Refresh OKX credentials.
+
+        Priority:
+        1) Redis-stored user credentials (from Trading Settings UI)
+        2) Env credentials ONLY if OKX_ALLOW_ENV_CREDENTIALS=true
+        3) Empty (public endpoints still work; authenticated endpoints will be disabled)
+        """
+        creds = await get_okx_credentials_store().get()
+        if creds and creds.is_configured():
+            self.api_key = creds.api_key
+            self.secret_key = creds.secret_key
+            self.passphrase = creds.passphrase
+            self.demo_mode = bool(creds.demo_mode)
+            return
+
+        allow_env = os.getenv("OKX_ALLOW_ENV_CREDENTIALS", "false").lower() == "true"
+        if allow_env:
+            self.api_key = os.getenv("OKX_API_KEY", "")
+            self.secret_key = os.getenv("OKX_SECRET_KEY", "")
+            self.passphrase = os.getenv("OKX_PASSPHRASE", "")
+            self.demo_mode = os.getenv("OKX_DEMO_MODE", "true").lower() == "true"
+            return
+
+        self.api_key = ""
+        self.secret_key = ""
+        self.passphrase = ""
+        self.demo_mode = True
     
     def _get_proxy(self) -> Optional[str]:
         """Get proxy URL if configured"""
@@ -246,4 +278,9 @@ async def get_funding_data_service() -> FundingDataService:
     global _data_service
     if _data_service is None:
         _data_service = FundingDataService()
+    # Always refresh to reflect latest UI-provided credentials.
+    try:
+        await _data_service.refresh_credentials()
+    except Exception:
+        pass
     return _data_service

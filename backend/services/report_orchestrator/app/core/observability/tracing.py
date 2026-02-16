@@ -116,7 +116,7 @@ def create_trace(operation_name: str, **attributes) -> TraceContext:
         A new TraceContext instance
     
     Usage:
-        with create_trace("signal_generation", mode="full_auto") as trace:
+        with create_trace("signal_generation", mode="semi_auto") as trace:
             result = await generate_signal()
     """
     return TraceContext(

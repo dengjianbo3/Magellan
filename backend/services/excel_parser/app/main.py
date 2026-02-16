@@ -1,9 +1,10 @@
 # backend/services/excel_parser/app/main.py
 import os
+import json
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-import json
 
 # This must be the same path used by the file_service
 SHARED_VOLUME_PATH = "/var/uploads"
@@ -15,20 +16,31 @@ class ParseResponse(BaseModel):
     file_id: str
     extracted_data: dict[str, list[dict]] # A dict where keys are sheet names
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-import pandas as pd
-
 app = FastAPI(
     title="Excel Parsing Service",
     description="Extracts content from Excel files into a structured format.",
     version="1.0.0"
 )
 
+def _parse_cors_allow_origins() -> list[str]:
+    raw = (os.getenv("CORS_ALLOW_ORIGINS") or "http://localhost:5174,http://localhost:8081").strip()
+    if not raw:
+        return []
+    if raw in ("*", "all"):
+        return ["*"]
+    if raw.startswith("["):
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                return [str(x).strip() for x in data if str(x).strip()]
+        except Exception:
+            pass
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
 # --- CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_parse_cors_allow_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

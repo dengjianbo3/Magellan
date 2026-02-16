@@ -1056,6 +1056,7 @@ export default {
 
     // Settings Modal
     loadingConfig: 'Loading configuration...',
+    traderBackend: 'Trading Environment',
     okxDemoTrading: 'OKX Demo Trading',
     localPaperTrading: 'Local Paper Trading',
     okxDemo: 'OKX Demo',

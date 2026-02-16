@@ -30,9 +30,12 @@ import logging
 import sys
 import uuid
 from contextvars import ContextVar
-from typing import Optional
+from typing import Optional, Any
 
-import structlog
+try:
+    import structlog
+except Exception:  # Optional in some local/dev test setups
+    structlog = None
 
 # Context variable for trace ID propagation across async calls
 trace_id_var: ContextVar[str] = ContextVar("trace_id", default="")
@@ -103,6 +106,18 @@ def configure_logging(
         json_output: If True, output logs as JSON. If False, use console format.
         add_timestamp: If True, add ISO format timestamps to logs.
     """
+    if structlog is None:
+        # Fall back to stdlib logging only (no structured processors).
+        logging.basicConfig(
+            format="%(asctime)s %(name)s %(levelname)s %(message)s",
+            stream=sys.stdout,
+            level=getattr(logging, level.upper()),
+        )
+        logging.getLogger(__name__).warning(
+            "structlog not installed; falling back to stdlib logging only"
+        )
+        return
+
     # Define processors
     processors = [
         structlog.contextvars.merge_contextvars,
@@ -140,7 +155,7 @@ def configure_logging(
     )
 
 
-def get_logger(name: Optional[str] = None) -> structlog.BoundLogger:
+def get_logger(name: Optional[str] = None) -> Any:
     """
     Get a structured logger instance.
     
@@ -154,8 +169,9 @@ def get_logger(name: Optional[str] = None) -> structlog.BoundLogger:
         logger = get_logger(__name__)
         logger.info("event_name", key1="value1", key2="value2")
     """
-    logger = structlog.get_logger(name)
-    return logger
+    if structlog is None:
+        return logging.getLogger(name or __name__)
+    return structlog.get_logger(name)
 
 
 # Common log patterns for trading system

@@ -220,12 +220,12 @@ import { useLanguage } from '@/composables/useLanguage.js';
 import { useToast } from '@/composables/useToast';
 import analysisServiceV2 from '@/services/analysisServiceV2.js';
 import StepResultCard from './StepResultCard.vue';
+import { API_BASE } from '@/config/api';
 
 const { t, locale: currentLang } = useLanguage();
 const { info, success, error: showError } = useToast();
 
 // API base for export requests
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 const exportLoading = ref(false);
 
 const props = defineProps({

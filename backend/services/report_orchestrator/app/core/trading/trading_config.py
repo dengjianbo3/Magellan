@@ -40,6 +40,21 @@ def _get_env_str(key: str, default: str) -> str:
     return os.getenv(key, default)
 
 
+def _get_env_bool(key: str, default: bool) -> bool:
+    """Get boolean from environment variable"""
+    val = os.getenv(key)
+    if val:
+        return val.lower() in ('true', '1', 'yes', 'on')
+    return default
+
+
+# Public aliases for use by other modules (avoids duplication)
+get_env_int = _get_env_int
+get_env_float = _get_env_float
+get_env_str = _get_env_str
+get_env_bool = _get_env_bool
+
+
 @dataclass
 class InfrastructureConfig:
     """

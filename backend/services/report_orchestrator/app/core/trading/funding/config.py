@@ -4,39 +4,14 @@ Funding Fee Configuration
 Environment variable based configuration for funding fee awareness system.
 """
 
-import os
 from dataclasses import dataclass
 from typing import Optional
 
-
-def _get_env_int(key: str, default: int) -> int:
-    """Get integer from environment variable"""
-    val = os.getenv(key)
-    if val:
-        try:
-            return int(val)
-        except ValueError:
-            pass
-    return default
-
-
-def _get_env_float(key: str, default: float) -> float:
-    """Get float from environment variable"""
-    val = os.getenv(key)
-    if val:
-        try:
-            return float(val)
-        except ValueError:
-            pass
-    return default
-
-
-def _get_env_bool(key: str, default: bool) -> bool:
-    """Get boolean from environment variable"""
-    val = os.getenv(key)
-    if val:
-        return val.lower() in ('true', '1', 'yes', 'on')
-    return default
+from app.core.trading.trading_config import (
+    get_env_int as _get_env_int,
+    get_env_float as _get_env_float,
+    get_env_bool as _get_env_bool,
+)
 
 
 @dataclass

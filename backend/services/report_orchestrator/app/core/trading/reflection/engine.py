@@ -217,11 +217,6 @@ class ReflectionMemory:
         }
 
 
-# DEPRECATED: AgentWeightAdjuster is replaced by AgentWeightLearner
-# This alias is kept for backward compatibility only
-# Will be removed in a future version
-AgentWeightAdjuster = AgentWeightLearner
-
 
 class ReflectionEngine:
     """

@@ -128,7 +128,7 @@
         <span class="material-symbols-outlined text-primary">smart_toy</span>
         {{ t('dashboard.activeAgents') }}
       </h3>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div v-if="activeAgents.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <AgentCard
           v-for="agent in activeAgents"
           :key="agent.name"
@@ -137,6 +137,9 @@
           :tasks="agent.tasks"
           :icon="agent.icon"
         />
+      </div>
+      <div v-else class="text-sm text-text-secondary bg-white/5 border border-white/10 rounded-xl p-4">
+        {{ t('dashboard.noAgentData') || 'No agent usage data yet.' }}
       </div>
     </div>
   </div>
@@ -172,6 +175,7 @@ const statsData = ref(null);
 const recentReportsData = ref([]);
 const trendsData = ref(null);
 const performanceData = ref(null);
+const agentsData = ref([]);
 const loading = ref(true);
 
 const stats = computed(() => {
@@ -179,28 +183,28 @@ const stats = computed(() => {
     return [
       {
         title: t('dashboard.stats.totalReports'),
-        value: '0',
+        value: '-',
         change: '+0%',
         trend: 'neutral',
         icon: 'article'
       },
       {
         title: t('dashboard.stats.activeAnalyses'),
-        value: '0',
+        value: '-',
         change: '+0',
         trend: 'neutral',
         icon: 'analytics'
       },
       {
         title: t('dashboard.stats.aiAgents'),
-        value: '6',
+        value: '-',
         change: '0',
         trend: 'neutral',
         icon: 'smart_toy'
       },
       {
         title: t('dashboard.stats.successRate'),
-        value: '0%',
+        value: '-',
         change: '+0%',
         trend: 'neutral',
         icon: 'trending_up'
@@ -281,32 +285,15 @@ const handleQuickAction = (action) => {
   }
 };
 
-const activeAgents = computed(() => [
-  {
-    name: t('analysis.step2.agents.marketAnalyst.name'),
-    status: t('dashboard.agentStatus.active'),
-    tasks: 12,
-    icon: 'show_chart'
-  },
-  {
-    name: t('analysis.step2.agents.financialExpert.name'),
-    status: t('dashboard.agentStatus.active'),
-    tasks: 8,
-    icon: 'account_balance'
-  },
-  {
-    name: t('analysis.step2.agents.teamEvaluator.name'),
-    status: t('dashboard.agentStatus.idle'),
-    tasks: 0,
-    icon: 'groups'
-  },
-  {
-    name: t('analysis.step2.agents.riskAssessor.name'),
-    status: t('dashboard.agentStatus.active'),
-    tasks: 5,
-    icon: 'shield'
-  }
-]);
+const activeAgents = computed(() => {
+  // Use real usage data from backend (top agents). If none, show empty list.
+  return (agentsData.value || []).slice(0, 4).map(a => ({
+    name: a.name || a.agent_id || 'Agent',
+    status: (a.status || '').toLowerCase() || t('dashboard.agentStatus.active') || 'active',
+    tasks: Number(a.usage_count || 0),
+    icon: 'smart_toy'
+  }));
+});
 
 // Fetch dashboard data
 const fetchDashboardData = async () => {
@@ -339,6 +326,7 @@ const fetchDashboardData = async () => {
     if (performanceResponse.ok) {
       const data = await performanceResponse.json();
       performanceData.value = data.performance;
+      agentsData.value = data.agents || [];
     }
 
     loading.value = false;

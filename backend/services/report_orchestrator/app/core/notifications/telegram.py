@@ -11,9 +11,14 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 
 import httpx
-import structlog
+import logging
 
-logger = structlog.get_logger(__name__)
+try:
+    import structlog
+except Exception:  # Optional in some local/dev test setups
+    structlog = None
+
+logger = structlog.get_logger(__name__) if structlog is not None else logging.getLogger(__name__)
 
 
 class TelegramNotifier:

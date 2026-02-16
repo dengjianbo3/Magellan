@@ -2,8 +2,8 @@
 Trading Mode API Router
 
 Provides endpoints for:
-- Getting/setting trading mode (FULL_AUTO, SEMI_AUTO, MANUAL)
-- Managing pending trades in SEMI_AUTO mode
+- Getting trading mode (HITL-only)
+- Managing pending trades (confirmation workflow)
 - Confirming or rejecting pending trades
 """
 
@@ -39,7 +39,7 @@ class ModeResponse(BaseModel):
 
 class SetModeRequest(BaseModel):
     """Request to set trading mode."""
-    mode: str = Field(..., description="Trading mode: full_auto, semi_auto, manual")
+    mode: str = Field(..., description="Trading mode (HITL-only): semi_auto")
     user_id: Optional[str] = Field(None, description="User ID for audit")
 
 
@@ -54,9 +54,14 @@ class SetModeResponse(BaseModel):
 class PendingTradeResponse(BaseModel):
     """Response for a pending trade."""
     id: str
+    symbol: str = "BTC-USDT-SWAP"
     direction: str
     leverage: int
     confidence: int
+    entry_price: float = 0.0
+    take_profit_price: float = 0.0
+    stop_loss_price: float = 0.0
+    amount_percent: float = 0.5
     take_profit_percent: float
     stop_loss_percent: float
     reasoning: str
@@ -75,7 +80,9 @@ class PendingTradesResponse(BaseModel):
 class ConfirmTradeRequest(BaseModel):
     """Request to confirm a pending trade."""
     user_id: str = Field(..., description="User confirming the trade")
+    direction: Optional[str] = Field(None, description="Modified direction (long/short)")
     leverage: Optional[int] = Field(None, description="Modified leverage")
+    amount_percent: Optional[float] = Field(None, description="Modified position size (0.1-1.0)")
     take_profit_percent: Optional[float] = Field(None, description="Modified TP")
     stop_loss_percent: Optional[float] = Field(None, description="Modified SL")
 
@@ -120,7 +127,7 @@ async def execute_confirmed_trade(signal: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     # Get paper trader instance
-    paper_trader = get_paper_trader()
+    paper_trader = await get_paper_trader()
 
     # Get current price for TP/SL calculation
     current_price = await get_current_btc_price()
@@ -134,12 +141,43 @@ async def execute_confirmed_trade(signal: Dict[str, Any]) -> Dict[str, Any]:
     # Extract trade parameters
     leverage = signal.get("leverage", 5)
     amount_percent = signal.get("amount_percent", 0.2)  # Default 20%
-    tp_percent = signal.get("take_profit_percent", 5.0)
-    sl_percent = signal.get("stop_loss_percent", 2.0)
+    tp_percent = signal.get("take_profit_percent", None)
+    sl_percent = signal.get("stop_loss_percent", None)
 
-    # Get account status for position sizing
+    # Prefer explicit TP/SL prices from the signal (HITL workflow usually provides absolute prices).
+    tp_price = signal.get("take_profit_price") or signal.get("tp_price")
+    sl_price = signal.get("stop_loss_price") or signal.get("sl_price")
+
+    # If percent-based overrides are present, prefer percent computation.
+    if tp_percent is not None or sl_percent is not None:
+        tp_price = None
+        sl_price = None
+
+    # Validate provided TP/SL prices against current execution price.
+    if tp_price is not None and sl_price is not None:
+        try:
+            tp_price = float(tp_price)
+            sl_price = float(sl_price)
+        except (TypeError, ValueError):
+            tp_price = None
+            sl_price = None
+
+    if tp_price is not None and sl_price is not None:
+        if direction == "long":
+            if tp_price <= current_price or sl_price >= current_price:
+                tp_price = None
+                sl_price = None
+        else:  # short
+            if tp_price >= current_price or sl_price <= current_price:
+                tp_price = None
+                sl_price = None
+
+    # Get account status for position sizing.
+    # PaperTrader.get_status() uses "balance", while some other traders may expose "available_balance".
     status = await paper_trader.get_status()
-    available_balance = status.get("available_balance", 0)
+    available_balance = status.get("available_balance")
+    if available_balance is None:
+        available_balance = status.get("balance", 0)
 
     if available_balance <= 0:
         logger.error("[TradeExecution] No available balance")
@@ -151,13 +189,17 @@ async def execute_confirmed_trade(signal: Dict[str, Any]) -> Dict[str, Any]:
     # Calculate position size in USDT
     amount_usdt = available_balance * amount_percent
 
-    # Calculate TP/SL prices
-    if direction == "long":
-        tp_price = current_price * (1 + tp_percent / 100)
-        sl_price = current_price * (1 - sl_percent / 100)
-    else:  # short
-        tp_price = current_price * (1 - tp_percent / 100)
-        sl_price = current_price * (1 + sl_percent / 100)
+    # If explicit prices aren't available/valid, fall back to percent-based TP/SL.
+    if tp_price is None or sl_price is None:
+        tp_percent = float(tp_percent if tp_percent is not None else 5.0)
+        sl_percent = float(sl_percent if sl_percent is not None else 2.0)
+
+        if direction == "long":
+            tp_price = current_price * (1 + tp_percent / 100)
+            sl_price = current_price * (1 - sl_percent / 100)
+        else:  # short
+            tp_price = current_price * (1 - tp_percent / 100)
+            sl_price = current_price * (1 + sl_percent / 100)
 
     logger.info(
         f"[TradeExecution] Executing {direction.upper()} trade: "
@@ -192,13 +234,13 @@ async def execute_confirmed_trade(signal: Dict[str, Any]) -> Dict[str, Any]:
         if result.get("success"):
             logger.info(
                 f"[TradeExecution] ✅ Trade executed successfully: "
-                f"{direction.upper()} @ ${result.get('entry_price', 0):.2f}"
+                f"{direction.upper()} @ ${float(result.get('executed_price') or result.get('entry_price') or 0):.2f}"
             )
             return {
                 "success": True,
                 "action": direction,
-                "entry_price": result.get("entry_price"),
-                "size": result.get("size"),
+                "entry_price": result.get("executed_price") or result.get("entry_price"),
+                "size": result.get("executed_amount") or result.get("size"),
                 "leverage": leverage,
                 "tp_price": tp_price,
                 "sl_price": sl_price,
@@ -227,9 +269,7 @@ async def execute_confirmed_trade(signal: Dict[str, Any]) -> Dict[str, Any]:
 # ============================================================================
 
 MODE_DESCRIPTIONS = {
-    TradingMode.FULL_AUTO: "Trades are executed automatically without user intervention",
     TradingMode.SEMI_AUTO: "Trades require user confirmation before execution",
-    TradingMode.MANUAL: "Analysis only - no trades are executed automatically",
 }
 
 
@@ -265,14 +305,13 @@ async def set_trading_mode(request: SetModeRequest):
     Returns:
         Success status and mode change details
     """
-    # Validate mode
-    try:
-        new_mode = TradingMode(request.mode.lower())
-    except ValueError:
+    # HITL-only: only semi_auto is supported.
+    if request.mode.lower() != TradingMode.SEMI_AUTO.value:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid mode: {request.mode}. Valid modes: full_auto, semi_auto, manual"
+            detail="Only semi_auto (HITL) mode is supported.",
         )
+    new_mode = TradingMode.SEMI_AUTO
     
     manager = get_mode_manager()
     previous_mode = await manager.get_mode()
@@ -298,7 +337,7 @@ async def get_pending_trades():
     """
     Get all pending trades awaiting confirmation.
     
-    Only applicable in SEMI_AUTO mode.
+    HITL-only: always applicable.
     """
     manager = get_mode_manager()
     trades = await manager.get_pending_trades()
@@ -309,14 +348,29 @@ async def get_pending_trades():
     for trade in trades:
         signal = trade.signal
         expires_in = int((trade.expires_at - now).total_seconds())
+
+        direction = signal.get("direction", "unknown")
+        entry_price = float(signal.get("entry_price") or 0.0)
+        tp_price = float(signal.get("take_profit_price") or 0.0)
+        sl_price = float(signal.get("stop_loss_price") or 0.0)
+
+        # Keep legacy percent fields for backward compatibility (positive magnitudes).
+        sign = -1 if direction == "short" else 1
+        tp_pct = ((tp_price / entry_price - 1) * 100 * sign) if entry_price and tp_price else 0.0
+        sl_pct = ((1 - sl_price / entry_price) * 100 * sign) if entry_price and sl_price else 0.0
         
         trade_responses.append(PendingTradeResponse(
             id=trade.id,
-            direction=signal.get("direction", "unknown"),
+            symbol=signal.get("symbol", "BTC-USDT-SWAP"),
+            direction=direction,
             leverage=signal.get("leverage", 1),
             confidence=signal.get("confidence", 0),
-            take_profit_percent=signal.get("take_profit_percent", 0),
-            stop_loss_percent=signal.get("stop_loss_percent", 0),
+            entry_price=entry_price,
+            take_profit_price=tp_price,
+            stop_loss_price=sl_price,
+            amount_percent=float(signal.get("amount_percent") or 0.5),
+            take_profit_percent=float(tp_pct),
+            stop_loss_percent=float(sl_pct),
             reasoning=signal.get("reasoning", ""),
             created_at=trade.created_at.isoformat(),
             expires_at=trade.expires_at.isoformat(),
@@ -342,14 +396,27 @@ async def get_pending_trade(trade_id: str):
     now = datetime.now()
     signal = trade.signal
     expires_in = int((trade.expires_at - now).total_seconds())
-    
+
+    direction = signal.get("direction", "unknown")
+    entry_price = float(signal.get("entry_price") or 0.0)
+    tp_price = float(signal.get("take_profit_price") or 0.0)
+    sl_price = float(signal.get("stop_loss_price") or 0.0)
+    sign = -1 if direction == "short" else 1
+    tp_pct = ((tp_price / entry_price - 1) * 100 * sign) if entry_price and tp_price else 0.0
+    sl_pct = ((1 - sl_price / entry_price) * 100 * sign) if entry_price and sl_price else 0.0
+
     return PendingTradeResponse(
         id=trade.id,
-        direction=signal.get("direction", "unknown"),
+        symbol=signal.get("symbol", "BTC-USDT-SWAP"),
+        direction=direction,
         leverage=signal.get("leverage", 1),
         confidence=signal.get("confidence", 0),
-        take_profit_percent=signal.get("take_profit_percent", 0),
-        stop_loss_percent=signal.get("stop_loss_percent", 0),
+        entry_price=entry_price,
+        take_profit_price=tp_price,
+        stop_loss_price=sl_price,
+        amount_percent=float(signal.get("amount_percent") or 0.5),
+        take_profit_percent=float(tp_pct),
+        stop_loss_percent=float(sl_pct),
         reasoning=signal.get("reasoning", ""),
         created_at=trade.created_at.isoformat(),
         expires_at=trade.expires_at.isoformat(),
@@ -370,8 +437,12 @@ async def confirm_pending_trade(trade_id: str, request: ConfirmTradeRequest):
 
     # Build modifications dict
     modifications = {}
+    if request.direction is not None:
+        modifications["direction"] = request.direction
     if request.leverage is not None:
         modifications["leverage"] = request.leverage
+    if request.amount_percent is not None:
+        modifications["amount_percent"] = request.amount_percent
     if request.take_profit_percent is not None:
         modifications["take_profit_percent"] = request.take_profit_percent
     if request.stop_loss_percent is not None:

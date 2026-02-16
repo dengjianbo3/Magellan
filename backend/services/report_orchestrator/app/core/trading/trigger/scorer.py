@@ -27,27 +27,30 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Import centralized config helpers, with fallback for standalone run
+try:
+    from app.core.trading.trading_config import (
+        get_env_float as _get_env_float,
+        get_env_int as _get_env_int,
+    )
+except ImportError:
+    def _get_env_float(key: str, default: float) -> float:
+        val = os.getenv(key)
+        if val:
+            try:
+                return float(val)
+            except ValueError:
+                pass
+        return default
 
-def _get_env_float(key: str, default: float) -> float:
-    """Get float from environment variable"""
-    val = os.getenv(key)
-    if val:
-        try:
-            return float(val)
-        except ValueError:
-            pass
-    return default
-
-
-def _get_env_int(key: str, default: int) -> int:
-    """Get int from environment variable"""
-    val = os.getenv(key)
-    if val:
-        try:
-            return int(val)
-        except ValueError:
-            pass
-    return default
+    def _get_env_int(key: str, default: int) -> int:
+        val = os.getenv(key)
+        if val:
+            try:
+                return int(val)
+            except ValueError:
+                pass
+        return default
 
 
 @dataclass

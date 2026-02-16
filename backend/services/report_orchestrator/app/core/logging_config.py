@@ -6,10 +6,14 @@ Provides JSON-formatted structured logging for better log aggregation and analys
 提供JSON格式的结构化日志，便于日志聚合和分析。
 """
 
-import structlog
 import logging
 import sys
 from pythonjsonlogger import jsonlogger
+
+try:
+    import structlog
+except Exception:  # Optional in some local/dev test setups
+    structlog = None
 
 
 def configure_logging(log_level: str = "INFO", json_logs: bool = True):
@@ -42,6 +46,12 @@ def configure_logging(log_level: str = "INFO", json_logs: bool = True):
         root_logger.handlers = []
         root_logger.addHandler(logHandler)
 
+    if structlog is None:
+        logging.getLogger(__name__).warning(
+            "structlog not installed; falling back to stdlib logging only"
+        )
+        return
+
     # Configure structlog
     structlog.configure(
         processors=[
@@ -53,7 +63,7 @@ def configure_logging(log_level: str = "INFO", json_logs: bool = True):
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
             structlog.processors.UnicodeDecoder(),
-            structlog.processors.JSONRenderer() if json_logs else structlog.dev.ConsoleRenderer()
+            structlog.processors.JSONRenderer() if json_logs else structlog.dev.ConsoleRenderer(),
         ],
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
@@ -71,4 +81,6 @@ def get_logger(name: str = __name__):
     Returns:
         Configured structlog logger
     """
+    if structlog is None:
+        return logging.getLogger(name)
     return structlog.get_logger(name)

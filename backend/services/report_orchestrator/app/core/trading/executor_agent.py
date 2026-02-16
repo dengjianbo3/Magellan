@@ -391,23 +391,9 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
         self._result = {"signal": None}
         self._executed_tools = []
 
-        # 🔧 FIX: HITL mode check — only execute trades in FULL_AUTO mode
-        # In SEMI_AUTO/MANUAL, temporarily disable paper_trader so tools
-        # only generate signals without actually executing trades.
+        # HITL-only: never execute trades during analysis. Tools should only generate signals.
         original_paper_trader = self.paper_trader
-        try:
-            from app.core.trading.mode_manager import get_mode_manager, TradingMode
-            mode_manager = get_mode_manager()
-            current_mode = await mode_manager.get_mode()
-
-            if current_mode != TradingMode.FULL_AUTO:
-                logger.info(f"[ExecutorAgent] Mode={current_mode.value} — signal-only mode (no trade execution)")
-                self.paper_trader = None  # Disable execution, tools will only generate signals
-            else:
-                logger.info("[ExecutorAgent] Mode=full_auto — trades will be executed")
-        except Exception as e:
-            logger.warning(f"[ExecutorAgent] Failed to check trading mode: {e}, defaulting to signal-only")
-            self.paper_trader = None  # Fail-safe: don't execute
+        self.paper_trader = None
 
         logger.info("[ExecutorAgent] Starting execution phase (ReWOO pattern)...")
 
@@ -514,7 +500,7 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
                 leader_summary=self._current_context.get("leader_summary", ""),
                 agent_votes=self._current_context.get("agent_votes", []),
                 position_context=self._current_context.get("position_context", {}),
-                was_executed=True,
+                was_executed=False,
             )
             
             await self._decision_store.save_decision(decision)
@@ -1559,4 +1545,3 @@ Analyze the consensus and make a decisive action."""
         except Exception as e:
             logger.warning(f"[ExecutorAgent] Trade viability check failed: {e}")
             return {"viable": True, "reason": f"Error: {str(e)}"}
-

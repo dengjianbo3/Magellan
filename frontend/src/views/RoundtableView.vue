@@ -540,7 +540,7 @@
 import { ref, computed, nextTick, onUnmounted, onMounted } from 'vue';
 import { useLanguage } from '../composables/useLanguage';
 import { getRoundtableAgents } from '../config/agents';
-import { API_BASE } from '@/config/api';
+import { API_BASE, apiUrl, wsUrl } from '@/config/api';
 import { marked } from 'marked';
 
 const { t, locale } = useLanguage();
@@ -632,8 +632,7 @@ onUnmounted(() => {
 const loadHistoryList = async () => {
   loadingHistory.value = true;
   try {
-    // Use full URL since API runs on port 8000 (report_orchestrator)
-    const response = await fetch('http://localhost:8000/api/roundtable/history?limit=20');
+    const response = await fetch(apiUrl('/api/roundtable/history?limit=20'));
     const data = await response.json();
     console.log('[Roundtable] Loaded history:', data);
     if (data.success) {
@@ -765,7 +764,7 @@ const startDiscussion = async () => {
 const connectWebSocket = () => {
   try {
     // Connect to backend roundtable WebSocket
-    ws = new WebSocket('ws://localhost:8000/ws/roundtable');
+    ws = new WebSocket(wsUrl('/ws/roundtable'));
 
     ws.onopen = () => {
       console.log('[Roundtable] WebSocket connected');
@@ -1436,7 +1435,7 @@ const submitIntervention = async () => {
   isSubmittingIntervention.value = true;
 
   try {
-    const response = await fetch('http://localhost:8002/api/roundtable/inject_human_input', {
+    const response = await fetch(`${API_BASE}/api/roundtable/inject_human_input`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

@@ -91,7 +91,7 @@
 | Multi-Agent Collaboration | ✅ | 16 expert agents for analysis |
 | LangGraph Orchestration | ✅ | 7-node state machine workflow |
 | Three-Layer Trigger | ✅ | FastMonitor → TriggerAgent → Full Analysis |
-| HITL Modes | ✅ | Full Auto / Semi-Auto / Manual |
+| HITL | ✅ | Semi-Auto only (all trades require human confirmation) |
 | Anti-Bias System | ✅ | Direction neutralization + Echo chamber detection |
 | ATR Dynamic Stop Loss | ✅ | Volatility-based stop loss calculation |
 | Funding Rate Awareness | ✅ | Smart entry timing and position limits |

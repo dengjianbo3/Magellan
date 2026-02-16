@@ -71,8 +71,16 @@ class OKXTrader:
     Uses OKX demo trading API.
     """
 
-    def __init__(self, initial_balance: float = 5000.0, demo_mode: bool = True, config: OKXTraderConfig = None,
-                 redis_url: str = None):
+    def __init__(
+        self,
+        initial_balance: float = 5000.0,
+        demo_mode: bool = True,
+        config: OKXTraderConfig = None,
+        redis_url: str = None,
+        okx_api_key: Optional[str] = None,
+        okx_secret_key: Optional[str] = None,
+        okx_passphrase: Optional[str] = None,
+    ):
         self.config = config or OKXTraderConfig(initial_balance=initial_balance, demo_mode=demo_mode)
         self.initial_balance = self.config.initial_balance
         self.demo_mode = self.config.demo_mode
@@ -82,6 +90,9 @@ class OKXTrader:
 
         self._okx_client: Optional[OKXClient] = None
         self._initialized = False
+        self._okx_api_key = okx_api_key
+        self._okx_secret_key = okx_secret_key
+        self._okx_passphrase = okx_passphrase
 
         # 🔒 Trade lock - prevents concurrent trading operations
         self._trade_lock = asyncio.Lock()
@@ -154,7 +165,12 @@ class OKXTrader:
             logger.warning(f"[Redis] Not available, using memory only: {e}")
             self._redis = None
 
-        self._okx_client = await get_okx_client()
+        self._okx_client = await get_okx_client(
+            api_key=self._okx_api_key,
+            secret_key=self._okx_secret_key,
+            passphrase=self._okx_passphrase,
+            demo_mode=self.demo_mode,
+        )
 
         # Get initial balance from OKX
         try:
@@ -1525,12 +1541,34 @@ class OKXTrader:
 # Singleton
 
 _okx_trader: Optional[OKXTrader] = None
+_okx_trader_fp: Optional[str] = None
 
 
-async def get_okx_trader(initial_balance: float = 10000.0) -> OKXTrader:
+def _fp(api_key: str, passphrase: str, demo_mode: bool, initial_balance: float) -> str:
+    return f"{api_key[-6:]}:{passphrase[-2:]}:{'demo' if demo_mode else 'real'}:{initial_balance}"
+
+
+async def get_okx_trader(
+    initial_balance: float = 10000.0,
+    demo_mode: bool = True,
+    okx_api_key: Optional[str] = None,
+    okx_secret_key: Optional[str] = None,
+    okx_passphrase: Optional[str] = None,
+) -> OKXTrader:
     """Get or create OKX trader singleton"""
     global _okx_trader
-    if _okx_trader is None:
-        _okx_trader = OKXTrader(initial_balance=initial_balance)
+    global _okx_trader_fp
+    api_k = okx_api_key or ""
+    pass_k = okx_passphrase or ""
+    fp = _fp(api_k, pass_k, bool(demo_mode), float(initial_balance))
+    if _okx_trader is None or _okx_trader_fp != fp:
+        _okx_trader = OKXTrader(
+            initial_balance=initial_balance,
+            demo_mode=demo_mode,
+            okx_api_key=okx_api_key,
+            okx_secret_key=okx_secret_key,
+            okx_passphrase=okx_passphrase,
+        )
         await _okx_trader.initialize()
+        _okx_trader_fp = fp
     return _okx_trader

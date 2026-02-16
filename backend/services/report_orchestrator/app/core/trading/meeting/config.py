@@ -8,25 +8,10 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 
-
-# ========== Environment helpers ==========
-def _get_env_float(key: str, default: float) -> float:
-    val = os.getenv(key)
-    if val:
-        try:
-            return float(val)
-        except ValueError:
-            pass
-    return default
-
-def _get_env_int(key: str, default: int) -> int:
-    val = os.getenv(key)
-    if val:
-        try:
-            return int(val)
-        except ValueError:
-            pass
-    return default
+from app.core.trading.trading_config import (
+    get_env_float as _get_env_float,
+    get_env_int as _get_env_int,
+)
 
 
 @dataclass

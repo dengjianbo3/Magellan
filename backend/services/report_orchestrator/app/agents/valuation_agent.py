@@ -35,8 +35,10 @@ class ValuationAgent:
     
     def __init__(
         self,
-        web_search_url: str = "http://web_search_service:8003",
-        llm_gateway_url: str = "http://llm_gateway:8001"
+        # web_search_service runs on 8010 (see docker-compose.yml)
+        web_search_url: str = "http://web_search_service:8010",
+        # llm_gateway runs on 8003 (see docker-compose.yml)
+        llm_gateway_url: str = "http://llm_gateway:8003"
     ):
         self.web_search_url = web_search_url
         self.llm_gateway_url = llm_gateway_url

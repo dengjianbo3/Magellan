@@ -11,7 +11,7 @@ import asyncio
 import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Union
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -20,6 +20,8 @@ from app.core.trading.okx_trader import OKXTrader
 from app.core.trading.trading_agents import get_trading_agent_config
 from app.core.trading.agent_memory import get_memory_store
 from app.core.trading.decision_store import get_decision_store  # Redis persistence for signals
+from app.core.trading.okx_credentials_store import get_okx_credentials_store, OkxCredentials
+from app.core.trading.trading_settings_store import get_trading_settings_store, TradingSettings
 from app.core.trading.scheduler import CooldownManager
 from app.models.trading_models import TradingConfig, TradingSignal
 
@@ -569,18 +571,27 @@ class TradingConfigUpdate(BaseModel):
     max_position_percent: Optional[float] = None
     enabled: Optional[bool] = None
     use_okx_trading: Optional[bool] = None  # Switch to OKX demo trading
+    okx_demo_mode: Optional[bool] = None
+    okx_api_key: Optional[str] = None
+    okx_secret_key: Optional[str] = None
+    okx_passphrase: Optional[str] = None
+    clear_okx_credentials: Optional[bool] = None
 
 
 @router.get("/config")
 async def get_config():
     """Get current trading configuration"""
     system = await get_trading_system()
+    okx_masked = await get_okx_credentials_store().get_masked()
+    persisted = await get_trading_settings_store().get()
     return {
         "analysis_interval_hours": system.config.analysis_interval_hours,
         "max_leverage": system.config.risk_limits.max_leverage,
         "max_position_percent": system.config.risk_limits.max_position_percent,
         "enabled": system.config.enabled,
         "trader_type": system.trader_type,  # "paper" or "okx"
+        "use_okx_trading": bool(persisted.use_okx_trading),
+        "okx": okx_masked,
         "symbol": system.config.symbol,
         "initial_capital": system.config.initial_capital,
         "risk_limits": {
@@ -595,7 +606,61 @@ async def get_config():
 async def update_config(update: TradingConfigUpdate):
     """Update trading configuration"""
     system = await get_trading_system()
-    needs_restart = False
+    needs_reset = False
+
+    # OKX creds update/clear
+    if update.clear_okx_credentials:
+        await get_okx_credentials_store().clear()
+        try:
+            from app.core.trading.funding.data_service import get_funding_data_service
+            await get_funding_data_service()
+        except Exception:
+            pass
+        # Safer default: revert to paper.
+        update.use_okx_trading = False
+
+    okx_key_fields_present = any(
+        v is not None for v in (update.okx_api_key, update.okx_secret_key, update.okx_passphrase)
+    )
+
+    # OKX credentials: allow updating demo_mode without re-entering keys (if already stored).
+    if okx_key_fields_present:
+        # Partial updates not supported to avoid accidentally mixing old/new secrets.
+        if not (update.okx_api_key and update.okx_secret_key and update.okx_passphrase):
+            raise HTTPException(status_code=400, detail="OKX credentials require api_key, secret_key, and passphrase")
+        await get_okx_credentials_store().set(
+            OkxCredentials(
+                api_key=update.okx_api_key,
+                secret_key=update.okx_secret_key,
+                passphrase=update.okx_passphrase,
+                demo_mode=True if update.okx_demo_mode is None else bool(update.okx_demo_mode),
+            )
+        )
+        needs_reset = True
+    elif update.okx_demo_mode is not None:
+        existing = await get_okx_credentials_store().get()
+        if existing and existing.is_configured():
+            await get_okx_credentials_store().set(
+                OkxCredentials(
+                    api_key=existing.api_key,
+                    secret_key=existing.secret_key,
+                    passphrase=existing.passphrase,
+                    demo_mode=bool(update.okx_demo_mode),
+                )
+            )
+            needs_reset = True
+        else:
+            # No stored credentials yet. Only error if user is trying to enable OKX without creds.
+            if update.use_okx_trading:
+                raise HTTPException(status_code=400, detail="OKX demo mode provided but credentials are not configured")
+
+    # Keep funding service in sync (uses OKX keys for authenticated bills endpoints).
+    if okx_key_fields_present or update.okx_demo_mode is not None or update.clear_okx_credentials:
+        try:
+            from app.core.trading.funding.data_service import get_funding_data_service
+            await get_funding_data_service()
+        except Exception:
+            pass
 
     if update.analysis_interval_hours:
         system.config.analysis_interval_hours = update.analysis_interval_hours
@@ -612,24 +677,41 @@ async def update_config(update: TradingConfigUpdate):
     if update.enabled is not None:
         system.config.enabled = update.enabled
 
-    # Handle OKX trading switch
+    # Persist settings across reset
+    persisted = await get_trading_settings_store().update(
+        TradingSettings(
+            analysis_interval_hours=update.analysis_interval_hours,
+            max_leverage=update.max_leverage,
+            max_position_percent=update.max_position_percent,
+            enabled=update.enabled,
+            use_okx_trading=update.use_okx_trading,
+            okx_demo_mode=update.okx_demo_mode,
+        )
+    )
+
+    # Handle OKX trading switch (requires reset)
     if update.use_okx_trading is not None:
+        desired_okx = bool(update.use_okx_trading)
         current_is_okx = system.trader_type == "okx"
-        if update.use_okx_trading != current_is_okx:
-            needs_restart = True
-            # Set environment variable for restart
-            os.environ["USE_OKX_TRADING"] = "true" if update.use_okx_trading else "false"
-            logger.info(f"Trader type will switch to: {'OKX Demo' if update.use_okx_trading else 'Paper Trader'}")
+        if desired_okx != current_is_okx:
+            needs_reset = True
+            if desired_okx:
+                okx = await get_okx_credentials_store().get()
+                if not okx or not okx.is_configured():
+                    raise HTTPException(status_code=400, detail="OKX trading requested but credentials are not configured")
+            logger.info(f"Trader type will switch after reset: {'OKX Demo' if desired_okx else 'Paper Trader'}")
 
     response = {
         "status": "updated",
         "config": system.config.model_dump(),
         "trader_type": system.trader_type,
-        "needs_restart": needs_restart
+        "needs_reset": needs_reset,
+        "persisted": persisted.to_dict(),
+        "okx": await get_okx_credentials_store().get_masked(),
     }
 
-    if needs_restart:
-        response["message"] = "Trading system needs restart to apply trader type change. Please reset the system."
+    if needs_reset:
+        response["message"] = "Settings saved. Please reset the trading system to apply OKX/Paper switch."
 
     return response
 
@@ -681,11 +763,12 @@ async def reset_trading_system():
     - Clear agent memories
     - Re-initialize the system
     """
-    global _trading_system
+    import app.services.trading_system as ts_module
 
     logger.info("Resetting trading system...")
 
     try:
+        _trading_system = ts_module._trading_system
         if _trading_system:
             # Stop system if running
             await _trading_system.stop()
@@ -714,7 +797,7 @@ async def reset_trading_system():
         await memory_store.clear_all_memories()
 
         # Reset singleton to force re-initialization
-        _trading_system = None
+        ts_module._trading_system = None
 
         # Re-initialize
         system = await get_trading_system()
@@ -1152,6 +1235,12 @@ async def trading_dashboard():
 # Mock Testing APIs
 # ============================================
 
+def _require_test_endpoints_enabled():
+    # Hide these endpoints by default for PoC/hosted environments.
+    if os.getenv("ENABLE_TEST_ENDPOINTS", "false").lower() != "true":
+        raise HTTPException(status_code=404, detail="Not found")
+
+
 @router.post("/mock/enable")
 async def enable_mock_mode(scenario: str = Query(default="random", description="Scenario: bullish, bearish, neutral, random")):
     """
@@ -1164,6 +1253,7 @@ async def enable_mock_mode(scenario: str = Query(default="random", description="
         scenario: 'bullish' (leads to LONG), 'bearish' (leads to SHORT), 
                   'neutral' (leads to HOLD), 'random' (random each time)
     """
+    _require_test_endpoints_enabled()
     from app.core.trading.mock_tavily import enable_mock_mode, set_scenario
     
     enable_mock_mode()
@@ -1186,6 +1276,7 @@ async def enable_mock_mode(scenario: str = Query(default="random", description="
 @router.post("/mock/disable")
 async def disable_mock_mode():
     """Disable mock mode and use real Tavily API"""
+    _require_test_endpoints_enabled()
     from app.core.trading.mock_tavily import disable_mock_mode
     
     disable_mock_mode()
@@ -1200,13 +1291,15 @@ async def disable_mock_mode():
 @router.get("/mock/status")
 async def get_mock_status():
     """Get current mock mode status"""
-    import os
+    _require_test_endpoints_enabled()
     from app.core.trading.mock_tavily import is_mock_mode_enabled
+    from app.core.trading.trading_settings_store import get_trading_settings_store
     
+    persisted = await get_trading_settings_store().get()
     return {
         "mock_mode": is_mock_mode_enabled(),
         "scenario": os.getenv("MOCK_SCENARIO", "random"),
-        "okx_trading": os.getenv("USE_OKX_TRADING", "false").lower() == "true"
+        "okx_trading": bool(persisted.use_okx_trading)
     }
 
 
@@ -1222,8 +1315,9 @@ async def run_mock_test(scenario: str = Query(default="bullish", description="Te
     ⚠️ SAFETY: This endpoint BLOCKS execution if OKX trading is enabled.
     Mock tests only work with Paper Trader to prevent real money loss.
     """
-    import os
+    _require_test_endpoints_enabled()
     from app.core.trading.mock_tavily import enable_mock_mode, set_scenario
+    from app.core.trading.trading_settings_store import get_trading_settings_store
     
     # SAFETY CHECK: Block if OKX trading is enabled
     system = await get_trading_system()
@@ -1232,20 +1326,21 @@ async def run_mock_test(scenario: str = Query(default="bullish", description="Te
             "success": False,
             "error": "⚠️ BLOCKED: Cannot run mock test while OKX trading is enabled!",
             "message": "Mock testing is only allowed with Paper Trader.",
-            "action_required": "Set USE_OKX_TRADING=false in .env and restart the service",
+            "action_required": "Disable OKX trading in Trading Settings and reset the system.",
             "current_trader": "okx"
         }
     
     if not system:
         return {"success": False, "error": "Trading system not initialized"}
     
-    # Additional check - ensure we're not in OKX mode
-    if os.getenv("USE_OKX_TRADING", "false").lower() == "true":
+    # Additional check - ensure persisted settings do not request OKX
+    persisted = await get_trading_settings_store().get()
+    if persisted.use_okx_trading:
         return {
             "success": False,
-            "error": "⚠️ BLOCKED: USE_OKX_TRADING is set to true in environment!",
+            "error": "⚠️ BLOCKED: OKX trading is enabled in settings!",
             "message": "Cannot run mock test with OKX trading enabled.",
-            "action_required": "Disable OKX trading first"
+            "action_required": "Disable OKX trading in Trading Settings and reset the system."
         }
     
     # Enable mock with scenario
@@ -1275,6 +1370,90 @@ async def run_mock_test(scenario: str = Query(default="bullish", description="Te
         return {"success": False, "error": str(e)}
 
 
+@router.post("/mock/create-pending")
+async def create_mock_pending_trade(
+    direction: str = Query(default="long", description="long or short"),
+    leverage: int = Query(default=3, ge=1, le=50, description="Leverage 1-50"),
+    amount_percent: float = Query(default=0.2, gt=0, le=1.0, description="Position size as percent of balance"),
+    tp_percent: float = Query(default=5.0, gt=0, le=50, description="Take profit percent magnitude"),
+    sl_percent: float = Query(default=2.0, gt=0, le=50, description="Stop loss percent magnitude"),
+    symbol: str = Query(default="BTC-USDT-SWAP", description="Trading symbol"),
+):
+    """
+    Create a HITL pending trade without running the full LLM analysis cycle.
+
+    This is intended for E2E testing of the HITL confirmation loop + PaperTrader execution.
+    It is blocked when OKX trading is enabled.
+    """
+    _require_test_endpoints_enabled()
+    from app.core.trading.mode_manager import get_mode_manager
+    from app.core.trading.trading_settings_store import get_trading_settings_store
+
+    system = await get_trading_system()
+    if not system or not system.paper_trader:
+        return {"success": False, "error": "Trading system not initialized"}
+
+    # SAFETY CHECK: Block if OKX trading is enabled (active) OR requested in settings.
+    persisted = await get_trading_settings_store().get()
+    if system.trader_type == "okx" or persisted.use_okx_trading:
+        return {
+            "success": False,
+            "error": "⚠️ BLOCKED: Cannot create mock pending trade while OKX trading is enabled!",
+            "message": "This endpoint is only allowed with Paper Trader.",
+            "action_required": "Disable OKX trading in Trading Settings and reset the system.",
+            "current_trader": system.trader_type,
+        }
+
+    direction = (direction or "").lower()
+    if direction not in ("long", "short"):
+        return {"success": False, "error": f"Invalid direction: {direction}"}
+
+    current_price = await system.paper_trader.get_current_price(symbol)
+    if not current_price or current_price <= 0:
+        return {"success": False, "error": "Failed to get current price"}
+
+    # Compute absolute TP/SL prices based on current price.
+    if direction == "long":
+        tp_price = current_price * (1 + tp_percent / 100.0)
+        sl_price = current_price * (1 - sl_percent / 100.0)
+    else:
+        tp_price = current_price * (1 - tp_percent / 100.0)
+        sl_price = current_price * (1 + sl_percent / 100.0)
+
+    manager = get_mode_manager()
+    pending = await manager.add_pending_trade(
+        direction=direction,
+        leverage=leverage,
+        entry_price=current_price,
+        take_profit=tp_price,
+        stop_loss=sl_price,
+        confidence=75,
+        reasoning="E2E mock pending trade (HITL)",
+        amount_percent=amount_percent,
+        symbol=symbol,
+    )
+
+    # Broadcast to websocket listeners for UI parity.
+    try:
+        await system._broadcast(
+            {
+                "type": "pending_trade_created",
+                "trade_id": pending.trade_id,
+                "signal": pending.pending_trade.signal,
+                "expires_at": pending.pending_trade.expires_at.isoformat(),
+            }
+        )
+    except Exception as e:
+        logger.warning(f"[mock/create-pending] WebSocket broadcast failed: {e}")
+
+    return {
+        "success": True,
+        "trade_id": pending.trade_id,
+        "pending_trade": pending.pending_trade.to_dict(),
+        "message": "Pending trade created. Confirm via /api/trading/pending/{trade_id}/confirm",
+    }
+
+
 @router.post("/mock/test-tp-sl")
 async def test_tp_sl_trigger(trigger_type: str = Query(default="tp", description="tp or sl")):
     """
@@ -1286,6 +1465,7 @@ async def test_tp_sl_trigger(trigger_type: str = Query(default="tp", description
     Args:
         trigger_type: 'tp' for take profit, 'sl' for stop loss
     """
+    _require_test_endpoints_enabled()
     system = await get_trading_system()
     if not system or not system.paper_trader:
         return {"success": False, "error": "Trading system not initialized"}
@@ -1327,7 +1507,7 @@ async def test_tp_sl_trigger(trigger_type: str = Query(default="tp", description
     # Get updated position
     new_position = await system.paper_trader.get_position()
     account = await system.paper_trader.get_account()
-    
+
     return {
         "success": True,
         "trigger_type": trigger_type,
@@ -1339,7 +1519,7 @@ async def test_tp_sl_trigger(trigger_type: str = Query(default="tp", description
             "sl_price": sl_price
         },
         "result": result,
-        "position_closed": not new_position.get("has_position"),
+        "position_closed": (not new_position) or (not new_position.get("has_position")),
         "account_balance": account.get("balance"),
         "realized_pnl": account.get("realized_pnl")
     }
@@ -1353,6 +1533,7 @@ async def test_cooldown(losses: int = Query(default=3, description="Number of co
     After 3 consecutive losses (default), the system should enter cooldown
     and block new analysis cycles.
     """
+    _require_test_endpoints_enabled()
     system = await get_trading_system()
     if not system:
         return {"success": False, "error": "Trading system not initialized"}
@@ -1378,6 +1559,7 @@ async def test_cooldown(losses: int = Query(default=3, description="Number of co
 @router.post("/mock/reset-cooldown")
 async def reset_cooldown():
     """Reset cooldown for testing purposes."""
+    _require_test_endpoints_enabled()
     system = await get_trading_system()
     if not system:
         return {"success": False, "error": "Trading system not initialized"}
@@ -1402,6 +1584,7 @@ async def open_test_position(
     Open a test position directly for TP/SL testing.
     This bypasses the full analysis cycle for quick testing.
     """
+    _require_test_endpoints_enabled()
     system = await get_trading_system()
     if not system or not system.paper_trader:
         return {"success": False, "error": "Trading system not initialized"}
@@ -1564,41 +1747,8 @@ async def execute_trade(request: Dict[str, Any]):
     Kept for backward compatibility with legacy frontend paths.
     New code should use the HITL pending trade confirmation flow.
     """
-    system = await get_trading_system()
-    if not system or not system.paper_trader:
-        return {"success": False, "error": "Trading system not initialized"}
-    
-    direction = request.get("direction", "long")
-    leverage = request.get("leverage", 5)
-    take_profit = request.get("take_profit")
-    stop_loss = request.get("stop_loss")
-    
-    try:
-        # Get account balance
-        account = await system.paper_trader.get_account()
-        available = account.get("available_balance", 0)
-        amount_usdt = available * 0.3  # Use 30% of available balance
-        
-        if direction == "long":
-            result = await system.paper_trader.open_long(
-                symbol="BTC-USDT-SWAP",
-                leverage=leverage,
-                amount_usdt=amount_usdt,
-                tp_price=take_profit,
-                sl_price=stop_loss
-            )
-        else:
-            result = await system.paper_trader.open_short(
-                symbol="BTC-USDT-SWAP",
-                leverage=leverage,
-                amount_usdt=amount_usdt,
-                tp_price=take_profit,
-                sl_price=stop_loss
-            )
-        
-        logger.info(f"[UserConfirm] Trade executed: {direction} {leverage}x, result={result.get('success')}")
-        return result
-        
-    except Exception as e:
-        logger.error(f"[UserConfirm] Trade execution failed: {e}")
-        return {"success": False, "error": str(e)}
+    # HITL-only: direct execution is intentionally disabled to avoid bypassing confirmation flow.
+    raise HTTPException(
+        status_code=410,
+        detail="Direct execution is disabled. Use POST /api/trading/pending/{trade_id}/confirm.",
+    )

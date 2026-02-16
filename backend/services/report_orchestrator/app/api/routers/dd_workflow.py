@@ -9,6 +9,7 @@ Phase 4: 迁移自 main.py 的 DD 工作流端点
 """
 import uuid
 import asyncio
+import importlib.util
 from typing import Any, Optional, Callable
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
@@ -20,6 +21,9 @@ from ...models.dd_models import (
 from ...core.dd_state_machine import DDStateMachine
 
 router = APIRouter()
+
+# python-multipart provides the `multipart` module required by FastAPI for File/Form.
+_MULTIPART_AVAILABLE = importlib.util.find_spec("multipart") is not None
 
 # Dependencies - will be set from main.py
 _session_exists_func: Optional[Callable] = None
@@ -65,42 +69,50 @@ async def _run_dd_workflow_background(state_machine: DDStateMachine):
         traceback.print_exc()
 
 
-@router.post("/start_http")
-async def start_dd_analysis_http(
-    company_name: str = Form(...),
-    bp_file: UploadFile = File(...),
-    user_id: str = Form(default="default_user")
-):
-    """
-    HTTP version of DD analysis (for testing without WebSocket).
-    Returns immediately with session_id, use /dd/session/{session_id} to poll status.
-    """
-    # Generate session ID
-    session_id = f"dd_{company_name}_{uuid.uuid4().hex[:8]}"
+if _MULTIPART_AVAILABLE:
+    @router.post("/start_http")
+    async def start_dd_analysis_http(
+        company_name: str = Form(...),
+        bp_file: UploadFile = File(...),
+        user_id: str = Form(default="default_user"),
+    ):
+        """
+        HTTP version of DD analysis (for testing without WebSocket).
+        Returns immediately with session_id, use /dd/session/{session_id} to poll status.
+        """
+        # Generate session ID
+        session_id = f"dd_{company_name}_{uuid.uuid4().hex[:8]}"
 
-    # Read file
-    bp_file_content = await bp_file.read()
+        # Read file
+        bp_file_content = await bp_file.read()
 
-    # Create state machine
-    state_machine = DDStateMachine(
-        session_id=session_id,
-        company_name=company_name,
-        bp_file_content=bp_file_content,
-        bp_filename=bp_file.filename,
-        user_id=user_id
-    )
+        # Create state machine
+        state_machine = DDStateMachine(
+            session_id=session_id,
+            company_name=company_name,
+            bp_file_content=bp_file_content,
+            bp_filename=bp_file.filename,
+            user_id=user_id,
+        )
 
-    # Store session
-    _save_session(session_id, state_machine.get_current_context())
+        # Store session
+        _save_session(session_id, state_machine.get_current_context())
 
-    # Run workflow in background
-    asyncio.create_task(_run_dd_workflow_background(state_machine))
+        # Run workflow in background
+        asyncio.create_task(_run_dd_workflow_background(state_machine))
 
-    return {
-        "session_id": session_id,
-        "status": "started",
-        "message": f"DD 分析已启动，session_id: {session_id}"
-    }
+        return {
+            "session_id": session_id,
+            "status": "started",
+            "message": f"DD 分析已启动，session_id: {session_id}",
+        }
+else:
+    @router.post("/start_http")
+    async def start_dd_analysis_http_unavailable():
+        raise HTTPException(
+            status_code=503,
+            detail='Form data requires "python-multipart" to be installed (module "multipart").',
+        )
 
 
 @router.get("/session/{session_id}")

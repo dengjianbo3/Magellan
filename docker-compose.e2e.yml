@@ -1,0 +1,42 @@
+services:
+  # Override trading to run in paper mode for deterministic E2E.
+  report_orchestrator:
+    environment:
+      - USE_OKX_TRADING=false
+      - OKX_DEMO_MODE=true
+      - ENABLE_TEST_ENDPOINTS=true
+      - REPORT_ORCH_REQUIRE_REDIS=true
+      - REPORT_STORAGE_ALLOW_MEMORY_FALLBACK=false
+
+  # Serve built frontend + reverse-proxy /api + WS to backend services.
+  web:
+    image: nginx:1.25-alpine
+    container_name: magellan-web
+    depends_on:
+      - report_orchestrator
+      - auth_service
+      - llm_gateway
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./e2e/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - default
+
+  # Playwright runner (runs inside Docker network; avoids host->container networking limits)
+  playwright:
+    profiles: ["e2e"]
+    image: mcr.microsoft.com/playwright:v1.49.0-jammy
+    container_name: magellan-playwright
+    depends_on:
+      - web
+    working_dir: /work/e2e
+    environment:
+      - E2E_BASE_URL=http://web
+      - CI=1
+    volumes:
+      - ./e2e:/work/e2e
+      - playwright_node_modules:/work/e2e/node_modules
+    command: bash -lc "npm install --no-audit --no-fund && npx playwright test"
+
+volumes:
+  playwright_node_modules:

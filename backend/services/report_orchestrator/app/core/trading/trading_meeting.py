@@ -37,8 +37,7 @@ from app.core.trading.vote_calculator import (
 
 # 🆕 Phase 1-2 Refactored Modules
 from app.core.trading.safety.guards import SafetyGuard
-from app.core.trading.executor import TradeExecutor  # Legacy (kept for backward compatibility)
-from app.core.trading.executor_agent import ExecutorAgent  # 🆕 New unified agent-based executor
+from app.core.trading.executor_agent import ExecutorAgent  # Unified agent-based executor
 from app.core.trading.reflection.engine import ReflectionEngine
 
 # 🆕 LangGraph orchestration imports
@@ -116,7 +115,7 @@ class TradingMeeting(Meeting):
 
         # 🆕 Phase 1-2: Initialize new refactored modules
         self._safety_guard: Optional[SafetyGuard] = None
-        self._trade_executor: Optional[TradeExecutor] = None
+        self._trade_executor: Optional[ExecutorAgent] = None
         self._reflection_engine: Optional[ReflectionEngine] = None
         self._init_refactored_modules()
         
@@ -138,7 +137,7 @@ class TradingMeeting(Meeting):
         
         Sets up:
         - SafetyGuard: Centralized safety checks
-        - TradeExecutor: Execution with ReAct fallback
+        - ExecutorAgent: Execution with ReAct fallback
         - ReflectionEngine: Post-trade reflection
         """
         try:
@@ -155,17 +154,17 @@ class TradingMeeting(Meeting):
                 )
                 logger.info("[TradingMeeting] [OK] SafetyGuard initialized")
             
-            # Initialize TradeExecutor
-            if paper_trader and self.llm_service:
-                self._trade_executor = TradeExecutor(
-                    llm_service=self.llm_service,
+            # Initialize ExecutorAgent
+            if paper_trader:
+                self._trade_executor = ExecutorAgent(
                     toolkit=self.toolkit,
                     paper_trader=paper_trader,
                     safety_guard=self._safety_guard,
                     on_message=self.on_message,
-                    symbol=getattr(self.config, 'symbol', 'BTC-USDT-SWAP')
+                    symbol=getattr(self.config, 'symbol', 'BTC-USDT-SWAP'),
+                    llm_gateway_url=None  # Uses centralized config
                 )
-                logger.info("[TradingMeeting] [OK] TradeExecutor initialized")
+                logger.info("[TradingMeeting] [OK] ExecutorAgent initialized")
             
             # Initialize ReflectionEngine
             if self.llm_service:
@@ -2246,61 +2245,77 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
 
     async def _run_execution_phase(self, signal: TradingSignal, position_context: PositionContext = None):
         """
-        Phase 5: Trade Execution - NEW Intelligent TradeExecutor
+        Phase 5: Trade Execution — delegates to ExecutorAgent.
 
-        TradeExecutor is now a true decision-making Agent that:
-        1. Understands Leader's meeting summary
-        2. Analyzes all expert votes
-        3. Considers current position state
-        4. Makes independent trading decisions
-        5. Executes trades
-
-        No longer relies on fixed formats or markers!
+        Uses the same ExecutorAgent as the LangGraph path, ensuring
+        unified execution logic regardless of orchestration mode.
         """
         self._add_message(
             agent_id="system",
             agent_name="System",
-            content=f"## Phase 5: Trade Execution\n\nTrade Executor is analyzing meeting results and making decisions...",
+            content="## Phase 5: Trade Execution\n\nTrade Executor is analyzing meeting results and making decisions...",
             message_type="phase"
         )
-        
+
         try:
+            # Ensure ExecutorAgent is available
+            if not self._trade_executor:
+                paper_trader = getattr(self.toolkit, 'paper_trader', None) if self.toolkit else None
+                if paper_trader:
+                    self._trade_executor = ExecutorAgent(
+                        toolkit=self.toolkit,
+                        paper_trader=paper_trader,
+                        safety_guard=self._safety_guard,
+                        on_message=self.on_message,
+                        symbol=getattr(self.config, 'symbol', 'BTC-USDT-SWAP'),
+                        llm_gateway_url=None
+                    )
+                else:
+                    raise RuntimeError("Cannot execute: paper_trader not available")
+
             # Step 1: Get Leader's meeting summary
             leader_summary = self._get_leader_final_summary()
             logger.info(f"[ExecutionPhase] Leader summary length: {len(leader_summary)} chars")
 
-            # Step 2: Collect expert votes
-            agents_votes = self._get_agents_consensus()
-            logger.info(f"[ExecutionPhase] Expert votes: {agents_votes}")
+            # Step 2: Collect expert votes as dicts (same format as LangGraph path)
+            agent_votes = []
+            for vote in self._agent_votes:
+                if hasattr(vote, 'to_dict'):
+                    agent_votes.append(vote.to_dict())
+                elif isinstance(vote, dict):
+                    agent_votes.append(vote)
+                else:
+                    agent_votes.append({
+                        'agent_name': getattr(vote, 'agent_name', 'unknown'),
+                        'direction': getattr(vote, 'direction', 'hold'),
+                        'confidence': getattr(vote, 'confidence', 50),
+                        'leverage': getattr(vote, 'leverage', 1),
+                        'reasoning': getattr(vote, 'reasoning', ''),
+                    })
+            logger.info(f"[ExecutionPhase] Expert votes: {len(agent_votes)} agents")
 
-            # Step 3: Create TradeExecutor Agent (with direct tool calling capability)
-            logger.info("[ExecutionPhase] Creating TradeExecutor Agent...")
-            trade_executor_agent = await self._create_trade_executor_agent_instance()
+            # Step 3: Get position context as dict
+            position_dict = await self._get_position_info_dict()
 
-            # Step 4: Build execution prompt
-            execution_prompt = self._build_execution_prompt(
+            # Step 4: Execute via ExecutorAgent (same as LangGraph execution_node)
+            logger.info("[ExecutionPhase] ExecutorAgent starting execution...")
+            final_signal = await self._trade_executor.execute(
                 leader_summary=leader_summary,
-                agents_votes=agents_votes,
-                position_context=position_context
+                agent_votes=agent_votes,
+                position_context=position_dict,
+                trigger_reason=self._current_context or "scheduled"
             )
-            logger.info(f"[ExecutionPhase] Execution prompt built, length: {len(execution_prompt)} chars")
 
-            # Step 5: TradeExecutor executes trade via Tool Calling
-            # KEY CHANGE: run() returns TradingSignal directly, no secondary parsing needed!
-            logger.info("[ExecutionPhase] TradeExecutor starting Tool Calling...")
-            final_signal = await trade_executor_agent.run(execution_prompt)
-            
             # Add Leader's summary to the signal for display in frontend
             final_signal.leader_summary = leader_summary
 
             logger.info(
-                f"[ExecutionPhase] TradeExecutor decision complete: {final_signal.direction.upper()} "
+                f"[ExecutionPhase] ExecutorAgent decision complete: {final_signal.direction.upper()} "
                 f"| Leverage {final_signal.leverage}x "
                 f"| Position {final_signal.amount_percent*100:.0f}%"
             )
 
-            # Step 6: Add decision message
-            # FIX: _add_message doesn't support metadata parameter, removed
+            # Step 5: Add decision message
             self._add_message(
                 agent_id="trade_executor",
                 agent_name="Trade Executor",
@@ -2319,14 +2334,10 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
 """,
                 message_type="decision"
             )
-            
-            # Step 7: Record execution result (tool functions already executed trade, no need to execute again!)
-            # KEY CHANGE: TradeExecutorAgentWithTools tool functions already executed the trade directly
-            # open_long/open_short/close_position functions internally called paper_trader.open_position()
-            # So here we only need to record the result, no need to call LegacyExecutor
 
+            # Step 6: Record execution result
             if final_signal.direction != "hold":
-                logger.info(f"[ExecutionPhase] Trade executed via Tool Calling: {final_signal.direction.upper()}")
+                logger.info(f"[ExecutionPhase] Trade executed: {final_signal.direction.upper()}")
 
                 self._add_message(
                     agent_id="trade_executor",
@@ -2358,10 +2369,10 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                     "action": "hold",
                     "reason": final_signal.reasoning
                 }
-            
+
             # Store final signal
             self._final_signal = final_signal
-            
+
         except Exception as e:
             logger.error(f"[ExecutionPhase] [FAIL] Execution phase failed: {e}", exc_info=True)
             self._add_message(
@@ -2376,1294 +2387,9 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                 f"Execution phase failed: {str(e)}"
             )
     
-    async def _create_trade_executor_agent_instance(self):
-        """
-        Create TradeExecutor Agent instance
+    # NOTE: _create_trade_executor_agent_instance was deleted in Phase 4 cleanup.
+    # Execution now unified through ExecutorAgent.execute() (see _run_execution_phase).
 
-        Refactored: Uses existing Agent class and FunctionTool mechanism
-        - Agent class already has full Tool Calling support (native + legacy)
-        - Uses FunctionTool to wrap trading functions
-        - No longer needs hardcoded regex detection
-
-        Architecture:
-        Leader summary -> TradeExecutor Agent -> Agent.call_llm() with tools -> Native Tool Calling -> Execute
-        """
-        from app.core.roundtable.tool import FunctionTool
-
-        # Get Leader's LLM config
-        leader = self._get_agent_by_id("Leader")
-        if not leader:
-            raise RuntimeError("Leader agent not found, cannot create TradeExecutor")
-        
-        # Refactored: Use existing Agent class + FunctionTool, leverage Agent's native Tool Calling capability
-        # No longer uses hardcoded regex detection!
-
-        # Save toolkit reference for use in tool functions
-        toolkit = self.toolkit
-
-        # Create trading tool functions (these will be wrapped as FunctionTool)
-        # Each tool executes trade and returns result string, also saves TradingSignal to external variable
-
-        # Container to save execution result
-        execution_result = {"signal": None}
-
-        async def get_current_price() -> float:
-            """Get current BTC price"""
-            try:
-                if toolkit and hasattr(toolkit, '_get_market_price'):
-                    result = await toolkit._get_market_price()
-                    if isinstance(result, str):
-                        # FIX: Prefer parsing JSON to get price field
-                        try:
-                            import json as json_module
-                            data = json_module.loads(result)
-                            if isinstance(data, dict) and 'price' in data:
-                                return float(data['price'])
-                        except (json_module.JSONDecodeError, ValueError, KeyError):
-                            pass
-
-                        # FIX: Improved regex - match price format starting with number
-                        # First try to match $XX,XXX.XX format
-                        price_match = re.search(r'\$(\d[\d,]*\.?\d*)', result)
-                        if price_match:
-                            return float(price_match.group(1).replace(',', ''))
-                        # Then try to match pure number (e.g., 93000.0)
-                        price_match = re.search(r'(\d[\d,]*\.?\d*)', result)
-                        if price_match:
-                            price_str = price_match.group(1).replace(',', '')
-                            if price_str and price_str != '.':
-                                return float(price_str)
-                    elif isinstance(result, (int, float)):
-                        return float(result)
-
-                if toolkit and hasattr(toolkit, 'paper_trader'):
-                    # FIX: PaperTrader uses _current_price attribute (private)
-                    if hasattr(toolkit.paper_trader, '_current_price') and toolkit.paper_trader._current_price:
-                        return float(toolkit.paper_trader._current_price)
-            except Exception as e:
-                logger.error(f"[TradeExecutor] Failed to get price: {e}")
-            return 93000.0  # fallback
-
-        # Minimum add amount (USD)
-        MIN_ADD_AMOUNT = 10.0
-        # Safety buffer (reserve some balance to prevent accidents)
-        SAFETY_BUFFER = 50.0
-
-        def calculate_safe_stop_loss(direction: str, entry_price: float, leverage: int, margin: float) -> float:
-            """
-            Calculate safe stop loss price (ensure trigger before liquidation)
-
-            Liquidation condition: Loss reaches 80% of margin
-            Safe stop loss: Add 5% safety buffer on top of liquidation price
-            """
-            # FIX: Prevent division by zero
-            if entry_price <= 0 or margin <= 0 or leverage <= 0:
-                # Return default stop loss (3%)
-                if direction == "long":
-                    return entry_price * 0.97 if entry_price > 0 else 0
-                else:
-                    return entry_price * 1.03 if entry_price > 0 else float('inf')
-
-            size = (margin * leverage) / entry_price
-            liquidation_loss = margin * 0.8  # 80% margin loss triggers liquidation
-
-            if direction == "long":
-                # Long: liquidation price = entry price - (liquidation loss / position size)
-                liquidation_price = entry_price - (liquidation_loss / size) if size > 0 else 0
-                # Safe stop loss = liquidation price × 1.05 (5% above liquidation)
-                safe_sl = liquidation_price * 1.05
-                # But cannot exceed default stop loss (3%)
-                default_sl = entry_price * 0.97
-                return max(safe_sl, default_sl)
-            else:
-                # Short: liquidation price = entry price + (liquidation loss / position size)
-                liquidation_price = entry_price + (liquidation_loss / size) if size > 0 else float('inf')
-                # Safe stop loss = liquidation price × 0.95 (5% below liquidation)
-                safe_sl = liquidation_price * 0.95
-                # But cannot go below default stop loss (3%)
-                default_sl = entry_price * 1.03
-                return min(safe_sl, default_sl)
-
-        def validate_stop_loss(direction: str, entry_price: float, sl_price: float,
-                              leverage: int, margin: float) -> tuple[bool, str, float]:
-            """
-            Validate if stop loss price is safe (triggers before liquidation)
-
-            Returns:
-                (is_safe, message, safe_sl_price)
-            """
-            # FIX: Prevent division by zero
-            if entry_price <= 0 or margin <= 0 or leverage <= 0:
-                # Cannot validate, return original stop loss price
-                return True, "", sl_price
-
-            size = (margin * leverage) / entry_price
-            if size <= 0:
-                return True, "", sl_price
-
-            liquidation_loss = margin * 0.8
-
-            if direction == "long":
-                liquidation_price = entry_price - (liquidation_loss / size)
-                if sl_price <= liquidation_price:
-                    safe_sl = calculate_safe_stop_loss(direction, entry_price, leverage, margin)
-                    return False, f"SL ${sl_price:.2f} below liquidation ${liquidation_price:.2f}, auto-adjusted to ${safe_sl:.2f}", safe_sl
-            else:
-                liquidation_price = entry_price + (liquidation_loss / size)
-                if sl_price >= liquidation_price:
-                    safe_sl = calculate_safe_stop_loss(direction, entry_price, leverage, margin)
-                    return False, f"SL ${sl_price:.2f} above liquidation ${liquidation_price:.2f}, auto-adjusted to ${safe_sl:.2f}", safe_sl
-
-            return True, "", sl_price
-
-        async def open_long_tool(leverage: int = None, amount_percent: float = None,
-                                confidence: int = None, reasoning: str = "") -> str:
-            """
-            Open long position (buy BTC) - Complete intelligent position handling + margin risk management
-
-            Decision matrix:
-            - No position -> Normal open long
-            - Has long + can add -> Add to long
-            - Has long + full position -> Maintain long
-            - Has short -> Close short -> Open long (reverse operation)
-
-            Risk checks:
-            - Use real available margin (considering unrealized PnL)
-            - Validate stop loss price not below liquidation
-            - Reserve safety buffer
-
-            Args:
-                leverage: Leverage 1-20 (None=auto-calculate based on confidence)
-                amount_percent: Position ratio 0.0-1.0 (None=auto-calculate based on confidence)
-                confidence: Confidence 0-100 (None=auto-calculate based on votes)
-                reasoning: Decision reasoning
-            """
-            current_price = await get_current_price()
-
-            # FIX: Dynamically calculate parameters, no longer use hardcoded defaults
-            # If confidence not provided, calculate dynamically based on votes
-            if confidence is None:
-                # Use _get_agents_consensus() to get vote dict
-                votes_dict = self._get_agents_consensus() if hasattr(self, '_get_agents_consensus') else {}
-                confidence = calculate_confidence_from_votes(votes_dict, direction='long', weights=self._agent_weights)
-                logger.info(f"[open_long] confidence not provided, calculated from votes: {confidence}%")
-
-            # If leverage not provided, calculate based on confidence
-            if leverage is None:
-                leverage = calculate_leverage_from_confidence(confidence)
-                logger.info(f"[open_long] leverage not provided, calculated from confidence: {leverage}x")
-
-            # If amount_percent not provided, calculate based on confidence
-            if amount_percent is None:
-                amount_percent = calculate_amount_from_confidence(confidence)
-                logger.info(f"[open_long] amount_percent not provided, calculated from confidence: {amount_percent*100:.0f}%")
-
-            leverage = min(max(int(leverage), 1), 20)
-            amount_percent = min(max(float(amount_percent), 0.0), 1.0)
-
-            trade_success = False
-            entry_price = current_price
-            action_taken = "open_long"
-            final_reasoning = reasoning or ""
-
-            # Adjust TP/SL ratios based on leverage
-            # Higher leverage = tighter stop loss
-            if leverage >= 15:
-                tp_percent, sl_percent = 0.05, 0.02  # 5% TP, 2% SL
-            elif leverage >= 10:
-                tp_percent, sl_percent = 0.06, 0.025  # 6% TP, 2.5% SL
-            elif leverage >= 5:
-                tp_percent, sl_percent = 0.08, 0.03  # 8% TP, 3% SL
-            else:
-                tp_percent, sl_percent = 0.10, 0.05  # 10% TP, 5% SL
-            
-            take_profit = current_price * (1 + tp_percent)
-            stop_loss = current_price * (1 - sl_percent)
-            
-            if toolkit and toolkit.paper_trader:
-                try:
-                    # 🆕 Phase 1.3: HITL - Check trading mode before actual execution
-                    from app.core.trading.mode_manager import get_mode_manager, TradingMode
-                    mode_manager = get_mode_manager()
-                    current_mode = await mode_manager.get_mode()
-                    
-                    if current_mode in (TradingMode.SEMI_AUTO, TradingMode.MANUAL):
-                        # In SEMI_AUTO or MANUAL mode, don't execute trade directly
-                        # Return signal info for later processing by _on_analysis_cycle
-                        logger.info(f"[open_long_tool] HITL Mode {current_mode.value} - Skipping direct execution")
-                        return json.dumps({
-                            "success": True,
-                            "action": "signal_only",
-                            "direction": "long",
-                            "leverage": leverage,
-                            "amount_percent": amount_percent,
-                            "confidence": confidence,
-                            "take_profit": take_profit,
-                            "stop_loss": stop_loss,
-                            "current_price": current_price,
-                            "reasoning": reasoning,
-                            "mode": current_mode.value,
-                            "message": f"HITL {current_mode.value} mode: Signal recorded, trade not executed"
-                        })
-                    
-                    # FULL_AUTO mode: proceed with execution
-                    # 📊 Step 1: Collect complete status info
-                    position = await toolkit.paper_trader.get_position()
-                    account = await toolkit.paper_trader.get_account()
-                    
-                    has_position = position and position.get("has_position", False)
-                    # 🔧 FIX: get_position() returns flat dict, not nested structure
-                    # Get data directly from position dict
-                    current_direction = position.get("direction") if has_position else None
-                    existing_entry = position.get("entry_price", 0) if has_position else 0
-                    existing_margin = position.get("margin", 0) if has_position else 0
-                    unrealized_pnl = position.get("unrealized_pnl", 0) if has_position else 0
-                    liquidation_price = position.get("liquidation_price", 0) if has_position else 0
-                    
-                    # 🔧 Key fix: Prioritize OKX's max_avail_size (real available margin)
-                    # max_avail_size is from OKX /api/v5/account/max-avail-size
-                    # Considers maintenance margin, initial margin rate etc, more accurate than local calc
-                    max_avail_size = account.get("max_avail_size", 0)
-
-                    # Fallback: Local calc true_available_margin = total_equity - used_margin
-                    total_equity = account.get("total_equity", 10000)
-                    used_margin = account.get("used_margin", 0)
-                    local_available = total_equity - used_margin
-
-                    # Use OKX value if valid, otherwise use local calculation
-                    if max_avail_size > 0:
-                        true_available_margin = max_avail_size
-                        margin_source = "OKX API"
-                    else:
-                        true_available_margin = local_available
-                        margin_source = "Local calc"
-
-                    # Backward compatibility
-                    if true_available_margin <= 0:
-                        true_available_margin = account.get("true_available_margin", local_available)
-
-                    available_balance = account.get("available_balance", 0)
-                    total_equity = account.get("total_equity", available_balance)
-                    used_margin = account.get("used_margin", 0)
-
-                    # 🔧 Add condition: true_available_margin >= min_amount + safety_buffer
-                    can_add = true_available_margin >= (MIN_ADD_AMOUNT + SAFETY_BUFFER)
-
-                    logger.info(f"[TradeExecutor] 📊 Status: position={current_direction or 'none'}, "
-                               f"available_margin=${true_available_margin:.2f}({margin_source}), "
-                               f"balance=${available_balance:.2f}, used=${used_margin:.2f}, "
-                               f"unrealized_pnl=${unrealized_pnl:.2f}, can_add={can_add}")
-                    
-                    # 📌 Scenario 1: Already have long position (same direction)
-                    if current_direction == "long":
-                        if can_add:
-                            # Scenario 1a: Can add -> Add to long position
-                            # 🔧 Use true_available_margin (considers unrealized PnL)
-                            add_amount = min(
-                                true_available_margin * amount_percent,
-                                true_available_margin - SAFETY_BUFFER  # Keep safety buffer
-                            )
-                            add_amount = max(add_amount, 0)  # Ensure non-negative
-                            
-                            if add_amount >= MIN_ADD_AMOUNT:
-                                logger.info(f"[TradeExecutor] 🔄 Already have long, adding ${add_amount:.2f} (available ${true_available_margin:.2f})")
-                                
-                                # 🔧 Validate stop loss safety
-                                is_safe, sl_msg, safe_sl = validate_stop_loss("long", current_price, stop_loss, leverage, add_amount)
-                                if not is_safe:
-                                    logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
-                                    stop_loss = safe_sl
-                                
-                                result = await toolkit.paper_trader.open_long(
-                                    symbol="BTC-USDT-SWAP",
-                                    leverage=leverage,
-                                    amount_usdt=add_amount,
-                                    tp_price=take_profit,
-                                    sl_price=stop_loss
-                                )
-                                
-                                if result.get("success"):
-                                    trade_success = True
-                                    action_taken = "add_to_long"
-                                    entry_price = result.get("executed_price", current_price)
-                                    final_reasoning = f"Add to long success: original entry ${existing_entry:.2f}, added ${add_amount:.2f}(unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
-                                    logger.info(f"[TradeExecutor] [OK] Add to long success")
-                                else:
-                                    # Add failed, maintain original position
-                                    trade_success = True
-                                    action_taken = "maintain_long"
-                                    entry_price = existing_entry
-                                    final_reasoning = f"Add failed({result.get('error')}), maintaining long (entry ${existing_entry:.2f}). {reasoning}"
-                            else:
-                                # Add amount too small
-                                trade_success = True
-                                action_taken = "maintain_long_small"
-                                entry_price = existing_entry
-                                final_reasoning = f"Add amount too small (${add_amount:.2f}<${MIN_ADD_AMOUNT}), maintaining long (unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
-                        else:
-                            # Scenario 1b: Full position or near liquidation -> Maintain long
-                            trade_success = True
-                            action_taken = "maintain_long_full"
-                            entry_price = existing_entry
-                            # Check if near liquidation
-                            if liquidation_price > 0 and current_price < liquidation_price * 1.1:
-                                final_reasoning = f"⚠️ Near liquidation (liq price ${liquidation_price:.2f}), maintaining long (unrealized loss ${unrealized_pnl:.2f}). {reasoning}"
-                            else:
-                                final_reasoning = f"Full position (available ${true_available_margin:.2f}), maintaining long (entry ${existing_entry:.2f}, unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
-                            logger.info(f"[TradeExecutor] [OK] Full position/cannot add, maintaining long")
-                    
-                    # 📌 Scenario 2: Have short position (opposite direction) -> Close short -> Open long
-                    elif current_direction == "short":
-                        # 🛡️ SAFETY: Block auto-reverse during startup to prevent accidental closures
-                        trigger_context = getattr(self, '_current_context', None) or ''
-                        if trigger_context == 'startup':
-                            logger.warning(f"[TradeExecutor] ⚠️ BLOCKED: Cannot auto-reverse short to long during startup. Manual confirmation required.")
-                            trade_success = True  # Mark as handled
-                            action_taken = "blocked_reverse"
-                            entry_price = existing_entry
-                            final_reasoning = f"🛡️ Auto-reverse blocked during startup. Have short position (PnL ${unrealized_pnl:.2f}), received long signal. Please manually close and re-analyze. {reasoning}"
-                            # Skip the rest of reverse logic
-                        else:
-                            logger.info(f"[TradeExecutor] 🔄 Reverse operation: close short -> open long (short unrealized PnL ${unrealized_pnl:.2f})")
-                            
-                            # Close short position first
-                            close_result = await toolkit.paper_trader.close_position(
-                                symbol="BTC-USDT-SWAP",
-                                reason="Reverse: short to long"
-                            )
-                        
-                            if close_result.get("success"):
-                                pnl = close_result.get("pnl", 0)
-                                logger.info(f"[TradeExecutor] [OK] Close short success, PnL=${pnl:.2f}")
-                                
-                                # 🔧 Re-get true available margin (balance changed after closing)
-                                account = await toolkit.paper_trader.get_account()
-                                new_true_available = account.get("true_available_margin", 0)
-                                if new_true_available <= 0:
-                                    new_true_available = account.get("total_equity", 10000) - account.get("used_margin", 0)
-                                
-                                amount_usdt = min(
-                                    new_true_available * amount_percent,
-                                    new_true_available - SAFETY_BUFFER
-                                )
-                                amount_usdt = max(amount_usdt, 0)
-                                
-                                if amount_usdt >= MIN_ADD_AMOUNT:
-                                    # 🔧 Validate stop loss safety
-                                    is_safe, sl_msg, safe_sl = validate_stop_loss("long", current_price, stop_loss, leverage, amount_usdt)
-                                    if not is_safe:
-                                        logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
-                                        stop_loss = safe_sl
-                                    
-                                    # Open long position
-                                    result = await toolkit.paper_trader.open_long(
-                                        symbol="BTC-USDT-SWAP",
-                                        leverage=leverage,
-                                        amount_usdt=amount_usdt,
-                                        tp_price=take_profit,
-                                        sl_price=stop_loss
-                                    )
-                                    if result.get("success"):
-                                        trade_success = True
-                                        action_taken = "reverse_short_to_long"
-                                        entry_price = result.get("executed_price", current_price)
-                                        final_reasoning = f"Reverse success: closed short (PnL=${pnl:.2f}) -> opened long ${amount_usdt:.2f}. {reasoning}"
-                                        logger.info(f"[TradeExecutor] [OK] Reverse to long success")
-                                    else:
-                                        trade_success = True  # Close success counts as partial success
-                                        action_taken = "close_short_only"
-                                        entry_price = current_price
-                                        final_reasoning = f"Close short success (PnL=${pnl:.2f}), but open long failed ({result.get('error')}). {reasoning}"
-                                else:
-                                    trade_success = True
-                                    action_taken = "close_short_insufficient"
-                                    entry_price = current_price
-                                    final_reasoning = f"Close short success (PnL=${pnl:.2f}), but insufficient balance for long (available ${new_true_available:.2f}). {reasoning}"
-                            else:
-                                final_reasoning = f"Close short failed: {close_result.get('error')}. {reasoning}"
-                    
-                    # 📌 Scenario 3: No position -> Normal open long
-                    else:
-                        # 🔧 Use true_available_margin
-                        amount_usdt = min(
-                            true_available_margin * amount_percent,
-                            true_available_margin - SAFETY_BUFFER
-                        )
-                        amount_usdt = max(amount_usdt, 0)
-                        
-                        if amount_usdt >= MIN_ADD_AMOUNT:
-                            # 🔧 Validate stop loss safety
-                            is_safe, sl_msg, safe_sl = validate_stop_loss("long", current_price, stop_loss, leverage, amount_usdt)
-                            if not is_safe:
-                                logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
-                                stop_loss = safe_sl
-                            
-                            logger.info(f"[TradeExecutor] 📈 Normal open long: ${amount_usdt:.2f}, {leverage}x (available ${true_available_margin:.2f})")
-                            
-                            result = await toolkit.paper_trader.open_long(
-                                symbol="BTC-USDT-SWAP",
-                                leverage=leverage,
-                                amount_usdt=amount_usdt,
-                                tp_price=take_profit,
-                                sl_price=stop_loss
-                            )
-                            
-                            if result.get("success"):
-                                trade_success = True
-                                action_taken = "new_long"
-                                entry_price = result.get("executed_price", current_price)
-                                final_reasoning = f"Open long success: ${amount_usdt:.2f}, {leverage}x leverage, SL ${stop_loss:.2f}. {reasoning}"
-                                logger.info(f"[TradeExecutor] [OK] Open long success: entry ${entry_price:.2f}")
-                            else:
-                                final_reasoning = f"Open long failed: {result.get('error')}. {reasoning}"
-                        else:
-                            final_reasoning = f"Insufficient balance (${available_balance:.2f}), cannot open position. {reasoning}"
-                        
-                except Exception as e:
-                    logger.error(f"[TradeExecutor] Open long exception: {e}", exc_info=True)
-                    final_reasoning = f"Execution exception: {e}. {reasoning}"
-            
-            # Save TradingSignal
-            execution_result["signal"] = TradingSignal(
-                direction="long",
-                symbol="BTC-USDT-SWAP",
-                leverage=leverage,
-                amount_percent=amount_percent,
-                entry_price=entry_price,
-                take_profit_price=take_profit,
-                stop_loss_price=stop_loss,
-                confidence=confidence,
-                reasoning=final_reasoning or f"TradeExecutor decided long ({action_taken})",
-                agents_consensus={},
-                timestamp=datetime.now()
-            )
-            
-            status = "Success" if trade_success else "Failed"
-            return f"[OK] Long {status}({action_taken}): {leverage}x leverage, {amount_percent*100:.0f}% position, entry ${entry_price:,.2f}"
-        
-        async def open_short_tool(leverage: int = None, amount_percent: float = None,
-                                 confidence: int = None, reasoning: str = "") -> str:
-            """
-            Open short position (short BTC) - Smart position handling + margin risk management
-
-            Decision matrix:
-            - No position -> Normal open short
-            - Already short + can add -> Add to short
-            - Already short + full position -> Maintain short
-            - Already long -> Close long -> Open short (reverse)
-
-            Risk checks:
-            - Uses true available margin (considers unrealized PnL)
-            - Validates stop loss not above liquidation price
-            - Maintains safety buffer
-
-            Args:
-                leverage: Leverage 1-20 (None=auto-calculate based on confidence)
-                amount_percent: Position ratio 0.0-1.0 (None=auto-calculate based on confidence)
-                confidence: Confidence 0-100 (None=auto-calculate based on votes)
-                reasoning: Decision reasoning
-            """
-            current_price = await get_current_price()
-
-            # 🔧 FIX: Dynamic parameter calculation, no longer using hardcoded defaults
-            # If confidence not provided, calculate based on votes
-            if confidence is None:
-                # Use _get_agents_consensus() to get votes dict
-                votes_dict = self._get_agents_consensus() if hasattr(self, '_get_agents_consensus') else {}
-                confidence = calculate_confidence_from_votes(votes_dict, direction='short', weights=self._agent_weights)
-                logger.info(f"[open_short] confidence not provided, calculated from votes: {confidence}%")
-
-            # If leverage not provided, calculate based on confidence
-            if leverage is None:
-                leverage = calculate_leverage_from_confidence(confidence)
-                logger.info(f"[open_short] leverage not provided, calculated from confidence: {leverage}x")
-
-            # If amount_percent not provided, calculate based on confidence
-            if amount_percent is None:
-                amount_percent = calculate_amount_from_confidence(confidence)
-                logger.info(f"[open_short] amount_percent not provided, calculated from confidence: {amount_percent*100:.0f}%")
-
-            leverage = min(max(int(leverage), 1), 20)
-            amount_percent = min(max(float(amount_percent), 0.0), 1.0)
-            
-            # Adjust TP/SL ratios based on leverage (for short)
-            if leverage >= 15:
-                tp_percent, sl_percent = 0.05, 0.02
-            elif leverage >= 10:
-                tp_percent, sl_percent = 0.06, 0.025
-            elif leverage >= 5:
-                tp_percent, sl_percent = 0.08, 0.03
-            else:
-                tp_percent, sl_percent = 0.10, 0.05
-            
-            take_profit = current_price * (1 - tp_percent)  # Short: TP when price drops
-            stop_loss = current_price * (1 + sl_percent)    # Short: SL when price rises
-            
-            trade_success = False
-            entry_price = current_price
-            action_taken = "open_short"
-            final_reasoning = reasoning or ""
-            
-            if toolkit and toolkit.paper_trader:
-                try:
-                    # 🆕 Phase 1.3: HITL - Check trading mode before actual execution
-                    from app.core.trading.mode_manager import get_mode_manager, TradingMode
-                    mode_manager = get_mode_manager()
-                    current_mode = await mode_manager.get_mode()
-                    
-                    if current_mode in (TradingMode.SEMI_AUTO, TradingMode.MANUAL):
-                        # In SEMI_AUTO or MANUAL mode, don't execute trade directly
-                        # Return signal info for later processing by _on_analysis_cycle
-                        logger.info(f"[open_short_tool] HITL Mode {current_mode.value} - Skipping direct execution")
-                        return json.dumps({
-                            "success": True,
-                            "action": "signal_only",
-                            "direction": "short",
-                            "leverage": leverage,
-                            "amount_percent": amount_percent,
-                            "confidence": confidence,
-                            "take_profit": take_profit,
-                            "stop_loss": stop_loss,
-                            "current_price": current_price,
-                            "reasoning": reasoning,
-                            "mode": current_mode.value,
-                            "message": f"HITL {current_mode.value} mode: Signal recorded, trade not executed"
-                        })
-                    
-                    # FULL_AUTO mode: proceed with execution
-                    # 📊 Step 1: Collect complete status info
-                    position = await toolkit.paper_trader.get_position()
-                    account = await toolkit.paper_trader.get_account()
-                    
-                    has_position = position and position.get("has_position", False)
-                    # 🔧 FIX: get_position() returns flat dict, not nested structure
-                    # Get data directly from position dict
-                    current_direction = position.get("direction") if has_position else None
-                    existing_entry = position.get("entry_price", 0) if has_position else 0
-                    existing_margin = position.get("margin", 0) if has_position else 0
-                    unrealized_pnl = position.get("unrealized_pnl", 0) if has_position else 0
-                    liquidation_price = position.get("liquidation_price", 0) if has_position else 0
-                    
-                    # 🔧 Key fix: Prioritize OKX's max_avail_size (real available margin)
-                    max_avail_size = account.get("max_avail_size", 0)
-
-                    # Fallback: Local calculation
-                    total_equity = account.get("total_equity", 10000)
-                    used_margin = account.get("used_margin", 0)
-                    local_available = total_equity - used_margin
-
-                    # Use OKX value if valid
-                    if max_avail_size > 0:
-                        true_available_margin = max_avail_size
-                        margin_source = "OKX API"
-                    else:
-                        true_available_margin = local_available
-                        margin_source = "Local calc"
-
-                    if true_available_margin <= 0:
-                        true_available_margin = account.get("true_available_margin", local_available)
-
-                    available_balance = account.get("available_balance", 0)
-                    total_equity = account.get("total_equity", available_balance)
-                    used_margin = account.get("used_margin", 0)
-
-                    # 🔧 Add condition check
-                    can_add = true_available_margin >= (MIN_ADD_AMOUNT + SAFETY_BUFFER)
-
-                    logger.info(f"[TradeExecutor] 📊 Status: position={current_direction or 'none'}, "
-                               f"available_margin=${true_available_margin:.2f}({margin_source}), "
-                               f"balance=${available_balance:.2f}, used=${used_margin:.2f}, "
-                               f"unrealized_pnl=${unrealized_pnl:.2f}, can_add={can_add}")
-
-                    # 📌 Scenario 1: Already have short position (same direction)
-                    if current_direction == "short":
-                        if can_add:
-                            # Scenario 1a: Can add -> Add to short position
-                            add_amount = min(
-                                true_available_margin * amount_percent,
-                                true_available_margin - SAFETY_BUFFER
-                            )
-                            add_amount = max(add_amount, 0)
-                            
-                            if add_amount >= MIN_ADD_AMOUNT:
-                                logger.info(f"[TradeExecutor] 🔄 Already have short, adding ${add_amount:.2f} (available ${true_available_margin:.2f})")
-                                
-                                # 🔧 Validate stop loss safety
-                                is_safe, sl_msg, safe_sl = validate_stop_loss("short", current_price, stop_loss, leverage, add_amount)
-                                if not is_safe:
-                                    logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
-                                    stop_loss = safe_sl
-                                
-                                result = await toolkit.paper_trader.open_short(
-                                    symbol="BTC-USDT-SWAP",
-                                    leverage=leverage,
-                                    amount_usdt=add_amount,
-                                    tp_price=take_profit,
-                                    sl_price=stop_loss
-                                )
-                                
-                                if result.get("success"):
-                                    trade_success = True
-                                    action_taken = "add_to_short"
-                                    entry_price = result.get("executed_price", current_price)
-                                    final_reasoning = f"Add to short success: original entry ${existing_entry:.2f}, added ${add_amount:.2f}(unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
-                                    logger.info(f"[TradeExecutor] [OK] Add to short success")
-                                else:
-                                    trade_success = True
-                                    action_taken = "maintain_short"
-                                    entry_price = existing_entry
-                                    final_reasoning = f"Add failed({result.get('error')}), maintaining short (entry ${existing_entry:.2f}). {reasoning}"
-                            else:
-                                trade_success = True
-                                action_taken = "maintain_short_small"
-                                entry_price = existing_entry
-                                final_reasoning = f"Add amount too small (${add_amount:.2f}<${MIN_ADD_AMOUNT}), maintaining short (unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
-                        else:
-                            # Scenario 1b: Full position or near liquidation -> Maintain short
-                            trade_success = True
-                            action_taken = "maintain_short_full"
-                            entry_price = existing_entry
-                            if liquidation_price > 0 and current_price > liquidation_price * 0.9:
-                                final_reasoning = f"⚠️ Near liquidation (liq price ${liquidation_price:.2f}), maintaining short (unrealized loss ${unrealized_pnl:.2f}). {reasoning}"
-                            else:
-                                final_reasoning = f"Full position (available ${true_available_margin:.2f}), maintaining short (entry ${existing_entry:.2f}, unrealized PnL ${unrealized_pnl:.2f}). {reasoning}"
-                            logger.info(f"[TradeExecutor] [OK] Full position/cannot add, maintaining short")
-                    
-                    # 📌 Scenario 2: Have long position (opposite direction) -> Close long -> Open short
-                    elif current_direction == "long":
-                        # 🛡️ SAFETY: Block auto-reverse during startup to prevent accidental closures
-                        trigger_context = getattr(self, '_current_context', None) or ''
-                        if trigger_context == 'startup':
-                            logger.warning(f"[TradeExecutor] ⚠️ BLOCKED: Cannot auto-reverse long to short during startup. Manual confirmation required.")
-                            trade_success = True  # Mark as handled
-                            action_taken = "blocked_reverse"
-                            entry_price = existing_entry
-                            final_reasoning = f"🛡️ Auto-reverse blocked during startup. Have long position (PnL ${unrealized_pnl:.2f}), received short signal. Please manually close and re-analyze. {reasoning}"
-                            # Skip the rest of reverse logic
-                        else:
-                            logger.info(f"[TradeExecutor] 🔄 Reverse operation: close long -> open short (long unrealized PnL ${unrealized_pnl:.2f})")
-                            
-                            # Close long position first
-                            close_result = await toolkit.paper_trader.close_position(
-                                symbol="BTC-USDT-SWAP",
-                                reason="Reverse: long to short"
-                            )
-                        
-                            if close_result.get("success"):
-                                pnl = close_result.get("pnl", 0)
-                                logger.info(f"[TradeExecutor] [OK] Close long success, PnL=${pnl:.2f}")
-                                
-                                # 🔧 Re-get true available margin
-                                account = await toolkit.paper_trader.get_account()
-                                new_true_available = account.get("true_available_margin", 0)
-                                if new_true_available <= 0:
-                                    new_true_available = account.get("total_equity", 10000) - account.get("used_margin", 0)
-                                
-                                amount_usdt = min(
-                                    new_true_available * amount_percent,
-                                    new_true_available - SAFETY_BUFFER
-                                )
-                                amount_usdt = max(amount_usdt, 0)
-                                
-                                if amount_usdt >= MIN_ADD_AMOUNT:
-                                    # 🔧 Validate stop loss safety
-                                    is_safe, sl_msg, safe_sl = validate_stop_loss("short", current_price, stop_loss, leverage, amount_usdt)
-                                    if not is_safe:
-                                        logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
-                                        stop_loss = safe_sl
-                                    
-                                    # Open short position
-                                    result = await toolkit.paper_trader.open_short(
-                                        symbol="BTC-USDT-SWAP",
-                                        leverage=leverage,
-                                        amount_usdt=amount_usdt,
-                                        tp_price=take_profit,
-                                        sl_price=stop_loss
-                                    )
-                                    if result.get("success"):
-                                        trade_success = True
-                                        action_taken = "reverse_long_to_short"
-                                        entry_price = result.get("executed_price", current_price)
-                                        final_reasoning = f"Reverse success: closed long (PnL=${pnl:.2f}) -> opened short ${amount_usdt:.2f}. {reasoning}"
-                                        logger.info(f"[TradeExecutor] [OK] Reverse to short success")
-                                    else:
-                                        trade_success = True
-                                        action_taken = "close_long_only"
-                                        entry_price = current_price
-                                        final_reasoning = f"Close long success (PnL=${pnl:.2f}), but open short failed ({result.get('error')}). {reasoning}"
-                                else:
-                                    trade_success = True
-                                    action_taken = "close_long_insufficient"
-                                    entry_price = current_price
-                                    final_reasoning = f"Close long success (PnL=${pnl:.2f}), but insufficient balance for short (available ${new_true_available:.2f}). {reasoning}"
-                            else:
-                                final_reasoning = f"Close long failed: {close_result.get('error')}. {reasoning}"
-                    
-                    # 📌 Scenario 3: No position -> Normal open short
-                    else:
-                        amount_usdt = min(
-                            true_available_margin * amount_percent,
-                            true_available_margin - SAFETY_BUFFER
-                        )
-                        amount_usdt = max(amount_usdt, 0)
-                        
-                        if amount_usdt >= MIN_ADD_AMOUNT:
-                            # 🔧 Validate stop loss safety
-                            is_safe, sl_msg, safe_sl = validate_stop_loss("short", current_price, stop_loss, leverage, amount_usdt)
-                            if not is_safe:
-                                logger.warning(f"[TradeExecutor] ⚠️ {sl_msg}")
-                                stop_loss = safe_sl
-                            
-                            logger.info(f"[TradeExecutor] 📉 Normal open short: ${amount_usdt:.2f}, {leverage}x (available ${true_available_margin:.2f})")
-                            
-                            result = await toolkit.paper_trader.open_short(
-                                symbol="BTC-USDT-SWAP",
-                                leverage=leverage,
-                                amount_usdt=amount_usdt,
-                                tp_price=take_profit,
-                                sl_price=stop_loss
-                            )
-                            
-                            if result.get("success"):
-                                trade_success = True
-                                action_taken = "new_short"
-                                entry_price = result.get("executed_price", current_price)
-                                final_reasoning = f"Open short success: ${amount_usdt:.2f}, {leverage}x leverage, SL ${stop_loss:.2f}. {reasoning}"
-                                logger.info(f"[TradeExecutor] [OK] Open short success: entry ${entry_price:.2f}")
-                            else:
-                                final_reasoning = f"Open short failed: {result.get('error')}. {reasoning}"
-                        else:
-                            final_reasoning = f"Insufficient balance (available ${true_available_margin:.2f}), cannot open position. {reasoning}"
-                        
-                except Exception as e:
-                    logger.error(f"[TradeExecutor] Open short exception: {e}", exc_info=True)
-                    final_reasoning = f"Execution exception: {e}. {reasoning}"
-            
-            execution_result["signal"] = TradingSignal(
-                direction="short",
-                symbol="BTC-USDT-SWAP",
-                leverage=leverage,
-                amount_percent=amount_percent,
-                entry_price=entry_price,
-                take_profit_price=take_profit,
-                stop_loss_price=stop_loss,
-                confidence=confidence,
-                reasoning=final_reasoning or f"TradeExecutor decided short ({action_taken})",
-                agents_consensus={},
-                timestamp=datetime.now()
-            )
-            
-            status = "Success" if trade_success else "Failed"
-            return f"[OK] Short {status}({action_taken}): {leverage}x leverage, {amount_percent*100:.0f}% position, entry ${entry_price:,.2f}"
-        
-        async def close_position_tool(reasoning: str = "") -> str:
-            """
-            Close current position
-            
-            Args:
-                reasoning: Close reason
-            """
-            current_price = await get_current_price()
-            close_success = False
-            pnl = 0.0
-            
-            if toolkit and toolkit.paper_trader:
-                try:
-                    # Pass reason parameter for logging
-                    result = await toolkit.paper_trader.close_position(
-                        symbol="BTC-USDT-SWAP",
-                        reason=reasoning or "TradeExecutor decided to close"
-                    )
-                    
-                    if result.get("success"):
-                        close_success = True
-                        pnl = result.get("pnl", 0)
-                        logger.info(f"[TradeExecutor] [OK] Close position success, PnL: ${pnl:.2f}")
-                    else:
-                        error_msg = result.get("error", "Unknown error")
-                        logger.error(f"[TradeExecutor] Close position failed: {error_msg}")
-                        reasoning = f"Close execution failed: {error_msg}. " + reasoning
-                        
-                except Exception as e:
-                    logger.error(f"[TradeExecutor] Close position exception: {e}")
-                    reasoning = f"Close execution exception: {e}. " + reasoning
-            
-            execution_result["signal"] = TradingSignal(
-                direction="hold",
-                symbol="BTC-USDT-SWAP",
-                leverage=1,
-                amount_percent=0.0,
-                entry_price=current_price,
-                take_profit_price=current_price,
-                stop_loss_price=current_price,
-                confidence=100 if close_success else 50,
-                reasoning=f"[Close position] {reasoning or 'TradeExecutor decided to close'}" + (f" (PnL: ${pnl:.2f})" if close_success else ""),
-                agents_consensus={},
-                timestamp=datetime.now()
-            )
-            
-            return f"[OK] Close {'Success' if close_success else 'Failed'}" + (f" (PnL: ${pnl:.2f})" if close_success else "")
-        
-        async def hold_tool(reason: str = "Market unclear, choosing to hold") -> str:
-            """
-            Hold/Wait - no operation
-            
-            Args:
-                reason: Hold reason
-            """
-            current_price = await get_current_price()
-            logger.info(f"[TradeExecutor] [OK] Decided to hold: {reason}")
-            
-            execution_result["signal"] = TradingSignal(
-                direction="hold",
-                symbol="BTC-USDT-SWAP",
-                leverage=1,
-                amount_percent=0.0,
-                entry_price=current_price,
-                take_profit_price=current_price,
-                stop_loss_price=current_price,
-                confidence=0,
-                reasoning=reason,
-                agents_consensus={},
-                timestamp=datetime.now()
-            )
-            
-            return f"📊 Decided to hold: {reason}"
-        
-        # Create Agent instance and register FunctionTool
-        # FIX: Agent uses id instead of agent_id, uses llm_gateway_url instead of llm_endpoint
-        trade_executor = Agent(
-            id="trade_executor",
-            name="TradeExecutor",
-            role="Trade Execution Specialist",
-            system_prompt="""You are the Trade Executor, responsible for executing trades based on expert meeting results.
-
-## Available Tools
-- **analyze_execution_conditions**: Analyze market liquidity and recommend execution strategy (CALL FIRST for large orders!)
-- **open_short**: Open short position (sell BTC) - use when market is BEARISH
-- **open_long**: Open long position (buy BTC) - use when market is BULLISH
-- **close_position**: Close current position
-- **hold**: Hold/wait, no action
-
-⚠️ **CRITICAL**: Choose direction based ONLY on expert votes. Do NOT default to any direction.
-
-## Smart Execution Protocol
-
-### For LARGE Orders (>$10,000):
-1. ALWAYS call `analyze_execution_conditions` FIRST
-2. Review the recommended strategy (direct/sliced/twap)
-3. If slippage > 0.5%, consider reducing position size
-4. Use the recommended leverage and slice count
-
-### Capital Tier Guidelines:
-- Small (<$1,000): Direct execution
-- Medium ($1,000-$10,000): Check slippage first
-- Large ($10,000-$50,000): Use sliced execution (3-5 batches)
-- XLarge (>$50,000): Requires TWAP strategy
-
-## Decision Rules (IMPORTANT: Follow expert consensus, NO default preference!)
-1. If experts vote BEARISH (short/sell majority) → Call open_short
-2. If experts vote BULLISH (long/buy majority) → Call open_long  
-3. If experts split or unclear → Call hold (do NOT guess)
-4. Has opposite position to handle → First call close_position
-
-## Risk Management
-- Always check liquidity before large orders
-- Reduce leverage if slippage is high
-- Abort if estimated slippage > 1%
-
-You MUST call a tool based on meeting results!""",
-            llm_gateway_url=leader.llm_gateway_url if hasattr(leader, 'llm_gateway_url') else None,  # Uses centralized config
-            temperature=0.3
-        )
-
-        # Register trading tools (using FunctionTool wrapper)
-        trade_executor.register_tool(FunctionTool(
-            name="open_long",
-            description="Open long position (buy BTC) - Call when expert consensus is bullish",
-            func=open_long_tool,
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "leverage": {"type": "integer", "description": "Leverage multiplier 1-20"},
-                    "amount_percent": {"type": "number", "description": "Position ratio 0.0-1.0"},
-                    "confidence": {"type": "integer", "description": "Confidence level 0-100"},
-                    "reasoning": {"type": "string", "description": "Decision reasoning"}
-                },
-                "required": ["leverage", "amount_percent"]
-            }
-        ))
-
-        trade_executor.register_tool(FunctionTool(
-            name="open_short",
-            description="Open short position (sell BTC) - Call when expert consensus is bearish",
-            func=open_short_tool,
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "leverage": {"type": "integer", "description": "Leverage multiplier 1-20"},
-                    "amount_percent": {"type": "number", "description": "Position ratio 0.0-1.0"},
-                    "confidence": {"type": "integer", "description": "Confidence level 0-100"},
-                    "reasoning": {"type": "string", "description": "Decision reasoning"}
-                },
-                "required": ["leverage", "amount_percent"]
-            }
-        ))
-
-        trade_executor.register_tool(FunctionTool(
-            name="close_position",
-            description="Close current position - Call when need TP/SL or reverse operation",
-            func=close_position_tool,
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "reasoning": {"type": "string", "description": "Close reasoning"}
-                }
-            }
-        ))
-
-        trade_executor.register_tool(FunctionTool(
-            name="hold",
-            description="Hold/wait, no action - Call when market unclear or experts split",
-            func=hold_tool,
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "reason": {"type": "string", "description": "Hold reason"}
-                },
-                "required": ["reason"]
-            }
-        ))
-
-        # Add execution analysis tool for large orders
-        async def analyze_execution_tool(amount_usdt: float, direction: str) -> str:
-            """
-            Analyze execution conditions before placing a trade.
-            Direction MUST be explicitly specified ('long' or 'short').
-            Returns strategy recommendation, estimated slippage, and liquidity rating.
-            """
-            try:
-                from app.core.trading.smart_executor import analyze_execution
-                
-                # Validate direction - NO DEFAULT BIAS
-                direction_lower = direction.lower()
-                if direction_lower not in ["long", "short"]:
-                    return f"[FAIL] Error: Invalid direction '{direction}'. Must be 'long' or 'short'."
-                
-                analysis = await analyze_execution(
-                    amount_usdt=float(amount_usdt),
-                    direction=direction_lower,
-                    symbol="BTC"
-                )
-                
-                summary = f"""📊 Execution Analysis for ${amount_usdt:,.2f} {direction.upper()}
-
-💰 Capital Tier: {analysis.get('capital_tier', 'unknown').upper()}
-📈 Recommended Strategy: {analysis.get('recommended_strategy', 'direct').upper()}
-🔢 Recommended Slices: {analysis.get('recommended_slices', 1)}
-📉 Estimated Slippage: {analysis.get('estimated_slippage_percent', 0):.3f}%
-💧 Liquidity Rating: {analysis.get('liquidity_rating', 'unknown').upper()}
-
-💡 Recommendation: {analysis.get('recommendation', 'N/A')}"""
-                
-                logger.info(f"[TradeExecutor] Execution analysis: {analysis.get('recommended_strategy')} with slippage {analysis.get('estimated_slippage_percent', 0):.3f}%")
-                return summary
-            except Exception as e:
-                logger.error(f"[TradeExecutor] Execution analysis error: {e}")
-                return f"⚠️ Analysis failed: {e}. Using conservative defaults."
-        
-        trade_executor.register_tool(FunctionTool(
-            name="analyze_execution_conditions",
-            description="Analyze market liquidity and recommend execution strategy. CALL THIS FIRST for orders >$10,000!",
-            func=analyze_execution_tool,
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "amount_usdt": {"type": "number", "description": "Amount in USDT to trade"},
-                    "direction": {"type": "string", "description": "Trade direction: long or short", "enum": ["long", "short"]}
-                },
-                "required": ["amount_usdt", "direction"]
-            }
-        ))
-
-        logger.info(f"[TradeExecutor] [OK] Agent created successfully, registered {len(trade_executor.tools)} trading tools")
-        
-        # Wrapper class providing run() method that returns TradingSignal
-        class TradeExecutorWrapper:
-            def __init__(self, agent, result_container, tools_dict):
-                self.agent = agent
-                self.result = result_container
-                self.tools = tools_dict  # Tool functions dict
-            
-            async def run(self, prompt: str) -> TradingSignal:
-                """
-                Run TradeExecutor, call LLM and process tool execution
-                
-                Flow:
-                1. Call Agent._call_llm() to get LLM response
-                2. Detect native tool_calls or Legacy [USE_TOOL: xxx] format
-                3. Execute corresponding tool functions
-                4. Return TradingSignal
-                """
-                try:
-                    # Step 1: Call LLM
-                    messages = [{"role": "user", "content": prompt}]
-                    response = await self.agent._call_llm(messages)
-                    
-                    # Step 2: Parse response
-                    content = ""
-                    tool_calls = []
-                    
-                    if isinstance(response, dict):
-                        # OpenAI format response
-                        if "choices" in response and response["choices"]:
-                            message = response["choices"][0].get("message", {})
-                            content = message.get("content", "")
-                            tool_calls = message.get("tool_calls", [])
-                        else:
-                            content = response.get("content", str(response))
-                    else:
-                        content = str(response)
-                    
-                    logger.info(f"[TradeExecutor] LLM response: {content[:200] if content else 'None'}...")
-                    
-                    # Step 3: Handle native tool_calls (OpenAI format)
-                    if tool_calls:
-                        logger.info(f"[TradeExecutor] [TARGET] Detected native Tool Calls: {len(tool_calls)}")
-                        for tc in tool_calls:
-                            func = tc.get("function", {})
-                            tool_name = func.get("name", "")
-                            tool_args_str = func.get("arguments", "{}")
-                            
-                            if tool_name in self.tools:
-                                try:
-                                    import json
-                                    tool_args = json.loads(tool_args_str) if isinstance(tool_args_str, str) else tool_args_str
-                                    logger.info(f"[TradeExecutor] 🔧 Executing native tool: {tool_name}({tool_args})")
-                                    await self.tools[tool_name](**tool_args)
-                                except Exception as e:
-                                    logger.error(f"[TradeExecutor] Tool execution failed: {e}")
-                    
-                    # Step 4: Handle Legacy format [USE_TOOL: xxx] (DEPRECATED - kept for backward compat)
-                    tool_pattern = r'\[USE_TOOL:\s*(\w+)\((.*?)\)\]'
-                    legacy_matches = re.findall(tool_pattern, content or "")
-                    
-                    if legacy_matches:
-                        logger.warning(f"[TradeExecutor] ⚠️ DEPRECATED: Legacy [USE_TOOL: xxx] format detected. This will be removed in future versions.")
-                        logger.info(f"[TradeExecutor] [TARGET] Detected Legacy Tool Calls: {len(legacy_matches)}")
-                        for tool_name, params_str in legacy_matches:
-                            if tool_name in self.tools:
-                                try:
-                                    # Parse arguments
-                                    params = {}
-                                    # Try various argument formats
-                                    for pattern in [r'(\w+)="([^"]*)"', r"(\w+)='([^']*)'", r'(\w+)=(\d+\.?\d*)']:
-                                        for key, value in re.findall(pattern, params_str):
-                                            # Type conversion
-                                            if value.replace('.', '').replace('-', '').isdigit():
-                                                value = float(value) if '.' in value else int(value)
-                                            params[key] = value
-
-                                    # Parameter name mapping (LLM may use different names)
-                                    param_aliases = {
-                                        'reason': 'reasoning',  # LLM often uses reason instead of reasoning
-                                        'amount': 'amount_percent',
-                                        'lev': 'leverage',
-                                        'conf': 'confidence',
-                                    }
-                                    for old_name, new_name in param_aliases.items():
-                                        if old_name in params and new_name not in params:
-                                            params[new_name] = params.pop(old_name)
-
-                                    logger.info(f"[TradeExecutor] 🔧 Executing Legacy tool: {tool_name}({params})")
-                                    await self.tools[tool_name](**params)
-                                except Exception as e:
-                                    logger.error(f"[TradeExecutor] Tool execution failed: {e}")
-                    
-                    # Step 5: Check if there are tool execution results
-                    if self.result["signal"]:
-                        signal = self.result["signal"]
-                        logger.info(f"[TradeExecutor] [OK] Tool execution complete: {signal.direction}")
-                        # Clear result container for next use
-                        self.result["signal"] = None
-                        return signal
-                    
-                    # Step 6: No tool calls - try to infer decision from response text
-                    logger.warning("[TradeExecutor] ⚠️ No tool calls detected, trying to infer from response...")
-                    return await self._infer_from_text(content or "")
-                    
-                except Exception as e:
-                    logger.error(f"[TradeExecutor] [FAIL] Execution failed: {e}", exc_info=True)
-                    current_price = await get_current_price()
-                    return TradingSignal(
-                        direction="hold",
-                        symbol="BTC-USDT-SWAP",
-                        leverage=1,
-                        amount_percent=0.0,
-                        entry_price=current_price,
-                        take_profit_price=current_price,
-                        stop_loss_price=current_price,
-                        confidence=0,
-                        reasoning=f"TradeExecutor execution failed: {str(e)}",
-                        agents_consensus={},
-                        timestamp=datetime.now()
-                    )
-            
-            async def _infer_from_text(self, text: str) -> TradingSignal:
-                """Infer decision from natural language response (DEPRECATED - fallback)"""
-                logger.warning("[TradeExecutor] ⚠️ DEPRECATED: Using text inference fallback. "
-                              "This indicates LLM did not use native tool calling. "
-                              "This fallback will be removed in future versions.")
-                
-                # 🛡️ CRITICAL SAFETY FIX: Do NOT execute trades based on keyword inference!
-                # Keyword matching is unreliable and can cause unintended trades.
-                # Always default to HOLD when proper function calling fails.
-                text_lower = text.lower()
-
-                # Count direction keywords to avoid first-match bias (ANTI-BIAS FIX)
-                long_keywords = ['long', 'buy', 'bullish']
-                short_keywords = ['short', 'sell', 'bearish']
-                
-                long_count = sum(1 for kw in long_keywords if kw in text_lower)
-                short_count = sum(1 for kw in short_keywords if kw in text_lower)
-                
-                # 🛡️ SAFETY: Only log the inferred direction, do NOT execute
-                inferred_direction = "hold"
-                if short_count > long_count:
-                    inferred_direction = "short"
-                    logger.warning(f"[TradeExecutor] 🛡️ Would have inferred SHORT (short_count={short_count}, long_count={long_count}) "
-                                  f"but NOT executing due to safety policy. Returning HOLD.")
-                elif long_count > short_count:
-                    inferred_direction = "long"
-                    logger.warning(f"[TradeExecutor] 🛡️ Would have inferred LONG (long_count={long_count}, short_count={short_count}) "
-                                  f"but NOT executing due to safety policy. Returning HOLD.")
-                elif any(kw in text_lower for kw in ['close']):
-                    inferred_direction = "close"
-                    logger.warning("[TradeExecutor] 🛡️ Would have inferred CLOSE from text "
-                                  "but NOT executing due to safety policy. Returning HOLD.")
-                
-                # Always execute HOLD for safety
-                logger.info("[TradeExecutor] 📊 Executing HOLD due to text inference safety policy")
-                await self.tools['hold'](reason=f"Safety: Text inference blocked. Would have been {inferred_direction}. {text[:100]}")
-                
-                # Return execution result
-                if self.result["signal"]:
-                    signal = self.result["signal"]
-                    self.result["signal"] = None
-                    return signal
-                
-                # If tool execution also failed, return default hold
-                current_price = await get_current_price()
-                return TradingSignal(
-                    direction="hold",
-                    symbol="BTC-USDT-SWAP",
-                    leverage=1,
-                    amount_percent=0.0,
-                    entry_price=current_price,
-                    take_profit_price=current_price,
-                    stop_loss_price=current_price,
-                    confidence=0,
-                    reasoning=f"Cannot infer decision: {text[:100]}",
-                    agents_consensus={},
-                    timestamp=datetime.now()
-                )
-        
-        # Create tools dict for wrapper
-        tools_dict = {
-            'open_long': open_long_tool,
-            'open_short': open_short_tool,
-            'close_position': close_position_tool,
-            'hold': hold_tool
-        }
-        
-        return TradeExecutorWrapper(trade_executor, execution_result, tools_dict)
-    
-    def _build_execution_prompt(
-        self,
-        leader_summary: str,
-        agents_votes: Dict[str, str],
-        position_context: PositionContext
-    ) -> str:
-        """
-        Build execution phase prompt
-
-        This prompt is sent to TradeExecutor's LLM to call tools and execute trades
-        """
-
-        # FIX: Ensure agents_votes is dict type
-        if isinstance(agents_votes, list):
-            logger.warning(f"[_build_execution_prompt] agents_votes is list type, converting to dict")
-            try:
-                agents_votes = {v.agent_name: v.direction for v in agents_votes if hasattr(v, 'agent_name') and hasattr(v, 'direction')}
-            except Exception as e:
-                logger.error(f"[_build_execution_prompt] Cannot convert agents_votes: {e}")
-                agents_votes = {}
-
-        # Format votes
-        long_count = sum(1 for v in agents_votes.values() if v == 'long')
-        short_count = sum(1 for v in agents_votes.values() if v == 'short')
-        hold_count = sum(1 for v in agents_votes.values() if v == 'hold')
-
-        vote_details = []
-        for agent, vote in agents_votes.items():
-            emoji = "🟢" if vote == "long" else "🔴" if vote == "short" else "⚪"
-            vote_text = "Long" if vote == "long" else "Short" if vote == "short" else "Hold"
-            vote_details.append(f"  {emoji} {agent}: {vote_text}")
-
-        # Format position status
-        if position_context.has_position:
-            direction = position_context.direction or "unknown"
-            position_status = f"""**Has Position** ({direction.upper()})
-- Entry Price: ${position_context.entry_price:,.2f}
-- Current Price: ${position_context.current_price:,.2f}
-- Position Size: {position_context.size:.4f} BTC
-- Leverage: {position_context.leverage}x
-- Unrealized P&L: ${position_context.unrealized_pnl:,.2f} ({position_context.unrealized_pnl_percent:+.2f}%)
-- Available Balance: ${position_context.available_balance:,.2f}"""
-        else:
-            position_status = f"""**No Position**
-- Available Balance: ${position_context.available_balance:,.2f}
-- Total Equity: ${position_context.total_equity:,.2f}"""
-
-        prompt = f"""## Trade Execution Task
-
-### 1. Expert Voting Results
-**Summary**: {long_count} Long / {short_count} Short / {hold_count} Hold
-
-{chr(10).join(vote_details)}
-
-### 2. Current Position Status
-{position_status}
-
-### 3. Leader's Meeting Summary
-{leader_summary}
-
----
-
-### Your Task
-Based on the above information, you **MUST call a tool** to execute the trading decision.
-
-**Decision Rules (based on voting consensus level)**:
-- High consensus (4-5 unanimous votes) → Call open_long/open_short, parameters auto-calculated based on votes
-- Moderate consensus (3 votes) → Call open_long/open_short, parameters auto-calculated based on votes
-- Weak consensus (2 votes) → Call open_long/open_short, parameters auto-calculated based on votes
-- Split opinions or unclear → Call hold(reason="...")
-- Has opposite position to handle → First call close_position()
-
-**Important**: confidence/leverage/amount_percent will be auto-calculated based on voting consensus level, no need to manually specify fixed values!
-
-**To execute your decision**, simply state your intent clearly and call the appropriate tool:
-- For going short (bearish): call open_short with your reasoning
-- For going long (bullish): call open_long with your reasoning
-- For holding (neutral): call hold with your reason
-- For closing: call close_position with your reason
-
-⚠️ REMINDER: Base your decision SOLELY on the expert votes above. Do NOT default to long or short.
-
-Now, please analyze and execute your trading decision."""
-
-        return prompt
-    
     def _get_leader_final_summary(self) -> str:
         """Get Leader's last message as meeting summary"""
         # FIX: TradingMeeting uses self.messages, not message_bus

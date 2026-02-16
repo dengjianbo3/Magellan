@@ -6,9 +6,17 @@ Report Storage Service
 """
 
 import logging
+import os
 from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    v = os.getenv(name)
+    if v is None:
+        return default
+    return str(v).strip().lower() in ("1", "true", "yes", "on")
 
 
 class ReportStorage:
@@ -28,6 +36,10 @@ class ReportStorage:
         self._session_store = session_store
         self._memory_storage: List[Dict[str, Any]] = []  # 内存回退存储
         self._use_redis = session_store is not None
+        self._allow_memory_fallback = _env_bool("REPORT_STORAGE_ALLOW_MEMORY_FALLBACK", True)
+
+        if not self._use_redis and not self._allow_memory_fallback:
+            raise RuntimeError("Redis is required for report storage (REPORT_STORAGE_ALLOW_MEMORY_FALLBACK=false)")
 
         if self._use_redis:
             logger.info("ReportStorage initialized with Redis backend")
@@ -56,6 +68,8 @@ class ReportStorage:
                 return self._session_store.save_report(report_id, report_data, ttl_days=ttl_days)
             except Exception as e:
                 logger.error(f"Failed to save report to Redis: {e}")
+                if not self._allow_memory_fallback:
+                    raise
                 # Fall through to memory storage
                 self._use_redis = False
 
@@ -86,6 +100,8 @@ class ReportStorage:
                 return self._session_store.get_report(report_id)
             except Exception as e:
                 logger.error(f"Failed to get report from Redis: {e}")
+                if not self._allow_memory_fallback:
+                    raise
                 self._use_redis = False
 
         # 内存存储
@@ -106,6 +122,8 @@ class ReportStorage:
                 return self._session_store.get_all_reports(limit=limit)
             except Exception as e:
                 logger.error(f"Failed to get all reports from Redis: {e}")
+                if not self._allow_memory_fallback:
+                    raise
                 self._use_redis = False
 
         # 内存存储
@@ -126,6 +144,8 @@ class ReportStorage:
                 return self._session_store.delete_report(report_id)
             except Exception as e:
                 logger.error(f"Failed to delete report from Redis: {e}")
+                if not self._allow_memory_fallback:
+                    raise
                 self._use_redis = False
 
         # 内存存储

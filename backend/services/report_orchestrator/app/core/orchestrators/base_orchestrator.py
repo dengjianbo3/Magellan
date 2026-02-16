@@ -161,10 +161,16 @@ class BaseOrchestrator(ABC):
         核心协调逻辑 - 主入口
         """
         try:
+            # Persist an initial snapshot so /status can recover even if the WS disconnects early.
+            # Do NOT save as report here (only saved on completion).
+            await self._save_session(status_override="initializing")
+
             # 1. 验证目标
             await self._send_status("initializing", f"正在验证{self.scenario.value}分析目标...")
             if not await self._validate_target():
                 raise ValueError("分析目标验证失败")
+
+            await self._save_session(status_override="running")
 
             # 2. 根据depth选择执行路径
             if self.request.config.depth == AnalysisDepth.QUICK:
@@ -191,6 +197,7 @@ class BaseOrchestrator(ABC):
         # 构建快速workflow
         self.workflow = self._build_workflow_from_templates(self.workflow_templates)
         await self._send_workflow_start()
+        await self._save_session(status_override="running")
 
         # 执行快速workflow
         for step in self.workflow:
@@ -298,6 +305,7 @@ class BaseOrchestrator(ABC):
         # 构建workflow
         self.workflow = await self._build_workflow()
         await self._send_workflow_start()
+        await self._save_session(status_override="running")
 
         # 执行工作流
         for step in self.workflow:
@@ -422,6 +430,7 @@ class BaseOrchestrator(ABC):
         step.status = "running"
         step.started_at = datetime.now().isoformat()
         await self._send_step_start(step)
+        await self._save_session(status_override="running")
 
         try:
             # 获取对应的模板
@@ -442,6 +451,7 @@ class BaseOrchestrator(ABC):
             self.results[step.id] = result
 
             await self._send_step_complete(step)
+            await self._save_session(status_override="running")
 
         except Exception as e:
             step.status = "error"
@@ -449,6 +459,7 @@ class BaseOrchestrator(ABC):
             step.completed_at = datetime.now().isoformat()
 
             await self._send_step_error(step, str(e))
+            await self._save_session(status_override="error", error=str(e))
             raise
 
     def _get_step_template(self, step_id: str) -> Optional[WorkflowStepTemplate]:
@@ -743,23 +754,28 @@ class BaseOrchestrator(ABC):
     async def _save_session(
         self,
         quick_judgment: Optional[Dict[str, Any]] = None,
-        final_report: Optional[Dict[str, Any]] = None
+        final_report: Optional[Dict[str, Any]] = None,
+        status_override: Optional[str] = None,
+        error: Optional[str] = None,
     ):
         """
         保存session和report到Redis
         """
         try:
             # Construct session context
+            status = status_override or ("completed" if (final_report or quick_judgment) else "running")
             context = {
                 "session_id": self.session_id,
                 "scenario": self.scenario.value,
                 "request": self.request.dict(),
-                "status": "completed" if (final_report or quick_judgment) else "running",
+                "status": status,
                 "results": self.results,
                 "workflow": [step.dict() for step in self.workflow],
                 "started_at": self.started_at,
                 "updated_at": datetime.now().isoformat()
             }
+            if error:
+                context["error"] = error
 
             if quick_judgment:
                 # Handle Pydantic models in quick_judgment

@@ -598,7 +598,7 @@ const saveReport = async () => {
     info('正在保存报告...');
 
     // Call backend API to save report
-    const response = await fetch('${API_BASE}/api/reports', {
+    const response = await fetch(`${API_BASE}/api/reports`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

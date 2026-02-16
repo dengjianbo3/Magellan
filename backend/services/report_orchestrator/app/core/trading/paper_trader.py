@@ -28,6 +28,10 @@ from app.core.trading.trading_config import get_infra_config, get_env_float as _
 
 logger = logging.getLogger(__name__)
 
+def _get_fallback_start_price() -> float:
+    # Used when external price sources are unavailable (e.g. offline dev / CI).
+    return _get_env_float("PAPER_START_PRICE", 65000.0)
+
 
 @dataclass
 class PaperTraderConfig:
@@ -229,8 +233,13 @@ class PaperTrader(BaseTrader):
 
         # Initialize price service
         self._price_service = await get_price_service(demo_mode=self.demo_mode)
-        self._current_price = await self._price_service.get_btc_price()
-        logger.info(f"Price service initialized. Current BTC price: ${self._current_price:,.2f}")
+        try:
+            self._current_price = await self._price_service.get_btc_price()
+            logger.info(f"Price service initialized. Current BTC price: ${self._current_price:,.2f}")
+        except Exception as e:
+            # Defensive fallback: allow paper trading to work even when price APIs are unreachable.
+            self._current_price = self._current_price or _get_fallback_start_price()
+            logger.warning(f"Price service failed, using fallback price ${self._current_price:,.2f}: {e}")
 
         self._initialized = True
 
@@ -310,10 +319,16 @@ class PaperTrader(BaseTrader):
         """Get current price - use price service for real/simulated price"""
         now = datetime.now()
 
+        if self._current_price is None:
+            self._current_price = _get_fallback_start_price()
+
         # Use price service to get price (update at most once per second)
         if (now - self._last_price_update).seconds >= 1:
             if self._price_service:
-                self._current_price = await self._price_service.get_btc_price()
+                try:
+                    self._current_price = await self._price_service.get_btc_price()
+                except Exception as e:
+                    logger.warning(f"Price service get_btc_price failed, keeping last price: {e}")
             else:
                 # Fallback: simple simulated fluctuation
                 change = random.uniform(-0.001, 0.001)
@@ -502,9 +517,9 @@ class PaperTrader(BaseTrader):
             position_value = amount_usdt * leverage
             size = position_value / current_price
 
-            # Recalculate TP/SL prices (based on actual entry price, not LLM expected price)
-            # If provided tp/sl prices don't match actual entry price, use default percentages
-            # CRITICAL: Default percentages are MARGIN-based, must divide by leverage for PRICE movement
+            # Recalculate TP/SL prices (based on actual entry price, not LLM expected price).
+            # If provided TP/SL prices don't match the actual entry price, fall back to defaults.
+            # Note: default TP/SL percents are *price-move* percents; leverage affects PnL, not targets.
             if tp_price is not None and sl_price is not None:
                 if direction == "long":
                     # Long: TP should be above entry, SL should be below entry
@@ -533,43 +548,43 @@ class PaperTrader(BaseTrader):
 
             # Create position
             self._position = PaperPosition(
-            id=str(uuid.uuid4()),
-            symbol=symbol,
-            direction=direction,
-            size=size,
-            entry_price=current_price,
-            leverage=leverage,
-            margin=amount_usdt,
-            take_profit_price=tp_price,
-            stop_loss_price=sl_price
-        )
+                id=str(uuid.uuid4()),
+                symbol=symbol,
+                direction=direction,
+                size=size,
+                entry_price=current_price,
+                leverage=leverage,
+                margin=amount_usdt,
+                take_profit_price=tp_price,
+                stop_loss_price=sl_price,
+            )
 
-        # Update account
-        self._account.balance -= amount_usdt
-        self._account.used_margin += amount_usdt
+            # Update account (keep inside lock to prevent inconsistent state)
+            self._account.balance -= amount_usdt
+            self._account.used_margin += amount_usdt
 
-        await self._save_state()
+            await self._save_state()
 
-        logger.info(
-            f"[OK] [TRADE_LOCK] Position opened: {direction.upper()} {size:.6f} BTC @ ${current_price:.2f}, "
-            f"leverage: {leverage}x, margin: ${amount_usdt:.2f}, "
-            f"remaining: ${self._account.balance:.2f}"
-        )
-        logger.info(f"[TRADE_LOCK] Releasing lock after successful {direction} position")
+            logger.info(
+                f"[OK] [TRADE_LOCK] Position opened: {direction.upper()} {size:.6f} BTC @ ${current_price:.2f}, "
+                f"leverage: {leverage}x, margin: ${amount_usdt:.2f}, "
+                f"remaining: ${self._account.balance:.2f}"
+            )
+            logger.info(f"[TRADE_LOCK] Releasing lock after successful {direction} position")
 
-        return {
-            "success": True,
-            "order_id": self._position.id,
-            "direction": direction,
-            "executed_price": current_price,
-            "executed_amount": size,
-            "leverage": leverage,
-            "margin": amount_usdt,
-            "take_profit": tp_price,
-            "stop_loss": sl_price,
-            "remaining_balance": self._account.balance,
-            "remaining_available_margin": self._account.total_equity - self._account.used_margin
-        }
+            return {
+                "success": True,
+                "order_id": self._position.id,
+                "direction": direction,
+                "executed_price": current_price,
+                "executed_amount": size,
+                "leverage": leverage,
+                "margin": amount_usdt,
+                "take_profit": tp_price,
+                "stop_loss": sl_price,
+                "remaining_balance": self._account.balance,
+                "remaining_available_margin": self._account.total_equity - self._account.used_margin,
+            }
 
     async def close_position(self, symbol: str = "BTC-USDT-SWAP", reason: str = "manual") -> Dict:
         """Close position"""
@@ -626,7 +641,11 @@ class PaperTrader(BaseTrader):
 
             # Trigger callback
             if self.on_position_closed:
-                await self.on_position_closed(old_position, pnl, reason)
+                try:
+                    # Callback should never break the trading/close flow.
+                    await self.on_position_closed(old_position, pnl, reason)
+                except Exception as cb_err:
+                    logger.error(f"on_position_closed callback failed: {cb_err}")
 
             return {
                 "success": True,
@@ -780,8 +799,10 @@ class PaperTrader(BaseTrader):
             except Exception as e:
                 logger.error(f"Reset: Failed to fetch price: {e}")
                 # Keep previous price, don't use hardcoded value
+                if self._current_price is None:
+                    self._current_price = _get_fallback_start_price()
         else:
-            self._current_price = None
+            self._current_price = self._current_price or _get_fallback_start_price()
 
         await self._save_state()
         logger.info(f"Paper trader reset. Balance: ${self.initial_balance:.2f}")

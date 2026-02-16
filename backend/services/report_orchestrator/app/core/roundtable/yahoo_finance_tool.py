@@ -1,7 +1,10 @@
 """
 Yahoo Finance MCP Tool for Financial Data Retrieval
 """
-import yfinance as yf
+try:
+    import yfinance as yf
+except Exception:  # Optional dependency in some dev/test setups
+    yf = None
 from typing import Any, Dict
 from datetime import datetime
 from .tool import Tool
@@ -34,6 +37,13 @@ class YahooFinanceTool(Tool):
             查询结果
         """
         try:
+            if yf is None:
+                return {
+                    "success": False,
+                    "error": "Missing optional dependency: yfinance",
+                    "summary": "yfinance 未安装，无法使用 Yahoo Finance 数据工具。请安装依赖后重试。",
+                }
+
             ticker = yf.Ticker(symbol)
 
             if action == "price":

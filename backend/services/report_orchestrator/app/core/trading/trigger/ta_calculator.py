@@ -10,7 +10,7 @@ import aiohttp
 import logging
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import centralized config and constants
 try:

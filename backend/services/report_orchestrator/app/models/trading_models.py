@@ -269,7 +269,9 @@ class TradingConfig(BaseModel):
     symbol: str = Field(
         default_factory=lambda: os.getenv("TRADING_SYMBOL", "BTC-USDT-SWAP")
     )
-    initial_capital: float = 5000.0  # Match OKX demo account
+    initial_capital: float = Field(
+        default_factory=lambda: _get_env_float("INITIAL_CAPITAL", 10000.0)
+    )
     risk_limits: RiskLimits = Field(default_factory=RiskLimits)
     enabled: bool = True
     demo_mode: bool = Field(

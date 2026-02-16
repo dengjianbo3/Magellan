@@ -28,7 +28,9 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     name = Column(String(100), nullable=False)
-    role = Column(SQLEnum(UserRole), default=UserRole.ANALYST, nullable=False)
+    # Align SQLAlchemy enum type name with init.sql (`CREATE TYPE user_role ...`),
+    # otherwise Postgres will see a mismatched enum type during inserts.
+    role = Column(SQLEnum(UserRole, name="user_role"), default=UserRole.ANALYST, nullable=False)
     organization = Column(String(200), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

@@ -10,6 +10,7 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 import httpx
 from datetime import datetime
+import os
 
 from ..models.dd_models import (
     DDWorkflowState,
@@ -76,12 +77,16 @@ class DDStateMachine:
         # V4: AgentEventBus for real-time updates
         self.event_bus = get_event_bus()
 
-        # Service URLs (from environment in production)
-        self.LLM_GATEWAY_URL = "http://llm_gateway:8003"
-        self.EXTERNAL_DATA_URL = "http://external_data_service:8006"
-        self.WEB_SEARCH_URL = "http://web_search_service:8010"
-        self.INTERNAL_KNOWLEDGE_URL = "http://internal_knowledge_service:8009"
-        self.USER_SERVICE_URL = "http://user_service:8008"
+        # Service URLs (prefer environment, fall back to docker-compose internal DNS names)
+        self.LLM_GATEWAY_URL = os.getenv("LLM_GATEWAY_URL", "http://llm_gateway:8003")
+        # docker-compose uses PUBLIC_DATA_URL to point at external_data_service
+        self.EXTERNAL_DATA_URL = os.getenv(
+            "PUBLIC_DATA_URL",
+            os.getenv("EXTERNAL_DATA_URL", "http://external_data_service:8006"),
+        )
+        self.WEB_SEARCH_URL = os.getenv("WEB_SEARCH_URL", "http://web_search_service:8010")
+        self.INTERNAL_KNOWLEDGE_URL = os.getenv("INTERNAL_KNOWLEDGE_URL", "http://internal_knowledge_service:8009")
+        self.USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://user_service:8008")
 
         # Steps definition (dynamically adjusted based on selected_agents)
         self.steps = self._init_steps()

@@ -19,20 +19,9 @@ except ImportError:
 
 from app.core.roundtable.tool import FunctionTool
 from app.core.trading.price_service import get_current_btc_price, PriceServiceError
-from app.core.trading.trading_config import get_infra_config
+from app.core.trading.trading_config import get_infra_config, get_env_int as _get_env_int
 
 logger = logging.getLogger(__name__)
-
-
-def _get_env_int(key: str, default: int) -> int:
-    """Get integer from environment variable"""
-    val = os.getenv(key)
-    if val:
-        try:
-            return int(val)
-        except ValueError:
-            pass
-    return default
 
 
 class TradingToolkitConfig:

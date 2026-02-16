@@ -7,6 +7,7 @@ import redis
 from typing import Optional, Dict, Any
 from datetime import timedelta
 import os
+from typing import List
 
 
 class SessionStore:
@@ -578,6 +579,31 @@ class SessionStore:
                 'used_memory_mb': 0,
                 'connection_status': 'error'
             }
+
+    def list_sessions(self, limit: int = 200) -> List[Dict[str, Any]]:
+        """
+        List DD sessions (best-effort, most-recent unknown order).
+
+        NOTE: Redis doesn't keep an index for sessions currently; this scans keys.
+        Use only for lightweight dashboards/admin views.
+        """
+        sessions: List[Dict[str, Any]] = []
+        try:
+            # scan_iter avoids blocking Redis like KEYS for larger datasets.
+            for key in self.redis_client.scan_iter(match="dd_session:*", count=200):
+                if len(sessions) >= limit:
+                    break
+                raw = self.redis_client.get(key)
+                if not raw:
+                    continue
+                try:
+                    sessions.append(json.loads(raw))
+                except Exception:
+                    continue
+            return sessions
+        except Exception as e:
+            print(f"[SessionStore] ❌ Failed to list sessions: {e}")
+            return []
 
     def close(self):
         """Close Redis connection."""

@@ -24,7 +24,11 @@ from typing import Dict, List, Optional, Any
 
 # Import centralized config and constants
 try:
-    from ..trading_config import get_infra_config
+    from ..trading_config import (
+        get_infra_config,
+        get_env_float as _get_env_float,
+        get_env_int as _get_env_int,
+    )
     from ..constants import PRICE, VOLUME, RSI, CACHE
     from ..indicators import (
         calculate_rsi,
@@ -40,29 +44,25 @@ except ImportError:
     CACHE = None
     USE_SHARED_INDICATORS = False
 
+    def _get_env_float(key: str, default: float) -> float:
+        val = os.getenv(key)
+        if val:
+            try:
+                return float(val)
+            except ValueError:
+                pass
+        return default
+
+    def _get_env_int(key: str, default: int) -> int:
+        val = os.getenv(key)
+        if val:
+            try:
+                return int(val)
+            except ValueError:
+                pass
+        return default
+
 logger = logging.getLogger(__name__)
-
-
-def _get_env_float(key: str, default: float) -> float:
-    """Get float from environment variable"""
-    val = os.getenv(key)
-    if val:
-        try:
-            return float(val)
-        except ValueError:
-            pass
-    return default
-
-
-def _get_env_int(key: str, default: int) -> int:
-    """Get int from environment variable"""
-    val = os.getenv(key)
-    if val:
-        try:
-            return int(val)
-        except ValueError:
-            pass
-    return default
 
 
 @dataclass

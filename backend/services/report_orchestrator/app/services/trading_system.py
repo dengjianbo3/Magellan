@@ -23,19 +23,10 @@ from app.core.trading.decision_store import get_decision_store
 from app.core.trading.scheduler import TradingScheduler, CooldownManager
 from app.core.trading.trigger import TriggerScheduler, TriggerAgent
 from app.models.trading_models import TradingConfig, TradingSignal
+from app.core.trading.okx_credentials_store import get_okx_credentials_store
+from app.core.trading.trading_settings_store import get_trading_settings_store, TradingSettings
 
 logger = logging.getLogger(__name__)
-
-def _use_okx_trading() -> bool:
-    """Check if OKX trading should be used based on env config"""
-    okx_key = os.getenv("OKX_API_KEY", "")
-    okx_secret = os.getenv("OKX_SECRET_KEY", "")
-    okx_pass = os.getenv("OKX_PASSPHRASE", "")
-    # Default to false - use local paper trader for easier testing
-    use_okx = os.getenv("USE_OKX_TRADING", "false").lower() == "true"
-
-    # Use OKX if credentials are set and USE_OKX_TRADING is explicitly true
-    return bool(okx_key and okx_secret and okx_pass and use_okx)
 
 router = APIRouter(prefix="/api/trading", tags=["trading"])
 
@@ -74,27 +65,53 @@ class TradingSystem:
         self._monitor_task: Optional[asyncio.Task] = None
         self._initialized = False
         self._started = False  # 🔧 FIX: Prevent duplicate start() calls
+        self._settings: TradingSettings = TradingSettings()
 
     async def initialize(self):
         """Initialize the trading system"""
         if self._initialized:
             return
 
-        # Determine which trader to use
-        use_okx = _use_okx_trading()
+        # Load persisted settings (survive /api/trading/reset)
+        try:
+            self._settings = await get_trading_settings_store().get()
+        except Exception:
+            self._settings = TradingSettings()
 
-        if use_okx:
-            logger.info("Initializing trading system with OKX Demo Trading...")
-            self.trader_type = "okx"
-            self.trader = await get_okx_trader(
-                initial_balance=self.config.initial_capital
-            )
+        # Apply settings overrides onto config (env remains as defaults)
+        if self._settings.analysis_interval_hours is not None:
+            self.config.analysis_interval_hours = int(self._settings.analysis_interval_hours)
+        if self._settings.max_leverage is not None:
+            self.config.risk_limits.max_leverage = int(self._settings.max_leverage)
+        if self._settings.max_position_percent is not None:
+            self.config.risk_limits.max_position_percent = float(self._settings.max_position_percent)
+        if self._settings.enabled is not None:
+            self.config.enabled = bool(self._settings.enabled)
+        if self._settings.okx_demo_mode is not None:
+            self.config.demo_mode = bool(self._settings.okx_demo_mode)
+
+        use_okx_requested = bool(self._settings.use_okx_trading)
+
+        if use_okx_requested:
+            creds = await get_okx_credentials_store().get()
+            if creds and creds.is_configured():
+                logger.info("Initializing trading system with OKX Demo Trading (user-configured credentials)...")
+                self.trader_type = "okx"
+                self.trader = await get_okx_trader(
+                    initial_balance=self.config.initial_capital,
+                    demo_mode=bool(creds.demo_mode),
+                    okx_api_key=creds.api_key,
+                    okx_secret_key=creds.secret_key,
+                    okx_passphrase=creds.passphrase,
+                )
+            else:
+                logger.warning("OKX trading requested but credentials not configured. Falling back to PaperTrader.")
+                self.trader_type = "paper"
+                self.trader = await get_paper_trader(initial_balance=self.config.initial_capital)
         else:
             logger.info("Initializing trading system with Paper Trader...")
             self.trader_type = "paper"
-            self.trader = await get_paper_trader(
-                initial_balance=self.config.initial_capital
-            )
+            self.trader = await get_paper_trader(initial_balance=self.config.initial_capital)
 
         # Set alias for compatibility
         self.paper_trader = self.trader
@@ -302,16 +319,14 @@ class TradingSystem:
             if signal:
                 logger.info(f"[SIGNAL_DEBUG] Signal is not None, direction={signal.direction}")
 
-                # 🔧 FIX: Include current trading mode in signal_generated broadcast
-                # so frontend can differentiate behavior per mode
-                from app.core.trading.mode_manager import get_mode_manager, TradingMode
+                # HITL-only: always broadcast as semi_auto.
+                from app.core.trading.mode_manager import get_mode_manager
                 mode_manager = get_mode_manager()
-                current_mode = await mode_manager.get_mode()
 
                 await self._broadcast({
                     "type": "signal_generated",
                     "signal": signal.model_dump(),
-                    "mode": current_mode.value
+                    "mode": "semi_auto",
                 })
 
                 # Record all decisions to history (including hold)
@@ -326,96 +341,36 @@ class TradingSystem:
                     })
                     logger.info(f"[SIGNAL_DEBUG] History now has {len(self._trade_history)} entries")
                 else:
-                    # 🆕 Phase 1.3: HITL - Check trading mode before execution
-                    # (mode_manager and current_mode already fetched above)
-
-                    if current_mode == TradingMode.MANUAL:
-                        # MANUAL mode: Only analyze, no execution
-                        logger.info(f"[HITL] MANUAL mode - Signal recorded but NOT executed: {signal.direction}")
-                        self._trade_history.append({
-                            "timestamp": datetime.now().isoformat(),
-                            "signal": signal.model_dump(),
-                            "status": "manual_mode",
-                            "trade_result": {"action": "manual_hold", "message": "手动模式：信号已记录，需手动操作"}
-                        })
-                        # signal_generated already broadcast above with mode field
-                        return  # Don't execute
-                    
-                    elif current_mode == TradingMode.SEMI_AUTO:
-                        # SEMI_AUTO mode: Create pending trade for user confirmation
-                        logger.info(f"[HITL] SEMI_AUTO mode - Creating pending trade for confirmation: {signal.direction}")
-                        pending_trade = await mode_manager.add_pending_trade(
-                            direction=signal.direction,
-                            leverage=signal.leverage,
-                            entry_price=signal.entry_price,
-                            take_profit=signal.take_profit_price,
-                            stop_loss=signal.stop_loss_price,
-                            confidence=signal.confidence,
-                            reasoning=signal.reasoning,
-                            amount_percent=signal.amount_percent
-                        )
-                        
-                        self._trade_history.append({
-                            "timestamp": datetime.now().isoformat(),
-                            "signal": signal.model_dump(),
-                            "status": "pending_confirmation",
-                            "trade_id": pending_trade.trade_id,
-                            "trade_result": {"action": "pending", "message": "半自动模式：等待用户确认"}
-                        })
-                        
-                        await self._broadcast({
-                            "type": "pending_trade_created",
-                            "signal": signal.model_dump(),
-                            "trade_id": pending_trade.trade_id,
-                            "mode": "semi_auto",
-                            "message": "半自动模式：请确认或拒绝此交易"
-                        })
-                        logger.info(f"[HITL] Pending trade created: {pending_trade.trade_id}")
-                        return  # Don't auto-execute
-                    
-                    # FULL_AUTO mode: Execute automatically (original behavior)
-                    # 🔧 FIX: LangGraph execution_node only PREPARES the signal, 
-                    # it does NOT actually execute trades via the trader.
-                    # We MUST call _execute_signal to actually open the position.
-                    logger.info(f"[SIGNAL_DEBUG] FULL_AUTO mode - Executing {signal.direction} signal via _execute_signal")
-                    
-                    # Check if position already exists to prevent duplicates
-                    current_position = await self.paper_trader.get_position() if self.paper_trader else None
-                    has_existing_position = current_position and current_position.get("has_position")
-                    existing_direction = current_position.get("direction") if has_existing_position else None
-                    
-                    # 🔧 FIX: Do not skip execution if position exists.
-                    # Allow "adding to position" if the strategy dictates.
-                    # The underlying trader (Paper/OKX) will handle checks/merging.
-                    
-                    # Execute the trade
-                    trade_result = await self._execute_signal(signal)
-                    logger.info(f"[SIGNAL_DEBUG] Trade execution result: {trade_result}")
-
-                    # Determine actual execution status
-                    # Use 'success' field as the primary indicator (works for both PaperTrader and OKX)
-                    trade_success = trade_result.get("success", False)
-                    action = trade_result.get("action", "")
-
-                    # Additional check: certain action names indicate failure even if success=True
-                    failed_actions = ["insufficient_margin", "close_short_failed", "close_long_failed", "failed"]
-                    trade_actually_executed = trade_success and action not in failed_actions
+                    # HITL-only: always create a pending trade for confirmation.
+                    logger.info(f"[HITL] Creating pending trade for confirmation: {signal.direction}")
+                    pending_trade = await mode_manager.add_pending_trade(
+                        direction=signal.direction,
+                        leverage=signal.leverage,
+                        entry_price=signal.entry_price,
+                        take_profit=signal.take_profit_price,
+                        stop_loss=signal.stop_loss_price,
+                        confidence=signal.confidence,
+                        reasoning=signal.reasoning,
+                        amount_percent=signal.amount_percent,
+                    )
 
                     self._trade_history.append({
                         "timestamp": datetime.now().isoformat(),
                         "signal": signal.model_dump(),
-                        "status": "executed" if trade_actually_executed else "failed",
-                        "trade_result": trade_result
+                        "status": "pending_confirmation",
+                        "trade_id": pending_trade.trade_id,
+                        "trade_result": {"action": "pending", "message": "等待用户确认"},
                     })
-                    logger.info(f"[SIGNAL_DEBUG] History now has {len(self._trade_history)} entries")
 
-                    # Broadcast trade executed event so frontend can refresh data
                     await self._broadcast({
-                        "type": "trade_executed",
+                        "type": "pending_trade_created",
                         "signal": signal.model_dump(),
-                        "success": trade_actually_executed,
-                        "trade_result": trade_result
+                        "trade_id": pending_trade.trade_id,
+                        "mode": "semi_auto",
+                        "message": "请确认或拒绝此交易",
                     })
+                    logger.info(f"[HITL] Pending trade created: {pending_trade.trade_id}")
+                    return
             else:
                 # No signal generated - record this too
                 logger.info(f"[SIGNAL_DEBUG] Signal is None, recording no_signal status")
@@ -603,39 +558,65 @@ class TradingSystem:
         logger.info(f"Position closed with PnL: {pnl}" + (f", reason: {reason[:100]}..." if reason else ""))
 
         # Record result
-        result = self.cooldown_manager.record_trade_result(pnl)
+        can_continue = self.cooldown_manager.record_trade_result(pnl)
 
-        # Run reflection meeting to analyze why trade succeeded/failed
-        lessons = await self._run_reflection_meeting(position, pnl)
+        # Do not block trade close on reflection/LLM calls; run heavy work asynchronously.
+        asyncio.create_task(self._post_close_processing(position, pnl, can_continue, reason))
 
-        # Update agent memory with lessons learned
-        memory_store = await get_memory_store()
-        trade_id = str(uuid.uuid4())
-
-        # Use correct PascalCase agent IDs
-        trading_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "QuantStrategist", "RiskAssessor"]
-        for i, agent_id in enumerate(trading_agents):
-            lesson = lessons.get(agent_id, f"交易结果: {'盈利' if pnl > 0 else '亏损'} ${abs(pnl):.2f}")
-            await memory_store.record_trade_result(
-                agent_id=agent_id,
-                agent_name=agent_id,
-                trade_id=trade_id,
-                prediction={"direction": position.direction},
-                actual_outcome={"pnl": pnl},
-                pnl=pnl,
-                lesson=lesson
-            )
-
+        # Immediate broadcast for UI responsiveness.
         await self._broadcast({
             "type": "position_closed",
             "pnl": pnl,
-            "can_continue": result,
-            "lessons": lessons
+            "can_continue": can_continue,
+            "reason": reason,
+            "lessons": {},  # Populated later via position_closed_lessons/reflection events.
         })
 
-        # Trigger new analysis if not in cooldown
-        if result:
-            await self.scheduler.trigger_now(reason="position_closed")
+    async def _post_close_processing(self, position, pnl: float, can_continue: bool, reason: str = None):
+        """Best-effort post-close processing: reflection, memory update, and optional next trigger."""
+        lessons: Dict[str, str] = {}
+
+        try:
+            lessons = await self._run_reflection_meeting(position, pnl)
+        except Exception as e:
+            logger.warning(f"Reflection meeting failed: {e}")
+            lessons = {}
+
+        try:
+            # Update agent memory with lessons learned
+            memory_store = await get_memory_store()
+            trade_id = str(uuid.uuid4())
+
+            # Use correct PascalCase agent IDs
+            trading_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "QuantStrategist", "RiskAssessor"]
+            direction = getattr(position, "direction", None) or (position.get("direction") if isinstance(position, dict) else None)
+
+            for agent_id in trading_agents:
+                lesson = lessons.get(agent_id, f"交易结果: {'盈利' if pnl > 0 else '亏损'} ${abs(pnl):.2f}")
+                await memory_store.record_trade_result(
+                    agent_id=agent_id,
+                    agent_name=agent_id,
+                    trade_id=trade_id,
+                    prediction={"direction": direction},
+                    actual_outcome={"pnl": pnl},
+                    pnl=pnl,
+                    lesson=lesson,
+                )
+
+            await self._broadcast({
+                "type": "position_closed_lessons",
+                "pnl": pnl,
+                "reason": reason,
+                "lessons": lessons,
+            })
+        except Exception as e:
+            logger.warning(f"Post-close memory update failed: {e}")
+
+        if can_continue:
+            try:
+                await self.scheduler.trigger_now(reason="position_closed")
+            except Exception as e:
+                logger.warning(f"Post-close trigger_now failed: {e}")
 
     async def _run_reflection_meeting(self, position, pnl: float) -> Dict[str, str]:
         """
@@ -650,16 +631,41 @@ class TradingSystem:
         outcome_type = "Take Profit" if pnl > 0 else "Stop Loss"
         lessons = {}
 
-        # Build reflection context
+        # Build reflection context (PaperPosition doesn't expose current_price, so compute exit price defensively)
+        direction = getattr(position, "direction", None) or (position.get("direction") if isinstance(position, dict) else "unknown")
+        entry_price = getattr(position, "entry_price", None) or (position.get("entry_price") if isinstance(position, dict) else None) or 0.0
+        leverage = getattr(position, "leverage", None) or (position.get("leverage") if isinstance(position, dict) else None) or 1
+
+        exit_price = getattr(position, "current_price", None) or getattr(position, "exit_price", None)
+        if exit_price is None and isinstance(position, dict):
+            exit_price = position.get("current_price") or position.get("exit_price")
+
+        if exit_price is None:
+            size = getattr(position, "size", None) or (position.get("size") if isinstance(position, dict) else None)
+            try:
+                size = float(size) if size not in (None, 0) else None
+            except Exception:
+                size = None
+            try:
+                entry_f = float(entry_price) if entry_price is not None else 0.0
+            except Exception:
+                entry_f = 0.0
+
+            if size and direction in ("long", "short"):
+                # pnl = (exit-entry)*size for long, pnl = (entry-exit)*size for short
+                exit_price = entry_f + (pnl / size) if direction == "long" else entry_f - (pnl / size)
+            else:
+                exit_price = float(entry_price or 0.0)
+
         reflection_context = f"""## Trade Reflection Meeting
 
 ### Trade Result
 - **Outcome**: {outcome_type}
-- **Direction**: {position.direction}
-- **Entry Price**: {position.entry_price:.2f}
-- **Exit Price**: {position.current_price:.2f}
+- **Direction**: {direction}
+- **Entry Price**: {float(entry_price):.2f}
+- **Exit Price**: {float(exit_price):.2f}
 - **PnL**: ${pnl:.2f}
-- **Leverage**: {position.leverage}x
+- **Leverage**: {leverage}x
 
 ### Please answer the following questions (within 50 words):
 1. What was the basis for your judgment?

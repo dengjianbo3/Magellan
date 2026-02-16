@@ -4,8 +4,10 @@
  */
 
 // Environment variables for API URLs
-const DD_API_URL = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
-const DD_WS_URL = import.meta.env.VITE_WS_BASE || 'ws://localhost:8000';
+import { API_BASE, WS_BASE } from '@/config/api';
+
+const DD_API_URL = API_BASE;
+const DD_WS_URL = WS_BASE;
 const DD_WS_ENDPOINT = `${DD_WS_URL}/ws/start_dd_analysis`;
 
 export class DDAnalysisService {
@@ -330,10 +332,9 @@ export class DDAnalysisService {
   }
 
   /**
-   * 保存报告到后端（需要实现后端API）
+   * 保存报告到后端
    */
   async saveReport(reportData) {
-    // TODO: 实现报告保存API
     const response = await fetch(`${DD_API_URL}/api/reports`, {
       method: 'POST',
       headers: {

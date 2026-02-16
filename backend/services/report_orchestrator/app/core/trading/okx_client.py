@@ -45,9 +45,11 @@ class OKXClient:
         base_url: Optional[str] = None
     ):
         self.base_url = base_url or get_infra_config().okx_base_url
-        self.api_key = api_key or os.getenv("OKX_API_KEY", "")
-        self.secret_key = secret_key or os.getenv("OKX_SECRET_KEY", "")
-        self.passphrase = passphrase or os.getenv("OKX_PASSPHRASE", "")
+        # IMPORTANT:
+        # Use None to mean "fall back to environment", but allow empty string to explicitly disable env credentials.
+        self.api_key = os.getenv("OKX_API_KEY", "") if api_key is None else api_key
+        self.secret_key = os.getenv("OKX_SECRET_KEY", "") if secret_key is None else secret_key
+        self.passphrase = os.getenv("OKX_PASSPHRASE", "") if passphrase is None else passphrase
         
         # If demo_mode not explicitly passed, read from environment variable
         if demo_mode is None:
@@ -1038,12 +1040,59 @@ class OKXClient:
 
 # Singleton instance
 _okx_client: Optional[OKXClient] = None
+_okx_client_fingerprint: Optional[str] = None
 
 
-async def get_okx_client() -> OKXClient:
-    """Get or create OKX client singleton"""
+def _fp(api_key: str, passphrase: str, demo_mode: bool, base_url: str) -> str:
+    # Do not include secret_key in fingerprints to reduce risk of accidental disclosure.
+    return f"{api_key[-6:]}:{passphrase[-2:]}:{'demo' if demo_mode else 'real'}:{base_url}"
+
+
+async def get_okx_client(
+    api_key: Optional[str] = None,
+    secret_key: Optional[str] = None,
+    passphrase: Optional[str] = None,
+    demo_mode: Optional[bool] = None,
+    base_url: Optional[str] = None,
+) -> OKXClient:
+    """
+    Get or create OKX client singleton.
+
+    Security default:
+    - We do NOT auto-use server-side .env OKX credentials unless OKX_ALLOW_ENV_CREDENTIALS=true.
+    - For hosted testing, users should configure credentials via the frontend, which passes them here.
+    """
     global _okx_client
-    if _okx_client is None:
-        _okx_client = OKXClient()
+    global _okx_client_fingerprint
+
+    allow_env = os.getenv("OKX_ALLOW_ENV_CREDENTIALS", "false").lower() == "true"
+
+    # If caller did not provide credentials and env use is not allowed, force-empty creds (mock mode).
+    if not allow_env and api_key is None and secret_key is None and passphrase is None:
+        api_key = ""
+        secret_key = ""
+        passphrase = ""
+
+    # Evaluate fingerprint for recreation.
+    eff_demo_mode = (os.getenv("OKX_DEMO_MODE", "true").lower() == "true") if demo_mode is None else bool(demo_mode)
+    eff_base_url = base_url or get_infra_config().okx_base_url
+    eff_api_key = os.getenv("OKX_API_KEY", "") if api_key is None else api_key
+    eff_passphrase = os.getenv("OKX_PASSPHRASE", "") if passphrase is None else passphrase
+    fp = _fp(eff_api_key or "", eff_passphrase or "", eff_demo_mode, eff_base_url)
+
+    if _okx_client is None or _okx_client_fingerprint != fp:
+        if _okx_client is not None and getattr(_okx_client, "_session", None) is not None:
+            try:
+                await _okx_client._session.close()
+            except Exception:
+                pass
+        _okx_client = OKXClient(
+            api_key=api_key,
+            secret_key=secret_key,
+            passphrase=passphrase,
+            demo_mode=demo_mode,
+            base_url=base_url,
+        )
         await _okx_client.initialize()
+        _okx_client_fingerprint = fp
     return _okx_client

@@ -1093,6 +1093,7 @@ export default {
 
     // Settings Modal
     loadingConfig: '加载配置中...',
+    traderBackend: '交易环境',
     okxDemoTrading: 'OKX 模拟交易',
     localPaperTrading: '本地模拟交易',
     okxDemo: 'OKX 模拟',

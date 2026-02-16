@@ -6,6 +6,7 @@ Health Check Router
 import time
 from datetime import datetime
 
+import os
 import httpx
 from fastapi import APIRouter
 
@@ -34,8 +35,9 @@ async def health_check_v2():
 
     # Check LLM Gateway
     try:
+        llm_gateway_url = os.getenv("LLM_GATEWAY_URL", "http://llm_gateway:8003")
         async with httpx.AsyncClient() as client:
-            response = await client.get("http://llm_gateway:8003/health", timeout=2.0)
+            response = await client.get(f"{llm_gateway_url}/health", timeout=2.0)
             if response.status_code == 200:
                 health_status["checks"]["llm_gateway"] = {
                     "status": "healthy",

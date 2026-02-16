@@ -12,11 +12,16 @@ from typing import Optional, List, Tuple
 from datetime import datetime
 
 import httpx
-import structlog
+import logging
+
+try:
+    import structlog
+except Exception:  # Optional in some local/dev test setups
+    structlog = None
 
 from .trading_config import get_infra_config
 
-logger = structlog.get_logger(__name__)
+logger = structlog.get_logger(__name__) if structlog is not None else logging.getLogger(__name__)
 
 
 @dataclass

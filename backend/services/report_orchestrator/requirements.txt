@@ -66,3 +66,7 @@ langgraph>=0.2.0
 
 # For Circuit Breaker pattern (Phase 0 observability)
 pycircuitbreaker>=0.3.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

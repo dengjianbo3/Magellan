@@ -10,11 +10,16 @@ from typing import Optional, Dict, Any, List, Callable
 from datetime import datetime
 from dataclasses import dataclass, field
 
-import structlog
+import logging
+
+try:
+    import structlog
+except Exception:  # Optional in some local/dev test setups
+    structlog = None
 
 from .telegram import TelegramNotifier, get_telegram_notifier
 
-logger = structlog.get_logger(__name__)
+logger = structlog.get_logger(__name__) if structlog is not None else logging.getLogger(__name__)
 
 
 @dataclass

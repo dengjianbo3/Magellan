@@ -6,6 +6,7 @@ Roundtable Router
 """
 
 import logging
+import os
 from typing import Dict, Any
 
 import httpx
@@ -17,7 +18,7 @@ router = APIRouter()
 
 # Global references - will be set from main.py
 _active_meetings: Dict[str, Any] = {}
-_llm_gateway_url: str = "http://llm_gateway:8003"
+_llm_gateway_url: str = os.getenv("LLM_GATEWAY_URL", "http://llm_gateway:8003")
 
 
 def set_active_meetings(meetings: Dict[str, Any]):
@@ -385,4 +386,3 @@ Please generate meeting minutes in the following format:
             "X-Accel-Buffering": "no"
         }
     )
-

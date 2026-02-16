@@ -13,14 +13,7 @@
       <!-- Controls & Status -->
       <div class="flex flex-wrap items-center gap-3">
 
-        <!-- 1. Trading Mode (Context) -->
-        <div class="flex items-center h-10 bg-white/5 rounded-lg p-1 border border-white/5 backdrop-blur-sm">
-             <button @click="setTradingMode('manual')" :disabled="changingMode" class="h-full px-3 rounded-md text-xs font-bold transition-all flex items-center" :class="tradingMode.mode === 'manual' ? 'bg-red-500/20 text-red-400 shadow-sm' : 'text-text-secondary hover:text-white'">手动</button>
-             <button @click="setTradingMode('semi_auto')" :disabled="changingMode" class="h-full px-3 rounded-md text-xs font-bold transition-all flex items-center" :class="tradingMode.mode === 'semi_auto' ? 'bg-yellow-500/20 text-yellow-400 shadow-sm' : 'text-text-secondary hover:text-white'">半自动</button>
-             <button @click="setTradingMode('full_auto')" :disabled="changingMode" class="h-full px-3 rounded-md text-xs font-bold transition-all flex items-center" :class="tradingMode.mode === 'full_auto' ? 'bg-emerald-500/20 text-emerald-400 shadow-sm' : 'text-text-secondary hover:text-white'">全自动</button>
-        </div>
-        
-        <!-- 2. Next Analysis (Pulse) -->
+        <!-- 1. Next Analysis (Pulse) -->
         <div class="flex items-center h-10 gap-3 bg-white/5 rounded-lg px-4 border border-white/5 backdrop-blur-sm">
           <div class="flex items-baseline gap-2">
             <span class="text-[10px] text-text-secondary uppercase tracking-wider font-semibold">下次分析</span>
@@ -462,15 +455,15 @@
         </div>
 
         <div v-else class="space-y-4">
-          <!-- Trading Mode Toggle -->
+          <!-- Trader Backend Toggle -->
           <div class="p-4 rounded-lg bg-white/5 border border-white/10">
             <div class="flex items-center justify-between">
-              <div>
-                <h4 class="text-sm font-medium text-white">{{ t('trading.tradingMode') || 'Trading Mode' }}</h4>
-                <p class="text-xs text-text-secondary mt-1">
-                  {{ settingsForm.useOkxTrading ? (t('trading.okxDemoTrading') || 'OKX Demo Trading') : (t('trading.localPaperTrading') || 'Local Paper Trading') }}
-                </p>
-              </div>
+	              <div>
+	                <h4 class="text-sm font-medium text-white">{{ t('trading.traderBackend') || '交易环境' }}</h4>
+	                <p class="text-xs text-text-secondary mt-1">
+	                  {{ settingsForm.useOkxTrading ? `OKX (${settingsForm.okxDemoMode ? '模拟盘' : '实盘'})` : (t('trading.localPaperTrading') || 'Local Paper Trading') }}
+	                </p>
+	              </div>
               <label class="relative inline-flex items-center cursor-pointer">
                 <input
                   type="checkbox"
@@ -478,14 +471,57 @@
                   class="sr-only peer"
                 >
                 <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                <span class="ml-2 text-sm text-white">{{ t('trading.okxDemo') || 'OKX Demo' }}</span>
-              </label>
-            </div>
-            <p v-if="settingsForm.useOkxTrading" class="text-xs text-amber-400 mt-2">
-              <span class="material-symbols-outlined align-middle text-sm">warning</span>
-              {{ t('trading.okxApiWarning') || 'Requires OKX API credentials configured in the backend' }}
-            </p>
-          </div>
+	                <span class="ml-2 text-sm text-white">OKX</span>
+	              </label>
+	            </div>
+	            <div v-if="settingsForm.useOkxTrading" class="mt-3 space-y-3">
+              <p class="text-xs text-text-secondary">
+                当前 OKX 凭证: 
+                <span v-if="settingsForm.okxConfigured" class="text-emerald-400 font-mono">****{{ settingsForm.okxApiKeyLast4 }}</span>
+                <span v-else class="text-amber-400">未配置</span>
+              </p>
+              <div class="grid grid-cols-1 gap-2">
+                <input
+                  v-model="settingsForm.okxApiKey"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="OKX API Key"
+                  class="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-primary"
+                />
+                <input
+                  v-model="settingsForm.okxSecretKey"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="OKX Secret Key"
+                  class="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-primary"
+                />
+                <input
+                  v-model="settingsForm.okxPassphrase"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="OKX Passphrase"
+                  class="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-primary"
+                />
+              </div>
+	              <div class="flex items-center justify-between">
+	                <label class="flex items-center gap-2 text-xs text-text-secondary">
+	                  <input type="checkbox" v-model="settingsForm.okxDemoMode" class="accent-primary" />
+	                  模拟盘 (x-simulated-trading)
+	                </label>
+                <button
+                  v-if="settingsForm.okxConfigured"
+                  @click="clearOkxCredentials"
+                  class="text-xs text-red-400 hover:text-red-300 underline"
+                  type="button"
+                >
+                  清除 OKX 凭证
+                </button>
+	              </div>
+	              <p v-if="!settingsForm.okxDemoMode" class="text-xs text-red-400">
+	                你正在选择 OKX 实盘模式。请确保这是你期望的行为，并使用无提现权限的 API Key。
+	              </p>
+	            </div>
+	          </div>
 
           <!-- Analysis Interval -->
           <div>
@@ -599,15 +635,15 @@
           <div class="grid grid-cols-3 gap-4 text-center mb-4">
             <div>
               <span class="text-text-secondary text-xs block mb-1">方向</span>
-              <span 
+              <span
                 :class="[
                   'px-3 py-1 rounded-lg font-bold text-lg',
-                  pendingDecision.direction === 'long' 
-                    ? 'bg-emerald-500/20 text-emerald-400' 
+                  (showModifyPanel ? modifiedDirection : pendingDecision.direction) === 'long'
+                    ? 'bg-emerald-500/20 text-emerald-400'
                     : 'bg-red-500/20 text-red-400'
                 ]"
               >
-                {{ pendingDecision.direction === 'long' ? 'LONG ↑' : 'SHORT ↓' }}
+                {{ (showModifyPanel ? modifiedDirection : pendingDecision.direction) === 'long' ? 'LONG ↑' : 'SHORT ↓' }}
               </span>
             </div>
             <div>
@@ -660,8 +696,35 @@
         <!-- Modification Panel -->
         <div v-if="showModifyPanel" class="bg-white/5 rounded-lg p-4 mb-4 border border-primary/30">
           <div class="text-text-secondary text-xs mb-3">修改参数</div>
-          <div class="flex items-center gap-4">
-            <label class="text-sm text-white">杠杆倍数:</label>
+
+          <!-- Direction Toggle -->
+          <div class="flex items-center gap-4 mb-3">
+            <label class="text-sm text-white w-20">方向:</label>
+            <div class="flex gap-2 flex-1">
+              <button
+                @click="modifiedDirection = 'long'"
+                :class="[
+                  'flex-1 px-3 py-2 rounded-lg text-sm font-bold transition-all',
+                  modifiedDirection === 'long'
+                    ? 'bg-emerald-500/30 text-emerald-400 border border-emerald-500/50'
+                    : 'bg-white/5 text-text-secondary hover:bg-white/10'
+                ]"
+              >LONG ↑</button>
+              <button
+                @click="modifiedDirection = 'short'"
+                :class="[
+                  'flex-1 px-3 py-2 rounded-lg text-sm font-bold transition-all',
+                  modifiedDirection === 'short'
+                    ? 'bg-red-500/30 text-red-400 border border-red-500/50'
+                    : 'bg-white/5 text-text-secondary hover:bg-white/10'
+                ]"
+              >SHORT ↓</button>
+            </div>
+          </div>
+
+          <!-- Leverage Slider -->
+          <div class="flex items-center gap-4 mb-3">
+            <label class="text-sm text-white w-20">杠杆:</label>
             <input
               type="range"
               v-model="modifiedLeverage"
@@ -670,6 +733,20 @@
               class="flex-1"
             />
             <span class="text-primary font-bold w-12 text-right">{{ modifiedLeverage }}x</span>
+          </div>
+
+          <!-- Amount Percent Slider -->
+          <div class="flex items-center gap-4">
+            <label class="text-sm text-white w-20">仓位:</label>
+            <input
+              type="range"
+              v-model.number="modifiedAmountPercent"
+              :min="0.1"
+              :max="1.0"
+              :step="0.1"
+              class="flex-1"
+            />
+            <span class="text-primary font-bold w-12 text-right">{{ (modifiedAmountPercent * 100).toFixed(0) }}%</span>
           </div>
         </div>
 
@@ -860,7 +937,13 @@ const settingsForm = ref({
   analysisInterval: 4,
   maxLeverage: 20,
   maxPositionPercent: 0.3,
-  useOkxTrading: false  // Whether to use OKX demo trading
+  useOkxTrading: false,  // Whether to use OKX demo trading
+  okxConfigured: false,
+  okxApiKeyLast4: '',
+  okxDemoMode: true,
+  okxApiKey: '',
+  okxSecretKey: '',
+  okxPassphrase: ''
 });
 const loadingConfig = ref(false);
 
@@ -880,6 +963,8 @@ const pendingDecision = ref({
   reasoning: ''
 });
 const modifiedLeverage = ref(5);
+const modifiedDirection = ref('long');
+const modifiedAmountPercent = ref(0.5);
 const showModifyPanel = ref(false);
 const showDeferReasons = ref(false);
 const selectedDeferReason = ref('');
@@ -917,11 +1002,7 @@ const performanceData = ref({
   tradesAnalyzed: 0
 });
 
-// Phase 0-3: HITL, MTF, Agent Weights, Degradation
-const tradingMode = ref({
-  mode: 'semi_auto',
-  description: ''
-});
+// Phase 0-3: MTF, Agent Weights, Degradation
 
 const mtfAnalysis = ref({
   overall_direction: 'neutral',
@@ -942,8 +1023,6 @@ const systemHealth = ref({
   level: 'full',
   capabilities: {}
 });
-
-const changingMode = ref(false);
 
 
 // WebSocket
@@ -1190,19 +1269,6 @@ async function fetchPerformance() {
   }
 }
 
-// Phase 0-3: Fetch HITL Mode
-async function fetchTradingMode() {
-  try {
-    const response = await fetch('/api/trading/mode');
-    const data = await response.json();
-    if (data.mode) {
-      tradingMode.value = data;
-    }
-  } catch (e) {
-    console.error('Error fetching trading mode:', e);
-  }
-}
-
 // Phase 3.1: Fetch MTF Analysis
 async function fetchMtfAnalysis() {
   try {
@@ -1242,31 +1308,6 @@ async function fetchDegradation() {
   }
 }
 
-// Set Trading Mode (HITL)
-async function setTradingMode(mode) {
-  changingMode.value = true;
-  try {
-    const response = await fetch('/api/trading/mode', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode })
-    });
-    const data = await response.json();
-    if (data.success) {
-      tradingMode.value = { mode: data.new_mode, description: '' };
-      await fetchTradingMode();
-      // Fetch pending trades if switching to semi_auto
-      if (mode === 'semi_auto') {
-        await fetchPendingTrades();
-      }
-    }
-  } catch (e) {
-    console.error('Error setting trading mode:', e);
-  } finally {
-    changingMode.value = false;
-  }
-}
-
 // Fetch Pending Trades (HITL Semi-Auto)
 async function fetchPendingTrades() {
   try {
@@ -1290,8 +1331,8 @@ function openPendingTradeModal(trade) {
     direction: trade.direction,
     leverage: trade.leverage,
     confidence: trade.confidence,
-    take_profit: trade.take_profit_percent || trade.take_profit || 0,
-    stop_loss: trade.stop_loss_percent || trade.stop_loss || 0,
+    take_profit: trade.take_profit_price || trade.take_profit || 0,
+    stop_loss: trade.stop_loss_price || trade.stop_loss || 0,
     current_price: trade.entry_price || 0,
     reasoning: trade.reasoning || ''
   };
@@ -1484,26 +1525,40 @@ async function handleConfirmDecision() {
   processingDecision.value = true;
   try {
     const tradeId = pendingDecision.value.trade_id;
-    const finalLeverage = showModifyPanel.value ? modifiedLeverage.value : pendingDecision.value.leverage;
+    const isModified = showModifyPanel.value;
+    const finalDirection = isModified ? modifiedDirection.value : pendingDecision.value.direction;
+    const finalLeverage = isModified ? modifiedLeverage.value : pendingDecision.value.leverage;
+    const finalAmountPercent = isModified ? modifiedAmountPercent.value : null;
 
     if (tradeId) {
       // SEMI_AUTO mode: Use the proper pending trade confirm API
+      // Only send modified fields
+      const body = { user_id: 'frontend' };
+      if (isModified) {
+        body.direction = finalDirection;
+        body.leverage = Number(finalLeverage);
+        body.amount_percent = Number(finalAmountPercent);
+      }
+
       const response = await fetch(`/api/trading/pending/${tradeId}/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: 'frontend',
-          leverage: showModifyPanel.value ? modifiedLeverage.value : null,
-        })
+        body: JSON.stringify(body)
       });
       const result = await response.json();
 
-      if (!result.success) {
+      if (!response.ok || !result.success) {
+        const isExpired = response.status === 404;
         discussionMessages.value.push({
           agentName: '系统',
-          content: `❌ 确认交易失败: ${result.message || result.detail || '未知错误'}`,
+          content: isExpired
+            ? `⏰ 交易已过期，请等待下一次分析信号`
+            : `❌ 确认交易失败: ${result.message || result.detail || '未知错误'}`,
           timestamp: new Date().toISOString()
         });
+        // Close modal even on failure — trade is no longer actionable
+        showDecisionModal.value = false;
+        resetDecisionState();
         return;
       }
 
@@ -1513,32 +1568,32 @@ async function handleConfirmDecision() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           decision_id: tradeId,
-          action: 'confirm',
+          action: isModified ? 'modified' : 'confirm',
           original_signal: { ...pendingDecision.value },
+          modified_direction: finalDirection,
           modified_leverage: finalLeverage,
+          modified_amount_percent: finalAmountPercent,
           timestamp: new Date().toISOString()
         })
       }).catch(() => {});
 
     } else {
-      // Fallback: direct execute (legacy path for non-pending trades)
-      await fetch('/api/trading/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          direction: pendingDecision.value.direction,
-          leverage: finalLeverage,
-          take_profit: pendingDecision.value.take_profit,
-          stop_loss: pendingDecision.value.stop_loss
-        })
+      // HITL-only: should never execute directly without a pending trade id.
+      discussionMessages.value.push({
+        agentName: '系统',
+        content: '❌ 无法确认：缺少 trade_id（请等待 pending trade 创建后再确认）',
+        timestamp: new Date().toISOString()
       });
+      showDecisionModal.value = false;
+      resetDecisionState();
+      return;
     }
 
     // Add to local history
     decisionHistory.value.unshift({
       decision_id: tradeId || `decision-${Date.now()}`,
       action: 'confirm',
-      display: `${pendingDecision.value.direction.toUpperCase()} ${finalLeverage}x → ✓ 确认执行`
+      display: `${finalDirection.toUpperCase()} ${finalLeverage}x${finalAmountPercent ? ` ${Math.round(finalAmountPercent * 100)}%` : ''} → ✓ 确认执行${isModified ? ' (已修改)' : ''}`
     });
 
     // Note: modal close and data refresh handled by 'trade_confirmed' WebSocket event
@@ -1581,12 +1636,18 @@ async function handleDeferDecision() {
       });
       const result = await response.json();
 
-      if (!result.success) {
+      if (!response.ok || !result.success) {
+        const isExpired = response.status === 404;
         discussionMessages.value.push({
           agentName: '系统',
-          content: `❌ 拒绝交易失败: ${result.message || result.detail || '未知错误'}`,
+          content: isExpired
+            ? `⏰ 交易已过期，请等待下一次分析信号`
+            : `❌ 拒绝交易失败: ${result.message || result.detail || '未知错误'}`,
           timestamp: new Date().toISOString()
         });
+        // Close modal even on failure — trade is no longer actionable
+        showDecisionModal.value = false;
+        resetDecisionState();
         return;
       }
 
@@ -1706,7 +1767,13 @@ async function fetchConfig() {
         analysisInterval: data.analysis_interval_hours || 4,
         maxLeverage: data.max_leverage || 20,
         maxPositionPercent: data.max_position_percent || 0.3,
-        useOkxTrading: data.trader_type === 'okx'
+        useOkxTrading: !!data.use_okx_trading,
+        okxConfigured: !!data.okx?.configured,
+        okxApiKeyLast4: data.okx?.api_key_last4 || '',
+        okxDemoMode: data.okx?.demo_mode ?? true,
+        okxApiKey: '',
+        okxSecretKey: '',
+        okxPassphrase: ''
       };
     }
   } catch (e) {
@@ -1719,6 +1786,21 @@ async function fetchConfig() {
 async function saveSettings() {
   savingSettings.value = true;
   try {
+    const okxSelected = !!settingsForm.value.useOkxTrading;
+    const okxApiKey = (settingsForm.value.okxApiKey || '').trim();
+    const okxSecretKey = (settingsForm.value.okxSecretKey || '').trim();
+    const okxPassphrase = (settingsForm.value.okxPassphrase || '').trim();
+
+    if (okxSelected && !settingsForm.value.okxConfigured && !(okxApiKey && okxSecretKey && okxPassphrase)) {
+      alert('选择 OKX 后，需要填写 API Key / Secret Key / Passphrase');
+      return;
+    }
+
+    if (okxSelected && !settingsForm.value.okxDemoMode) {
+      const ok = confirm('你正在切换到 OKX 实盘（非模拟盘）。确认继续？');
+      if (!ok) return;
+    }
+
     const response = await fetch('/api/trading/config', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1726,7 +1808,13 @@ async function saveSettings() {
         analysis_interval_hours: parseInt(settingsForm.value.analysisInterval),
         max_leverage: parseInt(settingsForm.value.maxLeverage),
         max_position_percent: parseFloat(settingsForm.value.maxPositionPercent),
-        use_okx_trading: settingsForm.value.useOkxTrading
+        use_okx_trading: okxSelected,
+        okx_demo_mode: !!settingsForm.value.okxDemoMode,
+        ...(okxSelected && okxApiKey && okxSecretKey && okxPassphrase ? {
+          okx_api_key: okxApiKey,
+          okx_secret_key: okxSecretKey,
+          okx_passphrase: okxPassphrase
+        } : {})
       })
     });
     const data = await response.json();
@@ -1734,8 +1822,8 @@ async function saveSettings() {
       showSettings.value = false;
 
       let message = '设置已更新';
-      if (data.needs_restart) {
-        message = '设置已更新。切换交易模式需要重置系统才能生效。';
+      if (data.needs_reset) {
+        message = '设置已更新。切换交易环境需要重置系统才能生效。';
       }
 
       discussionMessages.value.push({
@@ -1747,6 +1835,35 @@ async function saveSettings() {
     }
   } catch (e) {
     console.error('Error saving settings:', e);
+  } finally {
+    savingSettings.value = false;
+  }
+}
+
+async function clearOkxCredentials() {
+  if (!confirm('确认清除 OKX 凭证？清除后会自动切回 PaperTrader（需要重置系统生效）。')) return;
+  savingSettings.value = true;
+  try {
+    const response = await fetch('/api/trading/config', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clear_okx_credentials: true,
+        use_okx_trading: false
+      })
+    });
+    const data = await response.json();
+    if (data.status === 'updated') {
+      await fetchConfig();
+      discussionMessages.value.push({
+        agentName: '系统',
+        content: 'OKX 凭证已清除。请重置系统以应用切换。',
+        parsed: parseDiscussionContent('OKX 凭证已清除。请重置系统以应用切换。'),
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (e) {
+    console.error('Error clearing OKX credentials:', e);
   } finally {
     savingSettings.value = false;
   }
@@ -1822,13 +1939,9 @@ function connectWebSocket() {
     console.log('Trading WebSocket connected');
     // Restore state after reconnection
     fetchStatus();
-    fetchTradingMode();
     fetchAccount();
     fetchPosition();
-    // If in semi_auto mode, also refresh pending trades
-    if (tradingMode.value?.mode === 'semi_auto') {
-      fetchPendingTrades();
-    }
+    fetchPendingTrades();
   };
 
   ws.onmessage = (event) => {
@@ -1948,30 +2061,9 @@ function handleWebSocketMessage(msg) {
         break;
       }
 
-      // Mode-aware behavior:
-      // - SEMI_AUTO: Don't show modal here, wait for 'pending_trade_created' event
-      // - FULL_AUTO: Trade already executed by backend, don't show modal
-      // - MANUAL: Show info message only, no modal
-      if (msg.mode === 'semi_auto') {
-        discussionMessages.value.push({
-          agentName: '系统',
-          content: `🔔 信号生成: ${signal.direction?.toUpperCase()} ${signal.leverage}x - 等待确认...`,
-          timestamp: new Date().toISOString()
-        });
-        break; // Wait for pending_trade_created
-      } else if (msg.mode === 'manual') {
-        discussionMessages.value.push({
-          agentName: '系统',
-          content: `📊 手动模式信号: ${signal.direction?.toUpperCase()} ${signal.leverage}x - 仅供参考`,
-          timestamp: new Date().toISOString()
-        });
-        break; // Manual mode: no modal, no execution
-      }
-
-      // FULL_AUTO mode: trade already executed, show info only
       discussionMessages.value.push({
         agentName: '系统',
-        content: `⚡ 全自动执行: ${signal.direction?.toUpperCase()} ${signal.leverage}x`,
+        content: `🔔 信号生成: ${signal.direction?.toUpperCase()} ${signal.leverage}x - 等待确认...`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -1989,10 +2081,13 @@ function handleWebSocketMessage(msg) {
         take_profit: pendingSignal.take_profit_price || 0,
         stop_loss: pendingSignal.stop_loss_price || 0,
         current_price: pendingSignal.entry_price || 0,
+        amount_percent: pendingSignal.amount_percent || 0.5,
         reasoning: pendingReasoning
       };
 
       modifiedLeverage.value = pendingDecision.value.leverage;
+      modifiedDirection.value = pendingDecision.value.direction;
+      modifiedAmountPercent.value = pendingDecision.value.amount_percent;
       showDecisionModal.value = true;
 
       // Refresh pending trades list
@@ -2218,16 +2313,12 @@ async function refreshAllData() {
     fetchPosition(),
     fetchTradeHistory(),
     fetchPerformance(),
-    fetchTradingMode(),
     fetchMtfAnalysis(),
     fetchAgentWeights(),
     fetchDiscussionMessages(),
-    fetchDegradation()
+    fetchDegradation(),
+    fetchPendingTrades(),
   ]);
-  // Fetch pending trades only in semi_auto mode
-  if (tradingMode.value.mode === 'semi_auto') {
-    await fetchPendingTrades();
-  }
 }
 
 
@@ -2244,10 +2335,10 @@ onMounted(async () => {
     fetchDiscussionMessages(),  // Restore discussion messages on page load
     fetchDrawdown(),  // Fetch drawdown data
     fetchPerformance(),  // Fetch performance metrics from backend
-    fetchTradingMode(),  // Phase 1.3: HITL Mode
     fetchMtfAnalysis(),  // Phase 3.1: MTF Analysis
     fetchAgentWeights(),  // Phase 3.2: Agent Weights
-    fetchDegradation()  // Phase 2.3: Degradation Status
+    fetchDegradation(),  // Phase 2.3: Degradation Status
+    fetchPendingTrades(),
   ]);
 
 

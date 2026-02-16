@@ -11,7 +11,10 @@ import re
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Set
-from bs4 import BeautifulSoup
+try:
+    from bs4 import BeautifulSoup
+except Exception:  # Optional dependency in some dev/test setups
+    BeautifulSoup = None
 
 # Import custom exceptions
 try:
@@ -114,6 +117,10 @@ class NewsCrawler:
     
     async def fetch_latest(self) -> List[NewsItem]:
         """获取最新新闻"""
+        if BeautifulSoup is None:
+            logger.warning("[NewsCrawler] bs4 not installed; skipping HTML news crawling")
+            return []
+
         all_news = []
         
         async with aiohttp.ClientSession(

@@ -7,7 +7,6 @@ import uuid
 import logging
 import io
 import re
-import random
 from datetime import datetime
 from typing import Dict, Any, List
 
@@ -27,7 +26,11 @@ chart_generator_en = ChartGenerator(language="en")
 
 def get_storage() -> ReportStorage:
     """依赖注入：获取报告存储服务"""
-    return get_report_storage()
+    try:
+        return get_report_storage()
+    except RuntimeError as e:
+        # Strict mode: fail fast instead of silently using in-memory fallback.
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 @router.post("")
@@ -160,11 +163,11 @@ def _extract_numbers_from_text(text: str) -> List[float]:
 def _extract_financial_data(report: Dict[str, Any]) -> Dict[str, Any]:
     """从报告中提取财务数据"""
     steps = report.get("steps", [])
-    company_name = report.get("company_name", "Target Company")
+    now_year = datetime.now().year
 
     # 尝试从步骤中提取财务数据
     financial_data = {
-        "years": [2021, 2022, 2023, 2024],
+        "years": [],
         "revenue": [],
         "gross_margin": [],
         "net_margin": []
@@ -179,36 +182,12 @@ def _extract_financial_data(report: Dict[str, Any]) -> Dict[str, Any]:
             numbers = _extract_numbers_from_text(result)
             if len(numbers) >= 3:
                 # 假设找到的数字是收入
-                financial_data["revenue"] = numbers[:4] if len(numbers) >= 4 else numbers
+                financial_data["revenue"] = numbers[:4] if len(numbers) >= 4 else numbers[:]
+                break
 
-    # 如果没有提取到数据，生成示例数据
-    if not financial_data["revenue"]:
-        base = random.randint(500, 2000) * 10000  # 500万-2000万基数
-        growth = random.uniform(1.2, 1.5)  # 20%-50%增长
-        financial_data["revenue"] = [
-            base,
-            base * growth,
-            base * growth * growth,
-            base * growth * growth * growth
-        ]
-
-    if not financial_data["gross_margin"]:
-        base_margin = random.uniform(0.35, 0.55)
-        financial_data["gross_margin"] = [
-            base_margin,
-            base_margin + 0.03,
-            base_margin + 0.06,
-            base_margin + 0.08
-        ]
-
-    if not financial_data["net_margin"]:
-        base_margin = random.uniform(0.05, 0.20)
-        financial_data["net_margin"] = [
-            base_margin,
-            base_margin + 0.03,
-            base_margin + 0.05,
-            base_margin + 0.07
-        ]
+    if financial_data["revenue"]:
+        n = len(financial_data["revenue"])
+        financial_data["years"] = list(range(now_year - n + 1, now_year + 1))
 
     return financial_data
 
@@ -216,68 +195,70 @@ def _extract_financial_data(report: Dict[str, Any]) -> Dict[str, Any]:
 def _extract_market_data(report: Dict[str, Any]) -> Dict[str, Any]:
     """从报告中提取市场数据"""
     company_name = report.get("company_name", "目标公司")
+    # Best-effort extraction from step results if present; otherwise return empty to avoid fake charts.
+    steps = report.get("steps", [])
+    market_size = []
+    years = []
 
-    # 生成市场份额数据
-    target_share = random.randint(8, 25)
-    remaining = 100 - target_share
-    competitors = [
-        random.randint(15, 30),
-        random.randint(10, 25),
-        random.randint(5, 15)
-    ]
-    # 归一化使总和为remaining
-    total_comp = sum(competitors)
-    competitors = [int(c / total_comp * (remaining - 10)) for c in competitors]
-    others = remaining - sum(competitors)
+    for step in steps:
+        result = step.get("result", {})
+        if isinstance(result, dict):
+            if isinstance(result.get("market_size"), list):
+                market_size = result.get("market_size")
+                years = result.get("years") or []
+                break
 
-    return {
-        "companies": [company_name, "竞争对手A", "竞争对手B", "其他"],
-        "shares": [target_share] + competitors[:2] + [others],
-        "years": [2020, 2021, 2022, 2023, 2024],
-        "market_size": [
-            random.randint(800, 1200),
-            random.randint(1000, 1500),
-            random.randint(1300, 1900),
-            random.randint(1700, 2400),
-            random.randint(2200, 3000)
-        ],
-        "growth_rate": [None, 25, 28, 26, 24]
+    data = {
+        "companies": [],
+        "shares": [],
+        "years": years,
+        "market_size": market_size,
+        "growth_rate": []
     }
+
+    # Some reports may embed "companies/shares" directly.
+    for step in steps:
+        result = step.get("result", {})
+        if isinstance(result, dict) and result.get("companies") and result.get("shares"):
+            data["companies"] = result.get("companies") or []
+            data["shares"] = result.get("shares") or []
+            break
+
+    # Fallback: allow displaying only the target company if share data exists elsewhere (still requires real values).
+    if data["companies"] and company_name not in data["companies"]:
+        pass
+
+    return data
 
 
 def _extract_health_metrics(report: Dict[str, Any]) -> Dict[str, float]:
     """从报告中提取财务健康度指标"""
-    return {
-        "liquidity": random.uniform(0.55, 0.85),
-        "solvency": random.uniform(0.50, 0.80),
-        "profitability": random.uniform(0.45, 0.75),
-        "efficiency": random.uniform(0.50, 0.80),
-        "growth": random.uniform(0.60, 0.90)
-    }
+    steps = report.get("steps", [])
+    for step in steps:
+        result = step.get("result", {})
+        if isinstance(result, dict) and isinstance(result.get("health_metrics"), dict):
+            return result.get("health_metrics") or {}
+    return {}
 
 
 def _extract_risk_data(report: Dict[str, Any]) -> List[Dict[str, Any]]:
     """从报告中提取风险数据"""
-    risk_types = [
-        {"name": "市场风险", "probability": random.uniform(0.3, 0.7), "impact": random.uniform(0.4, 0.8)},
-        {"name": "竞争风险", "probability": random.uniform(0.4, 0.8), "impact": random.uniform(0.5, 0.9)},
-        {"name": "技术风险", "probability": random.uniform(0.2, 0.5), "impact": random.uniform(0.3, 0.6)},
-        {"name": "运营风险", "probability": random.uniform(0.3, 0.6), "impact": random.uniform(0.4, 0.7)},
-        {"name": "政策风险", "probability": random.uniform(0.2, 0.5), "impact": random.uniform(0.5, 0.8)},
-    ]
-    return risk_types
+    steps = report.get("steps", [])
+    for step in steps:
+        result = step.get("result", {})
+        if isinstance(result, dict) and isinstance(result.get("risks"), list):
+            return result.get("risks") or []
+    return []
 
 
 def _extract_team_scores(report: Dict[str, Any]) -> Dict[str, float]:
     """从报告中提取团队评分"""
-    return {
-        "technical": random.uniform(0.55, 0.90),
-        "market": random.uniform(0.50, 0.85),
-        "leadership": random.uniform(0.55, 0.90),
-        "execution": random.uniform(0.50, 0.85),
-        "finance": random.uniform(0.45, 0.80),
-        "innovation": random.uniform(0.55, 0.90)
-    }
+    steps = report.get("steps", [])
+    for step in steps:
+        result = step.get("result", {})
+        if isinstance(result, dict) and isinstance(result.get("team_scores"), dict):
+            return result.get("team_scores") or {}
+    return {}
 
 
 @router.get("/{report_id}/charts/{chart_type}")
@@ -311,39 +292,48 @@ async def get_report_chart(
     try:
         img_buffer = io.BytesIO()
 
-        if chart_type == "revenue":
-            data = _extract_financial_data(report)
-            generator.generate_revenue_chart(data, img_buffer)
+        no_data_msg = "Insufficient data for this chart." if language == "en" else "该报告暂无足够数据生成此图表。"
 
-        elif chart_type == "profit":
-            data = _extract_financial_data(report)
-            generator.generate_profit_chart(data, img_buffer)
+        try:
+            if chart_type == "revenue":
+                data = _extract_financial_data(report)
+                generator.generate_revenue_chart(data, img_buffer)
 
-        elif chart_type == "financial_health":
-            data = _extract_health_metrics(report)
-            generator.generate_financial_health_score(data, img_buffer)
+            elif chart_type == "profit":
+                data = _extract_financial_data(report)
+                generator.generate_profit_chart(data, img_buffer)
 
-        elif chart_type == "market_share":
-            data = _extract_market_data(report)
-            generator.generate_market_share_chart(data, img_buffer)
+            elif chart_type == "financial_health":
+                data = _extract_health_metrics(report)
+                generator.generate_financial_health_score(data, img_buffer)
 
-        elif chart_type == "market_growth":
-            data = _extract_market_data(report)
-            generator.generate_market_growth_chart(data, img_buffer)
+            elif chart_type == "market_share":
+                data = _extract_market_data(report)
+                generator.generate_market_share_chart(data, img_buffer)
 
-        elif chart_type == "risk_matrix":
-            data = _extract_risk_data(report)
-            generator.generate_risk_matrix(data, img_buffer)
+            elif chart_type == "market_growth":
+                data = _extract_market_data(report)
+                generator.generate_market_growth_chart(data, img_buffer)
 
-        elif chart_type == "team_radar":
-            data = _extract_team_scores(report)
-            generator.generate_team_radar_chart(data, img_buffer)
+            elif chart_type == "risk_matrix":
+                data = _extract_risk_data(report)
+                generator.generate_risk_matrix(data, img_buffer)
+
+            elif chart_type == "team_radar":
+                data = _extract_team_scores(report)
+                generator.generate_team_radar_chart(data, img_buffer)
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unknown chart type: {chart_type}. Supported types: revenue, profit, financial_health, market_share, market_growth, risk_matrix, team_radar"
+                )
+        except ValueError as e:
+            # Truthful empty-state chart (no demo/random fallback).
+            logger.info(f"Chart {chart_type} has insufficient data for report {report_id}: {e}")
+            generator.generate_empty_chart(no_data_msg, img_buffer)
 
         else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unknown chart type: {chart_type}. Supported types: revenue, profit, financial_health, market_share, market_growth, risk_matrix, team_radar"
-            )
+            pass
 
         # 重置buffer位置
         img_buffer.seek(0)

@@ -11,6 +11,9 @@ Note: WebSocket /ws/v2/analysis/{session_id} 保留在 main.py
 """
 import uuid
 import logging
+import os
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -18,9 +21,19 @@ from ...models.analysis_models import (
     AnalysisRequest,
     AnalysisDepth
 )
+from ...core.session_store import SessionStore
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _safe_session_store() -> Optional[SessionStore]:
+    """Create a SessionStore if Redis is available; otherwise return None."""
+    try:
+        return SessionStore()
+    except Exception as e:
+        logger.warning(f"[AnalysisV2] Redis unavailable, session persistence disabled: {e}")
+        return None
 
 
 @router.post("/start")
@@ -46,6 +59,7 @@ async def start_analysis_v2(request: AnalysisRequest):
     try:
         # 生成session_id
         session_id = f"{request.scenario.value}_{uuid.uuid4().hex[:12]}"
+        now = datetime.now().isoformat()
 
         # 估算时长
         if request.config.depth == AnalysisDepth.QUICK:
@@ -56,6 +70,20 @@ async def start_analysis_v2(request: AnalysisRequest):
             estimated_duration = "1-2小时"
 
         logger.info(f"[V2 API] Starting analysis: scenario={request.scenario.value}, depth={request.config.depth.value}, session={session_id}")
+
+        # Persist an initial snapshot for /status recovery (even before WS connects).
+        store = _safe_session_store()
+        if store:
+            store.save_session(session_id, {
+                "session_id": session_id,
+                "scenario": request.scenario.value,
+                "request": request.model_dump(),
+                "status": "created",
+                "results": {},
+                "workflow": [],
+                "started_at": now,
+                "updated_at": now,
+            })
 
         return {
             "success": True,
@@ -87,15 +115,54 @@ async def get_analysis_status_v2(session_id: str):
             "quick_judgment": {...} (如果有快速判断结果)
         }
     """
-    # TODO: 从Redis获取session状态
-    # session_data = await session_store.get_session(session_id)
+    store = _safe_session_store()
+    if not store:
+        raise HTTPException(status_code=503, detail="Session store unavailable (Redis not connected)")
 
-    # Phase 1: 返回模拟数据
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+
+    workflow: List[Dict[str, Any]] = session.get("workflow") or []
+    total = len(workflow)
+
+    def _step_status(step: Dict[str, Any]) -> str:
+        return str(step.get("status") or "pending")
+
+    # Compute overall progress based on completed steps and current running step progress.
+    progress = 0.0
+    current_step: Optional[Dict[str, Any]] = None
+    for idx, step in enumerate(workflow):
+        st = _step_status(step)
+        if st in ("success", "completed"):
+            progress += 100.0 / max(total, 1)
+        elif st == "running":
+            progress += float(step.get("progress") or 0) / 100.0 * (100.0 / max(total, 1))
+            if current_step is None:
+                current_step = {**step, "step_number": idx + 1}
+        elif current_step is None and st in ("pending", "skipped", "error"):
+            # Best effort: expose the first non-success step as the "current" step.
+            current_step = {**step, "step_number": idx + 1}
+
+    if total == 0:
+        # No workflow yet (WS not connected or not started).
+        progress = 0.0
+
+    status = session.get("status") or "running"
+    if session.get("error"):
+        status = "error"
+
     return {
         "session_id": session_id,
-        "status": "running",
-        "progress": 50,
-        "message": "V2 API - Session status (mock data)"
+        "status": status,
+        "progress": int(min(max(progress, 0.0), 100.0)),
+        "current_step": current_step,
+        "workflow": workflow,
+        "started_at": session.get("started_at"),
+        "updated_at": session.get("updated_at"),
+        "quick_judgment": session.get("quick_judgment"),
+        "final_report": session.get("final_report"),
+        "error": session.get("error"),
     }
 
 
@@ -119,21 +186,28 @@ async def get_available_scenarios():
             ]
         }
     """
-    return {
-        "scenarios": [
-            {
-                "id": "early-stage-investment",
-                "name": "早期投资",
-                "description": "评估Angel/Seed/Series A投资机会",
-                "icon": "rocket",
-                "stages": ["angel", "seed", "pre-a", "series-a"],
-                "required_inputs": ["company_name", "stage"],
-                "optional_inputs": ["bp_file_id", "team_members", "industry", "founded_year"],
-                "supported_depths": ["quick", "standard", "comprehensive"],
-                "quick_mode_duration": "3-5分钟",
-                "standard_mode_duration": "30-45分钟",
-                "status": "active"
-            },
+    # Keep the surface area "real": default to only scenarios that are production-ready.
+    # Enable experimental scenarios explicitly via env for internal testing.
+    enable_experimental = os.getenv("ANALYSIS_ENABLE_EXPERIMENTAL_SCENARIOS", "false").lower() == "true"
+
+    scenarios = [
+        {
+            "id": "early-stage-investment",
+            "name": "早期投资",
+            "description": "评估Angel/Seed/Series A投资机会",
+            "icon": "rocket",
+            "stages": ["angel", "seed", "pre-a", "series-a"],
+            "required_inputs": ["company_name", "stage"],
+            "optional_inputs": ["bp_file_id", "team_members", "industry", "founded_year"],
+            "supported_depths": ["quick", "standard", "comprehensive"],
+            "quick_mode_duration": "3-5分钟",
+            "standard_mode_duration": "30-45分钟",
+            "status": "active"
+        }
+    ]
+
+    if enable_experimental:
+        scenarios.extend([
             {
                 "id": "growth-investment",
                 "name": "成长期投资",
@@ -145,7 +219,7 @@ async def get_available_scenarios():
                 "supported_depths": ["quick", "standard", "comprehensive"],
                 "quick_mode_duration": "3-5分钟",
                 "standard_mode_duration": "30-45分钟",
-                "status": "coming_soon"
+                "status": "active"
             },
             {
                 "id": "public-market-investment",
@@ -157,7 +231,7 @@ async def get_available_scenarios():
                 "supported_depths": ["quick", "standard", "comprehensive"],
                 "quick_mode_duration": "3-5分钟",
                 "standard_mode_duration": "20-30分钟",
-                "status": "coming_soon"
+                "status": "active"
             },
             {
                 "id": "alternative-investment",
@@ -169,7 +243,7 @@ async def get_available_scenarios():
                 "supported_depths": ["quick", "standard", "comprehensive"],
                 "quick_mode_duration": "3-5分钟",
                 "standard_mode_duration": "25-35分钟",
-                "status": "coming_soon"
+                "status": "active"
             },
             {
                 "id": "industry-research",
@@ -181,7 +255,8 @@ async def get_available_scenarios():
                 "supported_depths": ["quick", "standard", "comprehensive"],
                 "quick_mode_duration": "5-8分钟",
                 "standard_mode_duration": "45-60分钟",
-                "status": "coming_soon"
+                "status": "active"
             }
-        ]
-    }
+        ])
+
+    return {"scenarios": scenarios}

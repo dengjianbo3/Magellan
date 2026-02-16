@@ -27,7 +27,8 @@ function t(key, params = {}) {
 
   if (!value) {
     console.warn(`[i18n] Missing translation for key: ${key}`)
-    return key
+    // Return empty string so `t('x') || 'fallback'` works as intended across the app.
+    return ''
   }
 
   // Replace parameters like {name} with actual values

@@ -187,6 +187,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useLanguage } from '@/composables/useLanguage';
 import DynamicFormField from '@/components/common/DynamicFormField.vue';
 import { getScenarioFormFields } from '@/config/scenarios.js';
+import { API_BASE } from '@/config/api';
 
 const { t, locale } = useLanguage();
 
@@ -329,7 +330,7 @@ async function uploadFile(file, fieldName) {
     : '/api/v2/upload/financial';
   
   try {
-    const response = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${endpoint}`, {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
       method: 'POST',
       body: formData
     });

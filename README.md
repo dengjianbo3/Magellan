@@ -62,7 +62,7 @@ Magellan/
 ### Auto Trading System
 - LangGraph workflow orchestration (7 nodes)
 - Three-layer trigger system (FastMonitor → TriggerAgent → Full Analysis)
-- HITL modes: Full Auto / Semi-Auto / Manual
+- HITL: Semi-Auto only (all trades require human confirmation)
 - Anti-bias system (direction neutralization, echo chamber detection)
 - ATR-based dynamic stop loss
 - Funding rate awareness

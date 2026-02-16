@@ -309,9 +309,9 @@ class TestSEMIAUTOMode:
             get_mode_manager
         )
 
-        assert TradingMode.FULL_AUTO.value == "full_auto"
         assert TradingMode.SEMI_AUTO.value == "semi_auto"
-        assert TradingMode.MANUAL.value == "manual"
+        assert not hasattr(TradingMode, "FULL_AUTO")
+        assert not hasattr(TradingMode, "MANUAL")
 
     @pytest.mark.asyncio
     async def test_pending_trade_creation(self):
@@ -371,64 +371,33 @@ class TestHITLModeBlocking:
         ]
 
     @pytest.mark.asyncio
-    async def test_full_auto_mode_allows_execution(self, sample_votes):
-        """Test that FULL_AUTO mode allows trade execution."""
+    async def test_hitl_only_requires_confirmation(self, sample_votes):
+        """HITL-only: should always create a pending trade and wait for confirmation."""
         from app.core.trading.mode_manager import get_mode_manager, TradingMode, ExecutionAction
 
         mode_manager = get_mode_manager()
 
-        # Set to FULL_AUTO
-        await mode_manager.set_mode(TradingMode.FULL_AUTO)
-        current_mode = await mode_manager.get_mode()
-        assert current_mode == TradingMode.FULL_AUTO
-
-        # Check execution action
-        action = await mode_manager.check_execution_allowed(
-            direction="long",
-            confidence=80,
-            leverage=5
-        )
-        assert action == ExecutionAction.EXECUTE
-
-    @pytest.mark.asyncio
-    async def test_semi_auto_mode_blocks_execution(self, sample_votes):
-        """Test that SEMI_AUTO mode blocks execution and creates pending trade."""
-        from app.core.trading.mode_manager import get_mode_manager, TradingMode, ExecutionAction
-
-        mode_manager = get_mode_manager()
-
-        # Set to SEMI_AUTO
+        # Any set_mode call should normalize to SEMI_AUTO
         await mode_manager.set_mode(TradingMode.SEMI_AUTO)
         current_mode = await mode_manager.get_mode()
         assert current_mode == TradingMode.SEMI_AUTO
 
-        # Check execution action - should require approval
-        action = await mode_manager.check_execution_allowed(
-            direction="long",
-            confidence=80,
-            leverage=5
+        decision = await mode_manager.should_execute(
+            {
+                "direction": "long",
+                "confidence": 80,
+                "leverage": 5,
+                "entry_price": 95000.0,
+                "take_profit_price": 102600.0,
+                "stop_loss_price": 92150.0,
+                "amount_percent": 0.2,
+                "symbol": "BTC-USDT-SWAP",
+                "reasoning": "test",
+            }
         )
-        assert action == ExecutionAction.REQUIRE_APPROVAL
 
-    @pytest.mark.asyncio
-    async def test_manual_mode_blocks_execution(self, sample_votes):
-        """Test that MANUAL mode blocks all execution."""
-        from app.core.trading.mode_manager import get_mode_manager, TradingMode, ExecutionAction
-
-        mode_manager = get_mode_manager()
-
-        # Set to MANUAL
-        await mode_manager.set_mode(TradingMode.MANUAL)
-        current_mode = await mode_manager.get_mode()
-        assert current_mode == TradingMode.MANUAL
-
-        # Check execution action - should block
-        action = await mode_manager.check_execution_allowed(
-            direction="long",
-            confidence=80,
-            leverage=5
-        )
-        assert action == ExecutionAction.BLOCK
+        assert decision.action == ExecutionAction.WAIT_CONFIRMATION
+        assert decision.pending_trade_id is not None
 
     @pytest.mark.asyncio
     async def test_pending_trade_approval_flow(self):
@@ -513,9 +482,8 @@ class TestHITLModeBlocking:
         manager2 = TradingModeManager()
         mode = await manager2.get_mode()
 
-        # Mode should persist (if Redis is available)
-        # Note: Without Redis, this may fall back to default
-        assert mode in [TradingMode.SEMI_AUTO, TradingMode.FULL_AUTO]
+        # HITL-only: only SEMI_AUTO exists.
+        assert mode == TradingMode.SEMI_AUTO
 
 
 class TestWeightLearnerIntegration:

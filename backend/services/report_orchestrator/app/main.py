@@ -60,10 +60,11 @@ JSON_LOGS = os.getenv("JSON_LOGS", "false").lower() == "true"
 configure_logging(log_level=LOG_LEVEL, json_logs=JSON_LOGS)
 logger = get_logger(__name__)
 
-# --- Service Discovery ---
-EXTERNAL_DATA_URL = "http://external_data_service:8006"
-LLM_GATEWAY_URL = "http://llm_gateway:8003"
-FILE_SERVICE_URL = "http://file_service:8001"
+# --- Service Discovery (prefer env, fall back to docker-compose internal DNS names) ---
+# docker-compose uses PUBLIC_DATA_URL to point at external_data_service
+EXTERNAL_DATA_URL = os.getenv("PUBLIC_DATA_URL", os.getenv("EXTERNAL_DATA_URL", "http://external_data_service:8006"))
+LLM_GATEWAY_URL = os.getenv("LLM_GATEWAY_URL", "http://llm_gateway:8003")
+FILE_SERVICE_URL = os.getenv("FILE_SERVICE_URL", "http://file_service:8001")
 
 # --- Check Standalone Mode ---
 STANDALONE_MODE = os.getenv("STANDALONE_MODE", "false").lower() == "true"
@@ -109,7 +110,7 @@ async def _auto_start_trading():
     """Auto-start trading system after a short delay to ensure all services are ready."""
     await asyncio.sleep(10)  # Wait for services to be ready
     try:
-        from .api.trading_routes import get_trading_system
+        from app.services.trading_system import get_trading_system
         logger.info("Auto-starting trading system...")
         system = await get_trading_system()
         await system.start()
@@ -125,10 +126,20 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# --- CORS config ---
+def _parse_cors_origins(raw: str):
+    raw = (raw or "").strip()
+    if not raw:
+        return ["http://localhost:5174", "http://localhost:8081"]
+    if raw == "*" or raw.lower() == "all":
+        return ["*"]
+    parts = [p.strip() for p in raw.split(",")]
+    return [p for p in parts if p]
+
 # --- CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=_parse_cors_origins(os.getenv("CORS_ALLOW_ORIGINS", "")),
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
@@ -145,7 +156,7 @@ active_meetings: Dict[str, Any] = {}
 
 # Phase 4: Initialize Roundtable Router dependencies
 set_active_meetings(active_meetings)
-set_llm_gateway_url("http://llm_gateway:8003")
+set_llm_gateway_url(LLM_GATEWAY_URL)
 print("[main.py] ✅ Roundtable Router initialized")
 
 # Phase 2: Initialize Prometheus metrics
@@ -232,7 +243,7 @@ class WebSocketMessage(BaseModel):
     preliminary_report: Optional[FullReportResponse] = None
     key_questions: Optional[List[str]] = None
 
-USER_SERVICE_URL = "http://user_service:8008"
+USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://user_service:8008")
 
 class UserPersona(BaseModel):
     investment_style: Optional[str] = "Balanced"
@@ -467,11 +478,15 @@ def read_root():
 # ============================================================================
 
 # V5: Initialize Redis Session Store for persistence
+REQUIRE_REDIS = os.getenv("REPORT_ORCH_REQUIRE_REDIS", "false").lower() == "true"
 try:
     session_store = SessionStore()  # Uses REDIS_URL from environment
     print("[main.py] ✅ SessionStore initialized successfully")
 except Exception as e:
     print(f"[main.py] ❌ Failed to initialize SessionStore: {e}")
+    if REQUIRE_REDIS:
+        # PoC/hosted environments should fail-fast to avoid silent data loss.
+        raise
     print("[main.py] ⚠️  Falling back to in-memory storage")
     session_store = None
 
@@ -888,7 +903,7 @@ async def health_check():
     # Check LLM Gateway (optional - don't fail health check if down)
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get("http://llm_gateway:8003/health", timeout=2.0)
+            response = await client.get(f"{LLM_GATEWAY_URL}/health", timeout=2.0)
             if response.status_code == 200:
                 health_status["checks"]["llm_gateway"] = {
                     "status": "healthy",

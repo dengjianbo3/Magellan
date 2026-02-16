@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Service for handling file uploads
   file_service:
@@ -12,6 +10,9 @@ services:
       - uploads_volume:/var/uploads
     environment:
       - PYTHONUNBUFFERED=1
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:5174,http://localhost:8081}
+      - FILE_SERVICE_MAX_UPLOAD_BYTES=${FILE_SERVICE_MAX_UPLOAD_BYTES:-52428800}
+      - FILE_SERVICE_ALLOWED_EXTENSIONS=${FILE_SERVICE_ALLOWED_EXTENSIONS:-.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt}
 
   # Service for parsing Excel files
   excel_parser:
@@ -24,6 +25,7 @@ services:
       - uploads_volume:/var/uploads
     environment:
       - PYTHONUNBUFFERED=1
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:5174,http://localhost:8081}
 
   # Service for parsing Word files
   word_parser:
@@ -36,6 +38,7 @@ services:
       - uploads_volume:/var/uploads
     environment:
       - PYTHONUNBUFFERED=1
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:5174,http://localhost:8081}
 
   # Service for fetching public company data
   external_data_service:
@@ -46,6 +49,9 @@ services:
     networks:
       - default
     command: uvicorn app.main:app --host 0.0.0.0 --port 8006 --reload
+    environment:
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:5174,http://localhost:8081}
+      - EXTERNAL_DATA_ALLOW_MOCK=${EXTERNAL_DATA_ALLOW_MOCK:-false}
 
   report_orchestrator:
     build: ./backend/services/report_orchestrator
@@ -72,10 +78,18 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - PYTHONUNBUFFERED=1
+      # PoC safety defaults
+      - REPORT_ORCH_REQUIRE_REDIS=${REPORT_ORCH_REQUIRE_REDIS:-true}
+      - REPORT_STORAGE_ALLOW_MEMORY_FALLBACK=${REPORT_STORAGE_ALLOW_MEMORY_FALLBACK:-false}
+      - ENABLE_TEST_ENDPOINTS=${ENABLE_TEST_ENDPOINTS:-false}
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:5174,http://localhost:8081}
+      - REPORT_ORCH_UPLOAD_MAX_MB=${REPORT_ORCH_UPLOAD_MAX_MB:-50}
+      - KNOWLEDGE_UPLOAD_MAX_MB=${KNOWLEDGE_UPLOAD_MAX_MB:-20}
       # Trading system config (can be overridden in .env)
       - SCHEDULER_INTERVAL_HOURS=${SCHEDULER_INTERVAL_HOURS:-4}
       - TRADING_SYMBOL=${TRADING_SYMBOL:-BTC-USDT-SWAP}
-      - USE_OKX_TRADING=${USE_OKX_TRADING:-true}
+      # Safety default: do not enable OKX via env for hosted testing.
+      - USE_OKX_TRADING=${USE_OKX_TRADING:-false}
       - OKX_DEMO_MODE=${OKX_DEMO_MODE:-true}
       - MAX_LEVERAGE=${MAX_LEVERAGE:-20}
       - MAX_POSITION_PERCENT=${MAX_POSITION_PERCENT:-30}
@@ -91,6 +105,7 @@ services:
       - ./backend/services/user_service/app:/usr/src/app/app
     environment:
       - PYTHONUNBUFFERED=1
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:5174,http://localhost:8081}
 
   internal_knowledge_service:
     build: ./backend/services/internal_knowledge_service
@@ -104,6 +119,8 @@ services:
     env_file:
       - .env # Pass all environment variables from .env file
     command: uvicorn app.main:app --host 0.0.0.0 --port 8009 --reload
+    environment:
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:5174,http://localhost:8081}
 
   web_search_service:
     build: ./backend/services/web_search_service
@@ -115,6 +132,8 @@ services:
     env_file:
       - .env # Load TAVILY_API_KEY from .env file
     command: uvicorn app.main:app --host 0.0.0.0 --port 8010 --reload
+    environment:
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:5174,http://localhost:8081}
 
   # Service acting as a gateway to Large Language Models
   llm_gateway:
@@ -128,6 +147,13 @@ services:
       - ./backend/services/llm_gateway/app:/usr/src/app/app
     environment:
       - PYTHONUNBUFFERED=1
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:5174,http://localhost:8081}
+      - LLM_RATE_LIMIT_PER_MINUTE=${LLM_RATE_LIMIT_PER_MINUTE:-60}
+      - LLM_MAX_HISTORY_MESSAGES=${LLM_MAX_HISTORY_MESSAGES:-120}
+      - LLM_MAX_MESSAGE_CHARS=${LLM_MAX_MESSAGE_CHARS:-8000}
+      - LLM_MAX_TOTAL_CHARS=${LLM_MAX_TOTAL_CHARS:-60000}
+      - LLM_UPLOAD_MAX_BYTES=${LLM_UPLOAD_MAX_BYTES:-20971520}
+      - LLM_EXPOSE_PROVIDER_INFO=${LLM_EXPOSE_PROVIDER_INFO:-false}
 
   # --- Placeholder services to be implemented ---
   # Add other services like excel_parser, etc. here

@@ -6,9 +6,9 @@ Knowledge Base Router
 """
 
 import os
-import shutil
 import tempfile
 import logging
+import importlib.util
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
@@ -17,9 +17,37 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# python-multipart provides the `multipart` module required by FastAPI for File/Form.
+_MULTIPART_AVAILABLE = importlib.util.find_spec("multipart") is not None
+
 # Global references - will be set from main.py
 _vector_store = None
 _rag_service = None
+KNOWLEDGE_UPLOAD_MAX_MB = max(1, int(os.getenv("KNOWLEDGE_UPLOAD_MAX_MB", "20")))
+
+
+def _save_upload_with_limit(file: UploadFile, suffix: str, max_bytes: int) -> tuple[str, int]:
+    total = 0
+    chunk_size = 1024 * 1024  # 1MB
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+        while True:
+            buf = file.file.read(chunk_size)
+            if not buf:
+                break
+            total += len(buf)
+            if total > max_bytes:
+                temp_path = temp_file.name
+                temp_file.close()
+                try:
+                    os.unlink(temp_path)
+                except Exception:
+                    pass
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File too large. Max {KNOWLEDGE_UPLOAD_MAX_MB}MB",
+                )
+            temp_file.write(buf)
+        return temp_file.name, total
 
 
 def set_vector_store(store):
@@ -48,92 +76,101 @@ def get_rag_service():
     return _rag_service
 
 
-@router.post("/upload", tags=["Knowledge Base"])
-async def upload_document(
-    file: UploadFile = File(...),
-    title: Optional[str] = Form(None),
-    category: Optional[str] = Form(None),
-    store=Depends(get_vector_store)
-):
-    """
-    Upload a document to the knowledge base
+if _MULTIPART_AVAILABLE:
+    @router.post("/upload", tags=["Knowledge Base"])
+    async def upload_document(
+        file: UploadFile = File(...),
+        title: Optional[str] = Form(None),
+        category: Optional[str] = Form(None),
+        store=Depends(get_vector_store),
+    ):
+        """
+        Upload a document to the knowledge base
 
-    Supports: PDF, DOCX, TXT
-    """
-    # Import here to avoid circular imports
-    from ...services.document_parser import DocumentParser
+        Supports: PDF, DOCX, TXT
+        """
+        # Import here to avoid circular imports
+        from ...services.document_parser import DocumentParser
 
-    # Validate file type
-    allowed_extensions = ['.pdf', '.docx', '.doc', '.txt']
-    file_ext = os.path.splitext(file.filename)[1].lower()
+        # Validate file type
+        allowed_extensions = [".pdf", ".docx", ".doc", ".txt"]
+        filename = file.filename or "document"
+        file_ext = os.path.splitext(filename)[1].lower()
 
-    if file_ext not in allowed_extensions:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}"
-        )
-
-    try:
-        # Save uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_file:
-            shutil.copyfileobj(file.file, temp_file)
-            temp_path = temp_file.name
-
-        # Parse document
-        parsed_doc = DocumentParser.parse_document(temp_path)
-
-        # Clean up temp file
-        os.unlink(temp_path)
-
-        if not parsed_doc['success']:
+        if file_ext not in allowed_extensions:
             raise HTTPException(
                 status_code=400,
-                detail=f"Failed to parse document: {parsed_doc['metadata'].get('error', 'Unknown error')}"
+                detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}",
             )
 
-        text = parsed_doc['text']
-        if not text.strip():
-            raise HTTPException(status_code=400, detail="Document contains no extractable text")
+        max_bytes = KNOWLEDGE_UPLOAD_MAX_MB * 1024 * 1024
+        temp_path = None
+        try:
+            # Save uploaded file temporarily with hard size cap
+            temp_path, _size = _save_upload_with_limit(file, file_ext, max_bytes)
 
-        # Chunk text for better retrieval
-        chunks = DocumentParser.chunk_text(text, chunk_size=500, chunk_overlap=50)
+            # Parse document
+            parsed_doc = DocumentParser.parse_document(temp_path)
 
-        # Prepare metadata
-        base_metadata = {
-            "title": title or file.filename,
-            "filename": file.filename,
-            "category": category or "general",
-            "file_type": file_ext[1:],  # Remove dot
-            **parsed_doc['metadata']
-        }
+            if not parsed_doc["success"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Failed to parse document: {parsed_doc['metadata'].get('error', 'Unknown error')}",
+                )
 
-        # Add chunks to vector store
-        doc_ids = []
-        for i, chunk in enumerate(chunks):
-            chunk_metadata = base_metadata.copy()
-            chunk_metadata['chunk_index'] = i
-            chunk_metadata['total_chunks'] = len(chunks)
+            text = parsed_doc["text"]
+            if not text.strip():
+                raise HTTPException(status_code=400, detail="Document contains no extractable text")
 
-            doc_id = store.add_document(
-                text=chunk,
-                metadata=chunk_metadata
-            )
-            doc_ids.append(doc_id)
+            # Chunk text for better retrieval
+            chunks = DocumentParser.chunk_text(text, chunk_size=500, chunk_overlap=50)
 
-        logger.info(f"Uploaded document: {file.filename}, {len(chunks)} chunks")
+            # Prepare metadata
+            base_metadata = {
+                "title": title or filename,
+                "filename": filename,
+                "category": category or "general",
+                "file_type": file_ext[1:],  # Remove dot
+                **parsed_doc["metadata"],
+            }
 
-        return {
-            "success": True,
-            "document_ids": doc_ids,
-            "num_chunks": len(chunks),
-            "metadata": base_metadata
-        }
+            # Add chunks to vector store
+            doc_ids = []
+            for i, chunk in enumerate(chunks):
+                chunk_metadata = base_metadata.copy()
+                chunk_metadata["chunk_index"] = i
+                chunk_metadata["total_chunks"] = len(chunks)
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error uploading document: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to upload document: {str(e)}")
+                doc_id = store.add_document(text=chunk, metadata=chunk_metadata)
+                doc_ids.append(doc_id)
+
+            logger.info(f"Uploaded document: {filename}, {len(chunks)} chunks")
+
+            return {
+                "success": True,
+                "document_ids": doc_ids,
+                "num_chunks": len(chunks),
+                "metadata": base_metadata,
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error uploading document: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to upload document: {str(e)}")
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except Exception:
+                    pass
+else:
+    @router.post("/upload", tags=["Knowledge Base"])
+    async def upload_document_unavailable():
+        raise HTTPException(
+            status_code=503,
+            detail='Form data requires "python-multipart" to be installed (module "multipart").',
+        )
 
 
 @router.get("/documents", tags=["Knowledge Base"])

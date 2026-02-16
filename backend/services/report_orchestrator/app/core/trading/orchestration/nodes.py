@@ -94,7 +94,7 @@ async def signal_generation_node(state: TradingState) -> Dict[str, Any]:
     Output: agent_votes
     """
     start_time = time.time()
-    mode = state.get("mode", "full_auto")
+    mode = state.get("mode", "semi_auto")
     logger.info("node_started", node="signal_generation", mode=mode)
     
     try:

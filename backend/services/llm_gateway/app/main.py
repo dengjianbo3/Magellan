@@ -6,11 +6,14 @@ LLM Gateway Service - 支持多 LLM 提供商
 import os
 import io
 import asyncio
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
+import json
+import time
+from collections import defaultdict, deque
+from threading import Lock
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal, Dict, Any, Union
-import json
 
 from .core.config import settings
 
@@ -72,9 +75,31 @@ app = FastAPI(
     version="5.0.0"
 )
 
+def _parse_cors_allow_origins() -> List[str]:
+    """
+    Comma-separated origins, or JSON list.
+    Examples:
+      CORS_ALLOW_ORIGINS=http://localhost:5174,http://localhost:8081
+      CORS_ALLOW_ORIGINS=["https://poc.example.com"]
+      CORS_ALLOW_ORIGINS=*
+    """
+    raw = (os.getenv("CORS_ALLOW_ORIGINS") or "http://localhost:5174,http://localhost:8081").strip()
+    if not raw:
+        return []
+    if raw in ("*", "all"):
+        return ["*"]
+    if raw.startswith("["):
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                return [str(x).strip() for x in data if str(x).strip()]
+        except Exception:
+            pass
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_parse_cors_allow_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -85,6 +110,89 @@ gemini_client = None
 kimi_client = None
 deepseek_client = None
 current_provider = settings.DEFAULT_LLM_PROVIDER
+
+# --- PoC hardening: request limits ---
+LLM_RATE_LIMIT_PER_MINUTE = max(1, int(os.getenv("LLM_RATE_LIMIT_PER_MINUTE", "60")))
+LLM_MAX_HISTORY_MESSAGES = max(1, int(os.getenv("LLM_MAX_HISTORY_MESSAGES", "120")))
+LLM_MAX_MESSAGE_CHARS = max(256, int(os.getenv("LLM_MAX_MESSAGE_CHARS", "8000")))
+LLM_MAX_TOTAL_CHARS = max(1024, int(os.getenv("LLM_MAX_TOTAL_CHARS", "60000")))
+LLM_UPLOAD_MAX_BYTES = max(1024 * 1024, int(os.getenv("LLM_UPLOAD_MAX_BYTES", str(20 * 1024 * 1024))))
+LLM_EXPOSE_PROVIDER_INFO = os.getenv("LLM_EXPOSE_PROVIDER_INFO", "false").lower() == "true"
+
+
+class SlidingWindowRateLimiter:
+    """Simple in-memory per-key rate limiter for PoC protection."""
+
+    def __init__(self, limit: int, window_seconds: int):
+        self.limit = limit
+        self.window_seconds = window_seconds
+        self._events: Dict[str, deque] = defaultdict(deque)
+        self._lock = Lock()
+
+    def check(self, key: str) -> tuple[bool, int]:
+        now = time.time()
+        with self._lock:
+            events = self._events[key]
+            cutoff = now - self.window_seconds
+            while events and events[0] <= cutoff:
+                events.popleft()
+            if len(events) >= self.limit:
+                retry_after = max(1, int(self.window_seconds - (now - events[0])))
+                return False, retry_after
+            events.append(now)
+            return True, 0
+
+
+_rate_limiter = SlidingWindowRateLimiter(limit=LLM_RATE_LIMIT_PER_MINUTE, window_seconds=60)
+
+
+def _client_key(req: Request) -> str:
+    forwarded_for = req.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return req.client.host if req.client else "unknown"
+
+
+def _enforce_rate_limit(req: Request, route_name: str):
+    key = f"{route_name}:{_client_key(req)}"
+    allowed, retry_after = _rate_limiter.check(key)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Try again in {retry_after}s.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+def _validate_generate_request(payload: GenerateRequest):
+    if len(payload.history) > LLM_MAX_HISTORY_MESSAGES:
+        raise HTTPException(status_code=400, detail=f"Too many history messages (max {LLM_MAX_HISTORY_MESSAGES})")
+
+    total_chars = 0
+    for msg in payload.history:
+        for part in msg.parts:
+            part_len = len(part or "")
+            if part_len > LLM_MAX_MESSAGE_CHARS:
+                raise HTTPException(status_code=400, detail=f"Message part too large (max {LLM_MAX_MESSAGE_CHARS} chars)")
+            total_chars += part_len
+
+    if total_chars > LLM_MAX_TOTAL_CHARS:
+        raise HTTPException(status_code=400, detail=f"Request content too large (max {LLM_MAX_TOTAL_CHARS} chars)")
+
+
+def _validate_chat_completion_request(payload: ChatCompletionRequest):
+    if len(payload.messages) > LLM_MAX_HISTORY_MESSAGES:
+        raise HTTPException(status_code=400, detail=f"Too many messages (max {LLM_MAX_HISTORY_MESSAGES})")
+
+    total_chars = 0
+    for msg in payload.messages:
+        content = msg.content or ""
+        if len(content) > LLM_MAX_MESSAGE_CHARS:
+            raise HTTPException(status_code=400, detail=f"Message too large (max {LLM_MAX_MESSAGE_CHARS} chars)")
+        total_chars += len(content)
+
+    if total_chars > LLM_MAX_TOTAL_CHARS:
+        raise HTTPException(status_code=400, detail=f"Request content too large (max {LLM_MAX_TOTAL_CHARS} chars)")
 
 @app.on_event("startup")
 def startup_event():
@@ -807,6 +915,9 @@ async def call_kimi_with_tools(request: ChatCompletionRequest) -> Dict[str, Any]
 @app.get("/providers", response_model=ProvidersResponse, tags=["Configuration"])
 async def get_providers():
     """获取可用的 LLM 提供商列表和当前选择"""
+    if not LLM_EXPOSE_PROVIDER_INFO:
+        raise HTTPException(status_code=404, detail="Not Found")
+
     providers = [
         ProviderInfo(
             name="gemini",
@@ -833,6 +944,8 @@ async def get_providers():
 async def set_provider(provider_name: Literal["gemini", "kimi", "deepseek"]):
     """切换当前 LLM 提供商"""
     global current_provider
+    if not LLM_EXPOSE_PROVIDER_INFO:
+        raise HTTPException(status_code=404, detail="Not Found")
 
     if provider_name == "gemini" and not gemini_client:
         raise HTTPException(status_code=400, detail="Gemini is not configured. Please set GOOGLE_API_KEY in .env")
@@ -847,7 +960,7 @@ async def set_provider(provider_name: Literal["gemini", "kimi", "deepseek"]):
     return {"message": f"Provider switched to {provider_name}", "current_provider": current_provider}
 
 @app.post("/chat", response_model=GenerateResponse, tags=["AI Generation"])
-async def chat_handler(request: GenerateRequest):
+async def chat_handler(payload: GenerateRequest, request: Request):
     """
     处理聊天请求，根据当前提供商路由到对应的 LLM
 
@@ -855,23 +968,25 @@ async def chat_handler(request: GenerateRequest):
     - 否则使用全局 current_provider
     """
     # 确定使用哪个提供商
-    provider = request.provider or current_provider
+    _enforce_rate_limit(request, "chat")
+    _validate_generate_request(payload)
+    provider = payload.provider or current_provider
 
     print(f"[LLM Gateway] Chat request using provider: {provider}")
 
     if provider == "gemini":
-        content = await call_gemini(request)
+        content = await call_gemini(payload)
     elif provider == "kimi":
-        content = await call_kimi(request)
+        content = await call_kimi(payload)
     elif provider == "deepseek":
-        content = await call_deepseek(request)
+        content = await call_deepseek(payload)
     else:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 
     return GenerateResponse(content=content)
 
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse, tags=["AI Generation"])
-async def chat_completions(request: ChatCompletionRequest):
+async def chat_completions(payload: ChatCompletionRequest, request: Request):
     """
     OpenAI 兼容的 Chat Completions API (支持 Tool Calling)
 
@@ -879,23 +994,26 @@ async def chat_completions(request: ChatCompletionRequest):
     - 返回 OpenAI 格式的响应，包括 tool_calls
     - 可以通过 request.provider 指定提供商，否则使用全局 current_provider
     """
-    provider = request.provider or current_provider
+    _enforce_rate_limit(request, "chat_completions")
+    _validate_chat_completion_request(payload)
+    provider = payload.provider or current_provider
 
     print(f"[LLM Gateway] Chat completions request using provider: {provider}")
-    if request.tools:
-        print(f"[LLM Gateway] Tool calling enabled with {len(request.tools)} tools")
+    if payload.tools:
+        print(f"[LLM Gateway] Tool calling enabled with {len(payload.tools)} tools")
 
     if provider == "gemini":
-        return await call_gemini_with_tools(request)
+        return await call_gemini_with_tools(payload)
     elif provider == "deepseek":
-        return await call_deepseek_with_tools(request)
+        return await call_deepseek_with_tools(payload)
     elif provider == "kimi":
-        return await call_kimi_with_tools(request)
+        return await call_kimi_with_tools(payload)
     else:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 
 @app.post("/generate_from_file", response_model=GenerateResponse, tags=["AI Generation"])
 async def generate_from_file(
+    request: Request,
     prompt: str = Form(...),
     file: UploadFile = File(...)
 ):
@@ -911,10 +1029,16 @@ async def generate_from_file(
         raise HTTPException(status_code=503, detail="Gemini client is not available. File understanding requires Gemini.")
 
     try:
+        _enforce_rate_limit(request, "generate_from_file")
+        if len(prompt) > LLM_MAX_TOTAL_CHARS:
+            raise HTTPException(status_code=400, detail=f"Prompt too large (max {LLM_MAX_TOTAL_CHARS} chars)")
+
         import time
 
         # 1. 读取文件内容
-        file_content = await file.read()
+        file_content = await file.read(LLM_UPLOAD_MAX_BYTES + 1)
+        if len(file_content) > LLM_UPLOAD_MAX_BYTES:
+            raise HTTPException(status_code=413, detail=f"File too large (max {LLM_UPLOAD_MAX_BYTES} bytes)")
         file_io = io.BytesIO(file_content)
         file_io.name = file.filename
 
@@ -965,7 +1089,7 @@ def read_root():
 
 # --- Streaming Chat Endpoint (SSE) ---
 @app.post("/chat/stream", tags=["Streaming"])
-async def chat_stream(request: GenerateRequest):
+async def chat_stream(payload: GenerateRequest, request: Request):
     """
     流式聊天端点 - 使用 Server-Sent Events (SSE) 逐字返回响应
     
@@ -977,12 +1101,15 @@ async def chat_stream(request: GenerateRequest):
     
     if not gemini_client:
         raise HTTPException(status_code=503, detail="Gemini client not available")
+
+    _enforce_rate_limit(request, "chat_stream")
+    _validate_generate_request(payload)
     
     async def generate_stream():
         try:
             # 转换消息格式
             contents = []
-            for msg in request.history:
+            for msg in payload.history:
                 contents.append(
                     types.Content(
                         role=msg.role,
@@ -992,8 +1119,8 @@ async def chat_stream(request: GenerateRequest):
             
             # 构建配置
             config_dict = {}
-            if request.temperature is not None:
-                config_dict["temperature"] = request.temperature
+            if payload.temperature is not None:
+                config_dict["temperature"] = payload.temperature
             
             config = types.GenerateContentConfig(**config_dict) if config_dict else None
             
@@ -1040,4 +1167,3 @@ def health_check():
         "kimi_model": settings.KIMI_MODEL_NAME,
         "deepseek_model": settings.DEEPSEEK_MODEL_NAME
     }
-

@@ -19,7 +19,12 @@ from enum import Enum
 from typing import Optional, Dict, List, Tuple, Any
 
 import httpx
-import structlog
+import logging
+
+try:
+    import structlog
+except Exception:  # Optional in some local/dev test setups
+    structlog = None
 
 from .trading_config import get_infra_config
 
@@ -30,7 +35,7 @@ try:
 except ImportError:
     USE_SHARED_INDICATORS = False
 
-logger = structlog.get_logger(__name__)
+logger = structlog.get_logger(__name__) if structlog is not None else logging.getLogger(__name__)
 
 
 class TrendDirection(Enum):

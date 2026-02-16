@@ -119,7 +119,7 @@ export default defineConfig({
       },
       // Web Search API
       '/api/search': {
-        target: 'http://localhost:8004',
+        target: 'http://localhost:8010',
         changeOrigin: true
       }
     }
