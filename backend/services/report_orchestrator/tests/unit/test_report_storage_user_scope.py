@@ -1,7 +1,8 @@
 from app.services.storage.report_storage import ReportStorage
 
 
-def test_memory_backend_get_delete_are_user_scoped():
+def test_memory_backend_get_delete_are_user_scoped(monkeypatch):
+    monkeypatch.setenv("REPORT_STORAGE_ALLOW_MEMORY_FALLBACK", "true")
     storage = ReportStorage(session_store=None)
 
     storage.save("r1", {"id": "r1", "user_id": "u1", "title": "u1-report"})

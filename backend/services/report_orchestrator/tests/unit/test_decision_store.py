@@ -402,7 +402,7 @@ class TestTradingDecisionStore:
         result = await store.save_decision(decision)
         
         assert result == True
-        assert "trading:decisions:save-test" in store._redis._data
+        assert "trading:decisions:default_user:save-test" in store._redis._data
     
     @pytest.mark.asyncio
     async def test_get_decision(self):

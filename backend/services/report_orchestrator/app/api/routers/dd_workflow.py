@@ -71,13 +71,16 @@ if _MULTIPART_AVAILABLE:
     async def start_dd_analysis_http(
         company_name: str = Form(...),
         bp_file: UploadFile = File(...),
-        _user_id: str = Form(default="default_user"),
+        user_id: str = Form(default="default_user"),
         current_user: CurrentUser = Depends(get_current_user),
     ):
         """
         HTTP version of DD analysis (for testing without WebSocket).
         Returns immediately with session_id, use /dd/session/{session_id} to poll status.
         """
+        # Backward-compat form field; authenticated user takes precedence.
+        _ = user_id
+
         # Generate session ID
         session_id = f"dd_{company_name}_{uuid.uuid4().hex[:8]}"
 

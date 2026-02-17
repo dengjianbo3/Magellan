@@ -4,10 +4,10 @@ function uniqueEmail() {
   return `e2e_${Date.now()}_${Math.floor(Math.random() * 1e9)}@example.com`;
 }
 
-async function waitForPositionOpen(request, timeoutMs = 15_000) {
+async function waitForPositionOpen(request, headers, timeoutMs = 15_000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const res = await request.get('/api/trading/position');
+    const res = await request.get('/api/trading/position', { headers });
     if (res.ok()) {
       const body = await res.json();
       if (body?.has_position) return body;
@@ -39,9 +39,6 @@ test('Trading HITL: pending -> confirm -> TP close', async ({ page, request }) =
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
 
-  // Clean state for determinism.
-  await request.post('/api/trading/reset', { data: {} });
-
   const email = uniqueEmail();
   const password = 'Password123!';
 
@@ -57,6 +54,12 @@ test('Trading HITL: pending -> confirm -> TP close', async ({ page, request }) =
 
   // Land in authenticated area.
   await expect(page).not.toHaveURL(/\/register$/);
+  const token = await page.evaluate(() => localStorage.getItem('access_token'));
+  expect(token).toBeTruthy();
+  const authHeaders = { Authorization: `Bearer ${token}` };
+
+  // Clean state for determinism.
+  await request.post('/api/trading/reset', { headers: authHeaders, data: {} });
 
   // Trading page.
   await page.goto('/trading');
@@ -64,7 +67,8 @@ test('Trading HITL: pending -> confirm -> TP close', async ({ page, request }) =
 
   // Create a pending trade through the backend mock hook.
   const createRes = await request.post(
-    '/api/trading/mock/create-pending?symbol=BTC-USDT-SWAP&direction=long&leverage=2&amount_percent=0.2&tp_percent=1.0&sl_percent=1.0'
+    '/api/trading/mock/create-pending?symbol=BTC-USDT-SWAP&direction=long&leverage=2&amount_percent=0.2&tp_percent=1.0&sl_percent=1.0',
+    { headers: authHeaders },
   );
   expect(createRes.ok()).toBeTruthy();
   const created = await createRes.json();
@@ -79,7 +83,7 @@ test('Trading HITL: pending -> confirm -> TP close', async ({ page, request }) =
   await page.getByRole('button', { name: '确认执行' }).click();
 
   // Backend confirms position opened (UI can lag due to WS/polling).
-  await waitForPositionOpen(request, 20_000);
+  await waitForPositionOpen(request, authHeaders, 20_000);
 
   // Position should open.
   const positionPanel = page.getByText('当前持仓').locator('xpath=ancestor::div[contains(@class,\"glass-panel\")][1]');
@@ -87,7 +91,7 @@ test('Trading HITL: pending -> confirm -> TP close', async ({ page, request }) =
   await expect(positionPanel.getByText('LONG 2x')).toBeVisible({ timeout: 30_000 });
 
   // Simulate TP hit to close the position.
-  const tpRes = await request.post('/api/trading/mock/test-tp-sl?trigger_type=tp', { data: {} });
+  const tpRes = await request.post('/api/trading/mock/test-tp-sl?trigger_type=tp', { headers: authHeaders, data: {} });
   expect(tpRes.ok()).toBeTruthy();
   const tpPayload = await tpRes.json();
   expect(tpPayload.success).toBeTruthy();

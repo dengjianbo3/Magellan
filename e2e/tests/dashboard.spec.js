@@ -20,9 +20,13 @@ test('Dashboard: stats and recent reports reflect real reports API', async ({ pa
 
   // Land in authenticated area.
   await expect(page).not.toHaveURL(/\/register$/);
+  const token = await page.evaluate(() => localStorage.getItem('access_token'));
+  expect(token).toBeTruthy();
+  const authHeaders = { Authorization: `Bearer ${token}` };
 
   // Create a report via API
   const saveRes = await request.post('/api/reports', {
+    headers: authHeaders,
     data: {
       session_id: `dd_e2e_${Date.now()}`,
       project_name: 'E2E Report',

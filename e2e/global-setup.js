@@ -1,12 +1,12 @@
 import { setTimeout as delay } from 'node:timers/promises';
 
-async function waitForHttpOk(url, timeoutMs = 60_000) {
+async function waitForHttpStatus(url, acceptedStatuses = [200], timeoutMs = 60_000) {
   const start = Date.now();
   let lastErr = null;
   while (Date.now() - start < timeoutMs) {
     try {
       const res = await fetch(url, { method: 'GET' });
-      if (res.ok) return;
+      if (acceptedStatuses.includes(res.status)) return;
       lastErr = new Error(`Non-OK ${res.status} for ${url}`);
     } catch (e) {
       lastErr = e;
@@ -20,8 +20,8 @@ export default async function globalSetup() {
   const baseURL = process.env.E2E_BASE_URL || 'http://localhost:8081';
 
   // Web (SPA) reachable
-  await waitForHttpOk(`${baseURL}/`);
+  await waitForHttpStatus(`${baseURL}/`, [200]);
 
-  // Backend reachable via proxy
-  await waitForHttpOk(`${baseURL}/api/trading/status`);
+  // Backend reachable via proxy (401 means endpoint is up and auth is enforced).
+  await waitForHttpStatus(`${baseURL}/api/trading/status`, [200, 401]);
 }
