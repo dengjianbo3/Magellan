@@ -543,6 +543,7 @@ import { getRoundtableAgents } from '../config/agents';
 import { API_BASE, apiUrl, wsUrl } from '@/config/api';
 import { marked } from 'marked';
 import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
+import { readJsonResponse } from '@/services/httpResponse';
 
 const { t, locale } = useLanguage();
 
@@ -638,7 +639,7 @@ const loadHistoryList = async () => {
         ...getAuthHeaders()
       }
     });
-    const data = await response.json();
+    const data = await readJsonResponse(response, 'Load roundtable history');
     console.log('[Roundtable] Loaded history:', data);
     if (data.success) {
       historyList.value = data.roundtables;
@@ -1452,13 +1453,7 @@ const submitIntervention = async () => {
         content: interventionContent.value.trim()
       })
     });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to submit intervention');
-    }
-
-    const result = await response.json();
+    const result = await readJsonResponse(response, 'Submit human intervention');
     console.log('[HITL] Intervention submitted successfully:', result);
 
     // Add user's intervention message to the messages list for UI feedback

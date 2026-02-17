@@ -6,6 +6,7 @@
 // Environment variables for API URLs
 import { API_BASE, WS_BASE } from '@/config/api';
 import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
+import { readJsonResponse } from '@/services/httpResponse';
 
 const DD_API_URL = API_BASE;
 const DD_WS_URL = WS_BASE;
@@ -87,13 +88,7 @@ export class DDAnalysisService {
         body: formData,
         // Don't set Content-Type header, let browser set it with boundary
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-        throw new Error(errorData.detail || `Upload failed: ${response.statusText}`);
-      }
-
-      return await response.json();
+      return await readJsonResponse(response, 'BP file upload');
     } catch (error) {
       console.error('[DD Service] Upload error:', error);
       throw error;
@@ -333,10 +328,7 @@ export class DDAnalysisService {
         ...getAuthHeaders()
       }
     });
-    if (!response.ok) {
-      throw new Error(`Failed to get session status: ${response.statusText}`);
-    }
-    return await response.json();
+    return await readJsonResponse(response, 'Get DD session status');
   }
 
   /**
@@ -352,11 +344,7 @@ export class DDAnalysisService {
       body: JSON.stringify(reportData)
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to save report: ${response.statusText}`);
-    }
-
-    return await response.json();
+    return await readJsonResponse(response, 'Save report');
   }
 
   /**
@@ -368,10 +356,7 @@ export class DDAnalysisService {
         ...getAuthHeaders()
       }
     });
-    if (!response.ok) {
-      throw new Error(`Failed to get reports: ${response.statusText}`);
-    }
-    return await response.json();
+    return await readJsonResponse(response, 'Get reports');
   }
 }
 

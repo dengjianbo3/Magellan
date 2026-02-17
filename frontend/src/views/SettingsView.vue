@@ -262,6 +262,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useLanguage } from '../composables/useLanguage';
 import { useToast } from '../composables/useToast';
 import { AUTH_BASE } from '@/config/api';
+import { readJsonResponse } from '@/services/httpResponse';
 
 const { t, locale, setLocale } = useLanguage();
 const { success, error: showError, info } = useToast();
@@ -336,18 +337,13 @@ const fetchProfile = async () => {
         'Authorization': `Bearer ${token}`
       }
     });
-
-    if (response.ok) {
-      const data = await response.json();
-      userProfile.value = {
-        name: data.name || '',
-        email: data.email || '',
-        organization: data.organization || '',
-        role: data.role || 'analyst'
-      };
-    } else {
-      console.error('[Settings] Failed to fetch profile');
-    }
+    const data = await readJsonResponse(response, 'Fetch profile');
+    userProfile.value = {
+      name: data.name || '',
+      email: data.email || '',
+      organization: data.organization || '',
+      role: data.role || 'analyst'
+    };
   } catch (err) {
     console.error('[Settings] Error fetching profile:', err);
   } finally {
@@ -376,16 +372,11 @@ const saveProfile = async () => {
         organization: userProfile.value.organization
       })
     });
-
-    if (response.ok) {
-      success('Profile updated successfully');
-    } else {
-      const data = await response.json();
-      showError(data.detail || 'Failed to update profile');
-    }
+    await readJsonResponse(response, 'Update profile');
+    success('Profile updated successfully');
   } catch (err) {
     console.error('[Settings] Error saving profile:', err);
-    showError('Failed to update profile');
+    showError(err.message || 'Failed to update profile');
   } finally {
     profileSaving.value = false;
   }
@@ -417,17 +408,12 @@ const changePassword = async () => {
         new_password: passwordForm.value.newPassword
       })
     });
-
-    if (response.ok) {
-      success('Password changed successfully');
-      passwordForm.value = { currentPassword: '', newPassword: '', confirmPassword: '' };
-    } else {
-      const data = await response.json();
-      showError(data.detail || 'Failed to change password');
-    }
+    await readJsonResponse(response, 'Change password');
+    success('Password changed successfully');
+    passwordForm.value = { currentPassword: '', newPassword: '', confirmPassword: '' };
   } catch (err) {
     console.error('[Settings] Error changing password:', err);
-    showError('Failed to change password');
+    showError(err.message || 'Failed to change password');
   } finally {
     passwordSaving.value = false;
   }

@@ -189,6 +189,7 @@ import DynamicFormField from '@/components/common/DynamicFormField.vue';
 import { getScenarioFormFields } from '@/config/scenarios.js';
 import { API_BASE } from '@/config/api';
 import { getAuthHeaders } from '@/services/authHeaders';
+import { readJsonResponse } from '@/services/httpResponse';
 
 const { t, locale } = useLanguage();
 
@@ -349,13 +350,8 @@ async function uploadFile(file, fieldName) {
       },
       body: formData
     });
-    
-    if (!response.ok) {
-      const error = await response.text();
-      return { success: false, error };
-    }
-    
-    const result = await response.json();
+
+    const result = await readJsonResponse(response, `Upload ${fieldName}`);
     return { success: true, file_id: result.file_id };
   } catch (error) {
     return { success: false, error: error.message };

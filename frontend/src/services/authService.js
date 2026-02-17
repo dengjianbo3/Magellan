@@ -2,6 +2,7 @@
  * Auth Service - Handles authentication API calls
  */
 import { AUTH_BASE } from '@/config/api'
+import { readJsonResponse } from '@/services/httpResponse'
 
 const AUTH_API = `${AUTH_BASE}/api/auth`
 
@@ -37,12 +38,7 @@ class AuthService {
       headers
     })
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.detail || `Request failed: ${response.status}`)
-    }
-
-    return response.json()
+    return readJsonResponse(response, `Auth ${endpoint}`)
   }
 
   /**
