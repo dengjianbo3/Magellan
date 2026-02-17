@@ -569,7 +569,7 @@ class BaseOrchestrator(ABC):
             "objective": step.name,
             "inputs": inputs,
             "target": self.request.target,
-            "config": self.request.config.dict(),
+            "config": self.request.config.model_dump(),
             "data_sources": template.data_sources,
             "quick_mode": template.quick_mode,
             "context": {
@@ -768,10 +768,10 @@ class BaseOrchestrator(ABC):
                 "session_id": self.session_id,
                 "user_id": self.request.user_id,
                 "scenario": self.scenario.value,
-                "request": self.request.dict(),
+                "request": self.request.model_dump(),
                 "status": status,
                 "results": self.results,
-                "workflow": [step.dict() for step in self.workflow],
+                "workflow": [step.model_dump() for step in self.workflow],
                 "started_at": self.started_at,
                 "updated_at": datetime.now().isoformat()
             }
@@ -780,10 +780,10 @@ class BaseOrchestrator(ABC):
 
             if quick_judgment:
                 # Handle Pydantic models in quick_judgment
-                if hasattr(quick_judgment, 'dict'):
+                if hasattr(quick_judgment, 'model_dump'):
+                    context["quick_judgment"] = quick_judgment.model_dump()
+                elif hasattr(quick_judgment, 'dict'):
                     context["quick_judgment"] = quick_judgment.dict()
-                elif hasattr(quick_judgment, 'model_dump'):
-                     context["quick_judgment"] = quick_judgment.model_dump()
                 else:
                     context["quick_judgment"] = quick_judgment
             
@@ -798,10 +798,10 @@ class BaseOrchestrator(ABC):
                 # Prepare quick_judgment data for report
                 qj_data = {}
                 if quick_judgment:
-                    if hasattr(quick_judgment, 'dict'):
-                        qj_data = quick_judgment.dict()
-                    elif hasattr(quick_judgment, 'model_dump'):
+                    if hasattr(quick_judgment, 'model_dump'):
                         qj_data = quick_judgment.model_dump()
+                    elif hasattr(quick_judgment, 'dict'):
+                        qj_data = quick_judgment.dict()
                     else:
                         qj_data = quick_judgment
 
@@ -814,7 +814,7 @@ class BaseOrchestrator(ABC):
                     "analysis_type": self.scenario.value,
                     "status": "completed",
                     "created_at": datetime.now().isoformat(),
-                    "steps": [step.dict() for step in self.workflow],
+                    "steps": [step.model_dump() for step in self.workflow],
                     "preliminary_im": final_report if final_report else {}, # Map final report structure here
                     "quick_judgment": qj_data
                 }

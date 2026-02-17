@@ -10,10 +10,54 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
 from typing import Dict, Any
+from uuid import uuid4
 
 # Import the modules to test
 from app.core.trading.orchestration.graph import TradingGraph
 from app.core.trading.orchestration.state import TradingState
+
+
+class InMemoryAsyncRedis:
+    """Minimal async Redis stub for mode manager tests."""
+
+    def __init__(self):
+        self._kv: Dict[str, str] = {}
+        self._lists: Dict[str, list] = {}
+
+    async def ping(self):
+        return True
+
+    async def get(self, key: str):
+        return self._kv.get(key)
+
+    async def set(self, key: str, value: str):
+        self._kv[key] = value
+        return True
+
+    async def setex(self, key: str, _ttl: int, value: str):
+        self._kv[key] = value
+        return True
+
+    async def lpush(self, key: str, value: str):
+        self._lists.setdefault(key, [])
+        self._lists[key].insert(0, value)
+        return len(self._lists[key])
+
+    async def lrange(self, key: str, start: int, end: int):
+        values = self._lists.get(key, [])
+        if end == -1:
+            return values[start:]
+        return values[start : end + 1]
+
+    async def lrem(self, key: str, _count: int, value: str):
+        values = self._lists.get(key, [])
+        self._lists[key] = [v for v in values if v != value]
+        return True
+
+
+@pytest.fixture
+def fake_redis():
+    return InMemoryAsyncRedis()
 
 
 class TestLangGraphWorkflow:
@@ -34,14 +78,17 @@ class TestLangGraphWorkflow:
     def mock_executor(self):
         """Create mock executor agent."""
         executor = MagicMock()
+        executor.user_id = f"langgraph-test-{uuid4().hex}"
         executor.execute = AsyncMock(return_value=MagicMock(
             direction="long",
             leverage=5,
             confidence=75,
+            amount_percent=0.2,
             entry_price=95000.0,
             take_profit_price=102600.0,
             stop_loss_price=92150.0,
-            reasoning="Test execution"
+            reasoning="Test execution",
+            timestamp=datetime.now(),
         ))
         return executor
     
@@ -125,7 +172,7 @@ class TestLangGraphWorkflow:
         """Test that TradingGraph initializes correctly."""
         graph = TradingGraph()
         assert graph is not None
-        assert graph._compiled_graph is not None
+        assert graph.graph is not None
     
     @pytest.mark.asyncio
     async def test_graph_run_with_mock_votes(
@@ -140,10 +187,11 @@ class TestLangGraphWorkflow:
         
         # Run with pre-computed votes
         result = await graph.run(
+            trigger_reason="scheduled",
             position_context=sample_position_context,
-            market_snapshot=sample_market_data,
+            market_data=sample_market_data,
             agent_votes=sample_votes,
-            executor=mock_executor
+            trade_executor=mock_executor
         )
         
         assert result is not None
@@ -151,7 +199,7 @@ class TestLangGraphWorkflow:
         
         if "final_signal" in result and result["final_signal"]:
             signal = result["final_signal"]
-            assert signal.direction in ["long", "short", "hold", "close"]
+            assert signal["direction"] in ["long", "short", "hold", "close"]
     
     @pytest.mark.asyncio
     async def test_risk_assessment_blocks_high_risk(
@@ -170,10 +218,11 @@ class TestLangGraphWorkflow:
         
         graph = TradingGraph()
         result = await graph.run(
+            trigger_reason="scheduled",
             position_context=sample_position_context,
-            market_snapshot=sample_market_data,
+            market_data=sample_market_data,
             agent_votes=low_confidence_votes,
-            executor=mock_executor
+            trade_executor=mock_executor
         )
         
         # With very low confidence, execution might be blocked
@@ -196,16 +245,18 @@ class TestLangGraphWorkflow:
         
         graph = TradingGraph()
         result = await graph.run(
+            trigger_reason="scheduled",
             position_context=sample_position_context,
-            market_snapshot=sample_market_data,
+            market_data=sample_market_data,
             agent_votes=sample_votes,
-            executor=mock_executor,
+            trade_executor=mock_executor,
             on_message=on_message_callback
         )
         
         # Should receive messages (Risk Manager, Leader, etc.)
         # Note: Actual message count depends on implementation
         assert isinstance(messages_received, list)
+        assert all(isinstance(message, dict) for message in messages_received)
     
     @pytest.mark.asyncio
     async def test_node_timing_tracking(
@@ -218,10 +269,11 @@ class TestLangGraphWorkflow:
         """Test that node timings are tracked."""
         graph = TradingGraph()
         result = await graph.run(
+            trigger_reason="scheduled",
             position_context=sample_position_context,
-            market_snapshot=sample_market_data,
+            market_data=sample_market_data,
             agent_votes=sample_votes,
-            executor=mock_executor
+            trade_executor=mock_executor
         )
         
         if "node_timings" in result:
@@ -241,10 +293,11 @@ class TestLangGraphWorkflow:
         
         # Empty votes should be handled gracefully
         result = await graph.run(
+            trigger_reason="scheduled",
             position_context=sample_position_context,
-            market_snapshot=sample_market_data,
+            market_data=sample_market_data,
             agent_votes=[],  # Empty votes
-            executor=mock_executor
+            trade_executor=mock_executor
         )
         
         assert result is not None
@@ -314,11 +367,11 @@ class TestSEMIAUTOMode:
         assert not hasattr(TradingMode, "MANUAL")
 
     @pytest.mark.asyncio
-    async def test_pending_trade_creation(self):
+    async def test_pending_trade_creation(self, fake_redis):
         """Test pending trade creation and retrieval."""
-        from app.core.trading.mode_manager import get_mode_manager
+        from app.core.trading.mode_manager import TradingModeManager
 
-        mode_manager = get_mode_manager()
+        mode_manager = TradingModeManager(user_id="semi_auto_test", redis_client=fake_redis)
 
         # Create a pending trade
         pending = await mode_manager.add_pending_trade(
@@ -371,11 +424,11 @@ class TestHITLModeBlocking:
         ]
 
     @pytest.mark.asyncio
-    async def test_hitl_only_requires_confirmation(self, sample_votes):
+    async def test_hitl_only_requires_confirmation(self, sample_votes, fake_redis):
         """HITL-only: should always create a pending trade and wait for confirmation."""
-        from app.core.trading.mode_manager import get_mode_manager, TradingMode, ExecutionAction
+        from app.core.trading.mode_manager import TradingModeManager, TradingMode, ExecutionAction
 
-        mode_manager = get_mode_manager()
+        mode_manager = TradingModeManager(user_id="hitl_wait", redis_client=fake_redis)
 
         # Any set_mode call should normalize to SEMI_AUTO
         await mode_manager.set_mode(TradingMode.SEMI_AUTO)
@@ -400,11 +453,11 @@ class TestHITLModeBlocking:
         assert decision.pending_trade_id is not None
 
     @pytest.mark.asyncio
-    async def test_pending_trade_approval_flow(self):
+    async def test_pending_trade_approval_flow(self, fake_redis):
         """Test the full pending trade approval flow."""
-        from app.core.trading.mode_manager import get_mode_manager, TradingMode
+        from app.core.trading.mode_manager import TradingModeManager, TradingMode
 
-        mode_manager = get_mode_manager()
+        mode_manager = TradingModeManager(user_id="hitl_approve", redis_client=fake_redis)
 
         # Set to SEMI_AUTO
         await mode_manager.set_mode(TradingMode.SEMI_AUTO)
@@ -425,23 +478,20 @@ class TestHITLModeBlocking:
         trade_id = pending.trade_id
 
         # Get all pending trades
-        all_pending = await mode_manager.get_all_pending_trades()
+        all_pending = await mode_manager.get_pending_trades()
         assert any(t.id == trade_id for t in all_pending)
 
-        # Approve the trade
-        approved = await mode_manager.approve_trade(trade_id)
-        # Note: approval may fail if no actual trader is connected
-        # Just verify the method doesn't crash
-
-        # Clean up - reject if still pending
-        await mode_manager.reject_trade(trade_id, reason="Test cleanup")
+        # Confirm the trade
+        approved_signal = await mode_manager.confirm_trade(trade_id, user_id="hitl_approve_user")
+        assert approved_signal is not None
+        assert approved_signal["direction"] == "long"
 
     @pytest.mark.asyncio
-    async def test_pending_trade_rejection(self):
+    async def test_pending_trade_rejection(self, fake_redis):
         """Test pending trade rejection."""
-        from app.core.trading.mode_manager import get_mode_manager, TradingMode
+        from app.core.trading.mode_manager import TradingModeManager, TradingMode
 
-        mode_manager = get_mode_manager()
+        mode_manager = TradingModeManager(user_id="hitl_reject", redis_client=fake_redis)
 
         # Set to SEMI_AUTO
         await mode_manager.set_mode(TradingMode.SEMI_AUTO)
@@ -462,24 +512,28 @@ class TestHITLModeBlocking:
         trade_id = pending.trade_id
 
         # Reject the trade
-        rejected = await mode_manager.reject_trade(trade_id, reason="User rejected")
+        rejected = await mode_manager.reject_trade(
+            trade_id,
+            user_id="hitl_reject_user",
+            reason="User rejected",
+        )
         assert rejected is True
 
         # Verify it's no longer in pending list
-        all_pending = await mode_manager.get_all_pending_trades()
+        all_pending = await mode_manager.get_pending_trades()
         assert not any(t.id == trade_id for t in all_pending)
 
     @pytest.mark.asyncio
-    async def test_mode_persistence(self):
+    async def test_mode_persistence(self, fake_redis):
         """Test that mode persists across manager instances."""
         from app.core.trading.mode_manager import TradingModeManager, TradingMode
 
         # Create first manager and set mode
-        manager1 = TradingModeManager()
+        manager1 = TradingModeManager(user_id="persist_user", redis_client=fake_redis)
         await manager1.set_mode(TradingMode.SEMI_AUTO)
 
         # Create second manager (simulating restart)
-        manager2 = TradingModeManager()
+        manager2 = TradingModeManager(user_id="persist_user", redis_client=fake_redis)
         mode = await manager2.get_mode()
 
         # HITL-only: only SEMI_AUTO exists.

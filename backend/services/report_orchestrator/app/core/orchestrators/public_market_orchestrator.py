@@ -82,7 +82,7 @@ class PublicMarketInvestmentOrchestrator(BaseOrchestrator):
         context = {
             "scenario": "public-market-investment",
             "target": self.request.target,
-            "config": self.request.config.dict(),
+            "config": self.request.config.model_dump(),
             "financial_analysis": {
                 **self.results.get("valuation_check", {}),
                 **self.results.get("fundamentals_check", {}),
@@ -144,7 +144,7 @@ class PublicMarketInvestmentOrchestrator(BaseOrchestrator):
         context = {
             "scenario": "public-market-investment",
             "target": self.request.target,
-            "config": self.request.config.dict(),
+            "config": self.request.config.model_dump(),
             
             # Map step results
             "financial_analysis": {

@@ -125,8 +125,8 @@ class EarlyStageInvestmentOrchestrator(BaseOrchestrator):
         # Map workflow specific step IDs to standard keys
         context = {
             "scenario": "early-stage-investment",
-            "target": self.target.dict(),
-            "config": self.request.config.dict(),
+            "target": self.target.model_dump(),
+            "config": self.request.config.model_dump(),
             
             # Map step results
             "team_analysis": self.results.get("team_deep_investigation", {}),
@@ -238,8 +238,8 @@ class EarlyStageInvestmentOrchestrator(BaseOrchestrator):
         # Prepare context
         context = {
             "scenario": "early-stage-investment",
-            "target": self.target.dict(),
-            "config": self.request.config.dict(),
+            "target": self.target.model_dump(),
+            "config": self.request.config.model_dump(),
             "team_analysis": self.results.get("team_quick_check", {}),
             "market_analysis": self.results.get("market_opportunity", {}),
             "risk_assessment": self.results.get("red_flag_scan", {}),

@@ -86,7 +86,7 @@ class AlternativeInvestmentOrchestrator(BaseOrchestrator):
         context = {
             "scenario": "alternative-investment",
             "target": self.request.target,
-            "config": self.request.config.dict(),
+            "config": self.request.config.model_dump(),
             "tech_assessment": self.results.get("tech_foundation_check", {}),
             "financial_analysis": self.results.get("tokenomics_check", {}),
             "market_analysis": self.results.get("community_check", {}),
@@ -145,7 +145,7 @@ class AlternativeInvestmentOrchestrator(BaseOrchestrator):
         context = {
             "scenario": "alternative-investment",
             "target": self.request.target,
-            "config": self.request.config.dict(),
+            "config": self.request.config.model_dump(),
             
             # Map step results
             "tech_assessment": {
