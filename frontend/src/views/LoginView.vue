@@ -139,8 +139,6 @@ async function handleLogin() {
   const email = form.email.trim()
   const password = form.password
 
-  console.log('[Login] Attempting login for:', email)
-
   const result = await authStore.login(email, password)
 
   if (result.success) {

@@ -756,6 +756,7 @@ import { useLanguage } from '../composables/useLanguage';
 import { useToast } from '@/composables/useToast';
 import { marked } from 'marked';
 import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
+import { readJsonResponse } from '@/services/httpResponse';
 
 // Environment variable for API base URL
 import { API_BASE } from '@/config/api';
@@ -1031,11 +1032,7 @@ const fetchReports = async () => {
         ...getAuthHeaders()
       }
     });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch reports: ${response.statusText}`);
-    }
-
-    const data = await response.json();
+    const data = await readJsonResponse(response, 'Reports list');
     console.log('[ReportsView] Fetched reports:', data);
 
     reportsData.value = data.reports || [];
@@ -1059,11 +1056,7 @@ const viewReport = async (reportId) => {
         ...getAuthHeaders()
       }
     });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch report: ${response.statusText}`);
-    }
-
-    const data = await response.json();
+    const data = await readJsonResponse(response, 'Report detail');
     selectedReport.value = data.report;
     console.log('[ReportsView] Viewing report:', selectedReport.value);
   } catch (err) {
@@ -1117,12 +1110,7 @@ const deleteReport = async () => {
         ...getAuthHeaders()
       }
     });
-
-    if (!response.ok) {
-      throw new Error(`Failed to delete report: ${response.statusText}`);
-    }
-
-    const data = await response.json();
+    const data = await readJsonResponse(response, 'Delete report');
     console.log('[ReportsView] Report deleted:', data);
 
     // Store the deleted report id before clearing

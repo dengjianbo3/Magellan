@@ -866,6 +866,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useLanguage } from '@/composables/useLanguage.js';
 import { apiUrl, wsUrl as buildWsUrl } from '@/config/api';
 import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
+import { readJsonResponse } from '@/services/httpResponse';
 import Chart from 'chart.js/auto';
 import { marked } from 'marked';
 
@@ -1172,10 +1173,14 @@ function tradingFetch(path, options = {}) {
   });
 }
 
+async function parseTradingJson(response, label) {
+  return readJsonResponse(response, label);
+}
+
 async function fetchStatus() {
   try {
     const response = await tradingFetch('/api/trading/status');
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Trading status');
     systemStatus.value = data;
   } catch (e) {
     console.error('Error fetching status:', e);
@@ -1185,7 +1190,7 @@ async function fetchStatus() {
 async function fetchAccount() {
   try {
     const response = await tradingFetch('/api/trading/account');
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Trading account');
     if (!data.error) {
       account.value = {
         totalEquity: data.total_equity || 10000,
@@ -1202,7 +1207,7 @@ async function fetchAccount() {
 async function fetchPosition() {
   try {
     const response = await tradingFetch('/api/trading/position');
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Trading position');
     if (data.has_position !== undefined) {
       position.value = {
         hasPosition: data.has_position || false,
@@ -1226,7 +1231,7 @@ async function fetchPosition() {
 async function fetchEquityHistory() {
   try {
     const response = await tradingFetch('/api/trading/equity?limit=100');
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Trading equity history');
     if (data.data) {
       equityHistory.value = data.data;
       updateEquityChart();
@@ -1242,7 +1247,7 @@ async function fetchDrawdown() {
       ? `/api/trading/drawdown?start_date=${drawdownStartDate.value}`
       : '/api/trading/drawdown';
     const response = await tradingFetch(endpoint);
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Trading drawdown');
     drawdown.value = {
       maxDrawdownPct: data.max_drawdown_pct || 0,
       maxDrawdownUsd: data.max_drawdown_usd || 0,
@@ -1265,7 +1270,7 @@ async function fetchPerformance() {
       ? `/api/trading/performance?start_date=${drawdownStartDate.value}`
       : '/api/trading/performance';
     const response = await tradingFetch(endpoint);
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Trading performance');
     performanceData.value = {
       sharpeRatio: data.sharpe_ratio || 0,
       sortinoRatio: data.sortino_ratio || 0,
@@ -1289,7 +1294,7 @@ async function fetchPerformance() {
 async function fetchMtfAnalysis() {
   try {
     const response = await tradingFetch('/api/trading/mtf-analysis');
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Trading MTF analysis');
     if (data.overall_direction) {
       mtfAnalysis.value = data;
     }
@@ -1302,7 +1307,7 @@ async function fetchMtfAnalysis() {
 async function fetchAgentWeights() {
   try {
     const response = await tradingFetch('/api/trading/agent-weights');
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Trading agent weights');
     if (data.weights) {
       learnedWeights.value = data.weights;
     }
@@ -1315,7 +1320,7 @@ async function fetchAgentWeights() {
 async function fetchDegradation() {
   try {
     const response = await tradingFetch('/api/trading/degradation');
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Trading degradation');
     if (data.level) {
       systemHealth.value = data;
     }
@@ -1328,7 +1333,7 @@ async function fetchDegradation() {
 async function fetchPendingTrades() {
   try {
     const response = await tradingFetch('/api/trading/pending');
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Trading pending trades');
     if (data.trades) {
       pendingTrades.value = data.trades;
     } else if (data.pending_trades) {
@@ -1397,7 +1402,7 @@ async function fetchBtcBenchmark() {
 async function fetchTradeHistory() {
   try {
     const response = await tradingFetch('/api/trading/history?limit=50');
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Trading history');
 
     const allTrades = [];
 
@@ -1486,7 +1491,7 @@ function parseDiscussionContent(content) {
 async function fetchDiscussionMessages() {
   try {
     const response = await tradingFetch('/api/trading/messages?limit=100');
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Trading messages');
     if (data.messages && data.messages.length > 0) {
       discussionMessages.value = data.messages.map(msg => ({
         agentName: msg.agent_name,
@@ -1561,15 +1566,12 @@ async function handleConfirmDecision() {
         headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(body)
       });
-      const result = await response.json();
+      const result = await parseTradingJson(response, 'Confirm pending trade');
 
-      if (!response.ok || !result.success) {
-        const isExpired = response.status === 404;
+      if (!result.success) {
         discussionMessages.value.push({
           agentName: '系统',
-          content: isExpired
-            ? `⏰ 交易已过期，请等待下一次分析信号`
-            : `❌ 确认交易失败: ${result.message || result.detail || '未知错误'}`,
+          content: `❌ 确认交易失败: ${result.message || result.detail || '未知错误'}`,
           timestamp: new Date().toISOString()
         });
         // Close modal even on failure — trade is no longer actionable
@@ -1624,9 +1626,12 @@ async function handleConfirmDecision() {
 
   } catch (e) {
     console.error('Error confirming decision:', e);
+    const isExpired = String(e?.message || '').includes('(404)');
     discussionMessages.value.push({
       agentName: '系统',
-      content: `❌ 确认交易出错: ${e.message || '网络错误'}`,
+      content: isExpired
+        ? '⏰ 交易已过期，请等待下一次分析信号'
+        : `❌ 确认交易出错: ${e.message || '网络错误'}`,
       timestamp: new Date().toISOString()
     });
   } finally {
@@ -1650,15 +1655,12 @@ async function handleDeferDecision() {
           reason: reason || '用户搁置'
         })
       });
-      const result = await response.json();
+      const result = await parseTradingJson(response, 'Reject pending trade');
 
-      if (!response.ok || !result.success) {
-        const isExpired = response.status === 404;
+      if (!result.success) {
         discussionMessages.value.push({
           agentName: '系统',
-          content: isExpired
-            ? `⏰ 交易已过期，请等待下一次分析信号`
-            : `❌ 拒绝交易失败: ${result.message || result.detail || '未知错误'}`,
+          content: `❌ 拒绝交易失败: ${result.message || result.detail || '未知错误'}`,
           timestamp: new Date().toISOString()
         });
         // Close modal even on failure — trade is no longer actionable
@@ -1709,9 +1711,12 @@ async function handleDeferDecision() {
 
   } catch (e) {
     console.error('Error deferring decision:', e);
+    const isExpired = String(e?.message || '').includes('(404)');
     discussionMessages.value.push({
       agentName: '系统',
-      content: `❌ 拒绝交易出错: ${e.message || '网络错误'}`,
+      content: isExpired
+        ? '⏰ 交易已过期，请等待下一次分析信号'
+        : `❌ 拒绝交易出错: ${e.message || '网络错误'}`,
       timestamp: new Date().toISOString()
     });
   } finally {
@@ -1731,7 +1736,7 @@ async function closePosition() {
   closingPosition.value = true;
   try {
     const response = await tradingFetch('/api/trading/close', { method: 'POST' });
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Close position');
     if (data.error) {
       console.error('Error closing position:', data.error);
       discussionMessages.value.push({
@@ -1759,7 +1764,7 @@ async function closePosition() {
 async function fetchAgentPerformance() {
   try {
     const response = await tradingFetch('/api/trading/agents/memory');
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Trading agent memory');
     if (data.team_summary) {
       agentPerformance.value = data;
     }
@@ -1777,7 +1782,7 @@ async function fetchConfig() {
   loadingConfig.value = true;
   try {
     const response = await tradingFetch('/api/trading/config');
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Trading config');
     if (data) {
       settingsForm.value = {
         analysisInterval: data.analysis_interval_hours || 4,
@@ -1833,7 +1838,7 @@ async function saveSettings() {
         } : {})
       })
     });
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Update trading config');
     if (data.status === 'updated') {
       showSettings.value = false;
 
@@ -1868,7 +1873,7 @@ async function clearOkxCredentials() {
         use_okx_trading: false
       })
     });
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Clear OKX credentials');
     if (data.status === 'updated') {
       await fetchConfig();
       discussionMessages.value.push({
@@ -1896,7 +1901,7 @@ async function resetSystem() {
       method: 'POST',
       headers: withAuthHeaders({ 'Content-Type': 'application/json' })
     });
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Reset trading system');
 
     if (data.status === 'reset_complete') {
       // Clear local state

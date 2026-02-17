@@ -59,13 +59,10 @@ class AuthService {
    * Login with email and password
    */
   async login(email, password) {
-    console.log('[AuthService] Login request:', { email, passwordLength: password?.length })
-    const response = await this.request('/login', {
+    return this.request('/login', {
       method: 'POST',
       body: JSON.stringify({ email, password })
     })
-    console.log('[AuthService] Login response:', response)
-    return response
   }
 
   /**
