@@ -361,6 +361,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useLanguage } from '../composables/useLanguage';
 import { useToast } from '../composables/useToast';
 import { API_BASE } from '@/config/api';
+import { getAuthHeaders } from '@/services/authHeaders';
 import { DDAnalysisService } from '../services/ddAnalysisService';
 
 const { t } = useLanguage();
@@ -602,6 +603,7 @@ const saveReport = async () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...getAuthHeaders()
       },
       body: JSON.stringify(reportData)
     });

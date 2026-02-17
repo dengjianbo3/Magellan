@@ -3,9 +3,11 @@
 退出分析 Agent
 分析 IPO、并购等退出路径
 """
-import httpx
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
+from ..services.web_search_access import search_web as shared_search_web
+from ..core.llm_helper import LLMHelper
+from ..core.service_endpoints import DEFAULT_WEB_SEARCH_URL
 
 class IPOAnalysis(BaseModel):
     """IPO 分析"""
@@ -28,12 +30,13 @@ class ExitAgent:
     def __init__(
         self,
         # web_search_service runs on 8010 (see docker-compose.yml)
-        web_search_url: str = "http://web_search_service:8010",
+        web_search_url: str = DEFAULT_WEB_SEARCH_URL,
         # llm_gateway runs on 8003 (see docker-compose.yml)
         llm_gateway_url: str = "http://llm_gateway:8003"
     ):
         self.web_search_url = web_search_url
         self.llm_gateway_url = llm_gateway_url
+        self.llm = LLMHelper(llm_gateway_url=self.llm_gateway_url, timeout=60)
     
     async def analyze_exit_paths(
         self,
@@ -82,22 +85,21 @@ class ExitAgent:
             target_market = bp_data.get("target_market", "科技")
             
             query = f"{target_market} IPO 并购 退出案例 科创板 创业板"
-            
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.web_search_url}/search",
-                    json={"query": query, "max_results": 5}
-                )
-                
-                if response.status_code == 200:
-                    results = response.json().get("results", [])
-                    search_text = "\n\n".join([
-                        f"案例: {r.get('title', '')}\n{r.get('content', '')[:300]}"
-                        for r in results[:3]
-                    ])
-                    return search_text
-                else:
-                    return "无法获取退出案例数据"
+
+            results = await shared_search_web(
+                self.web_search_url,
+                query=query,
+                max_results=5,
+                timeout=30.0,
+            )
+            if not results:
+                return "无法获取退出案例数据"
+
+            search_text = "\n\n".join([
+                f"案例: {r.get('title', '')}\n{r.get('content', '')[:300]}"
+                for r in results[:3]
+            ])
+            return search_text
         
         except Exception as e:
             print(f"Error searching exit cases: {e}")
@@ -168,21 +170,10 @@ class ExitAgent:
     
     async def _call_llm(self, prompt: str) -> str:
         """调用 LLM Gateway"""
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    f"{self.llm_gateway_url}/generate",
-                    json={"prompt": prompt}
-                )
-                
-                if response.status_code == 200:
-                    return response.json().get("text", "")
-                else:
-                    raise Exception(f"LLM returned {response.status_code}")
-        
-        except Exception as e:
-            print(f"Error calling LLM: {e}")
-            raise
+        result = await self.llm.call(prompt=prompt, response_format="text")
+        if "content" in result:
+            return result["content"]
+        raise RuntimeError(f"LLM call failed: {result}")
     
     def _parse_llm_response(self, response: str, bp_data: Dict[str, Any]) -> ExitAnalysis:
         """解析 LLM 响应"""

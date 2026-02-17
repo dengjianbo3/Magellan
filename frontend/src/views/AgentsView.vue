@@ -236,7 +236,9 @@
 import { ref, computed, onMounted } from 'vue';
 import { useLanguage } from '../composables/useLanguage';
 import { useToast } from '../composables/useToast';
-import { API_BASE } from '@/config/api';
+import { apiUrl } from '@/config/api';
+import { readJsonResponse } from '@/services/httpResponse';
+import { getAuthHeaders } from '@/services/authHeaders';
 
 const { t, locale } = useLanguage();
 const { success, error: showError, info } = useToast();
@@ -283,13 +285,13 @@ const agentIcons = {
 const fetchAgents = async () => {
   loading.value = true;
   try {
-    const response = await fetch(`${API_BASE}/api/agents`);
-    if (response.ok) {
-      const data = await response.json();
-      agentsData.value = data.agents || [];
-    } else {
-      console.error('[Agents] Failed to fetch agents');
-    }
+    const response = await fetch(apiUrl('/api/agents'), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    const data = await readJsonResponse(response, 'Agents list');
+    agentsData.value = data.agents || [];
   } catch (err) {
     console.error('[Agents] Error fetching agents:', err);
   } finally {
@@ -342,18 +344,18 @@ const toggleAgentStatus = async (agentId) => {
   const newStatus = agent.status !== 'active';
 
   try {
-    const response = await fetch(`${API_BASE}/api/agents/${agentId}/status`, {
+    const response = await fetch(apiUrl(`/api/agents/${agentId}/status`), {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
       body: JSON.stringify({ enabled: newStatus })
     });
 
-    if (response.ok) {
-      success(`Agent ${newStatus ? 'activated' : 'paused'} successfully`);
-      await fetchAgents(); // Refresh the list
-    } else {
-      showError('Failed to update agent status');
-    }
+    await readJsonResponse(response, 'Update agent status');
+    success(`Agent ${newStatus ? 'activated' : 'paused'} successfully`);
+    await fetchAgents(); // Refresh the list
   } catch (err) {
     console.error('[Agents] Error toggling status:', err);
     showError('Failed to update agent status');
@@ -364,9 +366,12 @@ const saveAgentConfig = async () => {
   if (!selectedAgentId.value) return;
 
   try {
-    const response = await fetch(`${API_BASE}/api/agents/${selectedAgentId.value}/config`, {
+    const response = await fetch(apiUrl(`/api/agents/${selectedAgentId.value}/config`), {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
       body: JSON.stringify({
         temperature: configForm.value.temperature,
         max_tokens: configForm.value.maxTokens,
@@ -374,13 +379,10 @@ const saveAgentConfig = async () => {
       })
     });
 
-    if (response.ok) {
-      success('Agent configuration saved');
-      showConfigModal.value = false;
-      await fetchAgents();
-    } else {
-      showError('Failed to save configuration');
-    }
+    await readJsonResponse(response, 'Save agent config');
+    success('Agent configuration saved');
+    showConfigModal.value = false;
+    await fetchAgents();
   } catch (err) {
     console.error('[Agents] Error saving config:', err);
     showError('Failed to save configuration');

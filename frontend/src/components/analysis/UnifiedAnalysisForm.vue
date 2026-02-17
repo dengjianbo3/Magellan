@@ -188,6 +188,7 @@ import { useLanguage } from '@/composables/useLanguage';
 import DynamicFormField from '@/components/common/DynamicFormField.vue';
 import { getScenarioFormFields } from '@/config/scenarios.js';
 import { API_BASE } from '@/config/api';
+import { getAuthHeaders } from '@/services/authHeaders';
 
 const { t, locale } = useLanguage();
 
@@ -343,6 +344,9 @@ async function uploadFile(file, fieldName) {
   try {
     const response = await fetch(`${API_BASE}${endpoint}`, {
       method: 'POST',
+      headers: {
+        ...getAuthHeaders()
+      },
       body: formData
     });
     

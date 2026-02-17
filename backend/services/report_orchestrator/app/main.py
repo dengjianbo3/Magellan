@@ -8,7 +8,7 @@ import uuid
 import time
 from datetime import datetime
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -26,6 +26,7 @@ from .core.intent_recognizer import IntentRecognizer, ConversationManager
 
 # V5: Import Redis session store
 from .core.session_store import SessionStore
+from .core.auth import CurrentUser, get_current_user, resolve_user_from_token
 
 # Phase 4: Import API routers
 from .api.routers import health_router, reports_router, dashboard_router
@@ -112,7 +113,7 @@ async def _auto_start_trading():
     try:
         from app.services.trading_system import get_trading_system
         logger.info("Auto-starting trading system...")
-        system = await get_trading_system()
+        system = await get_trading_system(user_id="system")
         await system.start()
         logger.info("Trading system auto-started successfully")
     except Exception as e:
@@ -253,6 +254,13 @@ class UserPersona(BaseModel):
 @app.websocket("/ws/start_analysis")
 async def websocket_analysis_endpoint(websocket: WebSocket):
     await websocket.accept()
+    token = (websocket.query_params.get("token") or "").strip()
+    try:
+        current_user = await resolve_user_from_token(token)
+    except Exception as auth_error:
+        logger.warning(f"[Legacy WS] Authentication failed for /ws/start_analysis: {auth_error}")
+        await websocket.close(code=1008, reason="Authentication required")
+        return
     session_id = ""
     user_persona = UserPersona()
     selected_ticker = ""
@@ -261,7 +269,10 @@ async def websocket_analysis_endpoint(websocket: WebSocket):
         # 1. Wait for the initial request
         initial_request = await websocket.receive_json()
         ticker = initial_request.get("ticker")
-        user_id = initial_request.get("user_id", "default_user")
+        requested_user_id = initial_request.get("user_id")
+        user_id = current_user.id
+        if requested_user_id and str(requested_user_id) != str(user_id):
+            logger.info(f"[Legacy WS] Ignoring mismatched requested user_id={requested_user_id}; using authenticated user_id={user_id}")
 
         if not ticker:
             await websocket.close(code=1008, reason="Ticker not provided")
@@ -440,7 +451,10 @@ async def websocket_analysis_endpoint(websocket: WebSocket):
 
 
 @app.post("/get_instant_feedback", response_model=InstantFeedbackResponse, tags=["Agent Workflow"])
-async def get_instant_feedback(request: InstantFeedbackRequest):
+async def get_instant_feedback(
+    request: InstantFeedbackRequest,
+    _: CurrentUser = Depends(get_current_user),
+):
     """
     Provides instant feedback on a user's input based on the current analysis context.
     """
@@ -559,16 +573,21 @@ def save_session(session_id: str, context: DDSessionContext) -> bool:
         return True
 
 
-def get_session(session_id: str) -> Optional[DDSessionContext]:
+def get_session(session_id: str, user_id: Optional[str] = None) -> Optional[DDSessionContext]:
     """Get session from Redis or fallback to in-memory storage."""
     if session_store:
-        context_dict = session_store.get_session(session_id)
+        context_dict = session_store.get_session(session_id, user_id=user_id)
         if context_dict:
             return DDSessionContext(**context_dict)
         return None
     else:
         # Fallback to in-memory
-        return dd_sessions.get(session_id)
+        context = dd_sessions.get(session_id)
+        if not context:
+            return None
+        if user_id and str(getattr(context, "user_id", "") or "") != str(user_id):
+            return None
+        return context
 
 
 def session_exists(session_id: str) -> bool:
@@ -589,13 +608,18 @@ def _save_report_to_store(report_id: str, report_data: Dict[str, Any]) -> bool:
         return True
 
 
-def _get_report_from_store(report_id: str) -> Optional[Dict[str, Any]]:
+def _get_report_from_store(report_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Get report from Redis or fallback to in-memory storage."""
     if session_store:
-        return session_store.get_report(report_id)
+        return session_store.get_report(report_id, user_id=user_id)
     else:
         # Fallback to in-memory
-        return next((r for r in saved_reports if r["id"] == report_id), None)
+        report = next((r for r in saved_reports if r["id"] == report_id), None)
+        if not report:
+            return None
+        if user_id and str(report.get("user_id") or "") != str(user_id):
+            return None
+        return report
 
 
 def _get_all_reports_from_store(limit: int = 100) -> List[Dict[str, Any]]:
@@ -607,14 +631,20 @@ def _get_all_reports_from_store(limit: int = 100) -> List[Dict[str, Any]]:
         return saved_reports[:limit]
 
 
-def _delete_report_from_store(report_id: str) -> bool:
+def _delete_report_from_store(report_id: str, user_id: Optional[str] = None) -> bool:
     """Delete report from Redis or fallback to in-memory storage."""
     if session_store:
-        return session_store.delete_report(report_id)
+        return session_store.delete_report(report_id, user_id=user_id)
     else:
         # Fallback to in-memory
         global saved_reports
-        report_index = next((i for i, r in enumerate(saved_reports) if r["id"] == report_id), None)
+        report_index = next(
+            (
+                i for i, r in enumerate(saved_reports)
+                if r["id"] == report_id and (not user_id or str(r.get("user_id") or "") == str(user_id))
+            ),
+            None,
+        )
         if report_index is not None:
             saved_reports.pop(report_index)
             return True
@@ -623,7 +653,7 @@ def _delete_report_from_store(report_id: str) -> bool:
 
 # Phase 4: Initialize Export and DD Workflow Router dependencies
 set_get_report_func(_get_report_from_store)
-set_session_funcs(session_exists, get_session, save_session)
+set_session_funcs(get_session, save_session)
 print("[main.py] ✅ Export Router and DD Workflow Router initialized")
 
 
@@ -644,6 +674,14 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
     DDWorkflowMessage with real-time progress updates
     """
     await websocket.accept()
+    token = (websocket.query_params.get("token") or "").strip()
+    try:
+        current_user = await resolve_user_from_token(token)
+    except Exception as auth_error:
+        print(f"[DD WS] Authentication failed: {auth_error}", flush=True)
+        await websocket.close(code=1008, reason="Authentication required")
+        return
+
     print(f"[DEBUG] WebSocket connection accepted", flush=True)
     session_id = ""
     
@@ -663,7 +701,7 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
         bp_file_base64 = initial_request.get("bp_file_base64")  # Legacy: base64 encoded file
         file_id = initial_request.get("file_id")  # V5: File ID from upload API
         bp_filename = initial_request.get("bp_filename", "business_plan.pdf")
-        user_id = initial_request.get("user_id", "default_user")
+        user_id = current_user.id
 
         # V5: Extract frontend configuration
         project_name = initial_request.get("project_name")
@@ -693,6 +731,19 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
         if file_id:
             try:
                 print(f"[DEBUG] Loading file from File Service: {file_id}", flush=True)
+                try:
+                    if session_store:
+                        owner_user_id = session_store.get_uploaded_file_owner(file_id)
+                        if owner_user_id and str(owner_user_id) != str(user_id):
+                            await websocket.send_json({
+                                "status": "error",
+                                "message": "无权访问该上传文件"
+                            })
+                            await websocket.close(code=1008, reason="File ownership mismatch")
+                            return
+                except Exception as owner_check_error:
+                    print(f"[WARN] File ownership check failed for {file_id}: {owner_check_error}", flush=True)
+
                 # Load file from shared volume
                 file_path = f"/var/uploads/{file_id}"
 
@@ -794,6 +845,7 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
                 saved_report = {
                     "id": report_id,
                     "session_id": session_id,
+                    "user_id": user_id,
                     "project_name": project_name or company_name,
                     "company_name": company_name,
                     "analysis_type": "due-diligence",
@@ -986,6 +1038,15 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
     """
     await websocket.accept()
     print(f"[ROUNDTABLE] WebSocket connection accepted", flush=True)
+    current_user = None
+
+    token = (websocket.query_params.get("token") or "").strip()
+    try:
+        current_user = await resolve_user_from_token(token)
+    except Exception as auth_error:
+        print(f"[ROUNDTABLE] Authentication failed: {auth_error}", flush=True)
+        await websocket.close(code=1008, reason="Authentication required")
+        return
 
     # Import roundtable components
     from .core.roundtable import Meeting, Message
@@ -1161,6 +1222,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
 
             # Store meeting in global dict for Human-in-the-Loop support
             active_meetings[session_id] = meeting
+            meeting._owner_user_id = current_user.id
             print(f"[ROUNDTABLE] Meeting stored with session_id: {session_id}", flush=True)
 
             # Link the meeting state to the meeting object
@@ -1291,6 +1353,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                     report_id = f"roundtable_{session_id}"
                     roundtable_report = {
                         "id": report_id,
+                        "user_id": current_user.id,
                         "type": "roundtable",  # 圆桌会议类型
                         "topic": topic,  # 讨论主题 (用于历史列表显示)
                         "title": topic,  # 兼容性字段
@@ -1384,6 +1447,11 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                 })
         except Exception as send_error:
             print(f"[ROUNDTABLE] Failed to send error message: {send_error}", flush=True)
+    finally:
+        if session_id:
+            removed = active_meetings.pop(session_id, None)
+            if removed is not None:
+                print(f"[ROUNDTABLE] Cleaned up active meeting: {session_id}", flush=True)
 
 
 # ============================================================================
@@ -1433,6 +1501,13 @@ async def websocket_conversation_endpoint(websocket: WebSocket):
     """
     await websocket.accept()
     print(f"[CONVERSATION] WebSocket connection accepted", flush=True)
+    token = (websocket.query_params.get("token") or "").strip()
+    try:
+        current_user = await resolve_user_from_token(token)
+    except Exception as auth_error:
+        print(f"[CONVERSATION] Authentication failed: {auth_error}", flush=True)
+        await websocket.close(code=1008, reason="Authentication required")
+        return
 
     # Initialize intent recognizer and conversation manager
     intent_recognizer = IntentRecognizer(llm_gateway_url=LLM_GATEWAY_URL)
@@ -1488,7 +1563,13 @@ async def websocket_conversation_endpoint(websocket: WebSocket):
                 company_name = message.get("company_name", "")
                 bp_file_base64 = message.get("bp_file_base64")
                 bp_filename = message.get("bp_filename", "business_plan.pdf")
-                user_id = message.get("user_id", "default_user")
+                requested_user_id = message.get("user_id")
+                user_id = current_user.id
+                if requested_user_id and str(requested_user_id) != str(user_id):
+                    print(
+                        f"[CONVERSATION] Ignoring mismatched requested user_id={requested_user_id}; using authenticated user_id={user_id}",
+                        flush=True,
+                    )
 
                 if action == "start_dd_analysis":
                     # Start DD analysis workflow
@@ -1719,6 +1800,24 @@ async def websocket_analysis_v2(websocket: WebSocket, session_id: str):
     import asyncio
 
     await websocket.accept()
+    token = (websocket.query_params.get("token") or "").strip()
+    try:
+        current_user = await resolve_user_from_token(token)
+    except Exception as auth_error:
+        logger.warning(f"[V2 WS] Authentication failed for session={session_id}: {auth_error}")
+        await websocket.close(code=1008, reason="Authentication required")
+        return
+
+    # Ensure the pre-created session belongs to the authenticated user.
+    if session_store:
+        try:
+            existing = session_store.get_session(session_id, user_id=current_user.id)
+            if not existing and session_store.session_exists(session_id):
+                await websocket.close(code=1008, reason="Session ownership mismatch")
+                return
+        except Exception as store_err:
+            logger.warning(f"[V2 WS] Session ownership check skipped due to store error: {store_err}")
+
     logger.info(f"[V2 WS] Client connected: session={session_id}")
 
     # Stage 2: 心跳处理和消息路由
@@ -1777,6 +1876,7 @@ async def websocket_analysis_v2(websocket: WebSocket, session_id: str):
 
         # 解析请求
         request = AnalysisRequest(**analysis_request)
+        request = request.model_copy(update={"user_id": current_user.id})
 
         # 根据scenario创建对应的Orchestrator
         orchestrator = None

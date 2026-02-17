@@ -4,13 +4,14 @@
 """
 import os
 import re
-import httpx
 import asyncio
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum
 import logging
+from app.services.web_search_access import search_web as shared_search_web
+from app.core.service_endpoints import get_web_search_url
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ class CompanyIntelligenceService:
     def __init__(self, tavily_api_key: str = None, web_search_url: str = None):
         self.timeout = 30
         self.tavily_api_key = tavily_api_key or os.environ.get("TAVILY_API_KEY", "")
-        self.web_search_url = web_search_url or "http://web_search_service:8010"
+        self.web_search_url = web_search_url or get_web_search_url()
         self._cache: Dict[str, Any] = {}
         self._cache_ttl = 3600  # 缓存1小时
 
@@ -76,17 +77,13 @@ class CompanyIntelligenceService:
     async def _search_web(self, query: str, max_results: int = 5) -> List[Dict]:
         """执行网络搜索"""
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    f"{self.web_search_url}/search",
-                    json={
-                        "query": query,
-                        "max_results": max_results,
-                        "include_date": True
-                    }
-                )
-                response.raise_for_status()
-                return response.json().get("results", [])
+            return await shared_search_web(
+                self.web_search_url,
+                query=query,
+                max_results=max_results,
+                include_date=True,
+                timeout=float(self.timeout),
+            )
         except Exception as e:
             logger.warning(f"Web search failed: {e}")
             return []

@@ -3,9 +3,11 @@
 估值分析 Agent
 使用可比公司法和 LLM 推理进行估值分析
 """
-import httpx
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
+from ..services.web_search_access import search_web as shared_search_web
+from ..core.llm_helper import LLMHelper
+from ..core.service_endpoints import DEFAULT_WEB_SEARCH_URL
 
 class ValuationRange(BaseModel):
     """估值区间"""
@@ -36,12 +38,13 @@ class ValuationAgent:
     def __init__(
         self,
         # web_search_service runs on 8010 (see docker-compose.yml)
-        web_search_url: str = "http://web_search_service:8010",
+        web_search_url: str = DEFAULT_WEB_SEARCH_URL,
         # llm_gateway runs on 8003 (see docker-compose.yml)
         llm_gateway_url: str = "http://llm_gateway:8003"
     ):
         self.web_search_url = web_search_url
         self.llm_gateway_url = llm_gateway_url
+        self.llm = LLMHelper(llm_gateway_url=self.llm_gateway_url, timeout=60)
     
     async def analyze_valuation(
         self,
@@ -84,23 +87,22 @@ class ValuationAgent:
             product_name = bp_data.get("product_name", "")
             
             query = f"{target_market} 行业 估值倍数 PE PS 可比公司 {product_name}"
-            
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.web_search_url}/search",
-                    json={"query": query, "max_results": 5}
-                )
-                
-                if response.status_code == 200:
-                    results = response.json().get("results", [])
-                    # 提取搜索结果文本
-                    search_text = "\n\n".join([
-                        f"来源: {r.get('title', '')}\n{r.get('content', '')[:300]}"
-                        for r in results[:3]
-                    ])
-                    return search_text
-                else:
-                    return "无法获取行业估值数据"
+
+            results = await shared_search_web(
+                self.web_search_url,
+                query=query,
+                max_results=5,
+                timeout=30.0,
+            )
+            if not results:
+                return "无法获取行业估值数据"
+
+            # 提取搜索结果文本
+            search_text = "\n\n".join([
+                f"来源: {r.get('title', '')}\n{r.get('content', '')[:300]}"
+                for r in results[:3]
+            ])
+            return search_text
         
         except Exception as e:
             print(f"Error searching industry valuation: {e}")
@@ -187,21 +189,10 @@ class ValuationAgent:
     
     async def _call_llm(self, prompt: str) -> str:
         """调用 LLM Gateway"""
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    f"{self.llm_gateway_url}/generate",
-                    json={"prompt": prompt}
-                )
-                
-                if response.status_code == 200:
-                    return response.json().get("text", "")
-                else:
-                    raise Exception(f"LLM returned {response.status_code}")
-        
-        except Exception as e:
-            print(f"Error calling LLM: {e}")
-            raise
+        result = await self.llm.call(prompt=prompt, response_format="text")
+        if "content" in result:
+            return result["content"]
+        raise RuntimeError(f"LLM call failed: {result}")
     
     def _parse_llm_response(self, response: str, bp_data: Dict[str, Any]) -> ValuationAnalysis:
         """解析 LLM 响应"""

@@ -116,6 +116,7 @@ class TradeDecision:
     modified_leverage: Optional[int] = None
     modified_sl: Optional[float] = None
     modified_tp: Optional[float] = None
+    metadata: Optional[Dict[str, Any]] = None
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -135,6 +136,7 @@ class TradeDecision:
                 "stop_loss": self.modified_sl,
                 "take_profit": self.modified_tp,
             } if self.action == "modified" else None,
+            "metadata": self.metadata or {},
         }
 
 
@@ -220,6 +222,7 @@ class UserPreferenceLearner:
         modified_leverage: Optional[int] = None,
         modified_sl: Optional[float] = None,
         modified_tp: Optional[float] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> UserPreferences:
         """
         Record a user's trade decision and update preferences.
@@ -239,6 +242,7 @@ class UserPreferenceLearner:
             modified_leverage=modified_leverage,
             modified_sl=modified_sl,
             modified_tp=modified_tp,
+            metadata=metadata,
         )
         
         # Get current preferences

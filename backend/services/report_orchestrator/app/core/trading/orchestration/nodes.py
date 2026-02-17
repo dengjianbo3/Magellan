@@ -397,13 +397,6 @@ async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[st
     """
     start_time = time.time()
     
-    # 🆕 Phase 1.3: HITL - Check trading mode before execution
-    mode_manager = get_mode_manager()
-    current_mode = await mode_manager.get_mode()
-    mode = current_mode.value
-    
-    logger.info("node_started", node="execution", mode=mode)
-    
     try:
         # Get ExecutorAgent from config (passed from TradingMeeting)
         trade_executor = config.get("configurable", {}).get("trade_executor")
@@ -412,6 +405,12 @@ async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[st
             logger.error("executor_not_found", node="execution")
             execution_failures.labels(reason="executor_not_available").inc()
             return _fallback_execution(state, start_time, "ExecutorAgent not available")
+
+        # 🆕 Phase 1.3: HITL - Check trading mode before execution (user scoped)
+        mode_manager = get_mode_manager(getattr(trade_executor, "user_id", None))
+        current_mode = await mode_manager.get_mode()
+        mode = current_mode.value
+        logger.info("node_started", node="execution", mode=mode)
         
         # Prepare inputs for ExecutorAgent
         leader_summary = state.get("leader_summary", "")

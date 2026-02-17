@@ -18,6 +18,7 @@ from dataclasses import dataclass, asdict, field
 import redis.asyncio as redis
 
 from .trading_config import get_infra_config
+from app.core.auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -420,11 +421,12 @@ class AgentMemoryStore:
     - Generate learning insights
     """
 
-    def __init__(self, redis_url: str = None):
+    def __init__(self, redis_url: str = None, user_id: Optional[str] = None):
         self.redis_url = redis_url or get_infra_config().redis_url
+        self.user_id = get_current_user_id(user_id)
         self._redis: Optional[redis.Redis] = None
         self._local_cache: Dict[str, AgentMemory] = {}
-        self.key_prefix = "trading:agent_memory:"
+        self.key_prefix = f"trading:agent_memory:{self.user_id}:"
 
     async def connect(self):
         """Connect to Redis"""
@@ -613,11 +615,12 @@ class PredictionStore:
     Used for generating reflections when closing positions
     """
 
-    def __init__(self, redis_url: str = None):
+    def __init__(self, redis_url: str = None, user_id: Optional[str] = None):
         self.redis_url = redis_url or get_infra_config().redis_url
+        self.user_id = get_current_user_id(user_id)
         self._redis: Optional[redis.Redis] = None
         self._local_cache: Dict[str, List[AgentPrediction]] = {}  # trade_id -> predictions
-        self.key_prefix = "trading:predictions:"
+        self.key_prefix = f"trading:predictions:{self.user_id}:"
 
     async def connect(self):
         """Connect to Redis"""
@@ -934,41 +937,48 @@ Please respond in JSON format without markdown code block markers:
 
 
 # Singleton instances
-_memory_store: Optional[AgentMemoryStore] = None
-_prediction_store: Optional[PredictionStore] = None
-_reflection_generator: Optional[ReflectionGenerator] = None
+_memory_stores: Dict[str, AgentMemoryStore] = {}
+_prediction_stores: Dict[str, PredictionStore] = {}
+_reflection_generators: Dict[str, ReflectionGenerator] = {}
 
 
-async def get_memory_store() -> AgentMemoryStore:
-    """Get or create memory store singleton"""
-    global _memory_store
-    if _memory_store is None:
-        _memory_store = AgentMemoryStore()
-        await _memory_store.connect()
-    return _memory_store
+async def get_memory_store(user_id: Optional[str] = None) -> AgentMemoryStore:
+    """Get or create memory store singleton scoped by user."""
+    scope = get_current_user_id(user_id)
+    store = _memory_stores.get(scope)
+    if store is None:
+        store = AgentMemoryStore(user_id=scope)
+        await store.connect()
+        _memory_stores[scope] = store
+    return store
 
 
-async def get_prediction_store() -> PredictionStore:
-    """Get or create prediction store singleton"""
-    global _prediction_store
-    if _prediction_store is None:
-        _prediction_store = PredictionStore()
-        await _prediction_store.connect()
-    return _prediction_store
+async def get_prediction_store(user_id: Optional[str] = None) -> PredictionStore:
+    """Get or create prediction store singleton scoped by user."""
+    scope = get_current_user_id(user_id)
+    store = _prediction_stores.get(scope)
+    if store is None:
+        store = PredictionStore(user_id=scope)
+        await store.connect()
+        _prediction_stores[scope] = store
+    return store
 
 
-def get_reflection_generator() -> ReflectionGenerator:
-    """Get or create reflection generator singleton"""
-    global _reflection_generator
-    if _reflection_generator is None:
-        _reflection_generator = ReflectionGenerator()
-    return _reflection_generator
+def get_reflection_generator(user_id: Optional[str] = None) -> ReflectionGenerator:
+    """Get or create reflection generator singleton scoped by user."""
+    scope = get_current_user_id(user_id)
+    generator = _reflection_generators.get(scope)
+    if generator is None:
+        generator = ReflectionGenerator()
+        _reflection_generators[scope] = generator
+    return generator
 
 
 async def record_agent_predictions(
     trade_id: str,
     votes: Dict[str, Dict[str, Any]],
-    market_price: float = 0.0
+    market_price: float = 0.0,
+    user_id: Optional[str] = None,
 ):
     """
     Record all Agent predictions
@@ -978,7 +988,7 @@ async def record_agent_predictions(
         votes: Agent vote results {agent_name: {direction, confidence, reasoning}}
         market_price: Market price at the time
     """
-    store = await get_prediction_store()
+    store = await get_prediction_store(user_id)
 
     for agent_name, vote in votes.items():
         prediction = AgentPrediction(
@@ -1001,7 +1011,8 @@ async def record_agent_predictions(
 async def generate_trade_reflections(
     trade_id: str,
     trade_result: Dict[str, Any],
-    llm_client=None
+    llm_client=None,
+    user_id: Optional[str] = None,
 ) -> List[TradeReflection]:
     """
     Generate reflections for all Agents after closing position
@@ -1014,9 +1025,9 @@ async def generate_trade_reflections(
     Returns:
         List of TradeReflection for each agent
     """
-    prediction_store = await get_prediction_store()
-    memory_store = await get_memory_store()
-    generator = get_reflection_generator()
+    prediction_store = await get_prediction_store(user_id)
+    memory_store = await get_memory_store(user_id)
+    generator = get_reflection_generator(user_id)
 
     if llm_client:
         generator.set_llm_client(llm_client)

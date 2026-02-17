@@ -150,7 +150,9 @@ import { ref, computed, onMounted } from 'vue';
 import Chart from 'chart.js/auto';
 import { useLanguage } from '../composables/useLanguage';
 import { useToast } from '../composables/useToast';
-import { API_BASE } from '@/config/api';
+import { apiUrl } from '@/config/api';
+import { readJsonResponse } from '@/services/httpResponse';
+import { getAuthHeaders } from '@/services/authHeaders';
 import StatCard from '../components/dashboard/StatCard.vue';
 import ReportItem from '../components/dashboard/ReportItem.vue';
 import AgentCard from '../components/dashboard/AgentCard.vue';
@@ -301,33 +303,40 @@ const fetchDashboardData = async () => {
     loading.value = true;
 
     // Fetch stats
-    const statsResponse = await fetch(`${API_BASE}/api/dashboard/stats`);
-    if (statsResponse.ok) {
-      const data = await statsResponse.json();
-      statsData.value = data.stats;
-    }
+    const statsResponse = await fetch(apiUrl('/api/dashboard/stats'), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    const statsPayload = await readJsonResponse(statsResponse, 'Dashboard stats');
+    statsData.value = statsPayload.stats;
 
     // Fetch recent reports
-    const reportsResponse = await fetch(`${API_BASE}/api/dashboard/recent-reports?limit=4`);
-    if (reportsResponse.ok) {
-      const data = await reportsResponse.json();
-      recentReportsData.value = data.reports;
-    }
+    const reportsResponse = await fetch(apiUrl('/api/dashboard/recent-reports?limit=4'), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    const reportsPayload = await readJsonResponse(reportsResponse, 'Recent reports');
+    recentReportsData.value = reportsPayload.reports;
 
     // Fetch trends data
-    const trendsResponse = await fetch(`${API_BASE}/api/dashboard/trends?days=7`);
-    if (trendsResponse.ok) {
-      const data = await trendsResponse.json();
-      trendsData.value = data;
-    }
+    const trendsResponse = await fetch(apiUrl('/api/dashboard/trends?days=7'), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    trendsData.value = await readJsonResponse(trendsResponse, 'Dashboard trends');
 
     // Fetch performance data
-    const performanceResponse = await fetch(`${API_BASE}/api/dashboard/agent-performance`);
-    if (performanceResponse.ok) {
-      const data = await performanceResponse.json();
-      performanceData.value = data.performance;
-      agentsData.value = data.agents || [];
-    }
+    const performanceResponse = await fetch(apiUrl('/api/dashboard/agent-performance'), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    const performancePayload = await readJsonResponse(performanceResponse, 'Agent performance');
+    performanceData.value = performancePayload.performance;
+    agentsData.value = performancePayload.agents || [];
 
     loading.value = false;
   } catch (error) {

@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from ...core.agents.registry import get_agent_registry
 from ...services.storage import get_report_storage, ReportStorage
 from ...core.agent_state_store import get_agent_state_store, AgentStateStore
+from ...core.auth import CurrentUser, get_current_user
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ async def list_agents(
     scope_filter: Optional[str] = None,
     storage: ReportStorage = Depends(get_storage),
     state_store: AgentStateStore = Depends(get_state_store),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     获取所有 Agent 列表
@@ -61,7 +63,7 @@ async def list_agents(
     agents = registry.list_agents(type_filter=type_filter, scope_filter=scope_filter)
 
     # 从报告中统计 Agent 使用情况
-    all_reports = storage.get_all(limit=1000)
+    all_reports = storage.get_all(limit=1000, user_id=current_user.id)
     agent_usage = {}
 
     for report in all_reports:
@@ -84,10 +86,10 @@ async def list_agents(
         success_rate = (usage["success"] / usage["count"] * 100) if usage["count"] > 0 else 100
 
         # 获取状态
-        enabled = state_store.get_enabled(agent_id, default=True)
+        enabled = state_store.get_enabled(agent_id, default=True, user_id=current_user.id)
 
         # 获取自定义配置
-        custom_config = state_store.get_custom_config(agent_id)
+        custom_config = state_store.get_custom_config(agent_id, user_id=current_user.id)
 
         enhanced_agents.append({
             "agent_id": agent_id,
@@ -119,6 +121,7 @@ async def get_agent(
     agent_id: str,
     storage: ReportStorage = Depends(get_storage),
     state_store: AgentStateStore = Depends(get_state_store),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     获取指定 Agent 的详细信息
@@ -130,7 +133,7 @@ async def get_agent(
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
 
     # 从报告中统计使用情况
-    all_reports = storage.get_all(limit=500)
+    all_reports = storage.get_all(limit=500, user_id=current_user.id)
     usage_count = 0
     success_count = 0
     recent_analyses = []
@@ -157,10 +160,10 @@ async def get_agent(
         "success": True,
         "agent": {
             **agent_config,
-            "enabled": state_store.get_enabled(agent_id, default=True),
+            "enabled": state_store.get_enabled(agent_id, default=True, user_id=current_user.id),
             "usage_count": usage_count,
             "success_rate": round(success_rate, 1),
-            "custom_config": state_store.get_custom_config(agent_id),
+            "custom_config": state_store.get_custom_config(agent_id, user_id=current_user.id),
             "recent_analyses": recent_analyses
         }
     }
@@ -171,6 +174,7 @@ async def update_agent_config(
     agent_id: str,
     config: AgentConfigUpdate,
     state_store: AgentStateStore = Depends(get_state_store),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     更新 Agent 配置
@@ -182,7 +186,7 @@ async def update_agent_config(
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
 
     update_data = config.model_dump(exclude_none=True)
-    updated = state_store.update_custom_config(agent_id, update_data)
+    updated = state_store.update_custom_config(agent_id, update_data, user_id=current_user.id)
 
     logger.info(f"Updated config for agent {agent_id}: {update_data}")
 
@@ -198,6 +202,7 @@ async def update_agent_status(
     agent_id: str,
     status: AgentStatusUpdate,
     state_store: AgentStateStore = Depends(get_state_store),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     更新 Agent 状态 (启用/禁用)
@@ -208,7 +213,7 @@ async def update_agent_status(
     if not agent_config:
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
 
-    state_store.set_enabled(agent_id, status.enabled)
+    state_store.set_enabled(agent_id, status.enabled, user_id=current_user.id)
 
     logger.info(f"Agent {agent_id} status changed to: {'enabled' if status.enabled else 'disabled'}")
 
@@ -221,7 +226,10 @@ async def update_agent_status(
 
 
 @router.get("/scenarios/{scenario}")
-async def get_agents_for_scenario(scenario: str):
+async def get_agents_for_scenario(
+    scenario: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     获取某个场景需要的 Agent 列表
 
@@ -249,7 +257,7 @@ async def get_agents_for_scenario(scenario: str):
                 "name": config.get("name", {}),
                 "description": config.get("description", {}),
                 "type": config.get("type"),
-                "enabled": get_agent_state_store().get_enabled(agent_id, default=True)
+                "enabled": get_agent_state_store().get_enabled(agent_id, default=True, user_id=current_user.id)
             })
 
     return {
@@ -261,18 +269,24 @@ async def get_agents_for_scenario(scenario: str):
 
 
 @router.get("/stats/summary")
-async def get_agent_stats_summary(storage: ReportStorage = Depends(get_storage)):
+async def get_agent_stats_summary(
+    storage: ReportStorage = Depends(get_storage),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     获取 Agent 使用统计摘要
     """
     registry = get_agent_registry()
     all_agents = registry.list_agents()
-    all_reports = storage.get_all(limit=1000)
+    all_reports = storage.get_all(limit=1000, user_id=current_user.id)
 
     # 统计
     total_agents = len(all_agents)
     state_store = get_agent_state_store()
-    enabled_agents = sum(1 for a in all_agents if state_store.get_enabled(a.get("agent_id", ""), True))
+    enabled_agents = sum(
+        1 for a in all_agents
+        if state_store.get_enabled(a.get("agent_id", ""), True, user_id=current_user.id)
+    )
     total_analyses = len(all_reports)
 
     # Agent 使用分布

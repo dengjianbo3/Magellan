@@ -15,6 +15,7 @@ from typing import Optional, Any, Dict
 import redis.asyncio as redis
 
 from .trading_config import get_infra_config
+from app.core.auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class TradingSettings:
 
 
 class TradingSettingsStore:
-    REDIS_KEY = "trading:settings"
+    REDIS_KEY_PREFIX = "trading:settings"
 
     def __init__(self, redis_url: str | None = None, redis_client: Optional[redis.Redis] = None):
         self.redis_url = redis_url or get_infra_config().redis_url
@@ -62,11 +63,15 @@ class TradingSettingsStore:
             self._redis = None
             return None
 
-    async def get(self) -> TradingSettings:
+    def _key(self, user_id: Optional[str] = None) -> str:
+        scope = get_current_user_id(user_id)
+        return f"{self.REDIS_KEY_PREFIX}:{scope}"
+
+    async def get(self, user_id: Optional[str] = None) -> TradingSettings:
         r = await self._connect()
         if not r:
             return TradingSettings()
-        raw = await r.get(self.REDIS_KEY)
+        raw = await r.get(self._key(user_id))
         if not raw:
             return TradingSettings()
         try:
@@ -74,9 +79,9 @@ class TradingSettingsStore:
         except Exception:
             return TradingSettings()
 
-    async def update(self, patch: TradingSettings) -> TradingSettings:
+    async def update(self, patch: TradingSettings, user_id: Optional[str] = None) -> TradingSettings:
         r = await self._connect()
-        current = await self.get()
+        current = await self.get(user_id)
         merged = TradingSettings(
             analysis_interval_hours=patch.analysis_interval_hours if patch.analysis_interval_hours is not None else current.analysis_interval_hours,
             max_leverage=patch.max_leverage if patch.max_leverage is not None else current.max_leverage,
@@ -87,17 +92,17 @@ class TradingSettingsStore:
         )
         if r:
             try:
-                await r.set(self.REDIS_KEY, json.dumps(merged.to_dict(), ensure_ascii=False))
+                await r.set(self._key(user_id), json.dumps(merged.to_dict(), ensure_ascii=False))
             except Exception:
                 pass
         return merged
 
-    async def clear(self) -> bool:
+    async def clear(self, user_id: Optional[str] = None) -> bool:
         r = await self._connect()
         if not r:
             return False
         try:
-            await r.delete(self.REDIS_KEY)
+            await r.delete(self._key(user_id))
             return True
         except Exception:
             return False
@@ -111,4 +116,3 @@ def get_trading_settings_store() -> TradingSettingsStore:
     if _store is None:
         _store = TradingSettingsStore()
     return _store
-

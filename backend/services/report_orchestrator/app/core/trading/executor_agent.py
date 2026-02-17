@@ -98,7 +98,8 @@ class ExecutorAgent(ReWOOAgent):
         safety_guard=None,
         on_message: Optional[Callable] = None,
         symbol: str = "BTC-USDT-SWAP",
-        llm_gateway_url: str = None
+        llm_gateway_url: str = None,
+        user_id: Optional[str] = None,
     ):
         """
         Initialize ExecutorAgent.
@@ -124,13 +125,14 @@ class ExecutorAgent(ReWOOAgent):
         self.safety_guard = safety_guard
         self.on_message = on_message
         self.symbol = symbol
+        self.user_id = user_id or getattr(toolkit, "user_id", None)
         
         # Result container for tool execution
         self._result: Dict[str, Any] = {"signal": None}
         self._executed_tools: List[Dict[str, Any]] = []
         
         # Decision store for Redis persistence
-        self._decision_store = TradingDecisionStore()
+        self._decision_store = TradingDecisionStore(user_id=self.user_id)
         self._current_context: Optional[Dict[str, Any]] = None  # For saving with decision
         
         # Position context (updated before each execution)
@@ -1439,7 +1441,7 @@ Analyze the consensus and make a decisive action."""
             direction = current_direction if current_direction else "long"
             
             # Get funding context provider
-            context_provider = await get_funding_context_provider()
+            context_provider = await get_funding_context_provider(self.user_id)
             
             # Generate context with expected parameters
             funding_context = await context_provider.generate_context(
@@ -1467,7 +1469,7 @@ Analyze the consensus and make a decisive action."""
             Dict with should_delay, wait_minutes, reason
         """
         try:
-            data_service = await get_funding_data_service()
+            data_service = await get_funding_data_service(self.user_id)
             funding_rate = await data_service.get_current_rate(self.symbol)
             
             if not funding_rate:
@@ -1505,7 +1507,7 @@ Analyze the consensus and make a decisive action."""
             Dict with viability assessment
         """
         try:
-            data_service = await get_funding_data_service()
+            data_service = await get_funding_data_service(self.user_id)
             funding_rate = await data_service.get_current_rate(self.symbol)
             
             if not funding_rate:

@@ -64,7 +64,7 @@ mcp_servers:
   # ==========================================
   - name: knowledge-base
     type: http
-    url: http://internal_knowledge_service:8009
+    url: ${INTERNAL_KNOWLEDGE_URL:-http://internal_knowledge_service:8009}
     description: "内部知识库服务"
     enabled: true
     timeout: 30

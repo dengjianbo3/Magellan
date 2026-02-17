@@ -162,7 +162,8 @@ class TradingMeeting(Meeting):
                     safety_guard=self._safety_guard,
                     on_message=self.on_message,
                     symbol=getattr(self.config, 'symbol', 'BTC-USDT-SWAP'),
-                    llm_gateway_url=None  # Uses centralized config
+                    llm_gateway_url=None,  # Uses centralized config
+                    user_id=getattr(self.toolkit, "user_id", None),
                 )
                 logger.info("[TradingMeeting] [OK] ExecutorAgent initialized")
             
@@ -170,7 +171,8 @@ class TradingMeeting(Meeting):
             if self.llm_service:
                 self._reflection_engine = ReflectionEngine(
                     llm_service=self.llm_service,
-                    redis_url=None  # Uses centralized config
+                    redis_url=None,  # Uses centralized config
+                    user_id=getattr(self.toolkit, "user_id", None),
                 )
                 logger.info("[TradingMeeting] [OK] ReflectionEngine initialized")
                 
@@ -193,7 +195,7 @@ class TradingMeeting(Meeting):
         
         # Ensure memory store is connected
         if self._memory_store is None:
-            self._memory_store = AgentMemoryStore()
+            self._memory_store = AgentMemoryStore(user_id=getattr(self.toolkit, "user_id", None))
             await self._memory_store.connect()
         
         # Calculate weight for each voting agent
@@ -423,7 +425,8 @@ Based on your expertise, provide your trading recommendation.
                         safety_guard=self._safety_guard,
                         on_message=self.on_message,
                         symbol=getattr(self.config, 'symbol', 'BTC-USDT-SWAP'),
-                        llm_gateway_url=None  # Uses centralized config
+                        llm_gateway_url=None,  # Uses centralized config
+                        user_id=getattr(self.toolkit, "user_id", None),
                     )
                     logger.info("[LangGraph] [OK] ExecutorAgent initialized (unified agent architecture)")
                 else:
@@ -621,7 +624,8 @@ Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄
                 reflections = await generate_trade_reflections(
                     trade_id=trade_id,
                     trade_result=trade_result,
-                    llm_client=llm_client
+                    llm_client=llm_client,
+                    user_id=getattr(self.toolkit, "user_id", None),
                 )
 
                 if reflections:
@@ -684,7 +688,8 @@ Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄
                 await record_agent_predictions(
                     trade_id=trade_id,
                     votes=votes_dict,
-                    market_price=market_price
+                    market_price=market_price,
+                    user_id=getattr(self.toolkit, "user_id", None),
                 )
                 logger.info(f"📝 Recorded {len(votes_dict)} agent predictions for trade {trade_id}")
             else:
@@ -727,12 +732,13 @@ Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄
         
         # 🆕 Context Engineering P0: Cycle ID for tracking (Cache removed by user request)
         cycle_id = f"meeting_{self.config.symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        user_scope = getattr(self.toolkit, "user_id", None)
 
         
         # 🆕 Context Engineering P1: Create shared market data snapshot
         # Fetch market data once, share across all agents
         from app.core.trading.market_data_snapshot import get_market_snapshot_manager
-        snapshot_manager = get_market_snapshot_manager()
+        snapshot_manager = get_market_snapshot_manager(user_scope)
         market_snapshot = await snapshot_manager.create_snapshot(
             symbol=self.config.symbol,
             cycle_id=cycle_id,
@@ -790,7 +796,7 @@ Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄
 
             # 🆕 Log trading decision to Redis for debugging
             try:
-                trading_logger = await get_trading_logger()
+                trading_logger = await get_trading_logger(user_id=user_scope)
                 
                 # Build votes dict from agent_votes (which is a List of AgentVote)
                 votes_dict = {}
@@ -862,10 +868,7 @@ Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄
             except Exception as e:
                 logger.warning(f"[TradingLogger] Failed to log decision: {e}")
 
-            # 🆕 Context Engineering P0: End cycle and log statistics
-            cache_stats = cycle_cache.end_cycle()
-            snapshot_manager.clear()  # P1: Clear market snapshot
-            logger.info(f"[Context Engineering] Cycle ended. Search cache stats: {cache_stats}")
+            logger.info("[Context Engineering] Cycle ended.")
 
             return self._final_signal
 
@@ -877,12 +880,12 @@ Current Streak: {"🔥 " if getattr(memory, 'consecutive_wins', 0) > 0 else "❄
                 content=f"Meeting error occurred: {str(e)}",
                 message_type="error"
             )
-            # 🆕 Context Engineering: End cycle even on error
-            try:
-                cycle_cache.end_cycle()
-            except Exception as cycle_err:
-                logger.warning(f"[TradingMeeting] Failed to end cycle cache: {cycle_err}")
             return None
+        finally:
+            try:
+                snapshot_manager.clear()
+            except Exception as snapshot_err:
+                logger.warning(f"[TradingMeeting] Failed to clear market snapshot: {snapshot_err}")
 
     def _build_agenda(self, context: Optional[str] = None, position_context: Optional[PositionContext] = None) -> str:
         """Build the meeting agenda with position context"""
@@ -2268,7 +2271,8 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
                         safety_guard=self._safety_guard,
                         on_message=self.on_message,
                         symbol=getattr(self.config, 'symbol', 'BTC-USDT-SWAP'),
-                        llm_gateway_url=None
+                        llm_gateway_url=None,
+                        user_id=getattr(self.toolkit, "user_id", None),
                     )
                 else:
                     raise RuntimeError("Cannot execute: paper_trader not available")
@@ -2445,7 +2449,7 @@ Based on **your professional analysis**, choose recommended action (**do NOT fav
         try:
             # Get agent's memory for context injection
             if not self._memory_store:
-                self._memory_store = await get_memory_store()
+                self._memory_store = await get_memory_store(getattr(self.toolkit, "user_id", None))
 
             memory = await self._memory_store.get_memory(agent.id, agent.name)
             memory_context = memory.get_context_for_prompt()

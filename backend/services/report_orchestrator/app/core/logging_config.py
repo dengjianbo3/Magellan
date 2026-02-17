@@ -8,7 +8,12 @@ Provides JSON-formatted structured logging for better log aggregation and analys
 
 import logging
 import sys
-from pythonjsonlogger import jsonlogger
+try:
+    # python-json-logger >= 3.x
+    from pythonjsonlogger.json import JsonFormatter
+except Exception:  # Backward compatibility for older versions
+    from pythonjsonlogger import jsonlogger as _jsonlogger
+    JsonFormatter = _jsonlogger.JsonFormatter
 
 try:
     import structlog
@@ -35,7 +40,7 @@ def configure_logging(log_level: str = "INFO", json_logs: bool = True):
     if json_logs:
         # Configure JSON logging
         logHandler = logging.StreamHandler()
-        formatter = jsonlogger.JsonFormatter(
+        formatter = JsonFormatter(
             fmt='%(asctime)s %(name)s %(levelname)s %(message)s',
             datefmt='%Y-%m-%dT%H:%M:%S'
         )

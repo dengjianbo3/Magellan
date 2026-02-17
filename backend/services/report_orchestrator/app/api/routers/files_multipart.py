@@ -11,7 +11,7 @@ import tempfile
 from typing import List
 
 import httpx
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,10 @@ router = APIRouter()
 FILE_SERVICE_URL = os.getenv("FILE_SERVICE_URL", "http://file_service:8001")
 
 MAX_UPLOAD_MB_HARD_CAP = int(os.getenv("REPORT_ORCH_UPLOAD_MAX_MB", "50"))
+FILE_OWNER_TTL_DAYS = max(1, int(os.getenv("REPORT_ORCH_FILE_OWNER_TTL_DAYS", "7")))
+
+from ...core.auth import CurrentUser, get_current_user
+from ...core.session_store import SessionStore
 
 
 def _validate_extension(filename: str, allowed_extensions: List[str]) -> str:
@@ -86,7 +90,8 @@ async def _forward_to_file_service(
 @router.post("/upload_bp", tags=["File Upload"])
 async def upload_bp_file(
     file: UploadFile = File(...),
-    max_size_mb: int = 10
+    max_size_mb: int = 10,
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     Upload BP (Business Plan) file to File Service.
@@ -125,6 +130,12 @@ async def upload_bp_file(
                 pass
 
         file_id = upload_result.get("file_id")
+        if file_id:
+            try:
+                store = SessionStore()
+                store.set_uploaded_file_owner(file_id, current_user.id, ttl_days=FILE_OWNER_TTL_DAYS)
+            except Exception:
+                pass
 
         logger.info(f"File uploaded: {filename} → {file_id} ({file_size} bytes)")
 
@@ -152,7 +163,8 @@ async def upload_bp_file(
 @router.post("/v2/upload/bp", tags=["File Upload V2"])
 async def upload_bp_v2(
     file: UploadFile = File(...),
-    max_size_mb: int = 50
+    max_size_mb: int = 50,
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     V2: Upload Business Plan file (simplified, local storage).
@@ -187,6 +199,12 @@ async def upload_bp_v2(
                 pass
 
         file_id = upload_result.get("file_id")
+        if file_id:
+            try:
+                store = SessionStore()
+                store.set_uploaded_file_owner(file_id, current_user.id, ttl_days=FILE_OWNER_TTL_DAYS)
+            except Exception:
+                pass
 
         logger.info(f"BP file uploaded: {filename} → {file_id} ({file_size} bytes)")
 
@@ -207,7 +225,8 @@ async def upload_bp_v2(
 @router.post("/v2/upload/financial", tags=["File Upload V2"])
 async def upload_financial_v2(
     file: UploadFile = File(...),
-    max_size_mb: int = 50
+    max_size_mb: int = 50,
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     V2: Upload Financial Data file (simplified, local storage).
@@ -242,6 +261,12 @@ async def upload_financial_v2(
                 pass
 
         file_id = upload_result.get("file_id")
+        if file_id:
+            try:
+                store = SessionStore()
+                store.set_uploaded_file_owner(file_id, current_user.id, ttl_days=FILE_OWNER_TTL_DAYS)
+            except Exception:
+                pass
 
         logger.info(f"Financial file uploaded: {filename} → {file_id} ({file_size} bytes)")
 
@@ -262,7 +287,8 @@ async def upload_financial_v2(
 @router.post("/v2/upload/filings", tags=["File Upload V2"])
 async def upload_filings_v2(
     files: List[UploadFile] = File(...),
-    max_size_mb: int = 50
+    max_size_mb: int = 50,
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     V2: Upload Public Market Filings (simplified, local storage).
@@ -305,6 +331,12 @@ async def upload_filings_v2(
             file_ids.append(file_id)
             filenames.append(filename)
             total_size += file_size
+            if file_id:
+                try:
+                    store = SessionStore()
+                    store.set_uploaded_file_owner(file_id, current_user.id, ttl_days=FILE_OWNER_TTL_DAYS)
+                except Exception:
+                    pass
 
             logger.info(f"Filing uploaded: {filename} → {file_id} ({file_size} bytes)")
 

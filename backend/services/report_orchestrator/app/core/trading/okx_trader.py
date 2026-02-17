@@ -17,6 +17,7 @@ import redis.asyncio as redis
 from app.core.trading.okx_client import OKXClient, get_okx_client
 from app.core.trading.trading_logger import get_trading_logger, TradingLogger
 from app.core.trading.trading_config import get_infra_config
+from app.core.auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -80,13 +81,15 @@ class OKXTrader:
         okx_api_key: Optional[str] = None,
         okx_secret_key: Optional[str] = None,
         okx_passphrase: Optional[str] = None,
+        user_id: Optional[str] = None,
     ):
         self.config = config or OKXTraderConfig(initial_balance=initial_balance, demo_mode=demo_mode)
         self.initial_balance = self.config.initial_balance
         self.demo_mode = self.config.demo_mode
         self.redis_url = redis_url or get_infra_config().redis_url
         self._redis: Optional[redis.Redis] = None
-        self._key_prefix = "okx_trader:"
+        self.user_id = get_current_user_id(user_id)
+        self._key_prefix = f"okx_trader:{self.user_id}:"
 
         self._okx_client: Optional[OKXClient] = None
         self._initialized = False
@@ -160,7 +163,7 @@ class OKXTrader:
             await self._load_state()
             
             # 🆕 Initialize TradingLogger for position event persistence
-            self._trading_logger = await get_trading_logger(self.redis_url)
+            self._trading_logger = await get_trading_logger(self.redis_url, user_id=self.user_id)
         except Exception as e:
             logger.warning(f"[Redis] Not available, using memory only: {e}")
             self._redis = None
@@ -1538,10 +1541,9 @@ class OKXTrader:
         }
 
 
-# Singleton
-
-_okx_trader: Optional[OKXTrader] = None
-_okx_trader_fp: Optional[str] = None
+# Singletons by user scope
+_okx_traders: Dict[str, OKXTrader] = {}
+_okx_trader_fps: Dict[str, str] = {}
 
 
 def _fp(api_key: str, passphrase: str, demo_mode: bool, initial_balance: float) -> str:
@@ -1554,21 +1556,25 @@ async def get_okx_trader(
     okx_api_key: Optional[str] = None,
     okx_secret_key: Optional[str] = None,
     okx_passphrase: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> OKXTrader:
-    """Get or create OKX trader singleton"""
-    global _okx_trader
-    global _okx_trader_fp
+    """Get or create OKX trader singleton scoped by user."""
+    scope = get_current_user_id(user_id)
     api_k = okx_api_key or ""
     pass_k = okx_passphrase or ""
     fp = _fp(api_k, pass_k, bool(demo_mode), float(initial_balance))
-    if _okx_trader is None or _okx_trader_fp != fp:
-        _okx_trader = OKXTrader(
+    trader = _okx_traders.get(scope)
+    current_fp = _okx_trader_fps.get(scope)
+    if trader is None or current_fp != fp:
+        trader = OKXTrader(
             initial_balance=initial_balance,
             demo_mode=demo_mode,
             okx_api_key=okx_api_key,
             okx_secret_key=okx_secret_key,
             okx_passphrase=okx_passphrase,
+            user_id=scope,
         )
-        await _okx_trader.initialize()
-        _okx_trader_fp = fp
-    return _okx_trader
+        await trader.initialize()
+        _okx_traders[scope] = trader
+        _okx_trader_fps[scope] = fp
+    return trader

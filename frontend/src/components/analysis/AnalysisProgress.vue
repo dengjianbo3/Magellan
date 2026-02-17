@@ -221,6 +221,7 @@ import { useToast } from '@/composables/useToast';
 import analysisServiceV2 from '@/services/analysisServiceV2.js';
 import StepResultCard from './StepResultCard.vue';
 import { API_BASE } from '@/config/api';
+import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
 
 const { t, locale: currentLang } = useLanguage();
 const { info, success, error: showError } = useToast();
@@ -754,7 +755,11 @@ async function exportReport(format = 'pdf') {
     const url = `${API_BASE}/api/reports/${props.sessionId}/export/${format}?language=${langParam}`;
     console.log(`[Progress] Exporting report as ${format}, language=${langParam}`);
 
-    const response = await fetch(url);
+    const response = await fetch(appendTokenToUrl(url), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
 
     if (!response.ok) {
       throw new Error(`Failed to export report: ${response.statusText}`);

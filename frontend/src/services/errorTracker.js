@@ -4,6 +4,7 @@
  */
 
 import { API_BASE } from '@/config/api';
+import { getAuthHeaders } from '@/services/authHeaders';
 
 class ErrorTracker {
   constructor() {
@@ -160,7 +161,8 @@ class ErrorTracker {
       const response = await fetch(`${API_BASE}/api/errors/report`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
         },
         body: JSON.stringify({ errors })
       });

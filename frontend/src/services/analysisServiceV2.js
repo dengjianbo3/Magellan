@@ -8,7 +8,8 @@
  * - industry-research
  */
 
-import { API_BASE, WS_BASE } from '@/config/api';
+import { apiUrl, WS_BASE } from '@/config/api';
+import { readJsonResponse } from '@/services/httpResponse';
 
 class AnalysisServiceV2 {
   constructor() {
@@ -61,15 +62,12 @@ class AnalysisServiceV2 {
    */
   async getScenarios() {
     try {
-      const response = await fetch(`${API_BASE}/api/v2/analysis/scenarios`, {
+      const response = await fetch(apiUrl('/api/v2/analysis/scenarios'), {
         headers: {
           ...this._getAuthHeaders()
         }
       });
-      if (!response.ok) {
-        throw new Error('Failed to fetch scenarios');
-      }
-      const data = await response.json();
+      const data = await readJsonResponse(response, 'Analysis scenarios');
       return data.scenarios;
     } catch (error) {
       console.error('[AnalysisV2] Error fetching scenarios:', error);
@@ -91,7 +89,7 @@ class AnalysisServiceV2 {
       console.log('[AnalysisV2] Starting analysis:', request);
 
       // 调用REST API启动分析
-      const response = await fetch(`${API_BASE}/api/v2/analysis/start`, {
+      const response = await fetch(apiUrl('/api/v2/analysis/start'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -99,18 +97,13 @@ class AnalysisServiceV2 {
         },
         body: JSON.stringify(request)
       });
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await readJsonResponse(response, 'Start analysis');
       console.log('[AnalysisV2] Analysis started:', data);
 
       this.sessionId = data.session_id;
 
       // 连接WebSocket
-      await this._connectWebSocket(request);
+      await this._connectWebSocket(request, data.ws_url);
 
       return {
         sessionId: data.session_id,
@@ -128,13 +121,14 @@ class AnalysisServiceV2 {
   /**
    * 连接WebSocket
    */
-  async _connectWebSocket(request) {
+  async _connectWebSocket(request, serverWsUrl = null) {
     return new Promise((resolve, reject) => {
       // 添加认证token作为查询参数
       const token = localStorage.getItem('access_token');
+      const baseWsUrl = serverWsUrl || `${WS_BASE}/ws/v2/analysis/${this.sessionId}`;
       const wsUrl = token
-        ? `${WS_BASE}/ws/v2/analysis/${this.sessionId}?token=${encodeURIComponent(token)}`
-        : `${WS_BASE}/ws/v2/analysis/${this.sessionId}`;
+        ? `${baseWsUrl}${baseWsUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
+        : baseWsUrl;
       console.log('[AnalysisV2] Connecting to WebSocket:', wsUrl);
 
       // Stage 2: 设置连接状态
@@ -189,7 +183,7 @@ class AnalysisServiceV2 {
           this._setConnectionState('reconnecting');
 
           setTimeout(() => {
-            this._connectWebSocket(request);
+            this._connectWebSocket(request, serverWsUrl);
           }, backoffDelay);
         } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
           console.error('[AnalysisV2] Max reconnection attempts reached');
@@ -425,15 +419,12 @@ class AnalysisServiceV2 {
    */
   async getStatus(sessionId) {
     try {
-      const response = await fetch(`${API_BASE}/api/v2/analysis/${sessionId}/status`, {
+      const response = await fetch(apiUrl(`/api/v2/analysis/${sessionId}/status`), {
         headers: {
           ...this._getAuthHeaders()
         }
       });
-      if (!response.ok) {
-        throw new Error('Failed to fetch status');
-      }
-      return await response.json();
+      return await readJsonResponse(response, 'Analysis status');
     } catch (error) {
       console.error('[AnalysisV2] Error fetching status:', error);
       throw error;

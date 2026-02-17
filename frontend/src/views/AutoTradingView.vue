@@ -864,6 +864,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useLanguage } from '@/composables/useLanguage.js';
+import { apiUrl, wsUrl as buildWsUrl } from '@/config/api';
+import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
 import Chart from 'chart.js/auto';
 import { marked } from 'marked';
 
@@ -1156,9 +1158,23 @@ function formatTime(timestamp) {
   return new Date(timestamp).toLocaleTimeString();
 }
 
+function withAuthHeaders(headers = {}) {
+  return {
+    ...getAuthHeaders(),
+    ...(headers || {})
+  };
+}
+
+function tradingFetch(path, options = {}) {
+  return fetch(appendTokenToUrl(apiUrl(path)), {
+    ...options,
+    headers: withAuthHeaders(options.headers)
+  });
+}
+
 async function fetchStatus() {
   try {
-    const response = await fetch('/api/trading/status');
+    const response = await tradingFetch('/api/trading/status');
     const data = await response.json();
     systemStatus.value = data;
   } catch (e) {
@@ -1168,7 +1184,7 @@ async function fetchStatus() {
 
 async function fetchAccount() {
   try {
-    const response = await fetch('/api/trading/account');
+    const response = await tradingFetch('/api/trading/account');
     const data = await response.json();
     if (!data.error) {
       account.value = {
@@ -1185,7 +1201,7 @@ async function fetchAccount() {
 
 async function fetchPosition() {
   try {
-    const response = await fetch('/api/trading/position');
+    const response = await tradingFetch('/api/trading/position');
     const data = await response.json();
     if (data.has_position !== undefined) {
       position.value = {
@@ -1209,7 +1225,7 @@ async function fetchPosition() {
 
 async function fetchEquityHistory() {
   try {
-    const response = await fetch('/api/trading/equity?limit=100');
+    const response = await tradingFetch('/api/trading/equity?limit=100');
     const data = await response.json();
     if (data.data) {
       equityHistory.value = data.data;
@@ -1225,7 +1241,7 @@ async function fetchDrawdown() {
     const endpoint = drawdownStartDate.value
       ? `/api/trading/drawdown?start_date=${drawdownStartDate.value}`
       : '/api/trading/drawdown';
-    const response = await fetch(endpoint);
+    const response = await tradingFetch(endpoint);
     const data = await response.json();
     drawdown.value = {
       maxDrawdownPct: data.max_drawdown_pct || 0,
@@ -1248,7 +1264,7 @@ async function fetchPerformance() {
     const endpoint = drawdownStartDate.value
       ? `/api/trading/performance?start_date=${drawdownStartDate.value}`
       : '/api/trading/performance';
-    const response = await fetch(endpoint);
+    const response = await tradingFetch(endpoint);
     const data = await response.json();
     performanceData.value = {
       sharpeRatio: data.sharpe_ratio || 0,
@@ -1272,7 +1288,7 @@ async function fetchPerformance() {
 // Phase 3.1: Fetch MTF Analysis
 async function fetchMtfAnalysis() {
   try {
-    const response = await fetch('/api/trading/mtf-analysis');
+    const response = await tradingFetch('/api/trading/mtf-analysis');
     const data = await response.json();
     if (data.overall_direction) {
       mtfAnalysis.value = data;
@@ -1285,7 +1301,7 @@ async function fetchMtfAnalysis() {
 // Phase 3.2: Fetch Agent Weights
 async function fetchAgentWeights() {
   try {
-    const response = await fetch('/api/trading/agent-weights');
+    const response = await tradingFetch('/api/trading/agent-weights');
     const data = await response.json();
     if (data.weights) {
       learnedWeights.value = data.weights;
@@ -1298,7 +1314,7 @@ async function fetchAgentWeights() {
 // Phase 2.3: Fetch Degradation Status
 async function fetchDegradation() {
   try {
-    const response = await fetch('/api/trading/degradation');
+    const response = await tradingFetch('/api/trading/degradation');
     const data = await response.json();
     if (data.level) {
       systemHealth.value = data;
@@ -1311,7 +1327,7 @@ async function fetchDegradation() {
 // Fetch Pending Trades (HITL Semi-Auto)
 async function fetchPendingTrades() {
   try {
-    const response = await fetch('/api/trading/pending');
+    const response = await tradingFetch('/api/trading/pending');
     const data = await response.json();
     if (data.trades) {
       pendingTrades.value = data.trades;
@@ -1380,7 +1396,7 @@ async function fetchBtcBenchmark() {
 
 async function fetchTradeHistory() {
   try {
-    const response = await fetch('/api/trading/history?limit=50');
+    const response = await tradingFetch('/api/trading/history?limit=50');
     const data = await response.json();
 
     const allTrades = [];
@@ -1469,7 +1485,7 @@ function parseDiscussionContent(content) {
 
 async function fetchDiscussionMessages() {
   try {
-    const response = await fetch('/api/trading/messages?limit=100');
+    const response = await tradingFetch('/api/trading/messages?limit=100');
     const data = await response.json();
     if (data.messages && data.messages.length > 0) {
       discussionMessages.value = data.messages.map(msg => ({
@@ -1486,7 +1502,7 @@ async function fetchDiscussionMessages() {
 
 async function startTrading() {
   try {
-    await fetch('/api/trading/start', { method: 'POST' });
+    await tradingFetch('/api/trading/start', { method: 'POST' });
     systemStatus.value.enabled = true;
   } catch (e) {
     console.error('Error starting trading:', e);
@@ -1495,7 +1511,7 @@ async function startTrading() {
 
 async function stopTrading() {
   try {
-    await fetch('/api/trading/stop', { method: 'POST' });
+    await tradingFetch('/api/trading/stop', { method: 'POST' });
     systemStatus.value.enabled = false;
   } catch (e) {
     console.error('Error stopping trading:', e);
@@ -1504,7 +1520,7 @@ async function stopTrading() {
 
 async function triggerAnalysis() {
   try {
-    await fetch('/api/trading/trigger', { method: 'POST' });
+    await tradingFetch('/api/trading/trigger', { method: 'POST' });
   } catch (e) {
     console.error('Error triggering analysis:', e);
   }
@@ -1540,9 +1556,9 @@ async function handleConfirmDecision() {
         body.amount_percent = Number(finalAmountPercent);
       }
 
-      const response = await fetch(`/api/trading/pending/${tradeId}/confirm`, {
+      const response = await tradingFetch(`/api/trading/pending/${tradeId}/confirm`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(body)
       });
       const result = await response.json();
@@ -1563,9 +1579,9 @@ async function handleConfirmDecision() {
       }
 
       // Record to RLHF decision history (non-blocking)
-      fetch('/api/trading/decision', {
+      tradingFetch('/api/trading/decision', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           decision_id: tradeId,
           action: isModified ? 'modified' : 'confirm',
@@ -1626,9 +1642,9 @@ async function handleDeferDecision() {
 
     if (tradeId) {
       // SEMI_AUTO mode: Use the proper pending trade reject API
-      const response = await fetch(`/api/trading/pending/${tradeId}/reject`, {
+      const response = await tradingFetch(`/api/trading/pending/${tradeId}/reject`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           user_id: 'frontend',
           reason: reason || '用户搁置'
@@ -1652,9 +1668,9 @@ async function handleDeferDecision() {
       }
 
       // Record to RLHF decision history (non-blocking)
-      fetch('/api/trading/decision', {
+      tradingFetch('/api/trading/decision', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           decision_id: tradeId,
           action: 'defer',
@@ -1666,9 +1682,9 @@ async function handleDeferDecision() {
 
     } else {
       // Fallback: just record the decision (legacy path)
-      await fetch('/api/trading/decision', {
+      await tradingFetch('/api/trading/decision', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           decision_id: `decision-${Date.now()}`,
           action: 'defer',
@@ -1714,7 +1730,7 @@ async function closePosition() {
   if (closingPosition.value) return;
   closingPosition.value = true;
   try {
-    const response = await fetch('/api/trading/close', { method: 'POST' });
+    const response = await tradingFetch('/api/trading/close', { method: 'POST' });
     const data = await response.json();
     if (data.error) {
       console.error('Error closing position:', data.error);
@@ -1742,7 +1758,7 @@ async function closePosition() {
 
 async function fetchAgentPerformance() {
   try {
-    const response = await fetch('/api/trading/agents/memory');
+    const response = await tradingFetch('/api/trading/agents/memory');
     const data = await response.json();
     if (data.team_summary) {
       agentPerformance.value = data;
@@ -1760,7 +1776,7 @@ async function openSettings() {
 async function fetchConfig() {
   loadingConfig.value = true;
   try {
-    const response = await fetch('/api/trading/config');
+    const response = await tradingFetch('/api/trading/config');
     const data = await response.json();
     if (data) {
       settingsForm.value = {
@@ -1801,9 +1817,9 @@ async function saveSettings() {
       if (!ok) return;
     }
 
-    const response = await fetch('/api/trading/config', {
+    const response = await tradingFetch('/api/trading/config', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         analysis_interval_hours: parseInt(settingsForm.value.analysisInterval),
         max_leverage: parseInt(settingsForm.value.maxLeverage),
@@ -1844,9 +1860,9 @@ async function clearOkxCredentials() {
   if (!confirm('确认清除 OKX 凭证？清除后会自动切回 PaperTrader（需要重置系统生效）。')) return;
   savingSettings.value = true;
   try {
-    const response = await fetch('/api/trading/config', {
+    const response = await tradingFetch('/api/trading/config', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         clear_okx_credentials: true,
         use_okx_trading: false
@@ -1876,9 +1892,9 @@ async function resetSystem() {
 
   resettingSystem.value = true;
   try {
-    const response = await fetch('/api/trading/reset', {
+    const response = await tradingFetch('/api/trading/reset', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: withAuthHeaders({ 'Content-Type': 'application/json' })
     });
     const data = await response.json();
 
@@ -1927,13 +1943,9 @@ function connectWebSocket() {
   if (!isComponentMounted) return;
 
   const sessionId = 'trading-' + Date.now();
-  // In development, connect directly to backend (port 8000)
-  // In production, use the same host
-  const isDev = window.location.port === '5173';
-  const wsHost = isDev ? window.location.host : window.location.host;
-  const wsUrl = `ws://${wsHost}/api/trading/ws/${sessionId}`;
+  const socketUrl = appendTokenToUrl(buildWsUrl(`/api/trading/ws/${sessionId}`));
 
-  ws = new WebSocket(wsUrl);
+  ws = new WebSocket(socketUrl);
 
   ws.onopen = () => {
     console.log('Trading WebSocket connected');

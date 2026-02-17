@@ -609,11 +609,11 @@
             <div v-if="activeChartTab === 'financial'" class="grid grid-cols-1 gap-6 animate-fade-in">
               <div class="bg-black/20 rounded-xl p-4 border border-white/5">
                 <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">收入趋势</h3>
-                <img :src="`${apiBase}/api/reports/${selectedReport.id}/charts/revenue?language=${currentLanguage}`" alt="Revenue Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
+                <img :src="chartUrl(selectedReport.id, 'revenue')" alt="Revenue Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
               </div>
               <div class="bg-black/20 rounded-xl p-4 border border-white/5">
                 <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">利润率趋势</h3>
-                <img :src="`${apiBase}/api/reports/${selectedReport.id}/charts/profit?language=${currentLanguage}`" alt="Profit Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
+                <img :src="chartUrl(selectedReport.id, 'profit')" alt="Profit Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
               </div>
             </div>
             
@@ -621,7 +621,7 @@
             <div v-if="activeChartTab === 'market'" class="grid grid-cols-1 gap-6 animate-fade-in">
               <div class="bg-black/20 rounded-xl p-4 border border-white/5">
                 <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">市场份额分布</h3>
-                <img :src="`${apiBase}/api/reports/${selectedReport.id}/charts/market_share?language=${currentLanguage}`" alt="Market Share Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
+                <img :src="chartUrl(selectedReport.id, 'market_share')" alt="Market Share Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
               </div>
             </div>
             
@@ -629,7 +629,7 @@
              <div v-if="activeChartTab === 'team_risk'" class="grid grid-cols-1 gap-6 animate-fade-in">
                <div class="bg-black/20 rounded-xl p-4 border border-white/5">
                  <h3 class="text-xs font-bold text-text-secondary uppercase mb-4">风险评估矩阵</h3>
-                 <img :src="`${apiBase}/api/reports/${selectedReport.id}/charts/risk_matrix?language=${currentLanguage}`" alt="Risk Matrix Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
+                 <img :src="chartUrl(selectedReport.id, 'risk_matrix')" alt="Risk Matrix Chart" class="w-full rounded-lg opacity-90 hover:opacity-100 transition-opacity" @error="handleChartError" />
                </div>
              </div>
           </div>
@@ -755,6 +755,7 @@ import { useRoute } from 'vue-router';
 import { useLanguage } from '../composables/useLanguage';
 import { useToast } from '@/composables/useToast';
 import { marked } from 'marked';
+import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
 
 // Environment variable for API base URL
 import { API_BASE } from '@/config/api';
@@ -967,7 +968,11 @@ const currentLanguage = computed(() => {
 });
 
 // Computed API base for use in template
-const apiBase = computed(() => API_BASE);
+const chartUrl = (reportId, chartType) => {
+  const lang = currentLanguage.value;
+  const raw = `${API_BASE}/api/reports/${reportId}/charts/${chartType}?language=${lang}`;
+  return appendTokenToUrl(raw);
+};
 
 const reports = computed(() => reportsData.value.map(report => {
   // Convert backend report format to display format
@@ -1021,7 +1026,11 @@ const fetchReports = async () => {
     loading.value = true;
     error.value = null;
 
-    const response = await fetch(`${API_BASE}/api/reports`);
+    const response = await fetch(`${API_BASE}/api/reports`, {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
     if (!response.ok) {
       throw new Error(`Failed to fetch reports: ${response.statusText}`);
     }
@@ -1045,7 +1054,11 @@ const viewReport = async (reportId) => {
     // Reset states
     showDiscussionHistory.value = false;
 
-    const response = await fetch(`${API_BASE}/api/reports/${reportId}`);
+    const response = await fetch(`${API_BASE}/api/reports/${reportId}`, {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
     if (!response.ok) {
       throw new Error(`Failed to fetch report: ${response.statusText}`);
     }
@@ -1099,7 +1112,10 @@ const deleteReport = async () => {
 
   try {
     const response = await fetch(`${API_BASE}/api/reports/${reportToDelete.value.id}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: {
+        ...getAuthHeaders()
+      }
     });
 
     if (!response.ok) {
@@ -1152,7 +1168,11 @@ const exportReport = async (reportId, format) => {
     const url = `${API_BASE}/api/reports/${reportId}/export/${format}?language=${langParam}`;
     console.log(`[ReportsView] Exporting report ${reportId} as ${format}, language=${langParam}`);
 
-    const response = await fetch(url);
+    const response = await fetch(appendTokenToUrl(url), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
 
     if (!response.ok) {
       throw new Error(`Failed to export report: ${response.statusText}`);

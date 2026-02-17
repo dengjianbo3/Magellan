@@ -20,6 +20,7 @@ except ImportError:
 from app.core.roundtable.tool import FunctionTool
 from app.core.trading.price_service import get_current_btc_price, PriceServiceError
 from app.core.trading.trading_config import get_infra_config, get_env_int as _get_env_int
+from app.core.auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +47,10 @@ class TradingToolkit:
     Tools are designed to be registered with agents for use in roundtable meetings.
     """
 
-    def __init__(self, paper_trader=None, config: TradingToolkitConfig = None):
+    def __init__(self, paper_trader=None, config: TradingToolkitConfig = None, user_id: Optional[str] = None):
         self.paper_trader = paper_trader
         self.config = config or TradingToolkitConfig()
+        self.user_id = get_current_user_id(user_id)
         self._tools = {}
         self._build_tools()
 
@@ -1606,4 +1608,3 @@ class TradingToolkit:
         except Exception as e:
             logger.error(f"[TradingTools] Orderbook error: {e}")
             return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
-

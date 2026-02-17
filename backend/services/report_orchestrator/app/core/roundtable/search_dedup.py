@@ -11,6 +11,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +36,21 @@ class SearchDedup:
         self.similarity_threshold = similarity_threshold
         self.dedup_window = timedelta(minutes=dedup_window_minutes)
         
-        # 会话缓存: session_id -> [(query, result, timestamp), ...]
+        # 会话缓存: session_id -> [(query, context_sig, result, timestamp), ...]
         self._session_cache: Dict[str, List[tuple]] = {}
+
+    def _context_signature(self, context: Optional[Dict[str, Any]]) -> str:
+        """Stable signature for search context; avoids wrong dedup across search intents."""
+        if not context:
+            return ""
+        filtered = {
+            str(k): context[k]
+            for k in sorted(context.keys())
+            if context[k] not in (None, "", [])
+        }
+        if not filtered:
+            return ""
+        return json.dumps(filtered, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     
     def _calculate_similarity(self, query1: str, query2: str) -> float:
         """计算两个查询的相似度"""
@@ -54,14 +68,15 @@ class SearchDedup:
         
         now = datetime.now()
         self._session_cache[session_id] = [
-            (q, r, t) for q, r, t in self._session_cache[session_id]
+            (q, sig, r, t) for q, sig, r, t in self._session_cache[session_id]
             if now - t < self.dedup_window
         ]
     
     def find_similar(
         self, 
         query: str, 
-        session_id: str
+        session_id: str,
+        context: Optional[Dict[str, Any]] = None
     ) -> Optional[Dict[str, Any]]:
         """
         查找会话中的相似查询结果
@@ -79,7 +94,10 @@ class SearchDedup:
         if session_id not in self._session_cache:
             return None
         
-        for cached_query, result, timestamp in self._session_cache[session_id]:
+        context_sig = self._context_signature(context)
+        for cached_query, cached_context_sig, result, timestamp in self._session_cache[session_id]:
+            if cached_context_sig != context_sig:
+                continue
             similarity = self._calculate_similarity(query, cached_query)
             
             if similarity >= self.similarity_threshold:
@@ -101,7 +119,8 @@ class SearchDedup:
         self, 
         query: str, 
         session_id: str, 
-        result: Dict[str, Any]
+        result: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None
     ):
         """
         添加查询结果到会话缓存
@@ -115,7 +134,7 @@ class SearchDedup:
             self._session_cache[session_id] = []
         
         self._session_cache[session_id].append(
-            (query, result, datetime.now())
+            (query, self._context_signature(context), result, datetime.now())
         )
         
         # 限制每个会话最多50条记录

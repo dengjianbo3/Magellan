@@ -25,6 +25,7 @@ import redis.asyncio as redis
 from app.core.trading.price_service import get_price_service, PriceService
 from app.core.trading.base_trader import BaseTrader
 from app.core.trading.trading_config import get_infra_config, get_env_float as _get_env_float
+from app.core.auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +173,8 @@ class PaperTrader(BaseTrader):
         initial_balance: float = None,
         redis_url: str = None,
         demo_mode: bool = False,  # False = use real CoinGecko price, True = simulated price
-        config: PaperTraderConfig = None
+        config: PaperTraderConfig = None,
+        user_id: Optional[str] = None,
     ):
         # Use config or individual parameters
         if initial_balance is None:
@@ -208,7 +210,8 @@ class PaperTrader(BaseTrader):
         self.on_sl_hit = None
 
         self._initialized = False
-        self._key_prefix = "paper_trader:"
+        self.user_id = get_current_user_id(user_id)
+        self._key_prefix = f"paper_trader:{self.user_id}:"
         
         # 🔒 CRITICAL: Add trade lock to prevent duplicate trades
         self._trade_lock = asyncio.Lock()
@@ -910,16 +913,18 @@ class PaperTrader(BaseTrader):
         }
 
 
-# Singleton
-_paper_trader: Optional[PaperTrader] = None
+# Singletons by user scope
+_paper_traders: Dict[str, PaperTrader] = {}
 
 
-async def get_paper_trader(initial_balance: float = None) -> PaperTrader:
-    """Get or create Paper Trader singleton"""
-    global _paper_trader
-    if _paper_trader is None:
+async def get_paper_trader(initial_balance: float = None, user_id: Optional[str] = None) -> PaperTrader:
+    """Get or create Paper Trader singleton scoped by user."""
+    scope = get_current_user_id(user_id)
+    trader = _paper_traders.get(scope)
+    if trader is None:
         if initial_balance is None:
             initial_balance = _get_env_float("PAPER_INITIAL_BALANCE", 10000.0)
-        _paper_trader = PaperTrader(initial_balance=initial_balance)
-        await _paper_trader.initialize()
-    return _paper_trader
+        trader = PaperTrader(initial_balance=initial_balance, user_id=scope)
+        await trader.initialize()
+        _paper_traders[scope] = trader
+    return trader

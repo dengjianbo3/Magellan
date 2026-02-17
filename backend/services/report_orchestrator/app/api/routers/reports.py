@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse
 
 from ...services.storage import get_report_storage, ReportStorage
 from ...exporters.chart_generator import ChartGenerator
+from ...core.auth import CurrentUser, get_current_user
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -36,7 +37,8 @@ def get_storage() -> ReportStorage:
 @router.post("")
 async def save_report(
     report_data: Dict[str, Any],
-    storage: ReportStorage = Depends(get_storage)
+    storage: ReportStorage = Depends(get_storage),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     保存 DD 分析报告
@@ -69,6 +71,7 @@ async def save_report(
         "created_at": report_data.get("created_at", datetime.now().isoformat()),
         "saved_at": datetime.now().isoformat()
     }
+    saved_report["user_id"] = current_user.id
 
     # Store report
     storage.save(report_id, saved_report)
@@ -83,9 +86,12 @@ async def save_report(
 
 
 @router.get("")
-async def get_reports(storage: ReportStorage = Depends(get_storage)):
+async def get_reports(
+    storage: ReportStorage = Depends(get_storage),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """获取所有保存的报告"""
-    all_reports = storage.get_all(limit=100)
+    all_reports = storage.get_all(limit=100, user_id=current_user.id)
 
     # Sort by created_at (newest first)
     sorted_reports = sorted(
@@ -104,10 +110,11 @@ async def get_reports(storage: ReportStorage = Depends(get_storage)):
 @router.get("/{report_id}")
 async def get_report(
     report_id: str,
-    storage: ReportStorage = Depends(get_storage)
+    storage: ReportStorage = Depends(get_storage),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """获取指定报告"""
-    report = storage.get(report_id)
+    report = storage.get(report_id, user_id=current_user.id)
 
     if not report:
         raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
@@ -121,15 +128,16 @@ async def get_report(
 @router.delete("/{report_id}")
 async def delete_report(
     report_id: str,
-    storage: ReportStorage = Depends(get_storage)
+    storage: ReportStorage = Depends(get_storage),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """删除指定报告"""
-    report = storage.get(report_id)
+    report = storage.get(report_id, user_id=current_user.id)
 
     if not report:
         raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
 
-    success = storage.delete(report_id)
+    success = storage.delete(report_id, user_id=current_user.id)
 
     if not success:
         raise HTTPException(status_code=500, detail=f"Failed to delete report {report_id}")
@@ -266,7 +274,8 @@ async def get_report_chart(
     report_id: str,
     chart_type: str,
     language: str = Query("zh", description="Language: zh or en"),
-    storage: ReportStorage = Depends(get_storage)
+    storage: ReportStorage = Depends(get_storage),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     生成并返回报告图表
@@ -281,7 +290,7 @@ async def get_report_chart(
     - team_radar: 团队能力雷达图
     """
     # 获取报告
-    report = storage.get(report_id)
+    report = storage.get(report_id, user_id=current_user.id)
     if not report:
         raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
 

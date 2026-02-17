@@ -13,6 +13,7 @@ from typing import List, Dict, Optional, Any
 
 import redis.asyncio as redis
 
+from app.core.auth import get_current_user_id
 # Import centralized config and constants
 from ..trading_config import get_infra_config
 from ..constants import CONSENSUS, CONFIDENCE
@@ -126,10 +127,11 @@ class ReflectionMemory:
     - Agent weight adjustments
     """
 
-    def __init__(self, redis_url: str = None):
+    def __init__(self, redis_url: str = None, user_id: Optional[str] = None):
         self.redis_url = redis_url or get_infra_config().redis_url
+        self.user_id = get_current_user_id(user_id)
         self._redis: Optional[redis.Redis] = None
-        self.key_prefix = "trading:reflection"
+        self.key_prefix = f"trading:reflection:{self.user_id}"
     
     async def _get_redis(self) -> redis.Redis:
         if self._redis is None:
@@ -239,12 +241,14 @@ class ReflectionEngine:
     def __init__(
         self,
         llm_service: Any = None,
-        redis_url: str = None
+        redis_url: str = None,
+        user_id: Optional[str] = None,
     ):
         self.llm = llm_service
-        self.memory = ReflectionMemory(redis_url)
+        self.user_id = get_current_user_id(user_id)
+        self.memory = ReflectionMemory(redis_url, user_id=self.user_id)
         # Use AgentWeightLearner instead of deprecated AgentWeightAdjuster
-        self._weight_learner = get_weight_learner()
+        self._weight_learner = get_weight_learner(self.user_id)
     
     async def reflect_on_trade(
         self,

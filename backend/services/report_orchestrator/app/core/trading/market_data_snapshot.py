@@ -12,6 +12,8 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 from dataclasses import dataclass, field
 
+from app.core.auth import get_current_user_id
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,7 +95,8 @@ class MarketDataSnapshotManager:
     负责在周期开始时获取数据并提供给所有 Agent
     """
     
-    def __init__(self):
+    def __init__(self, user_id: Optional[str] = None):
+        self.user_id = get_current_user_id(user_id)
         self._snapshot: Optional[MarketDataSnapshot] = None
         self._cycle_id: Optional[str] = None
         self._stats = {
@@ -146,13 +149,13 @@ class MarketDataSnapshotManager:
             self._stats["snapshots_created"] += 1
             
             logger.info(
-                f"[MarketSnapshot] Created for cycle {self._cycle_id}: "
+                f"[MarketSnapshot][{self.user_id}] Created for cycle {self._cycle_id}: "
                 f"price=${self._snapshot.price:,.2f}, "
                 f"fear_greed={self._snapshot.fear_greed_index}"
             )
             
         except Exception as e:
-            logger.error(f"[MarketSnapshot] Failed to create snapshot: {e}")
+            logger.error(f"[MarketSnapshot][{self.user_id}] Failed to create snapshot: {e}")
             self._snapshot.is_valid = False
         
         return self._snapshot
@@ -266,24 +269,29 @@ class MarketDataSnapshotManager:
     def clear(self):
         """清空快照（周期结束时调用）"""
         stats = self.get_stats()
-        logger.info(f"[MarketSnapshot] Cleared. Stats: {stats}")
+        logger.info(f"[MarketSnapshot][{self.user_id}] Cleared. Stats: {stats}")
         self._snapshot = None
         self._cycle_id = None
 
 
-# 全局单例
-_snapshot_manager: Optional[MarketDataSnapshotManager] = None
+# 按用户隔离的单例
+_snapshot_managers: Dict[str, MarketDataSnapshotManager] = {}
 
 
-def get_market_snapshot_manager() -> MarketDataSnapshotManager:
-    """获取全局快照管理器"""
-    global _snapshot_manager
-    if _snapshot_manager is None:
-        _snapshot_manager = MarketDataSnapshotManager()
-    return _snapshot_manager
+def get_market_snapshot_manager(user_id: Optional[str] = None) -> MarketDataSnapshotManager:
+    """获取用户作用域快照管理器"""
+    scope = get_current_user_id(user_id)
+    manager = _snapshot_managers.get(scope)
+    if manager is None:
+        manager = MarketDataSnapshotManager(user_id=scope)
+        _snapshot_managers[scope] = manager
+    return manager
 
 
-def reset_market_snapshot_manager():
-    """重置全局管理器（用于测试）"""
-    global _snapshot_manager
-    _snapshot_manager = None
+def reset_market_snapshot_manager(user_id: Optional[str] = None):
+    """重置管理器（用于测试）"""
+    if user_id is None:
+        _snapshot_managers.clear()
+        return
+    scope = get_current_user_id(user_id)
+    _snapshot_managers.pop(scope, None)

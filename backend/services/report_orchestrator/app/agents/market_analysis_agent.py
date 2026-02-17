@@ -3,11 +3,13 @@
 Market Analysis Agent for Market Due Diligence (MDD).
 市场分析 Agent，用于市场尽职调查
 """
-import httpx
 import json
 import re
 from typing import Dict, Any, List
 from ..models.dd_models import MarketAnalysisOutput
+from ..services.knowledge_access import search_knowledge_base as shared_search_knowledge_base
+from ..services.web_search_access import search_web as shared_search_web
+from ..core.llm_helper import LLMHelper
 
 
 class MarketAnalysisAgent:
@@ -22,6 +24,7 @@ class MarketAnalysisAgent:
         self.web_search_url = web_search_url
         self.internal_knowledge_url = internal_knowledge_url
         self.llm_gateway_url = llm_gateway_url
+        self.llm = LLMHelper(llm_gateway_url=self.llm_gateway_url, timeout=120)
         # V4: EventBus for real-time updates (set by caller)
         self.event_bus = None
 
@@ -103,19 +106,16 @@ class MarketAnalysisAgent:
             return []
         
         query = f"{target_market} 市场规模 趋势 2024"
-        
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            try:
-                response = await client.post(
-                    f"{self.web_search_url}/search",
-                    json={"query": query, "max_results": 5}
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get("results", [])
-            except Exception as e:
-                print(f"Warning: Market search failed: {e}")
+
+        try:
+            return await shared_search_web(
+                self.web_search_url,
+                query=query,
+                max_results=5,
+                timeout=60.0,
+            )
+        except Exception as e:
+            print(f"Warning: Market search failed: {e}")
         
         return []
     
@@ -128,19 +128,16 @@ class MarketAnalysisAgent:
         
         # Search for first 2-3 competitors
         query = " vs ".join(competitors[:3])
-        
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            try:
-                response = await client.post(
-                    f"{self.web_search_url}/search",
-                    json={"query": query, "max_results": 5}
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get("results", [])
-            except Exception as e:
-                print(f"Warning: Competitor search failed: {e}")
+
+        try:
+            return await shared_search_web(
+                self.web_search_url,
+                query=query,
+                max_results=5,
+                timeout=60.0,
+            )
+        except Exception as e:
+            print(f"Warning: Competitor search failed: {e}")
         
         return []
     
@@ -153,18 +150,16 @@ class MarketAnalysisAgent:
         
         query = f"{target_market} 赛道 投资 项目"
         
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            try:
-                response = await client.post(
-                    f"{self.internal_knowledge_url}/search",
-                    json={"query": query, "limit": 3}
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get("results", [])
-            except Exception as e:
-                print(f"Warning: Internal knowledge query failed: {e}")
+        try:
+            data = await shared_search_knowledge_base(
+                self.internal_knowledge_url,
+                query=query,
+                top_k=3,
+                timeout=60.0,
+            )
+            return data.get("results", [])
+        except Exception as e:
+            print(f"Warning: Internal knowledge query failed: {e}")
         
         return []
     
@@ -249,44 +244,32 @@ class MarketAnalysisAgent:
     
     async def _call_llm(self, prompt: str) -> str:
         """Call LLM Gateway for analysis"""
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            try:
-                response = await client.post(
-                    f"{self.llm_gateway_url}/chat",
-                    json={
-                        "history": [
-                            {"role": "user", "parts": [prompt]}
-                        ]
-                    }
-                )
+        result = await self.llm.call(prompt=prompt, response_format="text")
+        if "content" in result:
+            return result["content"]
 
-                if response.status_code != 200:
-                    raise Exception(f"LLM Gateway returned {response.status_code}")
-
-                result = response.json()
-                return result.get("content", "")
-            except httpx.RemoteProtocolError as e:
-                print(f"[Market Agent] LLM server disconnected: {e}", flush=True)
-                # 返回一个简化的响应,避免整个流程崩溃
-                return """```json
-{
-    "summary": "由于LLM服务暂时不可用，无法完成完整的市场分析。建议稍后重试或使用备用分析方法。",
-    "market_validation": "LLM服务不可用",
-    "growth_potential": "待评估",
-    "competitive_landscape": "待分析",
-    "red_flags": ["LLM服务连接失败，无法完成自动化分析"],
-    "opportunities": []
-}
-```"""
-            except httpx.TimeoutException as e:
-                print(f"[Market Agent] LLM request timeout: {e}", flush=True)
-                return """```json
+        if result.get("error") == "timeout":
+            print("[Market Agent] LLM request timeout", flush=True)
+            return """```json
 {
     "summary": "LLM请求超时，无法完成市场分析。",
     "market_validation": "分析超时",
     "growth_potential": "待评估",
     "competitive_landscape": "待分析",
     "red_flags": ["分析请求超时"],
+    "opportunities": []
+}
+```"""
+
+        print(f"[Market Agent] LLM call failed: {result}", flush=True)
+        # 返回一个简化的响应,避免整个流程崩溃
+        return """```json
+{
+    "summary": "由于LLM服务暂时不可用，无法完成完整的市场分析。建议稍后重试或使用备用分析方法。",
+    "market_validation": "LLM服务不可用",
+    "growth_potential": "待评估",
+    "competitive_landscape": "待分析",
+    "red_flags": ["LLM服务连接失败，无法完成自动化分析"],
     "opportunities": []
 }
 ```"""

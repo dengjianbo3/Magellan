@@ -24,6 +24,7 @@ except Exception:  # Optional in some local/dev test setups
     structlog = None
 
 from .trading_config import get_weight_config, get_infra_config, WeightLearningConfig as ConfigWeightLearning
+from app.core.auth import get_current_user_id
 
 logger = structlog.get_logger(__name__) if structlog is not None else logging.getLogger(__name__)
 
@@ -83,19 +84,33 @@ class AgentWeightLearner:
     Now uses centralized configuration from trading_config.py.
     """
 
-    REDIS_KEY_PREFIX = "agent_weights:"
-    REDIS_KEY_PERFORMANCE = "agent_performance:"
-    REDIS_KEY_HISTORY = "agent_history:"
+    REDIS_KEY_PREFIX_BASE = "agent_weights"
+    REDIS_KEY_PERFORMANCE_BASE = "agent_performance"
+    REDIS_KEY_HISTORY_BASE = "agent_history"
 
     def __init__(
         self,
         config: Optional[WeightLearningConfig] = None,
         redis_client: Optional[redis.Redis] = None,
+        user_id: Optional[str] = None,
     ):
         # Use centralized config if not provided
         self.config = config or get_weight_config()
+        self.user_id = get_current_user_id(user_id)
         self.redis = redis_client
         self._performance_cache: Dict[str, AgentPerformance] = {}
+
+    @property
+    def redis_key_prefix(self) -> str:
+        return f"{self.REDIS_KEY_PREFIX_BASE}:{self.user_id}:"
+
+    @property
+    def redis_key_performance(self) -> str:
+        return f"{self.REDIS_KEY_PERFORMANCE_BASE}:{self.user_id}:"
+
+    @property
+    def redis_key_history(self) -> str:
+        return f"{self.REDIS_KEY_HISTORY_BASE}:{self.user_id}:"
 
     async def _ensure_redis(self) -> Optional[redis.Redis]:
         """Ensure Redis connection exists."""
@@ -115,7 +130,7 @@ class AgentWeightLearner:
         try:
             redis_client = await self._ensure_redis()
             if redis_client:
-                key = f"{self.REDIS_KEY_PREFIX}{agent_name}"
+                key = f"{self.redis_key_prefix}{agent_name}"
                 weight = await redis_client.get(key)
                 if weight:
                     return float(weight)
@@ -150,7 +165,7 @@ class AgentWeightLearner:
         try:
             redis_client = await self._ensure_redis()
             if redis_client:
-                key = f"{self.REDIS_KEY_PERFORMANCE}{agent_name}"
+                key = f"{self.redis_key_performance}{agent_name}"
                 data = await redis_client.get(key)
                 if data:
                     perf_dict = json.loads(data)
@@ -301,7 +316,7 @@ class AgentWeightLearner:
             redis_client = await self._ensure_redis()
             if redis_client:
                 # Save performance
-                perf_key = f"{self.REDIS_KEY_PERFORMANCE}{perf.agent_name}"
+                perf_key = f"{self.redis_key_performance}{perf.agent_name}"
                 await redis_client.set(perf_key, json.dumps({
                     "current_weight": perf.current_weight,
                     "total_predictions": perf.total_predictions,
@@ -313,7 +328,7 @@ class AgentWeightLearner:
                 }))
                 
                 # Save weight for quick access
-                weight_key = f"{self.REDIS_KEY_PREFIX}{perf.agent_name}"
+                weight_key = f"{self.redis_key_prefix}{perf.agent_name}"
                 await redis_client.set(weight_key, str(perf.current_weight))
                 
                 # Update cache
@@ -327,7 +342,7 @@ class AgentWeightLearner:
         try:
             redis_client = await self._ensure_redis()
             if redis_client:
-                weight_key = f"{self.REDIS_KEY_PREFIX}{agent_name}"
+                weight_key = f"{self.redis_key_prefix}{agent_name}"
                 await redis_client.set(weight_key, str(self.config.default_weight))
                 
                 # Also reset performance (optional, keep history)
@@ -360,19 +375,21 @@ class AgentWeightLearner:
         return result
 
 
-# Singleton instance
-_weight_learner: Optional[AgentWeightLearner] = None
+# Singleton instances scoped by user
+_weight_learners: Dict[str, AgentWeightLearner] = {}
 
 
-def get_weight_learner() -> AgentWeightLearner:
-    """Get singleton AgentWeightLearner instance."""
-    global _weight_learner
-    if _weight_learner is None:
-        _weight_learner = AgentWeightLearner()
-    return _weight_learner
+def get_weight_learner(user_id: Optional[str] = None) -> AgentWeightLearner:
+    """Get AgentWeightLearner instance scoped by user."""
+    scope = get_current_user_id(user_id)
+    learner = _weight_learners.get(scope)
+    if learner is None:
+        learner = AgentWeightLearner(user_id=scope)
+        _weight_learners[scope] = learner
+    return learner
 
 
-async def get_learned_weights() -> Dict[str, float]:
+async def get_learned_weights(user_id: Optional[str] = None) -> Dict[str, float]:
     """Convenience function to get all agent weights."""
-    learner = get_weight_learner()
+    learner = get_weight_learner(user_id)
     return await learner.get_all_weights()

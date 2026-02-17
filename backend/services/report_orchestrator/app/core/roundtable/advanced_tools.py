@@ -10,6 +10,8 @@ from datetime import datetime
 import logging
 
 from .tool import Tool
+from ..service_endpoints import DEFAULT_WEB_SEARCH_URL
+from app.services.web_search_access import search_web as shared_search_web
 
 # Import centralized config
 try:
@@ -27,7 +29,7 @@ class PersonBackgroundTool(Tool):
     Get person background through public info search, GitHub analysis, news search
     """
 
-    def __init__(self, web_search_url: str = "http://web_search_service:8010"):
+    def __init__(self, web_search_url: str = DEFAULT_WEB_SEARCH_URL):
         super().__init__(
             name="person_background",
             description="""Person background check tool.
@@ -52,13 +54,12 @@ Note: Uses public information sources, does not include LinkedIn private data"""
     async def _search_web(self, query: str, max_results: int = 5) -> List[Dict]:
         """Execute web search"""
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(
-                    f"{self.web_search_url}/search",
-                    json={"query": query, "max_results": max_results}
-                )
-                response.raise_for_status()
-                return response.json().get("results", [])
+            return await shared_search_web(
+                self.web_search_url,
+                query=query,
+                max_results=max_results,
+                timeout=30.0,
+            )
         except Exception as e:
             logger.warning(f"Web search failed: {e}")
             return []
@@ -306,7 +307,7 @@ class RegulationSearchTool(Tool):
     Get legal and regulatory information by searching government regulation websites
     """
 
-    def __init__(self, web_search_url: str = "http://web_search_service:8010"):
+    def __init__(self, web_search_url: str = DEFAULT_WEB_SEARCH_URL):
         super().__init__(
             name="regulation_search",
             description="""Regulation search tool.
@@ -342,13 +343,12 @@ Data sources: Government public regulation databases + Official websites"""
     async def _search_web(self, query: str, max_results: int = 5) -> List[Dict]:
         """Execute web search"""
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(
-                    f"{self.web_search_url}/search",
-                    json={"query": query, "max_results": max_results}
-                )
-                response.raise_for_status()
-                return response.json().get("results", [])
+            return await shared_search_web(
+                self.web_search_url,
+                query=query,
+                max_results=max_results,
+                timeout=30.0,
+            )
         except Exception as e:
             logger.warning(f"Web search failed: {e}")
             return []
@@ -1091,7 +1091,7 @@ class BlackSwanScannerTool(Tool):
     Monitor major abnormal events that may affect investments
     """
 
-    def __init__(self, web_search_url: str = "http://web_search_service:8010"):
+    def __init__(self, web_search_url: str = DEFAULT_WEB_SEARCH_URL):
         super().__init__(
             name="black_swan_scanner",
             description="""Black swan event scanning tool.
@@ -1122,18 +1122,14 @@ Scan types:
     async def _search_web(self, query: str, max_results: int = 5) -> List[Dict]:
         """Execute web search"""
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(
-                    f"{self.web_search_url}/search",
-                    json={
-                        "query": query,
-                        "max_results": max_results,
-                        "topic": "news",
-                        "days": 7
-                    }
-                )
-                response.raise_for_status()
-                return response.json().get("results", [])
+            return await shared_search_web(
+                self.web_search_url,
+                query=query,
+                max_results=max_results,
+                topic="news",
+                days=7,
+                timeout=30.0,
+            )
         except Exception as e:
             logger.warning(f"Web search failed: {e}")
             return []

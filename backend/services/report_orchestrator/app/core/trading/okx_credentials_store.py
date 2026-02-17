@@ -18,6 +18,7 @@ from typing import Optional, Any, Dict
 import redis.asyncio as redis
 
 from .trading_config import get_infra_config
+from app.core.auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ class OkxCredentials:
 
 
 class OkxCredentialsStore:
-    REDIS_KEY = "trading:okx:credentials"
+    REDIS_KEY_PREFIX = "trading:okx:credentials"
 
     def __init__(self, redis_url: str | None = None, redis_client: Optional[redis.Redis] = None):
         self.redis_url = redis_url or get_infra_config().redis_url
@@ -73,11 +74,15 @@ class OkxCredentialsStore:
             self._redis = None
             return None
 
-    async def get(self) -> Optional[OkxCredentials]:
+    def _key(self, user_id: Optional[str] = None) -> str:
+        scope = get_current_user_id(user_id)
+        return f"{self.REDIS_KEY_PREFIX}:{scope}"
+
+    async def get(self, user_id: Optional[str] = None) -> Optional[OkxCredentials]:
         r = await self._connect()
         if not r:
             return None
-        raw = await r.get(self.REDIS_KEY)
+        raw = await r.get(self._key(user_id))
         if not raw:
             return None
         try:
@@ -92,13 +97,13 @@ class OkxCredentialsStore:
         except Exception:
             return None
 
-    async def get_masked(self) -> Dict[str, Any]:
-        creds = await self.get()
+    async def get_masked(self, user_id: Optional[str] = None) -> Dict[str, Any]:
+        creds = await self.get(user_id)
         if not creds:
             return {"configured": False, "demo_mode": True, "api_key_last4": "", "updated_at": ""}
         return creds.masked()
 
-    async def set(self, creds: OkxCredentials) -> bool:
+    async def set(self, creds: OkxCredentials, user_id: Optional[str] = None) -> bool:
         r = await self._connect()
         if not r:
             return False
@@ -106,17 +111,17 @@ class OkxCredentialsStore:
         payload = asdict(c)
         # Never log secrets.
         try:
-            await r.set(self.REDIS_KEY, json.dumps(payload, ensure_ascii=False))
+            await r.set(self._key(user_id), json.dumps(payload, ensure_ascii=False))
             return True
         except Exception:
             return False
 
-    async def clear(self) -> bool:
+    async def clear(self, user_id: Optional[str] = None) -> bool:
         r = await self._connect()
         if not r:
             return False
         try:
-            await r.delete(self.REDIS_KEY)
+            await r.delete(self._key(user_id))
             return True
         except Exception:
             return False
@@ -130,4 +135,3 @@ def get_okx_credentials_store() -> OkxCredentialsStore:
     if _store is None:
         _store = OkxCredentialsStore()
     return _store
-

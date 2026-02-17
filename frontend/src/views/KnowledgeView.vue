@@ -331,7 +331,9 @@
 import { ref, computed, onMounted } from 'vue';
 import { useToast } from '../composables/useToast';
 import { useLanguage } from '../composables/useLanguage';
-import { API_BASE } from '@/config/api';
+import { apiUrl } from '@/config/api';
+import { readJsonResponse } from '@/services/httpResponse';
+import { getAuthHeaders } from '@/services/authHeaders';
 
 const { success, error, warning } = useToast();
 const { t } = useLanguage();
@@ -425,10 +427,12 @@ const removeFile = (index) => {
 const fetchDocuments = async () => {
   loading.value = true;
   try {
-    const response = await fetch(`${API_BASE}/api/knowledge/documents?limit=100`);
-    if (!response.ok) throw new Error('Failed to fetch documents');
-
-    const data = await response.json();
+    const response = await fetch(apiUrl('/api/knowledge/documents?limit=100'), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    const data = await readJsonResponse(response, 'Knowledge documents');
     documents.value = data.documents || [];
 
     // Update category counts
@@ -443,10 +447,12 @@ const fetchDocuments = async () => {
 
 const fetchStats = async () => {
   try {
-    const response = await fetch(`${API_BASE}/api/knowledge/stats`);
-    if (!response.ok) throw new Error('Failed to fetch stats');
-
-    stats.value = await response.json();
+    const response = await fetch(apiUrl('/api/knowledge/stats'), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    stats.value = await readJsonResponse(response, 'Knowledge stats');
     categories.value[0].count = stats.value.total_documents || 0;
   } catch (err) {
     console.error('Error fetching stats:', err);
@@ -481,24 +487,27 @@ const uploadFiles = async () => {
       formData.append('category', uploadForm.value.category);
       formData.append('title', uploadForm.value.title || file.name);
 
-      const response = await fetch(`${API_BASE}/api/knowledge/upload`, {
+      const response = await fetch(apiUrl('/api/knowledge/upload'), {
         method: 'POST',
+        headers: {
+          ...getAuthHeaders()
+        },
         body: formData
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Upload failed');
-      }
+      await readJsonResponse(response, `Knowledge upload (${file.name})`);
     }
 
     success(`Successfully uploaded ${uploadForm.value.files.length} file(s)`);
 
     // Refresh BM25 index after upload
     try {
-      await fetch(`${API_BASE}/api/knowledge/refresh-index`, {
-        method: 'POST'
+      const refreshResp = await fetch(apiUrl('/api/knowledge/refresh-index'), {
+        method: 'POST',
+        headers: {
+          ...getAuthHeaders()
+        }
       });
+      await readJsonResponse(refreshResp, 'Knowledge refresh index');
     } catch (err) {
       console.warn('Failed to refresh index:', err);
     }
@@ -533,11 +542,15 @@ const deleteDocument = async () => {
 
   try {
     const response = await fetch(
-      `${API_BASE}/api/knowledge/documents/${documentToDelete.value.id}`,
-      { method: 'DELETE' }
+      apiUrl(`/api/knowledge/documents/${documentToDelete.value.id}`),
+      {
+        method: 'DELETE',
+        headers: {
+          ...getAuthHeaders()
+        }
+      }
     );
-
-    if (!response.ok) throw new Error('Failed to delete document');
+    await readJsonResponse(response, 'Knowledge delete document');
 
     success('Document deleted successfully');
 
@@ -561,12 +574,14 @@ const performSearch = async () => {
   try {
     const categoryParam = selectedCategory.value !== 'all' ? `&category=${selectedCategory.value}` : '';
     const response = await fetch(
-      `${API_BASE}/api/knowledge/hybrid-search?query=${encodeURIComponent(searchQuery.value)}&top_k=20&use_reranking=true${categoryParam}`
+      apiUrl(`/api/knowledge/hybrid-search?query=${encodeURIComponent(searchQuery.value)}&top_k=20&use_reranking=true${categoryParam}`),
+      {
+        headers: {
+          ...getAuthHeaders()
+        }
+      }
     );
-
-    if (!response.ok) throw new Error('Search failed');
-
-    const data = await response.json();
+    const data = await readJsonResponse(response, 'Knowledge search');
     searchResults.value = data.results || [];
     searchMode.value = true;
 

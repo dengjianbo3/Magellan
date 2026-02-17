@@ -8,6 +8,7 @@ Ensures all agents are aware of funding costs when making decisions.
 import logging
 from typing import Optional, Dict, Any
 
+from app.core.auth import get_current_user_id
 from .models import FundingRate, FundingDirection, EntryAction
 from .config import get_funding_config
 from .data_service import get_funding_data_service
@@ -26,8 +27,9 @@ class FundingContextProvider:
     awareness into Agent prompts and decision-making.
     """
     
-    def __init__(self):
+    def __init__(self, user_id: Optional[str] = None):
         self.config = get_funding_config()
+        self.user_id = get_current_user_id(user_id)
     
     async def generate_context(
         self,
@@ -53,7 +55,7 @@ class FundingContextProvider:
         # Use default leverage from config if not provided
         if leverage is None:
             leverage = self.config.default_leverage if hasattr(self.config, 'default_leverage') else 5
-        data_service = await get_funding_data_service()
+        data_service = await get_funding_data_service(self.user_id)
         calculator = get_funding_calculator()
         timing_controller = get_entry_timing_controller()
         
@@ -197,7 +199,7 @@ class FundingContextProvider:
         if leverage is None:
             leverage = self.config.default_leverage if hasattr(self.config, 'default_leverage') else 5
         
-        data_service = await get_funding_data_service()
+        data_service = await get_funding_data_service(self.user_id)
         calculator = get_funding_calculator()
         
         funding_rate = await data_service.get_current_rate(symbol)
@@ -260,13 +262,15 @@ class FundingContextProvider:
         }
 
 
-# Global singleton
-_provider: Optional[FundingContextProvider] = None
+# Global singleton map
+_providers: Dict[str, FundingContextProvider] = {}
 
 
-async def get_funding_context_provider() -> FundingContextProvider:
-    """Get or create funding context provider singleton"""
-    global _provider
-    if _provider is None:
-        _provider = FundingContextProvider()
-    return _provider
+async def get_funding_context_provider(user_id: Optional[str] = None) -> FundingContextProvider:
+    """Get or create funding context provider singleton scoped by user."""
+    scope = get_current_user_id(user_id)
+    provider = _providers.get(scope)
+    if provider is None:
+        provider = FundingContextProvider(user_id=scope)
+        _providers[scope] = provider
+    return provider

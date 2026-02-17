@@ -2,30 +2,44 @@
 Monitoring Router
 Handles error reporting from frontend and exposes monitoring endpoints
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import logging
+import os
 
 from ...core.metrics import record_frontend_error
 from ...middleware.caching import response_cache
+from ...core.auth import get_current_user, get_current_user_id
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 # In-memory error storage (in production, use a proper time-series database)
-error_buffer: List[Dict[str, Any]] = []
+error_buffers: Dict[str, List[Dict[str, Any]]] = {}
 MAX_ERROR_BUFFER_SIZE = 1000
 
-# Metrics counters
-metrics = {
-    "total_errors": 0,
-    "errors_by_type": {},
-    "errors_by_url": {},
-    "last_hour_errors": 0,
-    "last_error_time": None
-}
+
+def _new_metrics() -> Dict[str, Any]:
+    return {
+        "total_errors": 0,
+        "errors_by_type": {},
+        "errors_by_url": {},
+        "last_hour_errors": 0,
+        "last_error_time": None
+    }
+
+
+user_metrics: Dict[str, Dict[str, Any]] = {}
+
+
+def _get_user_error_buffer(user_id: str) -> List[Dict[str, Any]]:
+    return error_buffers.setdefault(str(user_id), [])
+
+
+def _get_user_metrics(user_id: str) -> Dict[str, Any]:
+    return user_metrics.setdefault(str(user_id), _new_metrics())
 
 
 class FrontendError(BaseModel):
@@ -64,16 +78,19 @@ class MetricsResponse(BaseModel):
 
 
 @router.post("/report", response_model=ErrorReportResponse)
-async def report_errors(request: ErrorReportRequest):
+async def report_errors(
+    request: ErrorReportRequest,
+):
     """
     Receive error reports from frontend.
 
     Errors are logged and stored in a buffer for analysis.
     In production, these would be sent to a proper monitoring system.
     """
-    global error_buffer, metrics
-
     received_count = len(request.errors)
+    user_id = str(get_current_user_id())
+    error_buffer = _get_user_error_buffer(user_id)
+    metrics = _get_user_metrics(user_id)
 
     for error in request.errors:
         # Log the error
@@ -110,7 +127,8 @@ async def report_errors(request: ErrorReportRequest):
 
         # Trim buffer if too large
         if len(error_buffer) > MAX_ERROR_BUFFER_SIZE:
-            error_buffer = error_buffer[-MAX_ERROR_BUFFER_SIZE:]
+            error_buffers[user_id] = error_buffer[-MAX_ERROR_BUFFER_SIZE:]
+            error_buffer = error_buffers[user_id]
 
     logger.info(f"[Monitoring] Received {received_count} error reports from frontend")
 
@@ -121,25 +139,35 @@ async def report_errors(request: ErrorReportRequest):
 
 
 @router.get("/errors", response_model=Dict[str, Any])
-async def get_recent_errors(limit: int = 50):
+async def get_recent_errors(
+    limit: int = 50,
+):
     """
     Get recent errors from buffer.
 
     Args:
         limit: Maximum number of errors to return (default 50)
     """
+    user_id = str(get_current_user_id())
+    error_buffer = _get_user_error_buffer(user_id)
+    metrics = _get_user_metrics(user_id)
     return {
         "errors": error_buffer[-limit:],
         "total_in_buffer": len(error_buffer),
-        "metrics": metrics
+        "metrics": metrics,
+        "user_id": user_id,
     }
 
 
 @router.get("/metrics", response_model=MetricsResponse)
-async def get_error_metrics():
+async def get_error_metrics(
+):
     """
     Get error metrics summary.
     """
+    user_id = str(get_current_user_id())
+    error_buffer = _get_user_error_buffer(user_id)
+    metrics = _get_user_metrics(user_id)
     return MetricsResponse(
         total_errors=metrics["total_errors"],
         errors_by_type=metrics["errors_by_type"],
@@ -151,25 +179,20 @@ async def get_error_metrics():
 
 
 @router.delete("/errors")
-async def clear_errors():
+async def clear_errors(
+):
     """
     Clear error buffer (admin operation).
     """
-    global error_buffer, metrics
-
+    user_id = str(get_current_user_id())
+    error_buffer = _get_user_error_buffer(user_id)
     cleared_count = len(error_buffer)
-    error_buffer = []
-    metrics = {
-        "total_errors": 0,
-        "errors_by_type": {},
-        "errors_by_url": {},
-        "last_hour_errors": 0,
-        "last_error_time": None
-    }
+    error_buffers[user_id] = []
+    user_metrics[user_id] = _new_metrics()
 
-    logger.info(f"[Monitoring] Cleared {cleared_count} errors from buffer")
+    logger.info(f"[Monitoring] Cleared {cleared_count} errors from buffer for user={user_id}")
 
-    return {"cleared": cleared_count, "status": "ok"}
+    return {"cleared": cleared_count, "status": "ok", "user_id": user_id}
 
 
 # =============================================================================
@@ -206,6 +229,13 @@ async def clear_cache(pattern: Optional[str] = None):
         pattern: Optional pattern to match cache keys (e.g., "/api/reports")
                  If not provided, clears entire cache.
     """
+    if os.getenv("MONITORING_ALLOW_CACHE_MUTATION", "false").lower() != "true":
+        return {
+            "status": "forbidden",
+            "message": "Cache mutation disabled. Set MONITORING_ALLOW_CACHE_MUTATION=true to enable.",
+            "current_stats": response_cache.stats(),
+        }
+
     response_cache.invalidate(pattern)
 
     logger.info(f"[Monitoring] Cache cleared (pattern={pattern})")

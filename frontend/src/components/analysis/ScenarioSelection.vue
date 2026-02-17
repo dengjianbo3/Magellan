@@ -78,6 +78,14 @@
         <div v-if="selectedScenario === scenario.id" class="absolute top-4 right-4 text-primary animate-fade-in">
           <span class="material-symbols-outlined text-3xl drop-shadow-[0_0_10px_rgba(56,189,248,0.8)]">check_circle</span>
         </div>
+
+        <!-- Coming Soon Badge -->
+        <div
+          v-if="scenario.status && scenario.status !== 'active'"
+          class="absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-bold tracking-wide bg-amber-500/20 text-amber-300 border border-amber-500/30"
+        >
+          {{ t('analysisWizard.comingSoon') || '即将推出' }}
+        </div>
       </div>
     </div>
 

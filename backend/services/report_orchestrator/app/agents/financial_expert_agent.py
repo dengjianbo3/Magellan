@@ -4,8 +4,9 @@ Financial Expert Agent - 深度财务分析Agent
 支持多种场景: 商业模式评估、单位经济学、财务建模、DCF估值等
 """
 from typing import Dict, Any, List, Optional
-import httpx
 from pydantic import BaseModel, Field
+from ..core.llm_helper import LLMHelper
+from ..core.service_endpoints import DEFAULT_WEB_SEARCH_URL
 
 
 class UnitEconomics(BaseModel):
@@ -52,11 +53,12 @@ class FinancialExpertAgent:
 
     def __init__(
         self,
-        web_search_url: str = "http://web_search_service:8010",
+        web_search_url: str = DEFAULT_WEB_SEARCH_URL,
         llm_gateway_url: str = "http://llm_gateway:8003"
     ):
         self.web_search_url = web_search_url
         self.llm_gateway_url = llm_gateway_url
+        self.llm = LLMHelper(llm_gateway_url=self.llm_gateway_url, timeout=60)
 
     async def analyze(
         self,
@@ -305,23 +307,10 @@ class FinancialExpertAgent:
 
     async def _call_llm(self, prompt: str) -> Dict[str, Any]:
         """调用LLM"""
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    f"{self.llm_gateway_url}/chat",
-                    json={
-                        "messages": [{"role": "user", "content": prompt}],
-                        "response_format": "json",
-                        "temperature": 0.3
-                    }
-                )
-
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get("content", {})
-        except Exception as e:
-            print(f"[FinancialExpertAgent] LLM call failed: {e}")
-
+        result = await self.llm.call(prompt=prompt, response_format="json")
+        if isinstance(result, dict) and "error" not in result:
+            return result
+        print(f"[FinancialExpertAgent] LLM call failed: {result}")
         return {"error": "LLM调用失败"}
 
     def _parse_result(

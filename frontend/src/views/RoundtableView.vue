@@ -542,6 +542,7 @@ import { useLanguage } from '../composables/useLanguage';
 import { getRoundtableAgents } from '../config/agents';
 import { API_BASE, apiUrl, wsUrl } from '@/config/api';
 import { marked } from 'marked';
+import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
 
 const { t, locale } = useLanguage();
 
@@ -632,7 +633,11 @@ onUnmounted(() => {
 const loadHistoryList = async () => {
   loadingHistory.value = true;
   try {
-    const response = await fetch(apiUrl('/api/roundtable/history?limit=20'));
+    const response = await fetch(apiUrl('/api/roundtable/history?limit=20'), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
     const data = await response.json();
     console.log('[Roundtable] Loaded history:', data);
     if (data.success) {
@@ -764,7 +769,7 @@ const startDiscussion = async () => {
 const connectWebSocket = () => {
   try {
     // Connect to backend roundtable WebSocket
-    ws = new WebSocket(wsUrl('/ws/roundtable'));
+    ws = new WebSocket(appendTokenToUrl(wsUrl('/ws/roundtable')));
 
     ws.onopen = () => {
       console.log('[Roundtable] WebSocket connected');
@@ -1071,7 +1076,8 @@ const generateMeetingSummary = async () => {
     const response = await fetch(`${API_BASE}/api/roundtable/generate_summary_stream`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
       },
       body: JSON.stringify({
         topic: discussionTopic.value,
@@ -1438,7 +1444,8 @@ const submitIntervention = async () => {
     const response = await fetch(`${API_BASE}/api/roundtable/inject_human_input`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
       },
       body: JSON.stringify({
         session_id: sessionId.value,

@@ -6,13 +6,14 @@ Provides OKX API integration for funding rate data collection.
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List, Optional, Dict
 import aiohttp
 
 from .models import FundingRate, FundingBill, RateTrend
 from .config import get_funding_config
 from ..trading_config import get_infra_config
 from ..okx_credentials_store import get_okx_credentials_store
+from app.core.auth import get_current_user_id
 import os
 
 logger = logging.getLogger(__name__)
@@ -28,9 +29,10 @@ class FundingDataService:
     - Position funding bills
     """
 
-    def __init__(self):
+    def __init__(self, user_id: Optional[str] = None):
         self.config = get_funding_config()
         self.base_url = get_infra_config().okx_base_url
+        self.user_id = get_current_user_id(user_id)
         self._session: Optional[aiohttp.ClientSession] = None
 
         # API credentials (for authenticated endpoints like bills)
@@ -43,7 +45,7 @@ class FundingDataService:
         self.use_proxy = os.getenv("USE_PROXY", "false").lower() == "true"
         self.proxy_url = os.getenv("PROXY_URL", "")
 
-    async def refresh_credentials(self):
+    async def refresh_credentials(self, user_id: Optional[str] = None):
         """
         Refresh OKX credentials.
 
@@ -52,7 +54,8 @@ class FundingDataService:
         2) Env credentials ONLY if OKX_ALLOW_ENV_CREDENTIALS=true
         3) Empty (public endpoints still work; authenticated endpoints will be disabled)
         """
-        creds = await get_okx_credentials_store().get()
+        scope = get_current_user_id(user_id or self.user_id)
+        creds = await get_okx_credentials_store().get(scope)
         if creds and creds.is_configured():
             self.api_key = creds.api_key
             self.secret_key = creds.secret_key
@@ -269,18 +272,20 @@ class FundingDataService:
             self._session = None
 
 
-# Global singleton
-_data_service: Optional[FundingDataService] = None
+# Global singleton map
+_data_services: Dict[str, FundingDataService] = {}
 
 
-async def get_funding_data_service() -> FundingDataService:
-    """Get or create funding data service singleton"""
-    global _data_service
-    if _data_service is None:
-        _data_service = FundingDataService()
+async def get_funding_data_service(user_id: Optional[str] = None) -> FundingDataService:
+    """Get or create funding data service singleton scoped by user."""
+    scope = get_current_user_id(user_id)
+    data_service = _data_services.get(scope)
+    if data_service is None:
+        data_service = FundingDataService(user_id=scope)
+        _data_services[scope] = data_service
     # Always refresh to reflect latest UI-provided credentials.
     try:
-        await _data_service.refresh_credentials()
+        await data_service.refresh_credentials(scope)
     except Exception:
         pass
-    return _data_service
+    return data_service

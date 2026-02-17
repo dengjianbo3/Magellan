@@ -5,6 +5,7 @@
 
 // Environment variables for API URLs
 import { API_BASE, WS_BASE } from '@/config/api';
+import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
 
 const DD_API_URL = API_BASE;
 const DD_WS_URL = WS_BASE;
@@ -80,6 +81,9 @@ export class DDAnalysisService {
     try {
       const response = await fetch(`${DD_API_URL}/api/upload_bp`, {
         method: 'POST',
+        headers: {
+          ...getAuthHeaders()
+        },
         body: formData,
         // Don't set Content-Type header, let browser set it with boundary
       });
@@ -106,7 +110,7 @@ export class DDAnalysisService {
         console.log(`[DD Service] ${isReconnecting ? 'Reconnecting' : 'Connecting'} to WebSocket...`);
 
         // 创建WebSocket连接
-        this.ws = new WebSocket(DD_WS_ENDPOINT);
+        this.ws = new WebSocket(appendTokenToUrl(DD_WS_ENDPOINT));
 
         this.ws.onopen = () => {
           console.log('[DD Service] WebSocket connected');
@@ -324,7 +328,11 @@ export class DDAnalysisService {
    * 获取DD会话状态（HTTP API）
    */
   async getSessionStatus(sessionId) {
-    const response = await fetch(`${DD_API_URL}/dd_session/${sessionId}`);
+    const response = await fetch(`${DD_API_URL}/api/dd/session/${sessionId}`, {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
     if (!response.ok) {
       throw new Error(`Failed to get session status: ${response.statusText}`);
     }
@@ -339,6 +347,7 @@ export class DDAnalysisService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...getAuthHeaders()
       },
       body: JSON.stringify(reportData)
     });
@@ -354,7 +363,11 @@ export class DDAnalysisService {
    * 获取所有报告列表
    */
   async getReports() {
-    const response = await fetch(`${DD_API_URL}/api/reports`);
+    const response = await fetch(`${DD_API_URL}/api/reports`, {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
     if (!response.ok) {
       throw new Error(`Failed to get reports: ${response.statusText}`);
     }

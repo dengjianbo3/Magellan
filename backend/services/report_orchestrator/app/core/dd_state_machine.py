@@ -4,11 +4,9 @@ State machine for Due Diligence (DD) workflow.
 DD 工作流状态机
 """
 import asyncio
-import json
 from typing import Optional, Dict, Any, List
 from fastapi import WebSocket
 from starlette.websockets import WebSocketState
-import httpx
 from datetime import datetime
 import os
 
@@ -23,6 +21,9 @@ from ..models.dd_models import (
     PreliminaryIM,
     CrossCheckResult,
 )
+from .llm_helper import LLMHelper
+from .service_endpoints import get_internal_knowledge_url, get_web_search_url
+from app.services.web_search_access import search_web as shared_search_web
 
 # V4: Import AgentEventBus
 from .agent_event_bus import get_event_bus
@@ -84,9 +85,10 @@ class DDStateMachine:
             "PUBLIC_DATA_URL",
             os.getenv("EXTERNAL_DATA_URL", "http://external_data_service:8006"),
         )
-        self.WEB_SEARCH_URL = os.getenv("WEB_SEARCH_URL", "http://web_search_service:8010")
-        self.INTERNAL_KNOWLEDGE_URL = os.getenv("INTERNAL_KNOWLEDGE_URL", "http://internal_knowledge_service:8009")
+        self.WEB_SEARCH_URL = get_web_search_url()
+        self.INTERNAL_KNOWLEDGE_URL = get_internal_knowledge_url()
         self.USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://user_service:8008")
+        self._llm_helper = LLMHelper(llm_gateway_url=self.LLM_GATEWAY_URL, timeout=30)
 
         # Steps definition (dynamically adjusted based on selected_agents)
         self.steps = self._init_steps()
@@ -894,22 +896,22 @@ class DDStateMachine:
         query = f"{company_name} 公司简介 业务 产品"
         
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.WEB_SEARCH_URL}/search",
-                    json={"query": query, "max_results": 5}
-                )
-                
-                if response.status_code == 200:
-                    search_results = response.json().get("results", [])
-                    
-                    # Extract info from search results using LLM
-                    context = "\n\n".join([
-                        f"标题: {r.get('title', '')}\n内容: {r.get('snippet', '')}\n链接: {r.get('link', '')}"
-                        for r in search_results[:5]
-                    ])
-                    
-                    prompt = f"""根据以下搜索结果，提取关于 "{company_name}" 的基本信息：
+            search_results = await shared_search_web(
+                self.WEB_SEARCH_URL,
+                query=query,
+                max_results=5,
+                timeout=30.0,
+            )
+
+            if search_results:
+                # Extract info from search results using LLM.
+                # shared_search_web normalizes to title/content/url.
+                context = "\n\n".join([
+                    f"标题: {r.get('title', '')}\n内容: {r.get('content', '')}\n链接: {r.get('url', '')}"
+                    for r in search_results[:5]
+                ])
+
+                prompt = f"""根据以下搜索结果，提取关于 "{company_name}" 的基本信息：
 
 {context}
 
@@ -927,62 +929,36 @@ class DDStateMachine:
 如果某些信息无法从搜索结果中获取，请填写 "未知" 或 "信息不详"。
 只返回 JSON，不要其他说明文字。"""
 
-                    # Call LLM Gateway
-                    llm_response = await client.post(
-                        f"{self.LLM_GATEWAY_URL}/chat",
-                        json={
-                            "history": [
-                                {"role": "user", "parts": [prompt]}
-                            ]
-                        }
+                company_info = await self._llm_helper.call(prompt=prompt, response_format="json")
+                if "error" in company_info:
+                    print(f"[ERROR] Failed to extract company info via LLM: {company_info}", flush=True)
+                else:
+                    # Build team members from key_members if available
+                    team_members = []
+                    if "key_members" in company_info and company_info["key_members"]:
+                        for member_info in company_info["key_members"][:5]:
+                            if isinstance(member_info, str):
+                                parts = member_info.split()
+                                name = parts[0] if parts else "未知"
+                                title = " ".join(parts[1:]) if len(parts) > 1 else "管理层"
+                            else:
+                                name = member_info.get("name", "未知")
+                                title = member_info.get("title", "管理层")
+
+                            team_members.append(TeamMember(
+                                name=name,
+                                title=title,
+                                background=f"根据公开信息，{name} 担任 {company_name} 的 {title}"
+                            ))
+
+                    return BPStructuredData(
+                        company_name=company_info.get("company_name", company_name),
+                        product_description=company_info.get("product_description", "信息不详"),
+                        target_market=company_info.get("target_market", "信息不详"),
+                        current_stage=company_info.get("current_stage", "信息不详"),
+                        team=team_members,
+                        founding_date=company_info.get("founding_year"),
                     )
-                    
-                    if llm_response.status_code == 200:
-                        llm_content = llm_response.json().get("content", "{}")
-                        # Extract JSON from markdown code blocks if present
-                        import re
-                        json_match = re.search(r'```json\s*(\{.*?\})\s*```', llm_content, re.DOTALL)
-                        if json_match:
-                            llm_content = json_match.group(1)
-                        else:
-                            json_match = re.search(r'(\{.*\})', llm_content, re.DOTALL)
-                            if json_match:
-                                llm_content = json_match.group(1)
-                        
-                        try:
-                            company_info = json.loads(llm_content)
-                            
-                            # Build team members from key_members if available
-                            team_members = []
-                            if "key_members" in company_info and company_info["key_members"]:
-                                for member_info in company_info["key_members"][:5]:
-                                    if isinstance(member_info, str):
-                                        # Simple string format
-                                        parts = member_info.split()
-                                        name = parts[0] if parts else "未知"
-                                        title = " ".join(parts[1:]) if len(parts) > 1 else "管理层"
-                                    else:
-                                        name = member_info.get("name", "未知")
-                                        title = member_info.get("title", "管理层")
-                                    
-                                    team_members.append(TeamMember(
-                                        name=name,
-                                        title=title,
-                                        background=f"根据公开信息，{name} 担任 {company_name} 的 {title}"
-                                    ))
-                            
-                            return BPStructuredData(
-                                company_name=company_info.get("company_name", company_name),
-                                product_description=company_info.get("product_description", "信息不详"),
-                                target_market=company_info.get("target_market", "信息不详"),
-                                current_stage=company_info.get("current_stage", "信息不详"),
-                                team=team_members,
-                                founding_year=company_info.get("founding_year"),
-                                team_size=company_info.get("team_size")
-                            )
-                        except json.JSONDecodeError as e:
-                            print(f"[ERROR] Failed to parse LLM JSON response: {e}", flush=True)
-                            print(f"[ERROR] LLM content: {llm_content}", flush=True)
         
         except Exception as e:
             print(f"[ERROR] Failed to search company info: {e}", flush=True)

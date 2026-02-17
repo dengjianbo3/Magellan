@@ -9,7 +9,8 @@ test('Analysis V2: scenario list is real (no mock fallback) and can proceed', as
   const password = 'Password123!';
 
   // Register
-  await page.goto('/register');
+  await page.goto('/register', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#name')).toBeVisible({ timeout: 120000 });
   await page.locator('#name').fill('E2E User');
   await page.locator('#email').fill(email);
   await page.locator('#organization').fill('E2E');

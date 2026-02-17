@@ -1038,9 +1038,8 @@ class OKXClient:
             raise RuntimeError(f"Failed to fetch klines from OKX: {e}")
 
 
-# Singleton instance
-_okx_client: Optional[OKXClient] = None
-_okx_client_fingerprint: Optional[str] = None
+# Singleton instances by credential fingerprint
+_okx_clients: Dict[str, OKXClient] = {}
 
 
 def _fp(api_key: str, passphrase: str, demo_mode: bool, base_url: str) -> str:
@@ -1062,9 +1061,6 @@ async def get_okx_client(
     - We do NOT auto-use server-side .env OKX credentials unless OKX_ALLOW_ENV_CREDENTIALS=true.
     - For hosted testing, users should configure credentials via the frontend, which passes them here.
     """
-    global _okx_client
-    global _okx_client_fingerprint
-
     allow_env = os.getenv("OKX_ALLOW_ENV_CREDENTIALS", "false").lower() == "true"
 
     # If caller did not provide credentials and env use is not allowed, force-empty creds (mock mode).
@@ -1080,19 +1076,15 @@ async def get_okx_client(
     eff_passphrase = os.getenv("OKX_PASSPHRASE", "") if passphrase is None else passphrase
     fp = _fp(eff_api_key or "", eff_passphrase or "", eff_demo_mode, eff_base_url)
 
-    if _okx_client is None or _okx_client_fingerprint != fp:
-        if _okx_client is not None and getattr(_okx_client, "_session", None) is not None:
-            try:
-                await _okx_client._session.close()
-            except Exception:
-                pass
-        _okx_client = OKXClient(
+    client = _okx_clients.get(fp)
+    if client is None:
+        client = OKXClient(
             api_key=api_key,
             secret_key=secret_key,
             passphrase=passphrase,
             demo_mode=demo_mode,
             base_url=base_url,
         )
-        await _okx_client.initialize()
-        _okx_client_fingerprint = fp
-    return _okx_client
+        await client.initialize()
+        _okx_clients[fp] = client
+    return client

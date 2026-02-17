@@ -5,6 +5,7 @@ Phase 2 分析计算工具
 from typing import Any, Dict, List
 
 from .tool import Tool
+from ..service_endpoints import DEFAULT_WEB_SEARCH_URL
 
 
 class DCFCalculatorTool(Tool):
@@ -316,7 +317,7 @@ class ComparableAnalysisTool(Tool):
     Calculate target company's fair valuation by comparing industry peer multiples
     """
 
-    def __init__(self, web_search_url: str = "http://web_search_service:8010"):
+    def __init__(self, web_search_url: str = DEFAULT_WEB_SEARCH_URL):
         super().__init__(
             name="comparable_analysis",
             description="""Comparable company valuation analysis.

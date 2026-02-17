@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List, Union
 from fastapi import APIRouter, WebSocket
 
+from app.core.auth import get_current_user_id
 from app.core.trading.paper_trader import PaperTrader, get_paper_trader
 from app.core.trading.okx_trader import OKXTrader, get_okx_trader
 from app.core.trading.trading_tools import TradingToolkit
@@ -25,13 +26,16 @@ from app.core.trading.trigger import TriggerScheduler, TriggerAgent
 from app.models.trading_models import TradingConfig, TradingSignal
 from app.core.trading.okx_credentials_store import get_okx_credentials_store
 from app.core.trading.trading_settings_store import get_trading_settings_store, TradingSettings
+from app.services.web_search_access import search_web as shared_search_web
+from app.core.service_endpoints import get_web_search_url
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/trading", tags=["trading"])
 
 # Global state
-_trading_system: Optional['TradingSystem'] = None
+_trading_systems: Dict[str, "TradingSystem"] = {}
+_trading_systems_lock = asyncio.Lock()
 
 
 class TradingSystem:
@@ -42,8 +46,9 @@ class TradingSystem:
     Supports both local PaperTrader and OKX Demo trading.
     """
 
-    def __init__(self, llm_service=None):
+    def __init__(self, llm_service=None, user_id: Optional[str] = None):
         self.llm_service = llm_service
+        self.user_id = get_current_user_id(user_id)
         self.config = TradingConfig()
 
         # Trader can be either PaperTrader or OKXTrader
@@ -74,7 +79,7 @@ class TradingSystem:
 
         # Load persisted settings (survive /api/trading/reset)
         try:
-            self._settings = await get_trading_settings_store().get()
+            self._settings = await get_trading_settings_store().get(self.user_id)
         except Exception:
             self._settings = TradingSettings()
 
@@ -93,7 +98,7 @@ class TradingSystem:
         use_okx_requested = bool(self._settings.use_okx_trading)
 
         if use_okx_requested:
-            creds = await get_okx_credentials_store().get()
+            creds = await get_okx_credentials_store().get(self.user_id)
             if creds and creds.is_configured():
                 logger.info("Initializing trading system with OKX Demo Trading (user-configured credentials)...")
                 self.trader_type = "okx"
@@ -103,15 +108,22 @@ class TradingSystem:
                     okx_api_key=creds.api_key,
                     okx_secret_key=creds.secret_key,
                     okx_passphrase=creds.passphrase,
+                    user_id=self.user_id,
                 )
             else:
                 logger.warning("OKX trading requested but credentials not configured. Falling back to PaperTrader.")
                 self.trader_type = "paper"
-                self.trader = await get_paper_trader(initial_balance=self.config.initial_capital)
+                self.trader = await get_paper_trader(
+                    initial_balance=self.config.initial_capital,
+                    user_id=self.user_id,
+                )
         else:
             logger.info("Initializing trading system with Paper Trader...")
             self.trader_type = "paper"
-            self.trader = await get_paper_trader(initial_balance=self.config.initial_capital)
+            self.trader = await get_paper_trader(
+                initial_balance=self.config.initial_capital,
+                user_id=self.user_id,
+            )
 
         # Set alias for compatibility
         self.paper_trader = self.trader
@@ -122,7 +134,7 @@ class TradingSystem:
         self.trader.on_sl_hit = self._on_sl_hit
 
         # Initialize toolkit with trader
-        self.toolkit = TradingToolkit(paper_trader=self.trader)
+        self.toolkit = TradingToolkit(paper_trader=self.trader, user_id=self.user_id)
 
         # Initialize scheduler
         self.scheduler = TradingScheduler(
@@ -142,7 +154,7 @@ class TradingSystem:
         logger.info("✅ TriggerScheduler initialized (15min interval, LLM-driven, position-aware)")
 
         self._initialized = True
-        logger.info(f"Trading system initialized with {self.trader_type} trader")
+        logger.info(f"Trading system initialized with {self.trader_type} trader for user={self.user_id}")
 
     async def start(self):
         """Start the trading system"""
@@ -321,7 +333,7 @@ class TradingSystem:
 
                 # HITL-only: always broadcast as semi_auto.
                 from app.core.trading.mode_manager import get_mode_manager
-                mode_manager = get_mode_manager()
+                mode_manager = get_mode_manager(self.user_id)
 
                 await self._broadcast({
                     "type": "signal_generated",
@@ -584,7 +596,7 @@ class TradingSystem:
 
         try:
             # Update agent memory with lessons learned
-            memory_store = await get_memory_store()
+            memory_store = await get_memory_store(self.user_id)
             trade_id = str(uuid.uuid4())
 
             # Use correct PascalCase agent IDs
@@ -774,40 +786,42 @@ class TradingSystem:
         """
         import httpx
         
-        web_search_url = os.getenv("WEB_SEARCH_URL", "http://web_search_service:8010")
+        web_search_url = get_web_search_url()
         
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                # Try health endpoint first
+                # Try health endpoint first; a degraded status should not be treated as healthy.
                 try:
                     response = await client.get(f"{web_search_url}/health")
                     if response.status_code == 200:
-                        logger.info("✅ Tavily/MCP search service is healthy")
-                        return True
+                        payload = response.json() if response.content else {}
+                        status = str(payload.get("status", "")).lower()
+                        if status in {"ok", "healthy"}:
+                            logger.info("✅ Tavily/MCP search service is healthy")
+                            return True
+                        logger.warning(f"Search health endpoint reported non-healthy status: {status or 'unknown'}")
                 except Exception:
                     pass
-                
-                # Fallback: try actual search endpoint
-                try:
-                    response = await client.post(
-                        f"{web_search_url}/mcp/tools/search",
-                        json={"query": "bitcoin price", "max_results": 1},
-                        timeout=15.0
-                    )
-                    if response.status_code == 200:
-                        data = response.json()
-                        if data.get("results") or data.get("content"):
-                            logger.info("✅ Tavily/MCP search service operational (search test passed)")
-                            return True
-                except Exception as e:
-                    logger.warning(f"Tavily search test failed: {e}")
-                
-                logger.error("❌ Tavily/MCP search service is unavailable")
-                return False
-                
+
         except Exception as e:
-            logger.error(f"❌ Failed to check Tavily health: {e}")
-            return False
+            logger.warning(f"Failed to call search health endpoint: {e}")
+
+        # Fallback: execute one real search through the shared access layer.
+        try:
+            results = await shared_search_web(
+                web_search_url,
+                query="bitcoin price",
+                max_results=1,
+                timeout=15.0,
+            )
+            if results:
+                logger.info("✅ Tavily/MCP search service operational (search test passed)")
+                return True
+        except Exception as e:
+            logger.warning(f"Tavily search test failed: {e}")
+
+        logger.error("❌ Tavily/MCP search service is unavailable")
+        return False
 
     async def _broadcast(self, message: Dict):
         """Broadcast message to all WebSocket clients"""
@@ -877,10 +891,17 @@ class TradingSystem:
         }
 
 
-async def get_trading_system(llm_service=None) -> TradingSystem:
-    """Get or create trading system singleton"""
-    global _trading_system
-    if _trading_system is None:
-        _trading_system = TradingSystem(llm_service=llm_service)
-        await _trading_system.initialize()
-    return _trading_system
+async def get_trading_system(llm_service=None, user_id: Optional[str] = None) -> TradingSystem:
+    """Get or create trading system singleton scoped by user."""
+    scope = get_current_user_id(user_id)
+    system = _trading_systems.get(scope)
+    if system is not None:
+        return system
+
+    async with _trading_systems_lock:
+        system = _trading_systems.get(scope)
+        if system is None:
+            system = TradingSystem(llm_service=llm_service, user_id=scope)
+            await system.initialize()
+            _trading_systems[scope] = system
+    return system

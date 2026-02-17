@@ -47,37 +47,51 @@ class AgentStateStore:
     def redis_available(self) -> bool:
         return self._redis is not None
 
-    def get_enabled(self, agent_id: str, default: bool = True) -> bool:
+    def _enabled_key(self, user_id: Optional[str]) -> str:
+        if not user_id:
+            return self.ENABLED_KEY
+        return f"{self.ENABLED_KEY}:{user_id}"
+
+    def _custom_config_key(self, user_id: Optional[str]) -> str:
+        if not user_id:
+            return self.CUSTOM_CONFIG_KEY
+        return f"{self.CUSTOM_CONFIG_KEY}:{user_id}"
+
+    def get_enabled(self, agent_id: str, default: bool = True, user_id: Optional[str] = None) -> bool:
         if not agent_id:
             return default
         if self._redis is None:
-            return self._enabled_mem.get(agent_id, default)
+            mem_key = f"{user_id or '__global__'}:{agent_id}"
+            return self._enabled_mem.get(mem_key, default)
         try:
-            v = self._redis.hget(self.ENABLED_KEY, agent_id)
+            v = self._redis.hget(self._enabled_key(user_id), agent_id)
             if v is None:
                 return default
             return str(v) == "1"
         except Exception:
             return default
 
-    def set_enabled(self, agent_id: str, enabled: bool) -> None:
+    def set_enabled(self, agent_id: str, enabled: bool, user_id: Optional[str] = None) -> None:
         if not agent_id:
             return
         if self._redis is None:
-            self._enabled_mem[agent_id] = bool(enabled)
+            mem_key = f"{user_id or '__global__'}:{agent_id}"
+            self._enabled_mem[mem_key] = bool(enabled)
             return
         try:
-            self._redis.hset(self.ENABLED_KEY, agent_id, "1" if enabled else "0")
+            self._redis.hset(self._enabled_key(user_id), agent_id, "1" if enabled else "0")
         except Exception:
-            self._enabled_mem[agent_id] = bool(enabled)
+            mem_key = f"{user_id or '__global__'}:{agent_id}"
+            self._enabled_mem[mem_key] = bool(enabled)
 
-    def get_custom_config(self, agent_id: str) -> Dict[str, Any]:
+    def get_custom_config(self, agent_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         if not agent_id:
             return {}
         if self._redis is None:
-            return self._cfg_mem.get(agent_id, {}).copy()
+            mem_key = f"{user_id or '__global__'}:{agent_id}"
+            return self._cfg_mem.get(mem_key, {}).copy()
         try:
-            raw = self._redis.hget(self.CUSTOM_CONFIG_KEY, agent_id)
+            raw = self._redis.hget(self._custom_config_key(user_id), agent_id)
             if not raw:
                 return {}
             data = json.loads(raw)
@@ -85,20 +99,30 @@ class AgentStateStore:
         except Exception:
             return {}
 
-    def update_custom_config(self, agent_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
-        current = self.get_custom_config(agent_id)
+    def update_custom_config(
+        self,
+        agent_id: str,
+        patch: Dict[str, Any],
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        current = self.get_custom_config(agent_id, user_id=user_id)
         current.update(patch or {})
         if self._redis is None:
-            self._cfg_mem[agent_id] = current
+            mem_key = f"{user_id or '__global__'}:{agent_id}"
+            self._cfg_mem[mem_key] = current
             return current
         try:
-            self._redis.hset(self.CUSTOM_CONFIG_KEY, agent_id, json.dumps(current, ensure_ascii=False, default=str))
+            self._redis.hset(
+                self._custom_config_key(user_id),
+                agent_id,
+                json.dumps(current, ensure_ascii=False, default=str),
+            )
         except Exception:
-            self._cfg_mem[agent_id] = current
+            mem_key = f"{user_id or '__global__'}:{agent_id}"
+            self._cfg_mem[mem_key] = current
         return current
 
 
 @lru_cache
 def get_agent_state_store() -> AgentStateStore:
     return AgentStateStore()
-

@@ -12,6 +12,7 @@ import importlib.util
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
+from ...core.auth import CurrentUser, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,37 @@ def get_rag_service():
     return _rag_service
 
 
+def _run_canonical_search(
+    rag,
+    *,
+    query: str,
+    top_k: int,
+    use_reranking: bool,
+    category: Optional[str],
+    owner_user_id: str,
+) -> dict:
+    """Canonical knowledge search path backed by RAG hybrid retrieval."""
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    filter_conditions = {"owner_user_id": owner_user_id}
+    if category:
+        filter_conditions["category"] = category
+
+    results = rag.hybrid_search(
+        query=query,
+        top_k=top_k,
+        use_reranking=use_reranking,
+        filter_conditions=filter_conditions,
+    )
+    return {
+        "query": query,
+        "results": results,
+        "count": len(results),
+        "search_type": "hybrid" + (" + reranking" if use_reranking else ""),
+    }
+
+
 if _MULTIPART_AVAILABLE:
     @router.post("/upload", tags=["Knowledge Base"])
     async def upload_document(
@@ -83,6 +115,7 @@ if _MULTIPART_AVAILABLE:
         title: Optional[str] = Form(None),
         category: Optional[str] = Form(None),
         store=Depends(get_vector_store),
+        current_user: CurrentUser = Depends(get_current_user),
     ):
         """
         Upload a document to the knowledge base
@@ -130,6 +163,7 @@ if _MULTIPART_AVAILABLE:
                 "title": title or filename,
                 "filename": filename,
                 "category": category or "general",
+                "owner_user_id": current_user.id,
                 "file_type": file_ext[1:],  # Remove dot
                 **parsed_doc["metadata"],
             }
@@ -178,13 +212,14 @@ async def list_documents(
     limit: int = 20,
     offset: int = 0,
     category: Optional[str] = None,
-    store=Depends(get_vector_store)
+    store=Depends(get_vector_store),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     List documents in the knowledge base
     """
     try:
-        filter_conditions = {}
+        filter_conditions = {"owner_user_id": current_user.id}
         if category:
             filter_conditions['category'] = category
 
@@ -214,45 +249,49 @@ async def search_knowledge_base(
     query: str,
     limit: int = 10,
     category: Optional[str] = None,
-    store=Depends(get_vector_store)
+    rag=Depends(get_rag_service),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
-    Search the knowledge base using semantic search
+    Search the knowledge base (canonical hybrid retrieval path).
+    Kept for backward-compatible clients that still call /search.
     """
-    if not query.strip():
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
-
     try:
-        filter_conditions = {}
-        if category:
-            filter_conditions['category'] = category
-
-        results = store.search(
+        result = _run_canonical_search(
+            rag,
             query=query,
-            limit=limit,
-            score_threshold=0.3,  # Minimum similarity score
-            filter_conditions=filter_conditions
+            top_k=limit,
+            use_reranking=False,
+            category=category,
+            owner_user_id=current_user.id,
         )
-
-        logger.info(f"Search query: '{query}', found {len(results)} results")
-
-        return {
-            "query": query,
-            "results": results,
-            "count": len(results)
-        }
-
+        logger.info(f"Search query: '{query}', found {result['count']} results")
+        return result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error searching knowledge base: {e}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 
 @router.delete("/documents/{doc_id}", tags=["Knowledge Base"])
-async def delete_document(doc_id: str, store=Depends(get_vector_store)):
+async def delete_document(
+    doc_id: str,
+    store=Depends(get_vector_store),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Delete a document from the knowledge base
     """
     try:
+        document = store.get_document(doc_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        metadata = document.get("metadata") if isinstance(document.get("metadata"), dict) else {}
+        if str(metadata.get("owner_user_id") or "") != str(current_user.id):
+            raise HTTPException(status_code=404, detail="Document not found")
+
         success = store.delete_document(doc_id)
 
         if success:
@@ -269,17 +308,26 @@ async def delete_document(doc_id: str, store=Depends(get_vector_store)):
 
 
 @router.get("/stats", tags=["Knowledge Base"])
-async def get_knowledge_base_stats(store=Depends(get_vector_store)):
+async def get_knowledge_base_stats(
+    store=Depends(get_vector_store),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Get knowledge base statistics
     """
     try:
         collection_info = store.get_collection_info()
+        user_documents = store.list_documents(
+            limit=100000,
+            offset=0,
+            filter_conditions={"owner_user_id": current_user.id}
+        )
+        user_doc_count = len(user_documents)
 
         return {
             "collection_name": collection_info.get("collection_name", ""),
-            "total_vectors": collection_info.get("vectors_count", 0),
-            "total_documents": collection_info.get("points_count", 0),
+            "total_vectors": user_doc_count,
+            "total_documents": user_doc_count,
             "status": collection_info.get("status", "unknown")
         }
 
@@ -294,7 +342,8 @@ async def hybrid_search(
     top_k: int = 10,
     use_reranking: bool = True,
     category: Optional[str] = None,
-    rag=Depends(get_rag_service)
+    rag=Depends(get_rag_service),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     Perform hybrid search combining vector search and BM25 keyword search
@@ -302,36 +351,25 @@ async def hybrid_search(
     Args:
         query: Search query
         top_k: Number of results to return
-        use_reranking: Whether to apply cross-encoder reranking
+        use_reranking: Whether to apply server-side reranking (if available)
         category: Optional category filter
 
     Returns:
         Search results with relevance scores
     """
-    if not query.strip():
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
-
     try:
-        filter_conditions = {}
-        if category:
-            filter_conditions['category'] = category
-
-        results = rag.hybrid_search(
+        result = _run_canonical_search(
+            rag,
             query=query,
             top_k=top_k,
             use_reranking=use_reranking,
-            filter_conditions=filter_conditions
+            category=category,
+            owner_user_id=current_user.id,
         )
-
-        logger.info(f"Hybrid search query: '{query}', found {len(results)} results")
-
-        return {
-            "query": query,
-            "results": results,
-            "count": len(results),
-            "search_type": "hybrid" + (" + reranking" if use_reranking else "")
-        }
-
+        logger.info(f"Hybrid search query: '{query}', found {result['count']} results")
+        return result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in hybrid search: {e}")
         raise HTTPException(status_code=500, detail=f"Hybrid search failed: {str(e)}")
@@ -343,7 +381,8 @@ async def get_rag_context(
     top_k: int = 5,
     max_context_length: int = 2000,
     category: Optional[str] = None,
-    rag=Depends(get_rag_service)
+    rag=Depends(get_rag_service),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     Build RAG context for a query by retrieving relevant documents
@@ -361,7 +400,7 @@ async def get_rag_context(
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
     try:
-        filter_conditions = {}
+        filter_conditions = {"owner_user_id": current_user.id}
         if category:
             filter_conditions['category'] = category
 
@@ -382,7 +421,11 @@ async def get_rag_context(
 
 
 @router.post("/rag-answer", tags=["Knowledge Base"])
-async def get_rag_answer(request: dict, rag=Depends(get_rag_service)):
+async def get_rag_answer(
+    request: dict,
+    rag=Depends(get_rag_service),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Get an LLM answer using RAG (Retrieval-Augmented Generation)
 
@@ -402,14 +445,14 @@ async def get_rag_answer(request: dict, rag=Depends(get_rag_service)):
         top_k = request.get("top_k", 5)
         category = request.get("category")
 
-        filter_conditions = {}
+        filter_conditions = {"owner_user_id": current_user.id}
         if category:
             filter_conditions['category'] = category
 
         # Build context with RAG
-        rag_result = rag.get_answer_with_sources(
+        rag_result = await rag.get_answer_with_sources(
             query=query,
-            llm_client=None,  # Not using LLM integration yet
+            llm_client=None,  # Use default LLM gateway integration inside RAGService
             top_k=top_k,
             filter_conditions=filter_conditions
         )
@@ -418,11 +461,11 @@ async def get_rag_answer(request: dict, rag=Depends(get_rag_service)):
 
         return {
             "query": rag_result['query'],
+            "answer": rag_result.get('answer', ""),
             "context": rag_result['context'],
             "sources": rag_result['sources'],
             "prompt": rag_result['prompt'],
-            "num_sources": rag_result['num_sources'],
-            "note": "LLM integration pending - returning context and prompt for now"
+            "num_sources": rag_result['num_sources']
         }
 
     except Exception as e:
@@ -431,7 +474,10 @@ async def get_rag_answer(request: dict, rag=Depends(get_rag_service)):
 
 
 @router.post("/refresh-index", tags=["Knowledge Base"])
-async def refresh_bm25_index(rag=Depends(get_rag_service)):
+async def refresh_bm25_index(
+    rag=Depends(get_rag_service),
+    _: CurrentUser = Depends(get_current_user),
+):
     """
     Refresh the BM25 index for hybrid search
 

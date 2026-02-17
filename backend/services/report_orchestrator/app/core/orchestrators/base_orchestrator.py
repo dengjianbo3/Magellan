@@ -766,6 +766,7 @@ class BaseOrchestrator(ABC):
             status = status_override or ("completed" if (final_report or quick_judgment) else "running")
             context = {
                 "session_id": self.session_id,
+                "user_id": self.request.user_id,
                 "scenario": self.scenario.value,
                 "request": self.request.dict(),
                 "status": status,
@@ -807,6 +808,7 @@ class BaseOrchestrator(ABC):
                 report_data = {
                     "id": self.session_id, # Use session_id as report_id for simplicity
                     "session_id": self.session_id,
+                    "user_id": self.request.user_id,
                     "project_name": self.request.project_name,
                     "company_name": self.request.target.get("company_name") or self.request.target.get("target_name") or self.request.target.get("ticker") or "Unknown Target",
                     "analysis_type": self.scenario.value,

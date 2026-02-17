@@ -115,12 +115,14 @@ services:
     networks:
       - default
     depends_on:
-      - chroma
+      - report_orchestrator
     env_file:
       - .env # Pass all environment variables from .env file
     command: uvicorn app.main:app --host 0.0.0.0 --port 8009 --reload
     environment:
       - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost:5174,http://localhost:8081}
+      - INTERNAL_KB_UPSTREAM_URL=${INTERNAL_KB_UPSTREAM_URL:-http://report_orchestrator:8000}
+      - INTERNAL_KB_UPSTREAM_TIMEOUT=${INTERNAL_KB_UPSTREAM_TIMEOUT:-30}
 
   web_search_service:
     build: ./backend/services/web_search_service
@@ -177,13 +179,6 @@ services:
       retries: 3
     networks:
       - default
-
-  chroma:
-    image: chromadb/chroma
-    ports:
-      - "8011:8000"
-    volumes:
-      - ./chroma_data:/chroma/.chroma/index
 
   # Qdrant Vector Database (Phase 2 - Knowledge Base)
   qdrant:
