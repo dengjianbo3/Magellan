@@ -4,14 +4,17 @@ Funding Rate Data Service
 Provides OKX API integration for funding rate data collection.
 """
 
-import os
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List, Optional, Dict
 import aiohttp
 
 from .models import FundingRate, FundingBill, RateTrend
 from .config import get_funding_config
+from ..trading_config import get_infra_config
+from ..okx_credentials_store import get_okx_credentials_store
+from app.core.auth import get_current_user_id
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -19,27 +22,59 @@ logger = logging.getLogger(__name__)
 class FundingDataService:
     """
     Funding Rate Data Service
-    
+
     Fetches funding rate data from OKX API including:
     - Current funding rate
     - Historical rates (for trend analysis)
     - Position funding bills
     """
-    
-    BASE_URL = "https://www.okx.com"
-    
-    def __init__(self):
+
+    def __init__(self, user_id: Optional[str] = None):
         self.config = get_funding_config()
+        self.base_url = get_infra_config().okx_base_url
+        self.user_id = get_current_user_id(user_id)
         self._session: Optional[aiohttp.ClientSession] = None
-        
+
         # API credentials (for authenticated endpoints like bills)
-        self.api_key = os.getenv("OKX_API_KEY", "")
-        self.secret_key = os.getenv("OKX_SECRET_KEY", "")
-        self.passphrase = os.getenv("OKX_PASSPHRASE", "")
+        self.api_key = ""
+        self.secret_key = ""
+        self.passphrase = ""
+        self.demo_mode = True
         
         # Proxy for network access
         self.use_proxy = os.getenv("USE_PROXY", "false").lower() == "true"
         self.proxy_url = os.getenv("PROXY_URL", "")
+
+    async def refresh_credentials(self, user_id: Optional[str] = None):
+        """
+        Refresh OKX credentials.
+
+        Priority:
+        1) Redis-stored user credentials (from Trading Settings UI)
+        2) Env credentials ONLY if OKX_ALLOW_ENV_CREDENTIALS=true
+        3) Empty (public endpoints still work; authenticated endpoints will be disabled)
+        """
+        scope = get_current_user_id(user_id or self.user_id)
+        creds = await get_okx_credentials_store().get(scope)
+        if creds and creds.is_configured():
+            self.api_key = creds.api_key
+            self.secret_key = creds.secret_key
+            self.passphrase = creds.passphrase
+            self.demo_mode = bool(creds.demo_mode)
+            return
+
+        allow_env = os.getenv("OKX_ALLOW_ENV_CREDENTIALS", "false").lower() == "true"
+        if allow_env:
+            self.api_key = os.getenv("OKX_API_KEY", "")
+            self.secret_key = os.getenv("OKX_SECRET_KEY", "")
+            self.passphrase = os.getenv("OKX_PASSPHRASE", "")
+            self.demo_mode = os.getenv("OKX_DEMO_MODE", "true").lower() == "true"
+            return
+
+        self.api_key = ""
+        self.secret_key = ""
+        self.passphrase = ""
+        self.demo_mode = True
     
     def _get_proxy(self) -> Optional[str]:
         """Get proxy URL if configured"""
@@ -68,7 +103,7 @@ class FundingDataService:
         try:
             await self._ensure_session()
             
-            url = f"{self.BASE_URL}/api/v5/public/funding-rate?instId={symbol}"
+            url = f"{self.base_url}/api/v5/public/funding-rate?instId={symbol}"
             proxy = self._get_proxy()
             
             async with self._session.get(url, proxy=proxy) as resp:
@@ -139,7 +174,7 @@ class FundingDataService:
             # Calculate limit (3 per day for 8h intervals)
             limit = min(hours // 8 + 1, 100)  # Max 100 records
             
-            url = f"{self.BASE_URL}/api/v5/public/funding-rate-history?instId={symbol}&limit={limit}"
+            url = f"{self.base_url}/api/v5/public/funding-rate-history?instId={symbol}&limit={limit}"
             proxy = self._get_proxy()
             
             async with self._session.get(url, proxy=proxy) as resp:
@@ -237,13 +272,20 @@ class FundingDataService:
             self._session = None
 
 
-# Global singleton
-_data_service: Optional[FundingDataService] = None
+# Global singleton map
+_data_services: Dict[str, FundingDataService] = {}
 
 
-async def get_funding_data_service() -> FundingDataService:
-    """Get or create funding data service singleton"""
-    global _data_service
-    if _data_service is None:
-        _data_service = FundingDataService()
-    return _data_service
+async def get_funding_data_service(user_id: Optional[str] = None) -> FundingDataService:
+    """Get or create funding data service singleton scoped by user."""
+    scope = get_current_user_id(user_id)
+    data_service = _data_services.get(scope)
+    if data_service is None:
+        data_service = FundingDataService(user_id=scope)
+        _data_services[scope] = data_service
+    # Always refresh to reflect latest UI-provided credentials.
+    try:
+        await data_service.refresh_credentials(scope)
+    except Exception:
+        pass
+    return data_service

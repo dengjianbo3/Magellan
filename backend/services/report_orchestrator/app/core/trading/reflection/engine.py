@@ -5,14 +5,21 @@ Implements the Reflexion pattern for learning from trade outcomes.
 Generates insights and updates agent weights based on trade results.
 """
 
-import asyncio
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 
 import redis.asyncio as redis
+
+from app.core.auth import get_current_user_id
+# Import centralized config and constants
+from ..trading_config import get_infra_config
+from ..constants import CONSENSUS, CONFIDENCE
+
+# Import weight learner for agent weight management
+from ..weight_learner import get_weight_learner, AgentWeightLearner
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +52,16 @@ class TradeReflection:
     incorrect_predictions: List[str]  # agent IDs that predicted wrong
     
     def to_dict(self) -> dict:
+        """
+        Convert reflection to dictionary format for serialization.
+
+        Returns:
+            Dict containing all reflection fields including:
+                - trade_id, timestamp, direction, entry/exit prices
+                - pnl, pnl_percent, close_reason, is_win
+                - reflection_text, lessons, agent_votes
+                - correct_predictions, incorrect_predictions
+        """
         return {
             "trade_id": self.trade_id,
             "timestamp": self.timestamp.isoformat(),
@@ -62,9 +79,22 @@ class TradeReflection:
             "correct_predictions": self.correct_predictions,
             "incorrect_predictions": self.incorrect_predictions
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> "TradeReflection":
+        """
+        Create TradeReflection instance from dictionary.
+
+        Args:
+            data: Dictionary containing reflection fields.
+                  Required: trade_id, direction, entry_price, exit_price,
+                           leverage, pnl, pnl_percent, close_reason, is_win
+                  Optional: timestamp, reflection_text, lessons, agent_votes,
+                           correct_predictions, incorrect_predictions
+
+        Returns:
+            TradeReflection instance
+        """
         timestamp = data.get("timestamp")
         if isinstance(timestamp, str):
             timestamp = datetime.fromisoformat(timestamp)
@@ -90,17 +120,18 @@ class TradeReflection:
 class ReflectionMemory:
     """
     Persistent storage for reflections.
-    
+
     Stores reflections in Redis for:
     - Historical analysis
     - Context injection into future trading decisions
     - Agent weight adjustments
     """
-    
-    def __init__(self, redis_url: str = "redis://redis:6379"):
-        self.redis_url = redis_url
+
+    def __init__(self, redis_url: str = None, user_id: Optional[str] = None):
+        self.redis_url = redis_url or get_infra_config().redis_url
+        self.user_id = get_current_user_id(user_id)
         self._redis: Optional[redis.Redis] = None
-        self.key_prefix = "trading:reflection"
+        self.key_prefix = f"trading:reflection:{self.user_id}"
     
     async def _get_redis(self) -> redis.Redis:
         if self._redis is None:
@@ -188,119 +219,36 @@ class ReflectionMemory:
         }
 
 
-class AgentWeightAdjuster:
-    """
-    Adjusts agent weights based on prediction accuracy.
-    
-    Agents that consistently predict correctly get higher weights.
-    Agents that consistently predict wrong get lower weights.
-    """
-    
-    def __init__(self, redis_url: str = "redis://redis:6379"):
-        self.redis_url = redis_url
-        self._redis: Optional[redis.Redis] = None
-        self.key_prefix = "trading:weights"
-        
-        # Weight adjustment parameters
-        self.correct_bonus = 0.05  # +5% for correct prediction
-        self.incorrect_penalty = 0.03  # -3% for incorrect prediction
-        self.min_weight = 0.5  # Minimum weight multiplier
-        self.max_weight = 2.0  # Maximum weight multiplier
-        self.default_weight = 1.0
-    
-    async def _get_redis(self) -> redis.Redis:
-        if self._redis is None:
-            self._redis = await redis.from_url(self.redis_url)
-        return self._redis
-    
-    async def get_weight(self, agent_id: str) -> float:
-        """Get current weight for an agent."""
-        r = await self._get_redis()
-        key = f"{self.key_prefix}:{agent_id}"
-        weight = await r.get(key)
-        if weight:
-            return float(weight.decode() if isinstance(weight, bytes) else weight)
-        return self.default_weight
-    
-    async def set_weight(self, agent_id: str, weight: float) -> None:
-        """Set weight for an agent."""
-        r = await self._get_redis()
-        key = f"{self.key_prefix}:{agent_id}"
-        clamped_weight = max(self.min_weight, min(self.max_weight, weight))
-        await r.set(key, str(clamped_weight))
-    
-    async def get_all_weights(self) -> Dict[str, float]:
-        """Get weights for all agents."""
-        r = await self._get_redis()
-        pattern = f"{self.key_prefix}:*"
-        keys = await r.keys(pattern)
-        
-        weights = {}
-        for key in keys:
-            key_str = key.decode() if isinstance(key, bytes) else key
-            agent_id = key_str.replace(f"{self.key_prefix}:", "")
-            weights[agent_id] = await self.get_weight(agent_id)
-        
-        return weights
-    
-    async def adjust_weights(
-        self,
-        correct_agents: List[str],
-        incorrect_agents: List[str]
-    ) -> Dict[str, float]:
-        """
-        Adjust weights based on prediction accuracy.
-        
-        Args:
-            correct_agents: Agent IDs that predicted correctly
-            incorrect_agents: Agent IDs that predicted incorrectly
-            
-        Returns:
-            New weights for all adjusted agents
-        """
-        new_weights = {}
-        
-        for agent_id in correct_agents:
-            current = await self.get_weight(agent_id)
-            new_weight = current + self.correct_bonus
-            await self.set_weight(agent_id, new_weight)
-            new_weights[agent_id] = min(self.max_weight, new_weight)
-            logger.info(f"[WEIGHT] {agent_id}: {current:.2f} -> {new_weights[agent_id]:.2f} (+correct)")
-        
-        for agent_id in incorrect_agents:
-            current = await self.get_weight(agent_id)
-            new_weight = current - self.incorrect_penalty
-            await self.set_weight(agent_id, new_weight)
-            new_weights[agent_id] = max(self.min_weight, new_weight)
-            logger.info(f"[WEIGHT] {agent_id}: {current:.2f} -> {new_weights[agent_id]:.2f} (-incorrect)")
-        
-        return new_weights
-
 
 class ReflectionEngine:
     """
     Main Reflection Engine.
-    
+
     Implements the Reflexion pattern:
     1. Analyze trade outcome
     2. Compare with agent predictions
     3. Generate lessons learned
     4. Store for future reference
     5. Adjust agent weights
-    
+
     Usage:
         engine = ReflectionEngine(llm_service)
         await engine.reflect_on_trade(trade_result, agent_votes)
+
+    🆕 P0 Fix: Now uses AgentWeightLearner for unified weight management.
     """
-    
+
     def __init__(
         self,
         llm_service: Any = None,
-        redis_url: str = "redis://redis:6379"
+        redis_url: str = None,
+        user_id: Optional[str] = None,
     ):
         self.llm = llm_service
-        self.memory = ReflectionMemory(redis_url)
-        self.weight_adjuster = AgentWeightAdjuster(redis_url)
+        self.user_id = get_current_user_id(user_id)
+        self.memory = ReflectionMemory(redis_url, user_id=self.user_id)
+        # Use AgentWeightLearner instead of deprecated AgentWeightAdjuster
+        self._weight_learner = get_weight_learner(self.user_id)
     
     async def reflect_on_trade(
         self,
@@ -405,10 +353,36 @@ class ReflectionEngine:
         
         # Store reflection
         await self.memory.store_reflection(reflection)
-        
-        # Adjust weights
-        await self.weight_adjuster.adjust_weights(correct_agents, incorrect_agents)
-        
+
+        # Update agent weights using WeightLearner
+        try:
+            # Build agent predictions dict
+            agent_predictions = {}
+            for vote in agent_votes:
+                agent_id = vote.get("agent_id") or vote.get("agent_name", "unknown")
+                vote_direction = vote.get("direction", "hold")
+                if hasattr(vote_direction, 'value'):
+                    vote_direction = vote_direction.value
+                agent_predictions[agent_id] = str(vote_direction).lower()
+
+            # Determine outcome
+            if is_win:
+                outcome = "profitable"
+            elif pnl < 0:
+                outcome = "loss"
+            else:
+                outcome = "neutral"
+
+            # Record to WeightLearner
+            await self._weight_learner.record_trade_outcome(
+                agent_predictions=agent_predictions,
+                actual_outcome=outcome,
+                trade_direction=direction
+            )
+            logger.info(f"[REFLECTION] WeightLearner updated with trade outcome: {outcome}")
+        except Exception as e:
+            logger.warning(f"[REFLECTION] Failed to update WeightLearner: {e}")
+
         logger.info(
             f"[REFLECTION] Trade {trade_id}: {'WIN' if is_win else 'LOSS'} "
             f"PnL: ${pnl:.2f} ({pnl_percent:.1f}%) "
@@ -500,12 +474,12 @@ Provide a 2-3 sentence reflection on:
             # Generate simple lesson based on outcome
             if direction in ("long", "short"):
                 if is_win:
-                    if confidence >= 70:
+                    if confidence >= CONFIDENCE.HIGH:
                         lessons[agent_id] = f"High confidence {direction} prediction validated."
                     else:
                         lessons[agent_id] = f"Low confidence but correct. Consider increasing confidence in similar setups."
                 else:
-                    if confidence >= 70:
+                    if confidence >= CONFIDENCE.HIGH:
                         lessons[agent_id] = f"High confidence {direction} prediction failed. Review analysis criteria."
                     else:
                         lessons[agent_id] = f"Low confidence and incorrect. Analysis approach may need adjustment."
@@ -532,7 +506,7 @@ Provide a 2-3 sentence reflection on:
         lines = ["## Recent Trade Reflections (Learn from these):"]
         
         for r in reflections:
-            outcome = "✅ WIN" if r.is_win else "❌ LOSS"
+            outcome = "[OK] WIN" if r.is_win else "[FAIL] LOSS"
             lines.append(
                 f"\n### Trade {r.trade_id[:8]}: {r.direction.upper()} {outcome}"
             )

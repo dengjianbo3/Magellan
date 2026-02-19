@@ -7,8 +7,10 @@ Search Router - 统一搜索路由器 (Plan C 重构版)
 - realtime: Tavily (最佳质量，不缓存)
 """
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from enum import Enum
+
+from ..auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +97,68 @@ class SearchRouter:
             return SearchPriority(priority_str)
         except ValueError:
             return SearchPriority.NORMAL
+
+    def _normalize_results(self, results: Any) -> List[Dict[str, Any]]:
+        """Normalize heterogeneous provider payloads into one stable result schema."""
+        if not isinstance(results, list):
+            return []
+
+        normalized: List[Dict[str, Any]] = []
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+
+            title = item.get("title") or ""
+            url = item.get("url") or item.get("href") or item.get("link") or ""
+            content = item.get("content") or item.get("body") or item.get("snippet") or ""
+            published_date = item.get("published_date") or item.get("date")
+            score = item.get("score")
+            if not isinstance(score, (int, float)):
+                score = 0.0
+
+            normalized.append({
+                "title": title,
+                "url": url,
+                "content": content,
+                "published_date": published_date,
+                "score": float(score),
+                # Backward-compatible aliases for existing callers/tools.
+                "body": content,
+                "date": published_date,
+            })
+        return normalized
+
+    def _normalize_result_contract(self, query: str, result: Any) -> Dict[str, Any]:
+        """Ensure router output keeps one contract regardless of provider/cache age."""
+        if not isinstance(result, dict):
+            return {
+                "success": False,
+                "error": "invalid_result_type",
+                "summary": f"Search failed for '{query}': invalid provider result",
+                "results": [],
+                "query": query,
+            }
+
+        normalized = dict(result)
+        normalized_results = self._normalize_results(normalized.get("results", []))
+        normalized["results"] = normalized_results
+        normalized["query"] = normalized.get("query") or query
+
+        if normalized.get("success") and not normalized.get("summary"):
+            normalized["summary"] = f"Found {len(normalized_results)} results for '{query}'."
+
+        return normalized
+
+    def _build_search_context(self, **kwargs) -> Dict[str, Any]:
+        """Context partition for cache/dedup so different intents do not contaminate each other."""
+        user_scope = kwargs.get("user_id") or get_current_user_id()
+        return {
+            "topic": kwargs.get("topic", "general"),
+            "time_range": kwargs.get("time_range"),
+            "days": kwargs.get("days"),
+            "max_results": kwargs.get("max_results", 5),
+            "user_scope": str(user_scope or ""),
+        }
     
     async def search(
         self,
@@ -112,23 +176,24 @@ class SearchRouter:
         - realtime: Tavily only (不缓存)
         """
         prio = self._get_priority(priority)
+        search_context = self._build_search_context(**kwargs)
         
         logger.info(f"[SearchRouter] Query: '{query[:50]}...' Priority: {prio.value}")
         
         # 0. 会话级语义去重
         if session_id and self.dedup:
-            deduped = self.dedup.find_similar(query, session_id)
+            deduped = self.dedup.find_similar(query, session_id, context=search_context)
             if deduped:
                 logger.info(f"[SearchRouter] Dedup HIT for '{query[:30]}...'")
-                return deduped
+                return self._normalize_result_contract(query, deduped)
         
         # 1. 检查缓存（realtime不查缓存）
         if prio != SearchPriority.REALTIME and self.cache:
-            cached = await self.cache.get(query, priority)
+            cached = await self.cache.get(query, priority, search_params=search_context)
             if cached:
                 logger.info(f"[SearchRouter] Cache HIT for '{query[:30]}...'")
                 cached["from_cache"] = True
-                return cached
+                return self._normalize_result_contract(query, cached)
         
         # 2. 根据优先级路由
         result = None
@@ -163,18 +228,19 @@ class SearchRouter:
                     logger.warning(f"[SearchRouter] Serper failed, falling back to Tavily")
                     result = await self._search_with_tavily(query, **kwargs)
                     source = "tavily_fallback"
-        
+
+        result = self._normalize_result_contract(query, result)
         result["routed_source"] = source
         result["priority"] = prio.value
         
         # 3. 写入缓存（realtime不缓存）
         if prio != SearchPriority.REALTIME and self.cache and result.get("success"):
-            await self.cache.set(query, priority, result)
+            await self.cache.set(query, priority, result, search_params=search_context)
             logger.info(f"[SearchRouter] Cached result for '{query[:30]}...'")
         
         # 4. 添加到会话去重缓存
         if session_id and self.dedup and result.get("success"):
-            self.dedup.add(query, session_id, result)
+            self.dedup.add(query, session_id, result, context=search_context)
         
         return result
     

@@ -3,7 +3,8 @@
  * Captures and reports frontend errors to backend for monitoring
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+import { API_BASE } from '@/config/api';
+import { getAuthHeaders } from '@/services/authHeaders';
 
 class ErrorTracker {
   constructor() {
@@ -160,7 +161,8 @@ class ErrorTracker {
       const response = await fetch(`${API_BASE}/api/errors/report`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
         },
         body: JSON.stringify({ errors })
       });

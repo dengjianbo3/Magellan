@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
 
 // Import layouts
 import AuthenticatedLayout from '@/components/layout/AuthenticatedLayout.vue';
@@ -92,8 +93,6 @@ const router = createRouter({
 
 // Navigation guard
 router.beforeEach(async (to, from, next) => {
-  // Dynamically import auth store to avoid circular dependencies
-  const { useAuthStore } = await import('@/stores/auth');
   const authStore = useAuthStore();
 
   const isAuthenticated = authStore.isAuthenticated;

@@ -24,33 +24,32 @@ import redis.asyncio as redis
 
 from app.core.trading.price_service import get_price_service, PriceService
 from app.core.trading.base_trader import BaseTrader
+from app.core.trading.trading_config import get_infra_config, get_env_float as _get_env_float
+from app.core.auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
-
-def _get_env_float(key: str, default: float) -> float:
-    """Get float from environment variable"""
-    val = os.getenv(key)
-    if val:
-        try:
-            return float(val)
-        except ValueError:
-            pass
-    return default
+def _get_fallback_start_price() -> float:
+    # Used when external price sources are unavailable (e.g. offline dev / CI).
+    return _get_env_float("PAPER_START_PRICE", 65000.0)
 
 
 @dataclass
 class PaperTraderConfig:
     """Paper Trader Configuration"""
-    initial_balance: float = 5000.0  # Match OKX demo account
+    initial_balance: float = field(default_factory=lambda: _get_env_float("PAPER_INITIAL_BALANCE", 10000.0))
     max_leverage: int = 20
     min_price: float = 1000.0  # Min price limit (for price simulation)
     max_price: float = 500000.0  # Max price limit (for price simulation)
-    redis_url: str = "redis://redis:6379"
+    redis_url: str = None  # Will use centralized config if None
     demo_mode: bool = False  # False = use real CoinGecko price, True = simulated price
     # Default TP/SL percentages - read from environment variables
     default_tp_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_TP_PERCENT", 5.0))
     default_sl_percent: float = field(default_factory=lambda: _get_env_float("DEFAULT_SL_PERCENT", 2.0))
+
+    def __post_init__(self):
+        if self.redis_url is None:
+            self.redis_url = get_infra_config().redis_url
 
 
 @dataclass
@@ -129,9 +128,9 @@ class PaperTrade:
 @dataclass
 class PaperAccount:
     """Simulated Account"""
-    initial_balance: float = 5000.0  # Match OKX demo account
-    balance: float = 5000.0  # Available balance
-    total_equity: float = 5000.0  # Total equity (balance + unrealized PnL)
+    initial_balance: float = field(default_factory=lambda: _get_env_float("PAPER_INITIAL_BALANCE", 10000.0))
+    balance: float = field(default_factory=lambda: _get_env_float("PAPER_INITIAL_BALANCE", 10000.0))
+    total_equity: float = field(default_factory=lambda: _get_env_float("PAPER_INITIAL_BALANCE", 10000.0))
     used_margin: float = 0.0  # Used margin
     unrealized_pnl: float = 0.0
     realized_pnl: float = 0.0  # Realized PnL
@@ -171,12 +170,15 @@ class PaperTrader(BaseTrader):
 
     def __init__(
         self,
-        initial_balance: float = 5000.0,  # Match OKX demo account
-        redis_url: str = "redis://redis:6379",
+        initial_balance: float = None,
+        redis_url: str = None,
         demo_mode: bool = False,  # False = use real CoinGecko price, True = simulated price
-        config: PaperTraderConfig = None
+        config: PaperTraderConfig = None,
+        user_id: Optional[str] = None,
     ):
         # Use config or individual parameters
+        if initial_balance is None:
+            initial_balance = _get_env_float("PAPER_INITIAL_BALANCE", 10000.0)
         self.config = config or PaperTraderConfig(
             initial_balance=initial_balance,
             redis_url=redis_url,
@@ -208,7 +210,8 @@ class PaperTrader(BaseTrader):
         self.on_sl_hit = None
 
         self._initialized = False
-        self._key_prefix = "paper_trader:"
+        self.user_id = get_current_user_id(user_id)
+        self._key_prefix = f"paper_trader:{self.user_id}:"
         
         # 🔒 CRITICAL: Add trade lock to prevent duplicate trades
         self._trade_lock = asyncio.Lock()
@@ -222,8 +225,10 @@ class PaperTrader(BaseTrader):
             self._redis = redis.from_url(self.redis_url, decode_responses=True)
             await self._redis.ping()
 
-            # Load account state
+            # Load account state (or use defaults if Redis is empty)
             await self._load_state()
+            # Persist initial state to Redis if it was empty
+            await self._save_state()
             logger.info(f"Paper trader initialized. Balance: ${self._account.balance:.2f}")
 
         except Exception as e:
@@ -231,8 +236,13 @@ class PaperTrader(BaseTrader):
 
         # Initialize price service
         self._price_service = await get_price_service(demo_mode=self.demo_mode)
-        self._current_price = await self._price_service.get_btc_price()
-        logger.info(f"Price service initialized. Current BTC price: ${self._current_price:,.2f}")
+        try:
+            self._current_price = await self._price_service.get_btc_price()
+            logger.info(f"Price service initialized. Current BTC price: ${self._current_price:,.2f}")
+        except Exception as e:
+            # Defensive fallback: allow paper trading to work even when price APIs are unreachable.
+            self._current_price = self._current_price or _get_fallback_start_price()
+            logger.warning(f"Price service failed, using fallback price ${self._current_price:,.2f}: {e}")
 
         self._initialized = True
 
@@ -312,10 +322,16 @@ class PaperTrader(BaseTrader):
         """Get current price - use price service for real/simulated price"""
         now = datetime.now()
 
+        if self._current_price is None:
+            self._current_price = _get_fallback_start_price()
+
         # Use price service to get price (update at most once per second)
         if (now - self._last_price_update).seconds >= 1:
             if self._price_service:
-                self._current_price = await self._price_service.get_btc_price()
+                try:
+                    self._current_price = await self._price_service.get_btc_price()
+                except Exception as e:
+                    logger.warning(f"Price service get_btc_price failed, keeping last price: {e}")
             else:
                 # Fallback: simple simulated fluctuation
                 change = random.uniform(-0.001, 0.001)
@@ -356,6 +372,7 @@ class PaperTrader(BaseTrader):
         true_available_margin = self._account.total_equity - self._account.used_margin
 
         return {
+            "initial_balance": self._account.initial_balance,
             "total_equity": self._account.total_equity,
             "available_balance": self._account.balance,
             "true_available_margin": true_available_margin,  # True available margin
@@ -503,9 +520,9 @@ class PaperTrader(BaseTrader):
             position_value = amount_usdt * leverage
             size = position_value / current_price
 
-            # Recalculate TP/SL prices (based on actual entry price, not LLM expected price)
-            # If provided tp/sl prices don't match actual entry price, use default percentages
-            # CRITICAL: Default percentages are MARGIN-based, must divide by leverage for PRICE movement
+            # Recalculate TP/SL prices (based on actual entry price, not LLM expected price).
+            # If provided TP/SL prices don't match the actual entry price, fall back to defaults.
+            # Note: default TP/SL percents are *price-move* percents; leverage affects PnL, not targets.
             if tp_price is not None and sl_price is not None:
                 if direction == "long":
                     # Long: TP should be above entry, SL should be below entry
@@ -513,67 +530,64 @@ class PaperTrader(BaseTrader):
                         # Invalid TP/SL prices, recalculate using default percentages
                         logger.warning(
                             f"Invalid TP/SL prices (tp={tp_price}, sl={sl_price}, entry={current_price}), "
-                            f"recalculating using default percentages (adjusted for {leverage}x leverage)"
+                            f"recalculating using default price percentages"
                         )
-                        # Divide by leverage: margin_percent / leverage = price_percent
-                        price_tp_pct = self.config.default_tp_percent / leverage
-                        price_sl_pct = self.config.default_sl_percent / leverage
-                        tp_price = current_price * (1 + price_tp_pct / 100)
-                        sl_price = current_price * (1 - price_sl_pct / 100)
+                        # default_tp/sl_percent are already PRICE movement percentages
+                        # Leverage affects margin P&L, NOT price targets
+                        tp_price = current_price * (1 + self.config.default_tp_percent / 100)
+                        sl_price = current_price * (1 - self.config.default_sl_percent / 100)
                 else:  # short
                     # Short: TP should be below entry, SL should be above entry
                     if tp_price >= current_price or sl_price <= current_price:
                         logger.warning(
                             f"Invalid TP/SL prices (tp={tp_price}, sl={sl_price}, entry={current_price}), "
-                            f"recalculating using default percentages (adjusted for {leverage}x leverage)"
+                            f"recalculating using default price percentages"
                         )
-                        price_tp_pct = self.config.default_tp_percent / leverage
-                        price_sl_pct = self.config.default_sl_percent / leverage
-                        tp_price = current_price * (1 - price_tp_pct / 100)
-                        sl_price = current_price * (1 + price_sl_pct / 100)
+                        tp_price = current_price * (1 - self.config.default_tp_percent / 100)
+                        sl_price = current_price * (1 + self.config.default_sl_percent / 100)
 
 
             logger.info(f"Open position params: entry={current_price}, tp={tp_price}, sl={sl_price}")
 
             # Create position
             self._position = PaperPosition(
-            id=str(uuid.uuid4()),
-            symbol=symbol,
-            direction=direction,
-            size=size,
-            entry_price=current_price,
-            leverage=leverage,
-            margin=amount_usdt,
-            take_profit_price=tp_price,
-            stop_loss_price=sl_price
-        )
+                id=str(uuid.uuid4()),
+                symbol=symbol,
+                direction=direction,
+                size=size,
+                entry_price=current_price,
+                leverage=leverage,
+                margin=amount_usdt,
+                take_profit_price=tp_price,
+                stop_loss_price=sl_price,
+            )
 
-        # Update account
-        self._account.balance -= amount_usdt
-        self._account.used_margin += amount_usdt
+            # Update account (keep inside lock to prevent inconsistent state)
+            self._account.balance -= amount_usdt
+            self._account.used_margin += amount_usdt
 
-        await self._save_state()
+            await self._save_state()
 
-        logger.info(
-            f"✅ [TRADE_LOCK] Position opened: {direction.upper()} {size:.6f} BTC @ ${current_price:.2f}, "
-            f"leverage: {leverage}x, margin: ${amount_usdt:.2f}, "
-            f"remaining: ${self._account.balance:.2f}"
-        )
-        logger.info(f"[TRADE_LOCK] Releasing lock after successful {direction} position")
+            logger.info(
+                f"[OK] [TRADE_LOCK] Position opened: {direction.upper()} {size:.6f} BTC @ ${current_price:.2f}, "
+                f"leverage: {leverage}x, margin: ${amount_usdt:.2f}, "
+                f"remaining: ${self._account.balance:.2f}"
+            )
+            logger.info(f"[TRADE_LOCK] Releasing lock after successful {direction} position")
 
-        return {
-            "success": True,
-            "order_id": self._position.id,
-            "direction": direction,
-            "executed_price": current_price,
-            "executed_amount": size,
-            "leverage": leverage,
-            "margin": amount_usdt,
-            "take_profit": tp_price,
-            "stop_loss": sl_price,
-            "remaining_balance": self._account.balance,
-            "remaining_available_margin": self._account.total_equity - self._account.used_margin
-        }
+            return {
+                "success": True,
+                "order_id": self._position.id,
+                "direction": direction,
+                "executed_price": current_price,
+                "executed_amount": size,
+                "leverage": leverage,
+                "margin": amount_usdt,
+                "take_profit": tp_price,
+                "stop_loss": sl_price,
+                "remaining_balance": self._account.balance,
+                "remaining_available_margin": self._account.total_equity - self._account.used_margin,
+            }
 
     async def close_position(self, symbol: str = "BTC-USDT-SWAP", reason: str = "manual") -> Dict:
         """Close position"""
@@ -630,7 +644,11 @@ class PaperTrader(BaseTrader):
 
             # Trigger callback
             if self.on_position_closed:
-                await self.on_position_closed(old_position, pnl, reason)
+                try:
+                    # Callback should never break the trading/close flow.
+                    await self.on_position_closed(old_position, pnl, reason)
+                except Exception as cb_err:
+                    logger.error(f"on_position_closed callback failed: {cb_err}")
 
             return {
                 "success": True,
@@ -641,52 +659,67 @@ class PaperTrader(BaseTrader):
                 "reason": reason
             }
 
-    async def check_tp_sl(self) -> Optional[str]:
-        """Check if TP/SL is triggered"""
+    async def check_tp_sl(self, auto_close: bool = True) -> Optional[str]:
+        """
+        Check if TP/SL is triggered.
+
+        Args:
+            auto_close: If True (default), automatically close position when
+                       TP/SL is hit. If False, only return the trigger status.
+
+        Returns:
+            "tp", "sl", "liquidation", or None
+        """
         if not self._position:
             return None
 
         current_price = await self.get_current_price(self._position.symbol)
-        
-        # 🔧 FIX: Save position reference before close_position sets it to None
+
+        # Save position reference before close_position sets it to None
         position = self._position
 
         if position.direction == "long":
             # Long: price above TP or below SL
             if position.take_profit_price and current_price >= position.take_profit_price:
-                await self.close_position(reason="tp")
+                if auto_close:
+                    await self.close_position(reason="tp")
                 if self.on_tp_hit:
                     await self.on_tp_hit(position, current_price)
                 return "tp"
 
             if position.stop_loss_price and current_price <= position.stop_loss_price:
-                await self.close_position(reason="sl")
+                if auto_close:
+                    await self.close_position(reason="sl")
                 if self.on_sl_hit:
                     await self.on_sl_hit(position, current_price)
                 return "sl"
 
             # Check liquidation
             if current_price <= position.calculate_liquidation_price():
-                await self.close_position(reason="liquidation")
+                if auto_close:
+                    await self.close_position(reason="liquidation")
                 return "liquidation"
 
         else:  # short
             # Short: price below TP or above SL
             if position.take_profit_price and current_price <= position.take_profit_price:
-                await self.close_position(reason="tp")
+                if auto_close:
+                    await self.close_position(reason="tp")
                 if self.on_tp_hit:
                     await self.on_tp_hit(position, current_price)
                 return "tp"
 
             if position.stop_loss_price and current_price >= position.stop_loss_price:
-                await self.close_position(reason="sl")
+                if auto_close:
+                    await self.close_position(reason="sl")
                 if self.on_sl_hit:
                     await self.on_sl_hit(position, current_price)
                 return "sl"
 
             # Check liquidation
             if current_price >= position.calculate_liquidation_price():
-                await self.close_position(reason="liquidation")
+                if auto_close:
+                    await self.close_position(reason="liquidation")
                 return "liquidation"
 
         return None
@@ -769,8 +802,10 @@ class PaperTrader(BaseTrader):
             except Exception as e:
                 logger.error(f"Reset: Failed to fetch price: {e}")
                 # Keep previous price, don't use hardcoded value
+                if self._current_price is None:
+                    self._current_price = _get_fallback_start_price()
         else:
-            self._current_price = None
+            self._current_price = self._current_price or _get_fallback_start_price()
 
         await self._save_state()
         logger.info(f"Paper trader reset. Balance: ${self.initial_balance:.2f}")
@@ -878,14 +913,18 @@ class PaperTrader(BaseTrader):
         }
 
 
-# Singleton
-_paper_trader: Optional[PaperTrader] = None
+# Singletons by user scope
+_paper_traders: Dict[str, PaperTrader] = {}
 
 
-async def get_paper_trader(initial_balance: float = 5000.0) -> PaperTrader:  # Match OKX demo account
-    """Get or create Paper Trader singleton"""
-    global _paper_trader
-    if _paper_trader is None:
-        _paper_trader = PaperTrader(initial_balance=initial_balance)
-        await _paper_trader.initialize()
-    return _paper_trader
+async def get_paper_trader(initial_balance: float = None, user_id: Optional[str] = None) -> PaperTrader:
+    """Get or create Paper Trader singleton scoped by user."""
+    scope = get_current_user_id(user_id)
+    trader = _paper_traders.get(scope)
+    if trader is None:
+        if initial_balance is None:
+            initial_balance = _get_env_float("PAPER_INITIAL_BALANCE", 10000.0)
+        trader = PaperTrader(initial_balance=initial_balance, user_id=scope)
+        await trader.initialize()
+        _paper_traders[scope] = trader
+    return trader

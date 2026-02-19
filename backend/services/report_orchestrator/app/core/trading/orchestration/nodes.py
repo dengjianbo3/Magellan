@@ -14,20 +14,20 @@ import json
 import traceback
 
 from langchain_core.runnables import RunnableConfig
-from .state import TradingState, NodeResult, TradeDirection
+from .state import TradingState
 from app.core.trading.executor_agent import ExecutorAgent
 from app.core.trading.mode_manager import (
     get_mode_manager,
     TradingMode,
     ExecutionAction,
 )
+from app.core.trading.constants import CONFIDENCE, LEVERAGE
 
 # Observability imports
 from app.core.observability.logging import get_logger, TradingLogger
 from app.core.observability.metrics import (
     signals_generated,
     execution_failures,
-    agent_latency,
     signal_generation_latency,
 )
 
@@ -94,7 +94,7 @@ async def signal_generation_node(state: TradingState) -> Dict[str, Any]:
     Output: agent_votes
     """
     start_time = time.time()
-    mode = state.get("mode", "full_auto")
+    mode = state.get("mode", "semi_auto")
     logger.info("node_started", node="signal_generation", mode=mode)
     
     try:
@@ -174,12 +174,12 @@ async def risk_assessment_node(state: TradingState, config: RunnableConfig = Non
             logger.info("[Node: risk_assessment] ⚠️ No RiskAssessor agent, using threshold logic fallback...")
             avg_confidence = _calculate_avg_confidence(votes)
             
-            # Determine risk level
-            if avg_confidence >= 75:
+            # Determine risk level based on confidence thresholds
+            if avg_confidence >= CONFIDENCE.HIGH:
                 risk_level = "low"
-            elif avg_confidence >= 55:
+            elif avg_confidence >= CONFIDENCE.MEDIUM:
                 risk_level = "medium"
-            elif avg_confidence >= 40:
+            elif avg_confidence >= CONFIDENCE.LOW:
                 risk_level = "high"
             else:
                 risk_level = "extreme"
@@ -235,7 +235,7 @@ async def risk_assessment_node(state: TradingState, config: RunnableConfig = Non
         
         elapsed = (time.time() - start_time) * 1000
         status = "BLOCKED" if risk_blocked else risk_level.upper()
-        logger.info(f"[Node: risk_assessment] ✅ Complete in {elapsed:.0f}ms - Risk: {status}")
+        logger.info(f"[Node: risk_assessment] [OK] Complete in {elapsed:.0f}ms - Risk: {status}")
         
         return {
             "risk_assessment": risk_assessment,
@@ -247,7 +247,7 @@ async def risk_assessment_node(state: TradingState, config: RunnableConfig = Non
         }
         
     except Exception as e:
-        logger.error(f"[Node: risk_assessment] ❌ Failed: {e}")
+        logger.error(f"[Node: risk_assessment] [FAIL] Failed: {e}")
         return {
             "error": str(e),
             "error_node": "risk_assessment",
@@ -255,23 +255,35 @@ async def risk_assessment_node(state: TradingState, config: RunnableConfig = Non
         }
 
 
-from langchain_core.runnables import RunnableConfig
-
 async def consensus_node(state: TradingState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Node 4: Consensus Building
-    
+
     Synthesizes votes into a consensus decision.
     Input: agent_votes, risk_assessment, agent_weights
     Output: leader_summary, consensus_direction, consensus_confidence
+
+    🆕 P0 Fix: Now uses WeightLearner for dynamic agent weights based on historical accuracy.
     """
     start_time = time.time()
     logger.info("[Node: consensus] Building consensus...")
-    
+
     try:
         votes = state.get("agent_votes", [])
-        weights = state.get("agent_weights", {})
         risk_blocked = state.get("risk_blocked", False)
+
+        # 🆕 P0: Use WeightLearner for dynamic weights (falls back to static if unavailable)
+        static_weights = state.get("agent_weights", {})
+        try:
+            from app.core.trading.weight_learner import get_learned_weights
+            learned_weights = await get_learned_weights()
+            # Merge: learned weights take priority, fall back to static
+            weights = {**static_weights, **learned_weights}
+            if learned_weights:
+                logger.info(f"[Node: consensus] 🧠 Using learned weights: {learned_weights}")
+        except Exception as e:
+            logger.warning(f"[Node: consensus] WeightLearner unavailable, using static weights: {e}")
+            weights = static_weights
         
         # Get on_message callback for broadcasting to frontend
         on_message = config.get("configurable", {}).get("on_message")
@@ -319,7 +331,7 @@ async def consensus_node(state: TradingState, config: RunnableConfig) -> Dict[st
                         echo_chamber_warning=echo_chamber_result.warning_message if echo_chamber_result and echo_chamber_result.status.value == "echo_chamber_detected" else None
                     )
                 except Exception as e:
-                    logger.error(f"[Node: consensus] ❌ Failed to generate LLM summary: {e}")
+                    logger.error(f"[Node: consensus] [FAIL] Failed to generate LLM summary: {e}")
                     leader_summary = _generate_leader_summary(votes, consensus_direction, consensus_confidence)
             else:
                 leader_summary = _generate_leader_summary(votes, consensus_direction, consensus_confidence)
@@ -344,7 +356,7 @@ async def consensus_node(state: TradingState, config: RunnableConfig) -> Dict[st
                 logger.warning(f"[Node: consensus] Failed to broadcast Leader message: {e}")
         
         elapsed = (time.time() - start_time) * 1000
-        logger.info(f"[Node: consensus] ✅ Complete in {elapsed:.0f}ms - {consensus_direction.upper()} ({consensus_confidence}%)")
+        logger.info(f"[Node: consensus] [OK] Complete in {elapsed:.0f}ms - {consensus_direction.upper()} ({consensus_confidence}%)")
         
         return {
             "leader_summary": leader_summary,
@@ -361,7 +373,7 @@ async def consensus_node(state: TradingState, config: RunnableConfig) -> Dict[st
         }
         
     except Exception as e:
-        logger.error(f"[Node: consensus] ❌ Failed: {e}")
+        logger.error(f"[Node: consensus] [FAIL] Failed: {e}")
         return {
             "error": str(e),
             "error_node": "consensus",
@@ -385,13 +397,6 @@ async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[st
     """
     start_time = time.time()
     
-    # 🆕 Phase 1.3: HITL - Check trading mode before execution
-    mode_manager = get_mode_manager()
-    current_mode = await mode_manager.get_mode()
-    mode = current_mode.value
-    
-    logger.info("node_started", node="execution", mode=mode)
-    
     try:
         # Get ExecutorAgent from config (passed from TradingMeeting)
         trade_executor = config.get("configurable", {}).get("trade_executor")
@@ -400,6 +405,12 @@ async def execution_node(state: TradingState, config: RunnableConfig) -> Dict[st
             logger.error("executor_not_found", node="execution")
             execution_failures.labels(reason="executor_not_available").inc()
             return _fallback_execution(state, start_time, "ExecutorAgent not available")
+
+        # 🆕 Phase 1.3: HITL - Check trading mode before execution (user scoped)
+        mode_manager = get_mode_manager(getattr(trade_executor, "user_id", None))
+        current_mode = await mode_manager.get_mode()
+        mode = current_mode.value
+        logger.info("node_started", node="execution", mode=mode)
         
         # Prepare inputs for ExecutorAgent
         leader_summary = state.get("leader_summary", "")
@@ -561,7 +572,7 @@ async def react_fallback_node(state: TradingState) -> Dict[str, Any]:
             should_fallback = False  # For now, don't retry
         
         elapsed = (time.time() - start_time) * 1000
-        logger.info(f"[Node: react_fallback] ✅ Complete in {elapsed:.0f}ms - Returning HOLD")
+        logger.info(f"[Node: react_fallback] [OK] Complete in {elapsed:.0f}ms - Returning HOLD")
         
         return {
             "final_signal": final_signal,
@@ -574,7 +585,7 @@ async def react_fallback_node(state: TradingState) -> Dict[str, Any]:
         }
         
     except Exception as e:
-        logger.error(f"[Node: react_fallback] ❌ Failed: {e}")
+        logger.error(f"[Node: react_fallback] [FAIL] Failed: {e}")
         # Ultimate fallback - just return HOLD
         return {
             "final_signal": {
@@ -621,7 +632,7 @@ async def reflection_node(state: TradingState) -> Dict[str, Any]:
             }
         
         elapsed = (time.time() - start_time) * 1000
-        logger.info(f"[Node: reflection] ✅ Complete in {elapsed:.0f}ms")
+        logger.info(f"[Node: reflection] [OK] Complete in {elapsed:.0f}ms")
         
         return {
             "reflection": reflection,
@@ -688,7 +699,7 @@ Trade execution has been blocked due to elevated risk. Recommend HOLD and wait f
     else:
         if risk_level == "low":
             message += """
-### ✅ APPROVED FOR EXECUTION
+### [OK] APPROVED FOR EXECUTION
 Risk within acceptable parameters. Trade execution may proceed with standard position sizing.
 """
         elif risk_level == "medium":
@@ -756,14 +767,29 @@ def _get_consensus_direction(votes: List[Dict]) -> str:
 
 
 def _calculate_weighted_consensus(votes: List[Dict], weights: Dict[str, float]) -> tuple:
-    """Calculate weighted consensus from votes."""
+    """
+    Calculate weighted consensus from votes.
+
+    Supports both legacy votes (direction field) and neutral votes (bullish_score/bearish_score).
+    """
     if not votes:
         return "hold", 0, 0.0
-    
+
+    # Check if any vote has neutral format (bullish_score/bearish_score)
+    has_neutral_votes = any(
+        "bullish_score" in vote and "bearish_score" in vote
+        for vote in votes
+    )
+
+    if has_neutral_votes:
+        # Use DirectionNeutralizer for neutral votes
+        return _calculate_neutral_consensus(votes, weights)
+
+    # Legacy direction-based voting
     weighted_scores = {"long": 0.0, "short": 0.0, "hold": 0.0}
     total_weight = 0.0
     total_confidence = 0.0
-    
+
     for vote in votes:
         agent_id = vote.get("agent_id") or vote.get("agent_name", "unknown")
         direction = vote.get("direction", "hold").lower()
@@ -771,17 +797,17 @@ def _calculate_weighted_consensus(votes: List[Dict], weights: Dict[str, float]) 
             direction = direction.value
         confidence = vote.get("confidence", 50)
         weight = weights.get(agent_id, 1.0)
-        
+
         if direction in weighted_scores:
             weighted_scores[direction] += confidence * weight
             total_weight += weight
             total_confidence += confidence
-    
+
     # Find winning direction
     # 🔧 FIX: Check for tie between long and short to avoid primacy bias
     max_score = max(weighted_scores.values())
     candidates = [d for d, s in weighted_scores.items() if s == max_score and s > 0]
-    
+
     if len(candidates) == 0:
         winning_direction = "hold"
     elif len(candidates) == 1:
@@ -791,12 +817,87 @@ def _calculate_weighted_consensus(votes: List[Dict], weights: Dict[str, float]) 
         winning_direction = "hold"
     else:
         winning_direction = candidates[0]
-    
+
     # Calculate weighted confidence
     avg_confidence = int(total_confidence / len(votes)) if votes else 0
     weighted_conf = max_score / total_weight if total_weight > 0 else 0.0
-    
+
     return winning_direction, avg_confidence, weighted_conf
+
+
+def _calculate_neutral_consensus(votes: List[Dict], weights: Dict[str, float]) -> tuple:
+    """
+    Calculate consensus from neutral votes using DirectionNeutralizer.
+
+    This eliminates linguistic bias by having agents score bullish/bearish arguments
+    separately, then calculating direction mathematically.
+    """
+    from app.core.trading.anti_bias import DirectionNeutralizer, NeutralVote
+
+    neutral_votes = []
+
+    for vote in votes:
+        # Convert dict to NeutralVote if it has the required fields
+        if "bullish_score" in vote and "bearish_score" in vote:
+            neutral_vote = NeutralVote(
+                agent_id=vote.get("agent_id") or vote.get("agent_name", "unknown"),
+                agent_name=vote.get("agent_name", "unknown"),
+                bullish_score=int(vote.get("bullish_score", 50)),
+                bearish_score=int(vote.get("bearish_score", 50)),
+                confidence=int(vote.get("confidence", 50)),
+                leverage=int(vote.get("leverage", 1)),
+                take_profit_percent=float(vote.get("take_profit_percent", 8.0)),
+                stop_loss_percent=float(vote.get("stop_loss_percent", 3.0)),
+                reasoning=vote.get("reasoning", "")
+            )
+            neutral_votes.append(neutral_vote)
+        else:
+            # Legacy vote - convert to neutral format
+            direction = vote.get("direction", "hold").lower()
+            if hasattr(direction, 'value'):
+                direction = direction.value
+            confidence = int(vote.get("confidence", 50))
+
+            # Convert direction to scores
+            if direction == "long":
+                bullish_score = 50 + confidence // 2
+                bearish_score = 50 - confidence // 2
+            elif direction == "short":
+                bullish_score = 50 - confidence // 2
+                bearish_score = 50 + confidence // 2
+            else:  # hold
+                bullish_score = 50
+                bearish_score = 50
+
+            neutral_vote = NeutralVote(
+                agent_id=vote.get("agent_id") or vote.get("agent_name", "unknown"),
+                agent_name=vote.get("agent_name", "unknown"),
+                bullish_score=bullish_score,
+                bearish_score=bearish_score,
+                confidence=confidence,
+                leverage=int(vote.get("leverage", 1)),
+                take_profit_percent=float(vote.get("take_profit_percent", 8.0)),
+                stop_loss_percent=float(vote.get("stop_loss_percent", 3.0)),
+                reasoning=vote.get("reasoning", "")
+            )
+            neutral_votes.append(neutral_vote)
+
+    # Use DirectionNeutralizer to aggregate
+    direction, confidence, metadata = DirectionNeutralizer.aggregate_neutral_votes(
+        neutral_votes,
+        weights
+    )
+
+    logger.info(
+        f"[NeutralConsensus] Aggregated {len(neutral_votes)} votes: "
+        f"bullish={metadata.get('avg_bullish_score', 0):.1f}, "
+        f"bearish={metadata.get('avg_bearish_score', 0):.1f} → {direction.upper()}"
+    )
+
+    # weighted_conf is the score difference normalized
+    weighted_conf = abs(metadata.get('score_difference', 0)) / 100.0
+
+    return direction, confidence, weighted_conf
 
 
 def _generate_leader_summary(votes: List[Dict], direction: str, confidence: int) -> str:
@@ -817,23 +918,23 @@ def _generate_leader_summary(votes: List[Dict], direction: str, confidence: int)
 
 def _calculate_leverage(confidence: int) -> int:
     """Calculate leverage based on confidence."""
-    if confidence >= 85:
-        return 10
-    elif confidence >= 75:
+    if confidence >= LEVERAGE.HIGH_CONFIDENCE:
+        return LEVERAGE.HIGH_LEVERAGE
+    elif confidence >= LEVERAGE.MEDIUM_CONFIDENCE:
         return 7
-    elif confidence >= 65:
-        return 5
+    elif confidence >= LEVERAGE.LOW_CONFIDENCE:
+        return LEVERAGE.MEDIUM_LEVERAGE
     else:
-        return 3
+        return LEVERAGE.LOW_LEVERAGE
 
 
 def _calculate_amount(confidence: int) -> float:
     """Calculate position amount percent based on confidence."""
-    if confidence >= 85:
+    if confidence >= LEVERAGE.HIGH_CONFIDENCE:
         return 0.30
-    elif confidence >= 75:
+    elif confidence >= LEVERAGE.MEDIUM_CONFIDENCE:
         return 0.25
-    elif confidence >= 65:
+    elif confidence >= LEVERAGE.LOW_CONFIDENCE:
         return 0.20
     else:
         return 0.15
@@ -979,11 +1080,11 @@ Suggested leverage is..., position size is...
 My confidence is approximately...%"
 
 ⚠️ **Important Reminders**:
-- ✅ Express your summary and recommendations in natural language
-- ✅ Include expert opinions, your judgment, recommended strategy
-- ✅ **ALWAYS include your recommended TP% and SL% values**
-- ✅ No need for markers like "【Final Decision】"
-- ✅ Your summary will be passed to the Trade Executor
+- [OK] Express your summary and recommendations in natural language
+- [OK] Include expert opinions, your judgment, recommended strategy
+- [OK] **ALWAYS include your recommended TP% and SL% values**
+- [OK] No need for markers like "【Final Decision】"
+- [OK] Your summary will be passed to the Trade Executor
 
 Please begin your summary!
 """

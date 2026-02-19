@@ -24,6 +24,30 @@ export default {
     optional: 'Optional'
   },
 
+  offline: {
+    bannerTitle: 'You are currently offline',
+    bannerSubtitle: 'Some features may be unavailable. Please check your network connection.',
+    retry: 'Retry Connection',
+    restored: 'Network connection restored',
+    stillDown: 'Network is still unavailable'
+  },
+
+  connection: {
+    retry: 'Retry',
+    disconnected: 'Disconnected',
+    connecting: 'Connecting...',
+    connected: 'Connected',
+    error: 'Connection Error',
+    reconnecting: 'Reconnecting...'
+  },
+
+  roles: {
+    admin: 'System Administrator',
+    institution: 'Institution User',
+    analyst: 'Investment Analyst',
+    guest: 'Guest'
+  },
+
   // Authentication
   auth: {
     // Login
@@ -601,7 +625,8 @@ export default {
       notifications: 'Notifications',
       security: 'Security',
       api: 'API Keys',
-      appearance: 'Appearance'
+      appearance: 'Appearance',
+      language: 'Language'
     },
 
     profile: {
@@ -684,6 +709,16 @@ export default {
         en: 'English',
         zhTW: '繁體中文'
       }
+    },
+
+    language: {
+      title: 'Language',
+      label: 'Interface Language',
+      switchHint: 'Language changes take effect immediately.',
+      languages: {
+        zhCN: '简体中文',
+        en: 'English'
+      }
     }
   },
 
@@ -714,6 +749,14 @@ export default {
     focusAreas: 'Focus Areas',
     optional: 'Optional',
     reportLanguage: 'Report Language',
+    knowledgeBase: 'Knowledge Base',
+    enableKnowledgeBase: 'Enable Knowledge Retrieval',
+    knowledgeBaseScope: 'Knowledge Scope',
+    knowledgeScopeAll: 'All Knowledge',
+    knowledgeScopeGeneral: 'General Docs',
+    knowledgeScopeFinancial: 'Financial Docs',
+    knowledgeScopeMarket: 'Market Docs',
+    knowledgeScopeLegal: 'Legal Docs',
     analysisSummary: 'Analysis Summary',
     depth: 'Depth',
     estimatedTime: 'Estimated Time',
@@ -1056,6 +1099,7 @@ export default {
 
     // Settings Modal
     loadingConfig: 'Loading configuration...',
+    traderBackend: 'Trading Environment',
     okxDemoTrading: 'OKX Demo Trading',
     localPaperTrading: 'Local Paper Trading',
     okxDemo: 'OKX Demo',

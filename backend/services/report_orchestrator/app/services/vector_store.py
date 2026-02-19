@@ -6,18 +6,26 @@ Provides vector database operations for knowledge base management.
 提供知识库管理的向量数据库操作。
 """
 
-from typing import List, Dict, Optional, Any
-from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
-from sentence_transformers import SentenceTransformer
+import math
+import os
 import uuid
 from datetime import datetime
+from typing import List, Dict, Optional, Any
+
+from google import genai
+from google.genai import types
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
 
 
 class VectorStoreService:
     """Service for managing documents in Qdrant vector database"""
 
-    def __init__(self, qdrant_url: str = "http://qdrant:6333", collection_name: str = "knowledge_base"):
+    def __init__(
+        self,
+        qdrant_url: str = "http://qdrant:6333",
+        collection_name: str = "knowledge_base",
+    ):
         """
         Initialize vector store service
 
@@ -28,13 +36,41 @@ class VectorStoreService:
         self.client = QdrantClient(url=qdrant_url)
         self.collection_name = collection_name
 
-        # Initialize embedding model
-        # Using a lightweight multilingual model for Chinese + English support
-        self.embedding_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
-        self.vector_size = 384  # Dimension of the model
+        # Gemini embeddings configuration (remote API, no local model download)
+        self.embedding_model = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
+        self.vector_size = int(os.getenv("GEMINI_EMBEDDING_DIMENSION", "768"))
+        self.document_task_type = os.getenv("GEMINI_EMBEDDING_TASK_DOCUMENT", "RETRIEVAL_DOCUMENT")
+        self.query_task_type = os.getenv("GEMINI_EMBEDDING_TASK_QUERY", "RETRIEVAL_QUERY")
+        self.auto_recreate_on_dim_mismatch = os.getenv("QDRANT_AUTO_RECREATE_COLLECTION", "true").lower() == "true"
+
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise RuntimeError("GOOGLE_API_KEY is required for Gemini embeddings")
+        self.genai_client = genai.Client(api_key=api_key)
 
         # Create collection if it doesn't exist
         self._ensure_collection_exists()
+
+    def _extract_vector_size(self, collection_info: Any) -> Optional[int]:
+        """Try to read vector size from Qdrant collection config."""
+        try:
+            vectors_cfg = collection_info.config.params.vectors
+            if hasattr(vectors_cfg, "size"):
+                return int(vectors_cfg.size)
+            if isinstance(vectors_cfg, dict):
+                # Named vectors mode
+                for _, cfg in vectors_cfg.items():
+                    if hasattr(cfg, "size"):
+                        return int(cfg.size)
+            return None
+        except Exception:
+            return None
+
+    def _create_collection(self):
+        self.client.create_collection(
+            collection_name=self.collection_name,
+            vectors_config=VectorParams(size=self.vector_size, distance=Distance.COSINE),
+        )
 
     def _ensure_collection_exists(self):
         """Create collection if it doesn't exist"""
@@ -43,16 +79,87 @@ class VectorStoreService:
             collection_names = [c.name for c in collections]
 
             if self.collection_name not in collection_names:
-                self.client.create_collection(
-                    collection_name=self.collection_name,
-                    vectors_config=VectorParams(size=self.vector_size, distance=Distance.COSINE)
-                )
+                self._create_collection()
                 print(f"[VectorStore] Created collection: {self.collection_name}")
             else:
-                print(f"[VectorStore] Collection already exists: {self.collection_name}")
+                info = self.client.get_collection(collection_name=self.collection_name)
+                existing_size = self._extract_vector_size(info)
+                if existing_size is not None and existing_size != self.vector_size:
+                    msg = (
+                        f"[VectorStore] Collection '{self.collection_name}' dim mismatch: "
+                        f"existing={existing_size}, expected={self.vector_size}"
+                    )
+                    if self.auto_recreate_on_dim_mismatch:
+                        print(f"{msg}. Recreating collection...")
+                        self.client.delete_collection(collection_name=self.collection_name)
+                        self._create_collection()
+                        print(f"[VectorStore] Recreated collection: {self.collection_name}")
+                    else:
+                        raise RuntimeError(
+                            f"{msg}. Set QDRANT_AUTO_RECREATE_COLLECTION=true or manually migrate the collection."
+                        )
+                else:
+                    print(f"[VectorStore] Collection already exists: {self.collection_name}")
         except Exception as e:
             print(f"[VectorStore] Error ensuring collection exists: {e}")
             raise
+
+    def _normalize_vector(self, values: List[float]) -> List[float]:
+        # Gemini docs recommend normalization for non-3072 dimensions.
+        # Normalizing always is safe for cosine search and keeps behavior stable.
+        norm = math.sqrt(sum(v * v for v in values))
+        if norm <= 0:
+            return values
+        return [v / norm for v in values]
+
+    def _fit_dimension(self, values: List[float]) -> List[float]:
+        if len(values) == self.vector_size:
+            return values
+        if len(values) > self.vector_size:
+            return values[: self.vector_size]
+        return values + [0.0] * (self.vector_size - len(values))
+
+    def _embed_contents(self, contents: List[str], task_type: str) -> List[List[float]]:
+        cleaned_contents = [(c if c and c.strip() else " ") for c in contents]
+        try:
+            config = types.EmbedContentConfig(
+                task_type=task_type,
+                output_dimensionality=self.vector_size,
+            )
+            response = self.genai_client.models.embed_content(
+                model=self.embedding_model,
+                contents=cleaned_contents,
+                config=config,
+            )
+        except TypeError:
+            # Backward compatibility with older google-genai SDKs.
+            config = types.EmbedContentConfig(task_type=task_type)
+            response = self.genai_client.models.embed_content(
+                model=self.embedding_model,
+                contents=cleaned_contents,
+                config=config,
+            )
+
+        vectors: List[List[float]] = []
+        embedding_items = getattr(response, "embeddings", None) or []
+        if not embedding_items:
+            single = getattr(response, "embedding", None)
+            if single is not None:
+                embedding_items = [single]
+
+        for embedding_obj in embedding_items:
+            raw_values = list(embedding_obj.values)
+            fitted = self._fit_dimension(raw_values)
+            vectors.append(self._normalize_vector(fitted))
+
+        if len(vectors) != len(cleaned_contents):
+            raise RuntimeError(
+                f"Gemini embedding count mismatch: expected {len(cleaned_contents)}, got {len(vectors)}"
+            )
+        return vectors
+
+    def _embed_text(self, text: str, task_type: str) -> List[float]:
+        return self._embed_contents([text], task_type=task_type)[0]
 
     def add_document(
         self,
@@ -75,7 +182,7 @@ class VectorStoreService:
             doc_id = str(uuid.uuid4())
 
         # Generate embedding
-        embedding = self.embedding_model.encode(text).tolist()
+        embedding = self._embed_text(text, task_type=self.document_task_type)
 
         # Prepare payload
         payload = metadata or {}
@@ -115,14 +222,23 @@ class VectorStoreService:
         """
         points = []
         doc_ids = []
+        texts = []
+        metadata_list = []
 
         for doc in documents:
             text = doc.get('text', '')
             metadata = doc.get('metadata', {})
             doc_id = doc.get('doc_id', str(uuid.uuid4()))
+            texts.append(text)
+            metadata_list.append(metadata)
+            doc_ids.append(doc_id)
 
-            # Generate embedding
-            embedding = self.embedding_model.encode(text).tolist()
+        embeddings = self._embed_contents(texts, task_type=self.document_task_type)
+
+        for i, text in enumerate(texts):
+            metadata = metadata_list[i]
+            doc_id = doc_ids[i]
+            embedding = embeddings[i]
 
             # Prepare payload
             payload = metadata.copy()
@@ -137,7 +253,6 @@ class VectorStoreService:
                 vector=embedding,
                 payload=payload
             ))
-            doc_ids.append(doc_id)
 
         # Batch upload
         self.client.upsert(
@@ -168,7 +283,7 @@ class VectorStoreService:
             List of search results with scores and metadata
         """
         # Generate query embedding
-        query_embedding = self.embedding_model.encode(query).tolist()
+        query_embedding = self._embed_text(query, task_type=self.query_task_type)
 
         # Prepare filter if provided
         query_filter = None
@@ -257,7 +372,8 @@ class VectorStoreService:
         self,
         limit: int = 100,
         offset: int = 0,
-        filter_conditions: Optional[Dict[str, Any]] = None
+        filter_conditions: Optional[Dict[str, Any]] = None,
+        include_full_text: bool = False
     ) -> List[Dict[str, Any]]:
         """
         List documents with pagination
@@ -266,6 +382,7 @@ class VectorStoreService:
             limit: Maximum number of documents to return
             offset: Number of documents to skip
             filter_conditions: Optional metadata filters
+            include_full_text: Whether to return full text (for indexing/export)
 
         Returns:
             List of documents
@@ -282,22 +399,53 @@ class VectorStoreService:
             if conditions:
                 query_filter = Filter(must=conditions)
 
-        # Scroll through documents
+        if limit <= 0:
+            return []
+        if offset < 0:
+            offset = 0
+
+        # Scroll through documents. Qdrant's scroll offset is point-id based, not integer skip.
+        # Implement stable skip+take pagination in application layer.
         try:
-            result, _ = self.client.scroll(
-                collection_name=self.collection_name,
-                limit=limit,
-                offset=offset,
-                with_payload=True,
-                with_vectors=False,
-                scroll_filter=query_filter
-            )
+            batch_size = max(64, min(512, offset + limit))
+            remaining_skip = offset
+            remaining_take = limit
+            page_offset = None
+            result = []
+
+            while remaining_take > 0:
+                page_points, next_page_offset = self.client.scroll(
+                    collection_name=self.collection_name,
+                    limit=batch_size,
+                    offset=page_offset,
+                    with_payload=True,
+                    with_vectors=False,
+                    scroll_filter=query_filter
+                )
+                if not page_points:
+                    break
+
+                start_idx = min(remaining_skip, len(page_points))
+                remaining_skip -= start_idx
+
+                if start_idx < len(page_points):
+                    for point in page_points[start_idx:]:
+                        result.append(point)
+                        remaining_take -= 1
+                        if remaining_take <= 0:
+                            break
+
+                if next_page_offset is None:
+                    break
+                page_offset = next_page_offset
 
             documents = []
             for point in result:
+                raw_text = point.payload.get("text", "")
+                preview_text = raw_text if len(raw_text) <= 200 else (raw_text[:200] + "...")
                 documents.append({
                     "id": point.id,
-                    "text": point.payload.get("text", "")[:200] + "...",  # Preview only
+                    "text": raw_text if include_full_text else preview_text,
                     "metadata": {k: v for k, v in point.payload.items() if k not in ["text", "doc_id"]}
                 })
 
@@ -335,4 +483,4 @@ class VectorStoreService:
         Returns:
             Embedding vector
         """
-        return self.embedding_model.encode(text).tolist()
+        return self._embed_text(text, task_type=self.document_task_type)

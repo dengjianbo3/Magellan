@@ -10,12 +10,18 @@ Phase 2.2 of the architecture evolution roadmap.
 from dataclasses import dataclass
 from typing import Optional, List, Tuple
 from datetime import datetime
-import os
 
 import httpx
-import structlog
+import logging
 
-logger = structlog.get_logger(__name__)
+try:
+    import structlog
+except Exception:  # Optional in some local/dev test setups
+    structlog = None
+
+from .trading_config import get_infra_config
+
+logger = structlog.get_logger(__name__) if structlog is not None else logging.getLogger(__name__)
 
 
 @dataclass
@@ -73,10 +79,7 @@ class ATRStopLossCalculator:
         okx_base_url: Optional[str] = None,
     ):
         self.config = config or ATRConfig()
-        self.okx_base_url = okx_base_url or os.environ.get(
-            "OKX_BASE_URL", 
-            "https://www.okx.com"
-        )
+        self.okx_base_url = okx_base_url or get_infra_config().okx_base_url
         self._http_client: Optional[httpx.AsyncClient] = None
         self._atr_cache: dict = {}  # symbol -> (atr, timestamp)
     
@@ -314,8 +317,8 @@ class ATRStopLossCalculator:
             if data.get("code") == "0" and data.get("data"):
                 price = float(data["data"][0]["last"])
                 return price * 0.02  # 2% of price as fallback ATR
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"ATR fallback price fetch failed: {e}")
         
         # Ultimate fallback: assume BTC price ~$90,000
         return 1800.0  # 2% of $90,000

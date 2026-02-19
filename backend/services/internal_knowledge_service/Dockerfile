@@ -9,7 +9,7 @@ ARG HTTP_PROXY
 ARG HTTPS_PROXY
 RUN if [ -n "$HTTP_PROXY" ] ; then pip config set global.proxy $HTTP_PROXY ; fi
 RUN if [ -n "$HTTPS_PROXY" ] ; then pip config set global.proxy $HTTPS_PROXY ; fi
-RUN pip uninstall -y google-api-python-client google-auth-httplib2 google-auth google-api-core googleapis-common-protos && pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY ./app ./app
 

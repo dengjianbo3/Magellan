@@ -99,18 +99,24 @@ Use this for critical investment analysis data."""
             summary_parts = [f"Found {len(items)} results for '{query}':\n"]
             
             for i, item in enumerate(items, 1):
+                body = item.get("snippet", "")
+                date = item.get("date")
                 formatted_results.append({
                     "title": item.get("title", ""),
                     "url": item.get("link", ""),
-                    "body": item.get("snippet", ""),
-                    "date": item.get("date")
+                    "content": body,
+                    "published_date": date,
+                    "score": 0.0,
+                    # Backward-compatible aliases
+                    "body": body,
+                    "date": date,
                 })
                 
-                date_info = f" ({item.get('date')})" if item.get("date") else ""
+                date_info = f" ({date})" if date else ""
                 summary_parts.append(
                     f"\n{i}. {item.get('title', '')}{date_info}\n"
                     f"   URL: {item.get('link', '')}\n"
-                    f"   {item.get('snippet', '')[:150]}...\n"
+                    f"   {body[:150]}...\n"
                 )
             
             return {

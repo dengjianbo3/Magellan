@@ -1,93 +1,83 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-md w-full space-y-8">
-      <!-- Logo and Title -->
+  <div class="relative min-h-screen overflow-hidden bg-background-dark px-4 py-10 sm:px-6 lg:px-8">
+    <div class="pointer-events-none absolute inset-0">
+      <div class="absolute -left-24 top-0 h-80 w-80 rounded-full bg-primary/15 blur-3xl"></div>
+      <div class="absolute right-0 top-1/4 h-72 w-72 rounded-full bg-accent-cyan/10 blur-3xl"></div>
+      <div class="absolute bottom-0 left-1/2 h-80 w-[28rem] -translate-x-1/2 rounded-full bg-primary-dark/10 blur-3xl"></div>
+    </div>
+
+    <div class="relative z-10 mx-auto w-full max-w-md space-y-7">
       <div class="text-center">
-        <h1 class="text-4xl font-bold text-indigo-600">Magellan</h1>
-        <h2 class="mt-4 text-2xl font-semibold text-gray-900">
+        <h1 class="text-4xl font-display font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-primary">Magellan</h1>
+        <h2 class="mt-4 text-2xl font-bold text-white">
           {{ t('auth.loginTitle') }}
         </h2>
-        <p class="mt-2 text-sm text-gray-600">
+        <p class="mt-2 text-sm text-text-secondary">
           {{ t('auth.loginSubtitle') }}
         </p>
       </div>
 
-      <!-- Login Form -->
-      <form class="mt-8 space-y-6" @submit.prevent="handleLogin">
-        <!-- Error Alert -->
-        <div v-if="error" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          <p class="text-sm">{{ error }}</p>
-        </div>
-
-        <div class="space-y-4">
-          <!-- Email Input -->
-          <div>
-            <label for="email" class="block text-sm font-medium text-gray-700">
-              {{ t('auth.email') }}
-            </label>
-            <input
-              id="email"
-              v-model="form.email"
-              type="email"
-              required
-              autocomplete="email"
-              class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm
-                     placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-              :placeholder="t('auth.emailPlaceholder')"
-            />
+      <div class="modal-shell">
+        <form class="space-y-5" @submit.prevent="handleLogin">
+          <div v-if="error" class="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-rose-300">
+            <p class="text-sm">{{ error }}</p>
           </div>
 
-          <!-- Password Input -->
-          <div>
-            <label for="password" class="block text-sm font-medium text-gray-700">
-              {{ t('auth.password') }}
-            </label>
-            <input
-              id="password"
-              v-model="form.password"
-              type="password"
-              required
-              autocomplete="current-password"
-              class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm
-                     placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-              :placeholder="t('auth.passwordPlaceholder')"
-            />
-          </div>
-        </div>
+          <div class="space-y-4">
+            <div>
+              <label for="email" class="mb-2 block text-sm font-semibold text-text-primary">
+                {{ t('auth.email') }}
+              </label>
+              <input
+                id="email"
+                v-model="form.email"
+                type="email"
+                required
+                autocomplete="email"
+                class="control-input w-full !h-11 !bg-black/25"
+                :placeholder="t('auth.emailPlaceholder')"
+              />
+            </div>
 
-        <!-- Remember Me & Forgot Password -->
-        <div class="flex items-center justify-between">
-          <div class="flex items-center">
-            <input
-              id="remember-me"
-              v-model="form.rememberMe"
-              type="checkbox"
-              class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-            />
-            <label for="remember-me" class="ml-2 block text-sm text-gray-700">
+            <div>
+              <label for="password" class="mb-2 block text-sm font-semibold text-text-primary">
+                {{ t('auth.password') }}
+              </label>
+              <input
+                id="password"
+                v-model="form.password"
+                type="password"
+                required
+                autocomplete="current-password"
+                class="control-input w-full !h-11 !bg-black/25"
+                :placeholder="t('auth.passwordPlaceholder')"
+              />
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between">
+            <label for="remember-me" class="flex items-center gap-2 text-sm text-text-secondary">
+              <input
+                id="remember-me"
+                v-model="form.rememberMe"
+                type="checkbox"
+                class="h-4 w-4 rounded border-white/20 bg-black/30 text-primary focus:ring-primary/50"
+              />
               {{ t('auth.rememberMe') }}
             </label>
-          </div>
 
-          <div class="text-sm">
-            <a href="#" class="font-medium text-indigo-600 hover:text-indigo-500">
+            <a href="#" class="text-sm font-semibold text-primary hover:text-white transition-colors">
               {{ t('auth.forgotPassword') }}
             </a>
           </div>
-        </div>
 
-        <!-- Submit Button -->
-        <div>
           <button
             type="submit"
             :disabled="loading"
-            class="group relative w-full flex justify-center py-3 px-4 border border-transparent
-                   text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700
-                   focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500
-                   disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            class="page-primary-btn h-11 w-full justify-center disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span v-if="loading" class="flex items-center">
-              <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+              <svg class="-ml-1 mr-2 h-4 w-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
@@ -95,18 +85,15 @@
             </span>
             <span v-else>{{ t('auth.login') }}</span>
           </button>
-        </div>
 
-        <!-- Register Link -->
-        <div class="text-center">
-          <p class="text-sm text-gray-600">
+          <div class="text-center text-sm text-text-secondary">
             {{ t('auth.noAccount') }}
-            <router-link to="/register" class="font-medium text-indigo-600 hover:text-indigo-500">
+            <router-link to="/register" class="ml-1 font-semibold text-primary hover:text-white transition-colors">
               {{ t('auth.registerNow') }}
             </router-link>
-          </p>
-        </div>
-      </form>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 </template>
@@ -138,8 +125,6 @@ async function handleLogin() {
   // Trim whitespace from email
   const email = form.email.trim()
   const password = form.password
-
-  console.log('[Login] Attempting login for:', email)
 
   const result = await authStore.login(email, password)
 

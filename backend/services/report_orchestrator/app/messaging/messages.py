@@ -64,11 +64,6 @@ class MagellanMessage(BaseModel):
     # 过期时间
     ttl_seconds: Optional[int] = None     # Time to live
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
     def to_json(self) -> str:
         """序列化为 JSON 字符串"""
         return self.model_dump_json()

@@ -266,7 +266,8 @@ class Position:
         if ctime:
             try:
                 opened_at = datetime.fromtimestamp(int(ctime) / 1000)
-            except:
+            except (ValueError, TypeError, OSError):
+                # Invalid timestamp format, use default
                 pass
         
         return cls(

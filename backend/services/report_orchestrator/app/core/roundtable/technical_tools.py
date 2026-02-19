@@ -21,6 +21,12 @@ from ...models.technical_models import (
     signal_to_score, score_to_signal
 )
 
+# Import centralized config
+try:
+    from ..trading.trading_config import get_infra_config
+except ImportError:
+    get_infra_config = None
+
 
 class TechnicalAnalysisTools:
     """
@@ -35,10 +41,17 @@ class TechnicalAnalysisTools:
     """
 
     def __init__(self):
-        # API endpoints - OKX first (available in mainland China), then Binance, finally CoinGecko
-        self.okx_api = "https://www.okx.com/api/v5"
-        self.binance_api = "https://api.binance.com/api/v3"
-        self.coingecko_api = "https://api.coingecko.com/api/v3"
+        # API endpoints from centralized config
+        if get_infra_config:
+            infra = get_infra_config()
+            self.okx_api = f"{infra.okx_base_url}/api/v5"
+            self.binance_api = f"{infra.binance_base_url}/api/v3"
+            self.coingecko_api = f"{infra.coingecko_base_url}/api/v3"
+        else:
+            # Fallback defaults
+            self.okx_api = "https://www.okx.com/api/v5"
+            self.binance_api = "https://api.binance.com/api/v3"
+            self.coingecko_api = "https://api.coingecko.com/api/v3"
 
         # Timeout configuration
         self.timeout = 30.0
@@ -1214,6 +1227,55 @@ class TechnicalAnalysisTools:
 
     # ==================== 完整分析流程 ====================
 
+    def _calculate_price_change(self, df, current_price: float) -> Optional[float]:
+        """计算24小时涨跌幅"""
+        if len(df) >= 2:
+            prev_close = df['close'].iloc[-2]
+            return round((current_price - prev_close) / prev_close * 100, 2)
+        return None
+
+    def _calculate_technical_score(self, ind_results: Dict) -> tuple:
+        """计算综合技术评分"""
+        signal_scores = []
+        for key, ind in ind_results.items():
+            if hasattr(ind, 'signal'):
+                signal_scores.append(signal_to_score(ind.signal))
+
+        technical_score = sum(signal_scores) / len(signal_scores) if signal_scores else 50
+        overall_signal = score_to_signal(technical_score)
+        return technical_score, overall_signal, signal_scores
+
+    def _calculate_confidence(self, signal_scores: List, trend) -> float:
+        """计算置信度"""
+        confidence = min(len(signal_scores) / 6, 1.0)
+        if trend.strength > 0.7:
+            confidence = min(confidence + 0.1, 1.0)
+        return confidence
+
+    def _build_indicator_signals(self, ind_results: Dict) -> List[IndicatorSignal]:
+        """构建指标信号列表"""
+        indicator_signals = []
+        for name, ind in ind_results.items():
+            if hasattr(ind, 'signal') and hasattr(ind, 'description'):
+                indicator_signals.append(IndicatorSignal(
+                    name=name,
+                    value=getattr(ind, 'value', 0) if hasattr(ind, 'value') else 0,
+                    signal=ind.signal,
+                    description=ind.description
+                ))
+        return indicator_signals
+
+    def _build_technical_indicators(self, ind_results: Dict) -> TechnicalIndicators:
+        """构建技术指标对象"""
+        return TechnicalIndicators(
+            rsi=ind_results.get('RSI'),
+            macd=ind_results.get('MACD'),
+            bollinger_bands=ind_results.get('BB'),
+            ema=ind_results.get('EMA'),
+            kdj=ind_results.get('KDJ'),
+            adx=ind_results.get('ADX')
+        )
+
     async def full_analysis(
         self,
         symbol: str,
@@ -1238,17 +1300,11 @@ class TechnicalAnalysisTools:
         # 1. 获取K线数据
         df = await self.get_ohlcv(symbol, timeframe, 100, market_type)
         current_price = df['close'].iloc[-1]
-
-        # 计算24小时涨跌幅
-        price_change_24h = None
-        if len(df) >= 2:
-            prev_close = df['close'].iloc[-2]
-            price_change_24h = round((current_price - prev_close) / prev_close * 100, 2)
+        price_change_24h = self._calculate_price_change(df, current_price)
 
         # 2. 计算技术指标
         if indicators is None:
             indicators = ["RSI", "MACD", "BB", "EMA", "KDJ", "ADX"]
-
         ind_results = self.calculate_all_indicators(df, indicators)
 
         # 3. 计算支撑阻力位
@@ -1270,42 +1326,14 @@ class TechnicalAnalysisTools:
         # 6. 生成交易建议
         suggestion = self.generate_trading_suggestion(df, trend, ind_results, sr)
 
-        # 7. 计算综合评分
-        signal_scores = []
-        for key, ind in ind_results.items():
-            if hasattr(ind, 'signal'):
-                signal_scores.append(signal_to_score(ind.signal))
+        # 7. 计算综合评分和置信度
+        technical_score, overall_signal, signal_scores = self._calculate_technical_score(ind_results)
+        confidence = self._calculate_confidence(signal_scores, trend)
 
-        technical_score = sum(signal_scores) / len(signal_scores) if signal_scores else 50
-        overall_signal = score_to_signal(technical_score)
+        # 8. 构建输出对象
+        indicator_signals = self._build_indicator_signals(ind_results)
+        tech_indicators = self._build_technical_indicators(ind_results)
 
-        # 8. 计算置信度
-        confidence = min(len(signal_scores) / 6, 1.0)  # 基于指标数量
-        if trend.strength > 0.7:
-            confidence = min(confidence + 0.1, 1.0)
-
-        # 9. 构建指标信号列表
-        indicator_signals = []
-        for name, ind in ind_results.items():
-            if hasattr(ind, 'signal') and hasattr(ind, 'description'):
-                indicator_signals.append(IndicatorSignal(
-                    name=name,
-                    value=getattr(ind, 'value', 0) if hasattr(ind, 'value') else 0,
-                    signal=ind.signal,
-                    description=ind.description
-                ))
-
-        # 10. 构建技术指标对象
-        tech_indicators = TechnicalIndicators(
-            rsi=ind_results.get('RSI'),
-            macd=ind_results.get('MACD'),
-            bollinger_bands=ind_results.get('BB'),
-            ema=ind_results.get('EMA'),
-            kdj=ind_results.get('KDJ'),
-            adx=ind_results.get('ADX')
-        )
-
-        # 11. 风险提示
         risk_warning = (
             "⚠️ 技术分析仅供参考，不构成投资建议。"
             "市场有风险，投资需谨慎。"

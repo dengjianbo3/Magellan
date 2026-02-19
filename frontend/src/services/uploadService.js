@@ -5,7 +5,8 @@
  */
 
 // Environment variable for API base URL
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+import { API_BASE } from '@/config/api';
+import { getAccessToken } from '@/services/authHeaders';
 
 class UploadService {
   /**
@@ -139,6 +140,10 @@ class UploadService {
 
       // Open and send request
       xhr.open('POST', url);
+      const token = getAccessToken();
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
       xhr.timeout = 120000; // 2 minutes timeout
       xhr.send(formData);
     });

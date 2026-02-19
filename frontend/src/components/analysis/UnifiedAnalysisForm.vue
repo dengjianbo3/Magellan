@@ -51,9 +51,9 @@
             <div
               :class="[
                 'mode-card',
-                { 'selected': config.mode === 'quick' }
+                { 'selected': config.depth === 'quick' }
               ]"
-              @click="config.mode = 'quick'"
+              @click="config.depth = 'quick'"
             >
               <div class="mode-icon">
                 <span class="material-symbols-outlined">flash_on</span>
@@ -67,7 +67,7 @@
                 </div>
               </div>
               <div class="mode-check">
-                <span v-if="config.mode === 'quick'" class="material-symbols-outlined">check_circle</span>
+                <span v-if="config.depth === 'quick'" class="material-symbols-outlined">check_circle</span>
               </div>
             </div>
 
@@ -75,9 +75,9 @@
             <div
               :class="[
                 'mode-card',
-                { 'selected': config.mode === 'standard' }
+                { 'selected': config.depth === 'standard' }
               ]"
-              @click="config.mode = 'standard'"
+              @click="config.depth = 'standard'"
             >
               <div class="mode-icon">
                 <span class="material-symbols-outlined">analytics</span>
@@ -91,7 +91,7 @@
                 </div>
               </div>
               <div class="mode-check">
-                <span v-if="config.mode === 'standard'" class="material-symbols-outlined">check_circle</span>
+                <span v-if="config.depth === 'standard'" class="material-symbols-outlined">check_circle</span>
               </div>
             </div>
           </div>
@@ -107,12 +107,12 @@
               :key="index"
               :class="[
                 'focus-tag',
-                { 'selected': config.focusAreas.includes(focus) }
+                { 'selected': config.focus_areas.includes(focus) }
               ]"
               @click="toggleFocus(focus)"
             >
               <span>{{ focus }}</span>
-              <span v-if="config.focusAreas.includes(focus)" class="material-symbols-outlined">check</span>
+              <span v-if="config.focus_areas.includes(focus)" class="material-symbols-outlined">check</span>
             </div>
           </div>
         </div>
@@ -121,9 +121,36 @@
         <div class="mb-6">
           <label class="form-label">{{ t('analysisWizard.reportLanguage') }}</label>
           <select v-model="config.language" class="form-input glass-input">
-            <option value="zh">中文</option>
+            <option value="zh">{{ t('settings.language.languages.zhCN') || 'Simplified Chinese' }}</option>
             <option value="en">English</option>
           </select>
+        </div>
+
+        <div class="mb-6">
+          <label class="form-label">{{ t('analysisWizard.knowledgeBase') }}</label>
+          <label class="checkbox-label">
+            <input
+              type="checkbox"
+              v-model="config.useKnowledgeBase"
+              class="checkbox-input"
+            />
+            <span class="checkbox-box"></span>
+            <span class="checkbox-text">{{ t('analysisWizard.enableKnowledgeBase') }}</span>
+          </label>
+          <div class="mt-3">
+            <label class="form-label">{{ t('analysisWizard.knowledgeBaseScope') }}</label>
+            <select
+              v-model="config.knowledgeCategory"
+              class="form-input glass-input"
+              :disabled="!config.useKnowledgeBase"
+            >
+              <option value="all">{{ t('analysisWizard.knowledgeScopeAll') }}</option>
+              <option value="general">{{ t('analysisWizard.knowledgeScopeGeneral') }}</option>
+              <option value="financial">{{ t('analysisWizard.knowledgeScopeFinancial') }}</option>
+              <option value="market">{{ t('analysisWizard.knowledgeScopeMarket') }}</option>
+              <option value="legal">{{ t('analysisWizard.knowledgeScopeLegal') }}</option>
+            </select>
+          </div>
         </div>
 
         <!-- Additional Options -->
@@ -187,6 +214,9 @@ import { ref, computed, onMounted } from 'vue';
 import { useLanguage } from '@/composables/useLanguage';
 import DynamicFormField from '@/components/common/DynamicFormField.vue';
 import { getScenarioFormFields } from '@/config/scenarios.js';
+import { API_BASE } from '@/config/api';
+import { getAuthHeaders } from '@/services/authHeaders';
+import { readJsonResponse } from '@/services/httpResponse';
 
 const { t, locale } = useLanguage();
 
@@ -203,9 +233,11 @@ const emit = defineEmits(['analysis-start', 'back']);
 const formData = ref({});
 const fieldRefs = ref({});
 const config = ref({
-  mode: 'quick',
-  focusAreas: [],
+  depth: 'quick',
+  focus_areas: [],
   language: locale.value,
+  useKnowledgeBase: false,
+  knowledgeCategory: 'all',
   includeComparison: false,
   includeRisks: true,
   detailedFinancials: false
@@ -242,11 +274,11 @@ function getFocusAreas() {
 }
 
 function toggleFocus(focus) {
-  const index = config.value.focusAreas.indexOf(focus);
+  const index = config.value.focus_areas.indexOf(focus);
   if (index > -1) {
-    config.value.focusAreas.splice(index, 1);
+    config.value.focus_areas.splice(index, 1);
   } else {
-    config.value.focusAreas.push(focus);
+    config.value.focus_areas.push(focus);
   }
 }
 
@@ -305,13 +337,28 @@ async function handleSubmit() {
       }
     }
 
+    const requestConfig = {
+      depth: config.value.depth,
+      focus_areas: config.value.focus_areas,
+      language: config.value.language,
+      knowledge: {
+        enabled: config.value.useKnowledgeBase,
+        category: config.value.knowledgeCategory
+      },
+      scenario_params: {
+        include_comparison: config.value.includeComparison,
+        include_risks: config.value.includeRisks,
+        detailed_financials: config.value.detailedFinancials
+      }
+    };
+
     emit('analysis-start', {
       target: targetData,
-      config: config.value
+      config: requestConfig
     });
   } catch (error) {
     console.error('[UnifiedForm] Error preparing form data:', error);
-    alert(`提交失败: ${error.message}`);
+    alert(`Submission failed: ${error.message}`);
   } finally {
     isSubmitting.value = false;
   }
@@ -329,17 +376,15 @@ async function uploadFile(file, fieldName) {
     : '/api/v2/upload/financial';
   
   try {
-    const response = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${endpoint}`, {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
       method: 'POST',
+      headers: {
+        ...getAuthHeaders()
+      },
       body: formData
     });
-    
-    if (!response.ok) {
-      const error = await response.text();
-      return { success: false, error };
-    }
-    
-    const result = await response.json();
+
+    const result = await readJsonResponse(response, `Upload ${fieldName}`);
     return { success: true, file_id: result.file_id };
   } catch (error) {
     return { success: false, error: error.message };

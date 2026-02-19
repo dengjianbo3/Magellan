@@ -14,9 +14,9 @@ Report Synthesizer Agent
 
 from typing import Dict, Any, List, Optional
 import logging
-import httpx
 import json
 import re
+from ..core.llm_helper import LLMHelper
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,7 @@ class ReportSynthesizerAgent:
         self.agent_id = "report_synthesizer"
         self.agent_name = "报告综合Agent"
         self.llm_gateway_url = llm_gateway_url
+        self.llm = LLMHelper(llm_gateway_url=self.llm_gateway_url, timeout=60)
 
     async def analyze(self, target: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
@@ -822,42 +823,31 @@ class ReportSynthesizerAgent:
 请开始生成报告:"""
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    f"{self.llm_gateway_url}/chat",
-                    json={
-                        "history": [
-                            {
-                                "role": "user",
-                                "parts": [prompt]
-                            }
-                        ]
-                    }
-                )
-                response.raise_for_status()
-                result = response.json()
+            result = await self.llm.call(prompt=prompt, response_format="text")
+            content = result.get("content", "")
+            if not content:
+                logger.error(f"[ReportSynthesizer] ❌ LLM调用失败: {result}")
+                return None
 
-                # 提取LLM生成的内容
-                content = result.get("content", "")
-                logger.info(f"[ReportSynthesizer] ✅ LLM返回内容长度: {len(content)}")
+            logger.info(f"[ReportSynthesizer] ✅ LLM返回内容长度: {len(content)}")
 
-                # 解析JSON（LLM可能会返回被```json包裹的内容）
-                json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
-                if json_match:
-                    json_str = json_match.group(1)
-                else:
-                    json_str = content
+            # 解析JSON（LLM可能会返回被```json包裹的内容）
+            json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+            else:
+                json_str = content
 
-                # 尝试解析JSON
-                try:
-                    llm_report = json.loads(json_str)
-                    logger.info(f"[ReportSynthesizer] ✅ 成功解析LLM生成的JSON报告")
-                    return llm_report
-                except json.JSONDecodeError as e:
-                    logger.error(f"[ReportSynthesizer] ❌ JSON解析失败: {e}")
-                    logger.error(f"[ReportSynthesizer] 原始内容: {content[:500]}")
-                    # 返回None，让调用者使用fallback
-                    return None
+            # 尝试解析JSON
+            try:
+                llm_report = json.loads(json_str)
+                logger.info(f"[ReportSynthesizer] ✅ 成功解析LLM生成的JSON报告")
+                return llm_report
+            except json.JSONDecodeError as e:
+                logger.error(f"[ReportSynthesizer] ❌ JSON解析失败: {e}")
+                logger.error(f"[ReportSynthesizer] 原始内容: {content[:500]}")
+                # 返回None，让调用者使用fallback
+                return None
 
         except Exception as e:
             logger.error(f"[ReportSynthesizer] ❌ LLM调用失败: {e}")
@@ -919,30 +909,25 @@ class ReportSynthesizerAgent:
 要求：简洁、直接、有见地。直接输出JSON，无需其他说明。"""
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:  # 快速模式使用更短超时
-                response = await client.post(
-                    f"{self.llm_gateway_url}/chat",
-                    json={
-                        "history": [{"role": "user", "parts": [prompt]}]
-                    }
-                )
-                response.raise_for_status()
-                result = response.json()
+            result = await self.llm.call(prompt=prompt, response_format="text")
+            content = result.get("content", "")
+            if not content:
+                logger.error(f"[ReportSynthesizer] ❌ 快速报告LLM调用失败: {result}")
+                return None
 
-                content = result.get("content", "")
-                logger.info(f"[ReportSynthesizer] ✅ LLM快速报告返回: {len(content)} chars")
+            logger.info(f"[ReportSynthesizer] ✅ LLM快速报告返回: {len(content)} chars")
 
-                # 解析JSON
-                json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
-                json_str = json_match.group(1) if json_match else content
+            # 解析JSON
+            json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+            json_str = json_match.group(1) if json_match else content
 
-                try:
-                    llm_report = json.loads(json_str)
-                    logger.info("[ReportSynthesizer] ✅ 快速报告JSON解析成功")
-                    return llm_report
-                except json.JSONDecodeError as e:
-                    logger.error(f"[ReportSynthesizer] ❌ 快速报告JSON解析失败: {e}")
-                    return None
+            try:
+                llm_report = json.loads(json_str)
+                logger.info("[ReportSynthesizer] ✅ 快速报告JSON解析成功")
+                return llm_report
+            except json.JSONDecodeError as e:
+                logger.error(f"[ReportSynthesizer] ❌ 快速报告JSON解析失败: {e}")
+                return None
 
         except Exception as e:
             logger.error(f"[ReportSynthesizer] ❌ 快速报告LLM调用失败: {e}")

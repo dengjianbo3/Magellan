@@ -8,7 +8,8 @@
  * - industry-research
  */
 
-import { API_BASE, WS_BASE } from '@/config/api';
+import { apiUrl, WS_BASE } from '@/config/api';
+import { readJsonResponse } from '@/services/httpResponse';
 
 class AnalysisServiceV2 {
   constructor() {
@@ -16,6 +17,7 @@ class AnalysisServiceV2 {
     this.sessionId = null;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 10; // Stage 2: 增加到10次
+    this.reconnectTimer = null;
     this.messageHandlers = new Map();
 
     // Stage 2: 心跳机制
@@ -38,8 +40,77 @@ class AnalysisServiceV2 {
    * 获取认证头
    */
   _getAuthHeaders() {
-    const token = localStorage.getItem('access_token');
+    const token = this._getAccessToken();
     return token ? { 'Authorization': `Bearer ${token}` } : {};
+  }
+
+  _getAccessToken() {
+    return localStorage.getItem('access_token') || '';
+  }
+
+  _getJwtExp(token) {
+    if (!token) {
+      return null;
+    }
+
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) {
+        return null;
+      }
+
+      const payload = parts[1]
+        .replace(/-/g, '+')
+        .replace(/_/g, '/')
+        .padEnd(Math.ceil(parts[1].length / 4) * 4, '=');
+
+      const decoded = JSON.parse(atob(payload));
+      return typeof decoded.exp === 'number' ? decoded.exp : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  _isAccessTokenExpired(token) {
+    const exp = this._getJwtExp(token);
+    if (!exp) {
+      return false;
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    return exp <= now + 10;
+  }
+
+  _isAuthCloseEvent(event) {
+    const authCloseCodes = new Set([1008, 4401, 4403]);
+    const reason = String(event?.reason || '').toLowerCase();
+    const reasonIndicatesAuth =
+      reason.includes('auth') ||
+      reason.includes('token') ||
+      reason.includes('unauthorized') ||
+      reason.includes('forbidden') ||
+      reason.includes('expired') ||
+      reason.includes('login');
+
+    return authCloseCodes.has(event?.code) || reasonIndicatesAuth;
+  }
+
+  _emitAuthRequiredError(reason = 'Authentication required') {
+    this._handleMessage({
+      type: 'error',
+      message: reason,
+      data: {
+        error: '登录已失效，请重新登录',
+        code: 'AUTH_REQUIRED'
+      }
+    });
+  }
+
+  _clearReconnectTimer() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
   }
 
   /**
@@ -61,15 +132,12 @@ class AnalysisServiceV2 {
    */
   async getScenarios() {
     try {
-      const response = await fetch(`${API_BASE}/api/v2/analysis/scenarios`, {
+      const response = await fetch(apiUrl('/api/v2/analysis/scenarios'), {
         headers: {
           ...this._getAuthHeaders()
         }
       });
-      if (!response.ok) {
-        throw new Error('Failed to fetch scenarios');
-      }
-      const data = await response.json();
+      const data = await readJsonResponse(response, 'Analysis scenarios');
       return data.scenarios;
     } catch (error) {
       console.error('[AnalysisV2] Error fetching scenarios:', error);
@@ -91,7 +159,7 @@ class AnalysisServiceV2 {
       console.log('[AnalysisV2] Starting analysis:', request);
 
       // 调用REST API启动分析
-      const response = await fetch(`${API_BASE}/api/v2/analysis/start`, {
+      const response = await fetch(apiUrl('/api/v2/analysis/start'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -99,18 +167,13 @@ class AnalysisServiceV2 {
         },
         body: JSON.stringify(request)
       });
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await readJsonResponse(response, 'Start analysis');
       console.log('[AnalysisV2] Analysis started:', data);
 
       this.sessionId = data.session_id;
 
       // 连接WebSocket
-      await this._connectWebSocket(request);
+      await this._connectWebSocket(request, data.ws_url);
 
       return {
         sessionId: data.session_id,
@@ -128,13 +191,24 @@ class AnalysisServiceV2 {
   /**
    * 连接WebSocket
    */
-  async _connectWebSocket(request) {
+  async _connectWebSocket(request, serverWsUrl = null) {
     return new Promise((resolve, reject) => {
       // 添加认证token作为查询参数
-      const token = localStorage.getItem('access_token');
+      const token = this._getAccessToken();
+      if (!token || this._isAccessTokenExpired(token)) {
+        const authError = new Error('Authentication required: access token missing or expired');
+        console.error('[AnalysisV2] Cannot connect WebSocket:', authError.message);
+        this._clearReconnectTimer();
+        this._setConnectionState('error');
+        this._emitAuthRequiredError(authError.message);
+        reject(authError);
+        return;
+      }
+
+      const baseWsUrl = serverWsUrl || `${WS_BASE}/ws/v2/analysis/${this.sessionId}`;
       const wsUrl = token
-        ? `${WS_BASE}/ws/v2/analysis/${this.sessionId}?token=${encodeURIComponent(token)}`
-        : `${WS_BASE}/ws/v2/analysis/${this.sessionId}`;
+        ? `${baseWsUrl}${baseWsUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
+        : baseWsUrl;
       console.log('[AnalysisV2] Connecting to WebSocket:', wsUrl);
 
       // Stage 2: 设置连接状态
@@ -144,6 +218,7 @@ class AnalysisServiceV2 {
 
       this.ws.onopen = () => {
         console.log('[AnalysisV2] ✅ WebSocket connected');
+        this._clearReconnectTimer();
         this.reconnectAttempts = 0;
 
         // Stage 2: 设置连接状态
@@ -178,6 +253,14 @@ class AnalysisServiceV2 {
         // Stage 2: 停止心跳
         this._stopHeartbeat();
 
+        if (this._isAuthCloseEvent(event)) {
+          console.error('[AnalysisV2] Authentication failure on WebSocket, stop reconnecting');
+          this._clearReconnectTimer();
+          this._setConnectionState('error');
+          this._emitAuthRequiredError(event.reason || 'Authentication required');
+          return;
+        }
+
         if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
           // 非正常关闭,尝试重连
           this.reconnectAttempts++;
@@ -188,13 +271,18 @@ class AnalysisServiceV2 {
 
           this._setConnectionState('reconnecting');
 
-          setTimeout(() => {
-            this._connectWebSocket(request);
+          this._clearReconnectTimer();
+          this.reconnectTimer = setTimeout(() => {
+            this._connectWebSocket(request, serverWsUrl).catch(error => {
+              console.error('[AnalysisV2] Reconnect failed:', error);
+            });
           }, backoffDelay);
         } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
           console.error('[AnalysisV2] Max reconnection attempts reached');
+          this._clearReconnectTimer();
           this._setConnectionState('error');
         } else {
+          this._clearReconnectTimer();
           this._setConnectionState('disconnected');
         }
       };
@@ -425,15 +513,12 @@ class AnalysisServiceV2 {
    */
   async getStatus(sessionId) {
     try {
-      const response = await fetch(`${API_BASE}/api/v2/analysis/${sessionId}/status`, {
+      const response = await fetch(apiUrl(`/api/v2/analysis/${sessionId}/status`), {
         headers: {
           ...this._getAuthHeaders()
         }
       });
-      if (!response.ok) {
-        throw new Error('Failed to fetch status');
-      }
-      return await response.json();
+      return await readJsonResponse(response, 'Analysis status');
     } catch (error) {
       console.error('[AnalysisV2] Error fetching status:', error);
       throw error;
@@ -474,6 +559,8 @@ class AnalysisServiceV2 {
   disconnect() {
     // Stage 2: 停止心跳
     this._stopHeartbeat();
+    this._clearReconnectTimer();
+    this.reconnectAttempts = 0;
 
     if (this.ws) {
       this.ws.close(1000, 'Client disconnect');

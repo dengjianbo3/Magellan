@@ -1,7 +1,7 @@
 <template>
-  <div class="flex h-full gap-8 p-2">
+  <div class="grid h-full min-h-0 grid-cols-1 gap-6 xl:grid-cols-[18rem,minmax(0,1fr)]">
     <!-- Left Sidebar: Categories -->
-    <div class="w-72 flex-shrink-0 glass-panel rounded-2xl p-6 flex flex-col">
+    <div class="glass-panel flex min-h-[260px] flex-col rounded-2xl p-6 xl:sticky xl:top-6 xl:max-h-[calc(100vh-11rem)] xl:overflow-y-auto">
       <h3 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-6">{{ t('knowledge.newCategory') }}</h3>
       
       <div class="space-y-2 flex-1">
@@ -38,25 +38,25 @@
     </div>
 
     <!-- Main Content Area -->
-    <div class="flex-1 flex flex-col glass-panel rounded-2xl overflow-hidden">
+    <div class="flex min-h-0 flex-col glass-panel rounded-2xl overflow-hidden">
       <!-- Header -->
-      <div class="p-8 border-b border-white/10 bg-white/5 backdrop-blur-md">
-        <div class="flex items-center justify-between mb-6">
+      <div class="border-b border-white/10 bg-white/5 p-6 md:p-8 backdrop-blur-md">
+        <div class="section-header !mb-0">
           <div>
-            <h1 class="text-3xl font-display font-bold text-white mb-1 tracking-tight">{{ t('knowledge.title') }}</h1>
-            <p class="text-sm text-text-secondary font-medium">
+            <h1 class="page-title page-title-gradient !text-3xl mb-1">{{ t('knowledge.title') }}</h1>
+            <p class="page-subtitle !mt-0">
               {{ searchMode ? `${searchResults.length} search results` : `${filteredDocuments.length} ${t('knowledge.documentsCount')}` }}
             </p>
           </div>
-          <div class="flex items-center gap-4">
-            <div class="relative group">
+          <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+            <div class="relative group w-full sm:w-80">
               <div class="absolute inset-0 bg-primary/20 blur-md rounded-lg opacity-0 group-focus-within:opacity-100 transition-opacity duration-500"></div>
               <input
                 v-model="searchQuery"
                 @keyup.enter="performSearch"
                 type="text"
                 :placeholder="t('knowledge.searchPlaceholder')"
-                class="relative z-10 w-72 px-4 py-2.5 pl-10 pr-20 rounded-xl bg-black/20 border border-white/10 text-white placeholder-text-secondary focus:outline-none focus:border-primary/50 focus:bg-black/40 transition-all"
+                class="control-input relative z-10 w-full pl-10 pr-20 !bg-black/20"
               />
               <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary z-20">
                 search
@@ -78,7 +78,7 @@
             </div>
             <button
               @click="showUploadModal = true"
-              class="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-dark text-white font-bold shadow-glow-sm hover:shadow-glow transition-all duration-300 hover:-translate-y-0.5"
+              class="page-primary-btn justify-center whitespace-nowrap"
             >
               <span class="material-symbols-outlined">cloud_upload</span>
               {{ t('knowledge.upload') }}
@@ -88,12 +88,13 @@
       </div>
 
       <!-- Documents List -->
-      <div class="flex-1 overflow-hidden relative">
+      <div class="relative flex-1 overflow-hidden">
          <!-- Background Grid Pattern -->
          <div class="absolute inset-0 bg-tech-grid opacity-20 pointer-events-none"></div>
 
-        <div class="overflow-y-auto h-full p-6">
-          <table class="w-full border-separate border-spacing-y-2">
+        <div class="h-full overflow-y-auto p-4 md:p-6">
+          <div class="overflow-x-auto">
+            <table class="min-w-[920px] w-full border-separate border-spacing-y-2">
             <thead>
               <tr>
                 <th class="text-left px-6 py-3 text-xs font-bold text-text-secondary uppercase tracking-wider">{{ t('knowledge.table.name') }}</th>
@@ -145,7 +146,8 @@
                 </td>
               </tr>
             </tbody>
-          </table>
+            </table>
+          </div>
 
           <!-- Empty State -->
           <div v-if="filteredDocuments.length === 0" class="flex flex-col items-center justify-center h-96">
@@ -172,7 +174,7 @@
       class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
       @click.self="showUploadModal = false"
     >
-      <div class="glass-panel rounded-2xl p-8 max-w-lg w-full mx-4 border border-white/10 shadow-2xl">
+      <div class="modal-shell max-w-lg mx-4">
         <div class="flex items-center justify-between mb-8 pb-4 border-b border-white/10">
           <h2 class="text-2xl font-bold text-white flex items-center gap-3">
              <span class="material-symbols-outlined text-primary">cloud_upload</span>
@@ -297,7 +299,7 @@
       class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
       @click.self="cancelDelete"
     >
-      <div class="glass-panel border border-white/10 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
+      <div class="modal-shell max-w-md mx-4">
         <div class="flex flex-col items-center text-center mb-6">
           <div class="w-16 h-16 rounded-full bg-rose-500/20 flex items-center justify-center mb-4 shadow-[0_0_20px_rgba(244,63,94,0.3)]">
             <span class="material-symbols-outlined text-rose-500 text-3xl">delete_forever</span>
@@ -331,7 +333,9 @@
 import { ref, computed, onMounted } from 'vue';
 import { useToast } from '../composables/useToast';
 import { useLanguage } from '../composables/useLanguage';
-import { API_BASE } from '@/config/api';
+import { apiUrl } from '@/config/api';
+import { readJsonResponse } from '@/services/httpResponse';
+import { getAuthHeaders } from '@/services/authHeaders';
 
 const { success, error, warning } = useToast();
 const { t } = useLanguage();
@@ -425,10 +429,12 @@ const removeFile = (index) => {
 const fetchDocuments = async () => {
   loading.value = true;
   try {
-    const response = await fetch(`${API_BASE}/api/knowledge/documents?limit=100`);
-    if (!response.ok) throw new Error('Failed to fetch documents');
-
-    const data = await response.json();
+    const response = await fetch(apiUrl('/api/knowledge/documents?limit=100'), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    const data = await readJsonResponse(response, 'Knowledge documents');
     documents.value = data.documents || [];
 
     // Update category counts
@@ -443,10 +449,12 @@ const fetchDocuments = async () => {
 
 const fetchStats = async () => {
   try {
-    const response = await fetch(`${API_BASE}/api/knowledge/stats`);
-    if (!response.ok) throw new Error('Failed to fetch stats');
-
-    stats.value = await response.json();
+    const response = await fetch(apiUrl('/api/knowledge/stats'), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    stats.value = await readJsonResponse(response, 'Knowledge stats');
     categories.value[0].count = stats.value.total_documents || 0;
   } catch (err) {
     console.error('Error fetching stats:', err);
@@ -481,24 +489,27 @@ const uploadFiles = async () => {
       formData.append('category', uploadForm.value.category);
       formData.append('title', uploadForm.value.title || file.name);
 
-      const response = await fetch(`${API_BASE}/api/knowledge/upload`, {
+      const response = await fetch(apiUrl('/api/knowledge/upload'), {
         method: 'POST',
+        headers: {
+          ...getAuthHeaders()
+        },
         body: formData
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Upload failed');
-      }
+      await readJsonResponse(response, `Knowledge upload (${file.name})`);
     }
 
     success(`Successfully uploaded ${uploadForm.value.files.length} file(s)`);
 
     // Refresh BM25 index after upload
     try {
-      await fetch(`${API_BASE}/api/knowledge/refresh-index`, {
-        method: 'POST'
+      const refreshResp = await fetch(apiUrl('/api/knowledge/refresh-index'), {
+        method: 'POST',
+        headers: {
+          ...getAuthHeaders()
+        }
       });
+      await readJsonResponse(refreshResp, 'Knowledge refresh index');
     } catch (err) {
       console.warn('Failed to refresh index:', err);
     }
@@ -533,11 +544,15 @@ const deleteDocument = async () => {
 
   try {
     const response = await fetch(
-      `${API_BASE}/api/knowledge/documents/${documentToDelete.value.id}`,
-      { method: 'DELETE' }
+      apiUrl(`/api/knowledge/documents/${documentToDelete.value.id}`),
+      {
+        method: 'DELETE',
+        headers: {
+          ...getAuthHeaders()
+        }
+      }
     );
-
-    if (!response.ok) throw new Error('Failed to delete document');
+    await readJsonResponse(response, 'Knowledge delete document');
 
     success('Document deleted successfully');
 
@@ -561,12 +576,14 @@ const performSearch = async () => {
   try {
     const categoryParam = selectedCategory.value !== 'all' ? `&category=${selectedCategory.value}` : '';
     const response = await fetch(
-      `${API_BASE}/api/knowledge/hybrid-search?query=${encodeURIComponent(searchQuery.value)}&top_k=20&use_reranking=true${categoryParam}`
+      apiUrl(`/api/knowledge/hybrid-search?query=${encodeURIComponent(searchQuery.value)}&top_k=20&use_reranking=true${categoryParam}`),
+      {
+        headers: {
+          ...getAuthHeaders()
+        }
+      }
     );
-
-    if (!response.ok) throw new Error('Search failed');
-
-    const data = await response.json();
+    const data = await readJsonResponse(response, 'Knowledge search');
     searchResults.value = data.results || [];
     searchMode.value = true;
 

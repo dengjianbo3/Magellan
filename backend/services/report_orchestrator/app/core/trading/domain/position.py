@@ -78,7 +78,7 @@ class PositionContext:
         ]
         
         if not self.has_position:
-            lines.append("✅ No Active Position")
+            lines.append("[OK] No Active Position")
             lines.append(f"📍 Current Price: ${self.current_price:,.2f}")
         else:
             # Position info
@@ -87,18 +87,18 @@ class PositionContext:
             pnl_sign = "+" if self.is_profitable else ""
             
             lines.extend([
-                f"✅ Has Active Position: Yes",
+                f"[OK] Has Active Position: Yes",
                 f"{direction_emoji} Direction: {self.direction.upper()}",
                 f"💵 Entry Price: ${self.entry_price:,.2f}",
                 f"📍 Current Price: ${self.current_price:,.2f}",
                 f"{pnl_emoji} Unrealized P&L: {pnl_sign}${self.unrealized_pnl:,.2f} ({pnl_sign}{self.unrealized_pnl_percent:.2f}%)",
-                f"⚡ Leverage: {self.leverage}x",
+                f"[FAST] Leverage: {self.leverage}x",
                 f"🎚️ Position Size: {self.position_size_percent:.1f}%",
             ])
             
             # Liquidation risk
             if self.liquidation_price:
-                danger_emoji = "🚨" if self.is_in_danger else "🚫"
+                danger_emoji = "[ALERT]" if self.is_in_danger else "🚫"
                 lines.append(
                     f"{danger_emoji} Liquidation: ${self.liquidation_price:,.2f} "
                     f"({self.liquidation_distance_percent:.1f}% away)"
@@ -107,7 +107,7 @@ class PositionContext:
             # TP/SL
             if self.take_profit_price:
                 lines.append(
-                    f"🎯 Take Profit: ${self.take_profit_price:,.2f} "
+                    f"[TARGET] Take Profit: ${self.take_profit_price:,.2f} "
                     f"({self.tp_distance_percent:+.1f}%)"
                 )
             if self.stop_loss_price:

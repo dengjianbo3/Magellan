@@ -2,15 +2,39 @@
 Technical Analysis Calculator - 多周期技术分析计算器
 
 计算 RSI, MACD, 成交量等技术指标，支持 15m/1h/4h 多周期。
+Uses shared indicators module to eliminate code duplication.
 """
 
 import asyncio
 import aiohttp
 import logging
-import os
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+# Import centralized config and constants
+try:
+    from ..trading_config import get_infra_config
+    from ..constants import RSI, MACD, TIMEFRAMES
+    from ..indicators import (
+        calculate_rsi,
+        calculate_ema,
+        calculate_macd,
+        detect_macd_crossover,
+        detect_volume_spike,
+        determine_trend,
+        get_closes_from_candles
+    )
+    from ..exceptions import TechnicalAnalysisError, MarketDataError
+    USE_SHARED_INDICATORS = True
+except ImportError:
+    get_infra_config = None
+    RSI = None
+    MACD = None
+    TIMEFRAMES = None
+    USE_SHARED_INDICATORS = False
+    TechnicalAnalysisError = Exception
+    MarketDataError = Exception
 
 logger = logging.getLogger(__name__)
 
@@ -62,80 +86,103 @@ class TAData:
 class TACalculator:
     """
     技术分析计算器
-    
+
     使用 OKX 公开 API 获取 K 线数据并计算指标。
     """
-    
+
     def __init__(self, symbol: str = "BTC-USDT-SWAP"):
         self.symbol = symbol
-        self.base_url = "https://www.okx.com"
+        # Use centralized config for OKX base URL
+        self.base_url = get_infra_config().okx_base_url if get_infra_config else "https://www.okx.com"
         self._last_data: Optional[TAData] = None
-    
+
+    async def _fetch_all_candles(self, session) -> Dict[str, Any]:
+        """并行获取所有周期的K线数据"""
+        tasks = [
+            self._fetch_candles(session, "15m", 50),
+            self._fetch_candles(session, "1H", 50),
+            self._fetch_candles(session, "4H", 20),
+            self._fetch_ticker(session)
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        return {
+            "candles_15m": results[0] if not isinstance(results[0], Exception) else [],
+            "candles_1h": results[1] if not isinstance(results[1], Exception) else [],
+            "candles_4h": results[2] if not isinstance(results[2], Exception) else [],
+            "ticker": results[3] if not isinstance(results[3], Exception) else {},
+        }
+
+    def _calculate_15m_indicators(self, data: TAData, candles: List[Dict]) -> None:
+        """计算15分钟周期指标"""
+        if not candles:
+            return
+        data.rsi_15m = self._calculate_rsi(candles)
+        macd, signal = self._calculate_macd(candles)
+        data.macd_15m = macd
+        data.macd_signal_15m = signal
+        data.macd_crossover = self._detect_macd_crossover(candles)
+        data.volume_spike = self._detect_volume_spike(candles)
+        data.trend_15m = self._determine_trend(candles)
+        data.price_change_15m = self._calculate_price_change(candles, 1)
+
+    def _calculate_1h_indicators(self, data: TAData, candles: List[Dict]) -> None:
+        """计算1小时周期指标"""
+        if not candles:
+            return
+        data.rsi_1h = self._calculate_rsi(candles)
+        data.ema_20_1h = self._calculate_ema(candles, 20)
+        data.ema_50_1h = self._calculate_ema(candles, 50)
+        data.trend_1h = self._determine_trend(candles)
+        data.price_change_1h = self._calculate_price_change(candles, 1)
+
+    def _calculate_4h_indicators(self, data: TAData, candles: List[Dict]) -> None:
+        """计算4小时周期指标"""
+        if not candles:
+            return
+        data.trend_4h = self._determine_trend(candles)
+        data.support_4h, data.resistance_4h = self._find_support_resistance(candles)
+        data.price_change_4h = self._calculate_price_change(candles, 1)
+
     async def calculate(self, timeframes: List[str] = None) -> TAData:
         """
         计算多周期技术指标
-        
+
         Args:
             timeframes: 要计算的周期列表，如 ["15m", "1h", "4h"]
         """
         if timeframes is None:
             timeframes = ["15m", "1H", "4H"]
-        
+
         data = TAData()
-        
+
         try:
             async with aiohttp.ClientSession() as session:
-                # 并行获取各周期 K 线
-                tasks = [
-                    self._fetch_candles(session, "15m", 50),
-                    self._fetch_candles(session, "1H", 50),
-                    self._fetch_candles(session, "4H", 20),
-                    self._fetch_ticker(session)
-                ]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                candles_15m = results[0] if not isinstance(results[0], Exception) else []
-                candles_1h = results[1] if not isinstance(results[1], Exception) else []
-                candles_4h = results[2] if not isinstance(results[2], Exception) else []
-                ticker = results[3] if not isinstance(results[3], Exception) else {}
-                
-                # 计算 15m 指标
-                if candles_15m:
-                    data.rsi_15m = self._calculate_rsi(candles_15m)
-                    macd, signal = self._calculate_macd(candles_15m)
-                    data.macd_15m = macd
-                    data.macd_signal_15m = signal
-                    data.macd_crossover = self._detect_macd_crossover(candles_15m)
-                    data.volume_spike = self._detect_volume_spike(candles_15m)
-                    data.trend_15m = self._determine_trend(candles_15m)
-                    data.price_change_15m = self._calculate_price_change(candles_15m, 1)
-                
-                # 计算 1h 指标
-                if candles_1h:
-                    data.rsi_1h = self._calculate_rsi(candles_1h)
-                    data.ema_20_1h = self._calculate_ema(candles_1h, 20)
-                    data.ema_50_1h = self._calculate_ema(candles_1h, 50)
-                    data.trend_1h = self._determine_trend(candles_1h)
-                    data.price_change_1h = self._calculate_price_change(candles_1h, 1)
-                
-                # 计算 4h 指标
-                if candles_4h:
-                    data.trend_4h = self._determine_trend(candles_4h)
-                    data.support_4h, data.resistance_4h = self._find_support_resistance(candles_4h)
-                    data.price_change_4h = self._calculate_price_change(candles_4h, 1)
-                
-                # 当前价格
-                if ticker:
-                    data.current_price = float(ticker.get("last", 0))
-                
+                market_data = await self._fetch_all_candles(session)
+
+                self._calculate_15m_indicators(data, market_data["candles_15m"])
+                self._calculate_1h_indicators(data, market_data["candles_1h"])
+                self._calculate_4h_indicators(data, market_data["candles_4h"])
+
+                if market_data["ticker"]:
+                    data.current_price = float(market_data["ticker"].get("last", 0))
+
                 self._last_data = data
                 logger.info(f"[TA] RSI(15m)={data.rsi_15m:.1f}, MACD_cross={data.macd_crossover}, Vol_spike={data.volume_spike}")
-                
-        except Exception as e:
-            logger.error(f"[TA] Error calculating indicators: {e}")
+
+        except aiohttp.ClientError as e:
+            logger.error(f"[TA] Network error calculating indicators: {e}")
             if self._last_data:
                 return self._last_data
-        
+        except (ValueError, KeyError, TypeError) as e:
+            logger.error(f"[TA] Data parsing error: {e}")
+            if self._last_data:
+                return self._last_data
+        except Exception as e:
+            logger.error(f"[TA] Unexpected error calculating indicators: {type(e).__name__}: {e}")
+            if self._last_data:
+                return self._last_data
+
         return data
     
     async def _fetch_candles(self, session: aiohttp.ClientSession, bar: str, limit: int) -> List[Dict]:
@@ -164,8 +211,12 @@ class TACalculator:
                             }
                             for c in result.get("data", [])
                         ]
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error fetching {bar} candles: {e}")
+        except (ValueError, KeyError, IndexError) as e:
+            logger.error(f"Data parsing error for {bar} candles: {e}")
         except Exception as e:
-            logger.error(f"Error fetching {bar} candles: {e}")
+            logger.error(f"Unexpected error fetching {bar} candles: {type(e).__name__}: {e}")
         
         return []
     
@@ -180,22 +231,34 @@ class TACalculator:
                     result = await response.json()
                     if result.get("code") == "0" and result.get("data"):
                         return result["data"][0]
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error fetching ticker: {e}")
+        except (ValueError, KeyError, IndexError) as e:
+            logger.error(f"Data parsing error for ticker: {e}")
         except Exception as e:
-            logger.error(f"Error fetching ticker: {e}")
+            logger.error(f"Unexpected error fetching ticker: {type(e).__name__}: {e}")
         
         return {}
     
-    def _calculate_rsi(self, candles: List[Dict], period: int = 14) -> float:
-        """计算 RSI"""
+    def _calculate_rsi(self, candles: List[Dict], period: int = None) -> float:
+        """计算 RSI - 使用共享模块"""
+        if period is None:
+            period = RSI.PERIOD if RSI else 14
+
+        if USE_SHARED_INDICATORS:
+            closes = get_closes_from_candles(candles, reverse=True)
+            return calculate_rsi(closes, period)
+
+        # Fallback to local implementation
         if len(candles) < period + 1:
-            return 50.0
-        
+            return float(RSI.NEUTRAL if RSI else 50)
+
         closes = [c["close"] for c in candles]
-        closes.reverse()  # OKX 返回的是新到旧，需要反转
-        
+        closes.reverse()
+
         gains = []
         losses = []
-        
+
         for i in range(1, len(closes)):
             diff = closes[i] - closes[i-1]
             if diff > 0:
@@ -204,39 +267,53 @@ class TACalculator:
             else:
                 gains.append(0)
                 losses.append(abs(diff))
-        
+
         if len(gains) < period:
             return 50.0
-        
+
         avg_gain = sum(gains[:period]) / period
         avg_loss = sum(losses[:period]) / period
-        
+
         if avg_loss == 0:
             return 100.0
-        
+
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
-        
+
         return round(rsi, 2)
-    
+
     def _calculate_macd(self, candles: List[Dict]) -> Tuple[float, float]:
-        """计算 MACD"""
-        if len(candles) < 26:
+        """计算 MACD - 使用共享模块"""
+        slow_period = MACD.SLOW_PERIOD if MACD else 26
+        fast_period = MACD.FAST_PERIOD if MACD else 12
+
+        if len(candles) < slow_period:
             return 0.0, 0.0
-        
+
+        if USE_SHARED_INDICATORS:
+            closes = get_closes_from_candles(candles, reverse=True)
+            macd, signal, _ = calculate_macd(closes, fast_period, slow_period)
+            return macd, signal
+
+        # Fallback to local implementation
         closes = [c["close"] for c in candles]
         closes.reverse()
-        
-        ema_12 = self._ema(closes, 12)
-        ema_26 = self._ema(closes, 26)
-        
-        macd = ema_12 - ema_26
-        signal = self._ema([macd], 9) if macd else 0  # 简化
-        
+
+        ema_fast = self._ema(closes, fast_period)
+        ema_slow = self._ema(closes, slow_period)
+
+        macd = ema_fast - ema_slow
+        signal = self._ema([macd], MACD.SIGNAL_PERIOD if MACD else 9) if macd else 0
+
         return round(macd, 2), round(signal, 2)
-    
+
     def _calculate_ema(self, candles: List[Dict], period: int) -> float:
-        """计算 EMA"""
+        """计算 EMA - 使用共享模块"""
+        if USE_SHARED_INDICATORS:
+            closes = get_closes_from_candles(candles, reverse=True)
+            return calculate_ema(closes, period)
+
+        # Fallback to local implementation
         closes = [c["close"] for c in candles]
         closes.reverse()
         return self._ema(closes, period)
@@ -255,47 +332,62 @@ class TACalculator:
         return ema
     
     def _detect_macd_crossover(self, candles: List[Dict]) -> bool:
-        """检测 MACD 金叉/死叉"""
-        if len(candles) < 30:
+        """检测 MACD 金叉/死叉 - 使用共享模块"""
+        slow_period = MACD.SLOW_PERIOD if MACD else 26
+
+        if len(candles) < slow_period + 4:
             return False
-        
+
+        if USE_SHARED_INDICATORS:
+            closes = get_closes_from_candles(candles, reverse=True)
+            return detect_macd_crossover(closes)
+
+        # Fallback to local implementation
+        fast_period = MACD.FAST_PERIOD if MACD else 12
         closes = [c["close"] for c in candles]
         closes.reverse()
-        
-        # 计算当前和前一根的 MACD
-        current_ema12 = self._ema(closes, 12)
-        current_ema26 = self._ema(closes, 26)
-        current_macd = current_ema12 - current_ema26
-        
-        prev_ema12 = self._ema(closes[:-1], 12)
-        prev_ema26 = self._ema(closes[:-1], 26)
-        prev_macd = prev_ema12 - prev_ema26
-        
-        # 简化：只检测是否有符号变化
+
+        current_ema_fast = self._ema(closes, fast_period)
+        current_ema_slow = self._ema(closes, slow_period)
+        current_macd = current_ema_fast - current_ema_slow
+
+        prev_ema_fast = self._ema(closes[:-1], fast_period)
+        prev_ema_slow = self._ema(closes[:-1], slow_period)
+        prev_macd = prev_ema_fast - prev_ema_slow
+
         return (current_macd > 0 and prev_macd <= 0) or (current_macd < 0 and prev_macd >= 0)
-    
+
     def _detect_volume_spike(self, candles: List[Dict], threshold: float = 2.0) -> bool:
-        """检测成交量异常"""
+        """检测成交量异常 - 使用共享模块"""
         if len(candles) < 20:
             return False
-        
+
+        if USE_SHARED_INDICATORS:
+            volumes = [c["volume"] for c in candles]
+            return detect_volume_spike(volumes, threshold, lookback=20)
+
+        # Fallback to local implementation
         volumes = [c["volume"] for c in candles]
-        current_vol = volumes[0]  # 最新一根
+        current_vol = volumes[0]
         avg_vol = sum(volumes[1:20]) / 19
-        
+
         return current_vol > avg_vol * threshold
-    
+
     def _determine_trend(self, candles: List[Dict]) -> str:
-        """判断趋势"""
+        """判断趋势 - 使用共享模块"""
         if len(candles) < 10:
             return "neutral"
-        
+
+        if USE_SHARED_INDICATORS:
+            closes = [c["close"] for c in candles[:10]]
+            return determine_trend(closes, lookback=10, threshold_percent=1.0)
+
+        # Fallback to local implementation
         closes = [c["close"] for c in candles[:10]]
-        
-        # 简单判断：当前价格 vs 10 根 K 线前
-        if closes[0] > closes[-1] * 1.01:  # 上涨 1%+
+
+        if closes[0] > closes[-1] * 1.01:
             return "bullish"
-        elif closes[0] < closes[-1] * 0.99:  # 下跌 1%+
+        elif closes[0] < closes[-1] * 0.99:
             return "bearish"
         return "neutral"
     

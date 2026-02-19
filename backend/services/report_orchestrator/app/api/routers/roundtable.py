@@ -6,10 +6,12 @@ Roundtable Router
 """
 
 import logging
+import os
 from typing import Dict, Any
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from ...core.auth import CurrentUser, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,7 @@ router = APIRouter()
 
 # Global references - will be set from main.py
 _active_meetings: Dict[str, Any] = {}
-_llm_gateway_url: str = "http://llm_gateway:8003"
+_llm_gateway_url: str = os.getenv("LLM_GATEWAY_URL", "http://llm_gateway:8003")
 
 
 def set_active_meetings(meetings: Dict[str, Any]):
@@ -33,7 +35,10 @@ def set_llm_gateway_url(url: str):
 
 
 @router.get("/history", tags=["Roundtable"])
-async def get_roundtable_history(limit: int = 20):
+async def get_roundtable_history(
+    limit: int = 20,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     获取圆桌讨论历史列表
 
@@ -43,7 +48,7 @@ async def get_roundtable_history(limit: int = 20):
         from ...core.session_store import SessionStore
         store = SessionStore()
 
-        roundtable_reports = store.get_roundtable_reports(limit=limit)
+        roundtable_reports = store.get_roundtable_reports(limit=limit, user_id=current_user.id)
 
         return {
             "success": True,
@@ -56,7 +61,10 @@ async def get_roundtable_history(limit: int = 20):
 
 
 @router.get("/history/{report_id}", tags=["Roundtable"])
-async def get_roundtable_detail(report_id: str):
+async def get_roundtable_detail(
+    report_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     获取圆桌讨论详情
 
@@ -66,7 +74,7 @@ async def get_roundtable_detail(report_id: str):
         from ...core.session_store import SessionStore
         store = SessionStore()
 
-        report = store.get_roundtable_report_full(report_id)
+        report = store.get_roundtable_report_full(report_id, user_id=current_user.id)
 
         if not report:
             raise HTTPException(status_code=404, detail=f"Roundtable report {report_id} not found")
@@ -83,7 +91,11 @@ async def get_roundtable_detail(report_id: str):
 
 
 @router.get("/similar", tags=["Roundtable"])
-async def search_similar_roundtables(topic: str, limit: int = 5):
+async def search_similar_roundtables(
+    topic: str,
+    limit: int = 5,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     搜索相似的圆桌讨论
 
@@ -93,7 +105,7 @@ async def search_similar_roundtables(topic: str, limit: int = 5):
         from ...core.session_store import SessionStore
         store = SessionStore()
 
-        similar_reports = store.search_similar_roundtables(topic=topic, limit=limit)
+        similar_reports = store.search_similar_roundtables(topic=topic, limit=limit, user_id=current_user.id)
 
         return {
             "success": True,
@@ -107,7 +119,10 @@ async def search_similar_roundtables(topic: str, limit: int = 5):
 
 
 @router.post("/inject_human_input", tags=["Roundtable"])
-async def inject_human_input(request: dict):
+async def inject_human_input(
+    request: dict,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     注入用户补充信息到正在进行的圆桌讨论中 (Human-in-the-Loop)
 
@@ -133,6 +148,9 @@ async def inject_human_input(request: dict):
     meeting = _active_meetings.get(session_id)
     if not meeting:
         raise HTTPException(status_code=404, detail=f"No active meeting found for session_id: {session_id}")
+    owner_user_id = getattr(meeting, "_owner_user_id", None)
+    if owner_user_id and str(owner_user_id) != str(current_user.id):
+        raise HTTPException(status_code=404, detail=f"No active meeting found for session_id: {session_id}")
 
     # Check if meeting is actually waiting for human input
     if not meeting.waiting_for_human:
@@ -155,7 +173,10 @@ async def inject_human_input(request: dict):
 
 
 @router.post("/generate_summary", tags=["Roundtable"])
-async def generate_roundtable_summary(request: dict):
+async def generate_roundtable_summary(
+    request: dict,
+    _: CurrentUser = Depends(get_current_user),
+):
     """
     根据圆桌讨论历史生成会议纪要
 
@@ -282,7 +303,10 @@ Please present in a professional and concise manner with clear logic.
 
 
 @router.post("/generate_summary_stream", tags=["Roundtable"])
-async def generate_roundtable_summary_stream(request: dict):
+async def generate_roundtable_summary_stream(
+    request: dict,
+    _: CurrentUser = Depends(get_current_user),
+):
     """
     流式生成会议纪要 - 使用 Server-Sent Events (SSE)
     
@@ -385,4 +409,3 @@ Please generate meeting minutes in the following format:
             "X-Accel-Buffering": "no"
         }
     )
-

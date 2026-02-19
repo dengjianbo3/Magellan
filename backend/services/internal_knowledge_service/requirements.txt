@@ -1,4 +1,3 @@
 fastapi
 uvicorn
-google-genai>=1.0.0
-chromadb
+httpx>=0.27.0

@@ -88,7 +88,7 @@ class AgentMemory:
         
         if self.current_focus:
             lines.append("")
-            lines.append(f"🎯 CURRENT FOCUS: {self.current_focus}")
+            lines.append(f"[TARGET] CURRENT FOCUS: {self.current_focus}")
         
         if self.last_trade_summary:
             lines.append("")

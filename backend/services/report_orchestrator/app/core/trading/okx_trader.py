@@ -16,6 +16,8 @@ import redis.asyncio as redis
 
 from app.core.trading.okx_client import OKXClient, get_okx_client
 from app.core.trading.trading_logger import get_trading_logger, TradingLogger
+from app.core.trading.trading_config import get_infra_config
+from app.core.auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -70,17 +72,30 @@ class OKXTrader:
     Uses OKX demo trading API.
     """
 
-    def __init__(self, initial_balance: float = 5000.0, demo_mode: bool = True, config: OKXTraderConfig = None,  # Match OKX demo account
-                 redis_url: str = "redis://redis:6379"):
+    def __init__(
+        self,
+        initial_balance: float = 5000.0,
+        demo_mode: bool = True,
+        config: OKXTraderConfig = None,
+        redis_url: str = None,
+        okx_api_key: Optional[str] = None,
+        okx_secret_key: Optional[str] = None,
+        okx_passphrase: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ):
         self.config = config or OKXTraderConfig(initial_balance=initial_balance, demo_mode=demo_mode)
         self.initial_balance = self.config.initial_balance
         self.demo_mode = self.config.demo_mode
-        self.redis_url = redis_url
+        self.redis_url = redis_url or get_infra_config().redis_url
         self._redis: Optional[redis.Redis] = None
-        self._key_prefix = "okx_trader:"
-        
+        self.user_id = get_current_user_id(user_id)
+        self._key_prefix = f"okx_trader:{self.user_id}:"
+
         self._okx_client: Optional[OKXClient] = None
         self._initialized = False
+        self._okx_api_key = okx_api_key
+        self._okx_secret_key = okx_secret_key
+        self._okx_passphrase = okx_passphrase
 
         # 🔒 Trade lock - prevents concurrent trading operations
         self._trade_lock = asyncio.Lock()
@@ -122,7 +137,7 @@ class OKXTrader:
         if self._initialized:
             return
 
-        # 🚨 Mode confirmation logging
+        # [ALERT] Mode confirmation logging
         if self.demo_mode:
             logger.info("=" * 60)
             logger.info("🧪 INITIALIZING OKX DEMO TRADER")
@@ -130,7 +145,7 @@ class OKXTrader:
             logger.info("=" * 60)
         else:
             logger.warning("=" * 60)
-            logger.warning("🚨🚨🚨 WARNING: REAL TRADING MODE ACTIVE 🚨🚨🚨")
+            logger.warning("[ALERT][ALERT][ALERT] WARNING: REAL TRADING MODE ACTIVE [ALERT][ALERT][ALERT]")
             logger.warning("   REAL FUNDS ARE AT RISK!")
             logger.warning("   Make sure you have:")
             logger.warning("   - API key with LIMITED permissions (no withdrawal)")
@@ -148,12 +163,17 @@ class OKXTrader:
             await self._load_state()
             
             # 🆕 Initialize TradingLogger for position event persistence
-            self._trading_logger = await get_trading_logger(self.redis_url)
+            self._trading_logger = await get_trading_logger(self.redis_url, user_id=self.user_id)
         except Exception as e:
             logger.warning(f"[Redis] Not available, using memory only: {e}")
             self._redis = None
 
-        self._okx_client = await get_okx_client()
+        self._okx_client = await get_okx_client(
+            api_key=self._okx_api_key,
+            secret_key=self._okx_secret_key,
+            passphrase=self._okx_passphrase,
+            demo_mode=self.demo_mode,
+        )
 
         # Get initial balance from OKX
         try:
@@ -218,18 +238,18 @@ class OKXTrader:
                 # 🆕 CRITICAL FIX: Final validation - ensure TP/SL makes sense for direction
                 if tp_price and pos.entry_price:
                     if pos.direction == "long" and tp_price < pos.entry_price:
-                        logger.critical(f"[TP/SL_VALIDATION] ❌ WRONG DIRECTION TP! LONG position has TP below entry: TP=${tp_price:.2f} < entry=${pos.entry_price:.2f}")
+                        logger.critical(f"[TP/SL_VALIDATION] [FAIL] WRONG DIRECTION TP! LONG position has TP below entry: TP=${tp_price:.2f} < entry=${pos.entry_price:.2f}")
                         self._position.take_profit_price = None
                     elif pos.direction == "short" and tp_price > pos.entry_price:
-                        logger.critical(f"[TP/SL_VALIDATION] ❌ WRONG DIRECTION TP! SHORT position has TP above entry: TP=${tp_price:.2f} > entry=${pos.entry_price:.2f}")
+                        logger.critical(f"[TP/SL_VALIDATION] [FAIL] WRONG DIRECTION TP! SHORT position has TP above entry: TP=${tp_price:.2f} > entry=${pos.entry_price:.2f}")
                         self._position.take_profit_price = None
                         
                 if sl_price and pos.entry_price:
                     if pos.direction == "long" and sl_price > pos.entry_price:
-                        logger.critical(f"[TP/SL_VALIDATION] ❌ WRONG DIRECTION SL! LONG position has SL above entry: SL=${sl_price:.2f} > entry=${pos.entry_price:.2f}")
+                        logger.critical(f"[TP/SL_VALIDATION] [FAIL] WRONG DIRECTION SL! LONG position has SL above entry: SL=${sl_price:.2f} > entry=${pos.entry_price:.2f}")
                         self._position.stop_loss_price = None
                     elif pos.direction == "short" and sl_price < pos.entry_price:
-                        logger.critical(f"[TP/SL_VALIDATION] ❌ WRONG DIRECTION SL! SHORT position has SL below entry: SL=${sl_price:.2f} < entry=${pos.entry_price:.2f}")
+                        logger.critical(f"[TP/SL_VALIDATION] [FAIL] WRONG DIRECTION SL! SHORT position has SL below entry: SL=${sl_price:.2f} < entry=${pos.entry_price:.2f}")
                         self._position.stop_loss_price = None
                 
                 logger.info(f"Synced position: {pos.direction} {pos.size} BTC @ ${pos.entry_price}, TP=${self._position.take_profit_price}, SL=${self._position.stop_loss_price}")
@@ -799,7 +819,7 @@ class OKXTrader:
             loss_percent = abs(self._daily_pnl) / self.initial_balance * 100
             if self._daily_pnl < 0 and loss_percent >= self._max_daily_loss_percent:
                 self._is_trading_halted = True
-                logger.warning(f"🚨 [DailyLimit] TRADING HALTED: Daily loss {loss_percent:.1f}% >= {self._max_daily_loss_percent}%")
+                logger.warning(f"[ALERT] [DailyLimit] TRADING HALTED: Daily loss {loss_percent:.1f}% >= {self._max_daily_loss_percent}%")
                 return False, f"Trading halted: daily loss {loss_percent:.1f}% exceeds {self._max_daily_loss_percent}% limit"
 
         return True, ""
@@ -1015,10 +1035,21 @@ class OKXTrader:
                 logger.error(f"Error closing position: {e}")
                 return {'success': False, 'error': str(e)}
 
-    async def check_tp_sl(self) -> Optional[str]:
+    async def check_tp_sl(self, auto_close: bool = False) -> Optional[str]:
         """
         Check if TP/SL is hit.
-        Note: OKX handles TP/SL server-side, but we still check for local tracking.
+
+        Note: OKX handles TP/SL server-side via algo orders, so auto_close
+        defaults to False. This method is mainly for local tracking and
+        triggering callbacks.
+
+        Args:
+            auto_close: If True, close position locally (not recommended for OKX
+                       as it may conflict with server-side TP/SL orders).
+                       Default is False for OKX.
+
+        Returns:
+            "tp", "sl", or None
         """
         if not self._position:
             return None
@@ -1029,11 +1060,15 @@ class OKXTrader:
         if self._position.take_profit_price:
             if self._position.direction == "long" and price >= self._position.take_profit_price:
                 logger.info(f"Take profit hit: {price} >= {self._position.take_profit_price}")
+                if auto_close:
+                    await self.close_position(reason="tp")
                 if self.on_tp_hit:
                     await self.on_tp_hit(self._position, price)
                 return "tp"
             elif self._position.direction == "short" and price <= self._position.take_profit_price:
                 logger.info(f"Take profit hit: {price} <= {self._position.take_profit_price}")
+                if auto_close:
+                    await self.close_position(reason="tp")
                 if self.on_tp_hit:
                     await self.on_tp_hit(self._position, price)
                 return "tp"
@@ -1042,11 +1077,15 @@ class OKXTrader:
         if self._position.stop_loss_price:
             if self._position.direction == "long" and price <= self._position.stop_loss_price:
                 logger.info(f"Stop loss hit: {price} <= {self._position.stop_loss_price}")
+                if auto_close:
+                    await self.close_position(reason="sl")
                 if self.on_sl_hit:
                     await self.on_sl_hit(self._position, price)
                 return "sl"
             elif self._position.direction == "short" and price >= self._position.stop_loss_price:
                 logger.info(f"Stop loss hit: {price} >= {self._position.stop_loss_price}")
+                if auto_close:
+                    await self.close_position(reason="sl")
                 if self.on_sl_hit:
                     await self.on_sl_hit(self._position, price)
                 return "sl"
@@ -1399,7 +1438,8 @@ class OKXTrader:
                 closed = datetime.fromisoformat(t.get('closed_at', '').replace('Z', '+00:00'))
                 hours = (closed - opened).total_seconds() / 3600
                 holding_hours.append(hours)
-            except:
+            except (ValueError, TypeError, AttributeError):
+                # Skip trades with invalid or missing timestamp data
                 pass
         
         avg_holding_hours = sum(holding_hours) / len(holding_hours) if holding_hours else 0
@@ -1501,15 +1541,40 @@ class OKXTrader:
         }
 
 
-# Singleton
+# Singletons by user scope
+_okx_traders: Dict[str, OKXTrader] = {}
+_okx_trader_fps: Dict[str, str] = {}
 
-_okx_trader: Optional[OKXTrader] = None
+
+def _fp(api_key: str, passphrase: str, demo_mode: bool, initial_balance: float) -> str:
+    return f"{api_key[-6:]}:{passphrase[-2:]}:{'demo' if demo_mode else 'real'}:{initial_balance}"
 
 
-async def get_okx_trader(initial_balance: float = 10000.0) -> OKXTrader:
-    """Get or create OKX trader singleton"""
-    global _okx_trader
-    if _okx_trader is None:
-        _okx_trader = OKXTrader(initial_balance=initial_balance)
-        await _okx_trader.initialize()
-    return _okx_trader
+async def get_okx_trader(
+    initial_balance: float = 10000.0,
+    demo_mode: bool = True,
+    okx_api_key: Optional[str] = None,
+    okx_secret_key: Optional[str] = None,
+    okx_passphrase: Optional[str] = None,
+    user_id: Optional[str] = None,
+) -> OKXTrader:
+    """Get or create OKX trader singleton scoped by user."""
+    scope = get_current_user_id(user_id)
+    api_k = okx_api_key or ""
+    pass_k = okx_passphrase or ""
+    fp = _fp(api_k, pass_k, bool(demo_mode), float(initial_balance))
+    trader = _okx_traders.get(scope)
+    current_fp = _okx_trader_fps.get(scope)
+    if trader is None or current_fp != fp:
+        trader = OKXTrader(
+            initial_balance=initial_balance,
+            demo_mode=demo_mode,
+            okx_api_key=okx_api_key,
+            okx_secret_key=okx_secret_key,
+            okx_passphrase=okx_passphrase,
+            user_id=scope,
+        )
+        await trader.initialize()
+        _okx_traders[scope] = trader
+        _okx_trader_fps[scope] = fp
+    return trader

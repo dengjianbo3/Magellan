@@ -20,9 +20,16 @@ import os
 import json
 
 import redis.asyncio as redis
-import structlog
+import logging
 
-logger = structlog.get_logger(__name__)
+try:
+    import structlog
+except Exception:  # Optional in some local/dev test setups
+    structlog = None
+
+from .trading_config import get_infra_config
+
+logger = structlog.get_logger(__name__) if structlog is not None else logging.getLogger(__name__)
 
 
 @dataclass
@@ -109,6 +116,7 @@ class TradeDecision:
     modified_leverage: Optional[int] = None
     modified_sl: Optional[float] = None
     modified_tp: Optional[float] = None
+    metadata: Optional[Dict[str, Any]] = None
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -128,6 +136,7 @@ class TradeDecision:
                 "stop_loss": self.modified_sl,
                 "take_profit": self.modified_tp,
             } if self.action == "modified" else None,
+            "metadata": self.metadata or {},
         }
 
 
@@ -145,11 +154,11 @@ class UserPreferenceLearner:
     def __init__(self, redis_client: Optional[redis.Redis] = None):
         self.redis = redis_client
         self._prefs_cache: Dict[str, UserPreferences] = {}
-    
+
     async def _ensure_redis(self) -> Optional[redis.Redis]:
         """Ensure Redis connection exists."""
         if self.redis is None:
-            redis_url = os.environ.get("REDIS_URL", "redis://redis:6379")
+            redis_url = get_infra_config().redis_url
             try:
                 self.redis = redis.from_url(redis_url, decode_responses=True)
                 await self.redis.ping()
@@ -213,6 +222,7 @@ class UserPreferenceLearner:
         modified_leverage: Optional[int] = None,
         modified_sl: Optional[float] = None,
         modified_tp: Optional[float] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> UserPreferences:
         """
         Record a user's trade decision and update preferences.
@@ -232,6 +242,7 @@ class UserPreferenceLearner:
             modified_leverage=modified_leverage,
             modified_sl=modified_sl,
             modified_tp=modified_tp,
+            metadata=metadata,
         )
         
         # Get current preferences

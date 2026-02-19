@@ -4,22 +4,12 @@ TradingSignal Domain Model
 Represents the final trading decision from a meeting.
 """
 
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, Dict, List, Any
 from .vote import VoteDirection, AgentVote, VoteSummary
 
-
-# ========== Environment helpers ==========
-def _get_env_float(key: str, default: float) -> float:
-    val = os.getenv(key)
-    if val:
-        try:
-            return float(val)
-        except ValueError:
-            pass
-    return default
+from app.core.trading.trading_config import get_env_float as _get_env_float
 
 # Default values from environment
 _DEFAULT_POSITION_PERCENT = _get_env_float("DEFAULT_POSITION_PERCENT", 20) / 100  # 0.2 = 20%

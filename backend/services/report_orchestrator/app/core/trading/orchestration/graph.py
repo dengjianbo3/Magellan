@@ -164,7 +164,7 @@ class TradingGraph:
         # Compile the graph
         self.graph = self.workflow.compile(checkpointer=self.checkpointer)
         
-        logger.info("[TradingGraph] ✅ Graph compiled successfully")
+        logger.info("[TradingGraph] [OK] Graph compiled successfully")
     
     async def run(
         self,
@@ -249,7 +249,7 @@ class TradingGraph:
             direction = signal.get("direction", "unknown")
             confidence = signal.get("confidence", 0)
             logger.info(
-                f"[TradingGraph] ✅ Workflow complete - "
+                f"[TradingGraph] [OK] Workflow complete - "
                 f"Signal: {direction.upper()} ({confidence}%) - "
                 f"Nodes: {' → '.join(final_state.get('completed_nodes', []))}"
             )
@@ -257,7 +257,7 @@ class TradingGraph:
             return final_state
             
         except Exception as e:
-            logger.error(f"[TradingGraph] ❌ Workflow failed: {e}", exc_info=True)
+            logger.error(f"[TradingGraph] [FAIL] Workflow failed: {e}", exc_info=True)
             
             # Return error state with HOLD signal
             return {

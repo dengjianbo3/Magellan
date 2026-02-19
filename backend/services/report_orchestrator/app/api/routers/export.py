@@ -14,8 +14,10 @@ import tempfile
 from urllib.parse import quote
 from typing import Dict, Any, Optional, Callable
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+
+from ...core.auth import CurrentUser, get_current_user
 
 router = APIRouter()
 
@@ -30,11 +32,19 @@ def set_get_report_func(func: Callable):
     print("[export.py] Report retrieval function set")
 
 
-def _get_report(report_id: str) -> Optional[Dict[str, Any]]:
+def _get_report(report_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Get report data using injected function"""
     if _get_report_func:
-        return _get_report_func(report_id)
+        try:
+            return _get_report_func(report_id, user_id=user_id)
+        except TypeError:
+            return _get_report_func(report_id)
     raise HTTPException(status_code=500, detail="Report storage not initialized")
+
+
+def _assert_report_owner(report: Dict[str, Any], user_id: str, report_id: str) -> None:
+    if str(report.get("user_id") or "") != str(user_id):
+        raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
 
 
 def _prepare_chart_data(report: Dict[str, Any], chart_type: str) -> Dict[str, Any]:
@@ -109,7 +119,11 @@ def _prepare_chart_data(report: Dict[str, Any], chart_type: str) -> Dict[str, An
 
 
 @router.get("/{report_id}/export/pdf")
-async def export_report_to_pdf(report_id: str, language: str = "zh"):
+async def export_report_to_pdf(
+    report_id: str,
+    language: str = "zh",
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Export a report to PDF format.
 
@@ -122,9 +136,10 @@ async def export_report_to_pdf(report_id: str, language: str = "zh"):
     """
     from ...exporters.pdf_generator import generate_pdf_report
 
-    report = _get_report(report_id)
+    report = _get_report(report_id, user_id=current_user.id)
     if not report:
         raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
+    _assert_report_owner(report, current_user.id, report_id)
 
     try:
         temp_dir = tempfile.gettempdir()
@@ -157,7 +172,11 @@ async def export_report_to_pdf(report_id: str, language: str = "zh"):
 
 
 @router.get("/{report_id}/export/word")
-async def export_report_to_word(report_id: str, language: str = "zh"):
+async def export_report_to_word(
+    report_id: str,
+    language: str = "zh",
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Export a report to Word format.
 
@@ -170,9 +189,10 @@ async def export_report_to_word(report_id: str, language: str = "zh"):
     """
     from ...exporters.word_generator import generate_word_report
 
-    report = _get_report(report_id)
+    report = _get_report(report_id, user_id=current_user.id)
     if not report:
         raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
+    _assert_report_owner(report, current_user.id, report_id)
 
     try:
         temp_dir = tempfile.gettempdir()
@@ -205,7 +225,11 @@ async def export_report_to_word(report_id: str, language: str = "zh"):
 
 
 @router.get("/{report_id}/export/excel")
-async def export_report_to_excel(report_id: str, language: str = "zh"):
+async def export_report_to_excel(
+    report_id: str,
+    language: str = "zh",
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Export a report to Excel format.
 
@@ -218,9 +242,10 @@ async def export_report_to_excel(report_id: str, language: str = "zh"):
     """
     from ...exporters.excel_generator import generate_excel_report
 
-    report = _get_report(report_id)
+    report = _get_report(report_id, user_id=current_user.id)
     if not report:
         raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
+    _assert_report_owner(report, current_user.id, report_id)
 
     try:
         temp_dir = tempfile.gettempdir()
@@ -252,7 +277,12 @@ async def export_report_to_excel(report_id: str, language: str = "zh"):
 
 
 @router.get("/{report_id}/charts/{chart_type}")
-async def generate_report_chart(report_id: str, chart_type: str, language: str = "zh"):
+async def generate_report_chart(
+    report_id: str,
+    chart_type: str,
+    language: str = "zh",
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Generate chart for a specific report.
 
@@ -266,9 +296,10 @@ async def generate_report_chart(report_id: str, chart_type: str, language: str =
     """
     from ...exporters.chart_generator import generate_chart_for_report
 
-    report = _get_report(report_id)
+    report = _get_report(report_id, user_id=current_user.id)
     if not report:
         raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
+    _assert_report_owner(report, current_user.id, report_id)
 
     try:
         chart_data = _prepare_chart_data(report, chart_type)

@@ -1,12 +1,8 @@
 """
 Trading Mode Manager - HITL (Human-in-the-Loop) Core
 
-Manages three trading modes:
-- FULL_AUTO: Execute trades automatically
-- SEMI_AUTO: Wait for user confirmation before execution  
-- MANUAL: Analysis only, no trade execution
-
-Phase 1.3 of the architecture evolution roadmap.
+This project now uses a single execution mode:
+- SEMI_AUTO (HITL): Always require user confirmation before execution.
 """
 
 import asyncio
@@ -18,16 +14,22 @@ import uuid
 import json
 
 import redis.asyncio as redis
-import structlog
+import logging
 
-logger = structlog.get_logger(__name__)
+try:
+    import structlog
+except Exception:  # Optional in some local/dev test setups
+    structlog = None
+
+from .trading_config import get_infra_config
+from app.core.auth import get_current_user_id
+
+logger = structlog.get_logger(__name__) if structlog is not None else logging.getLogger(__name__)
 
 
 class TradingMode(Enum):
     """Trading execution modes."""
-    FULL_AUTO = "full_auto"      # Execute immediately
-    SEMI_AUTO = "semi_auto"      # Wait for user confirmation
-    MANUAL = "manual"            # Analyze only, no execution
+    SEMI_AUTO = "semi_auto"  # Wait for user confirmation (HITL-only)
 
 
 class ExecutionAction(Enum):
@@ -102,26 +104,40 @@ class PendingTradeResponse:
 
 class TradingModeManager:
     """
-    Manages trading mode and execution decisions.
-    
-    Stores mode in Redis with fallback to MANUAL on errors.
+    Manages trading execution mode and pending-trade confirmation flow.
+
+    Stores mode in Redis but normalizes to SEMI_AUTO (HITL-only).
     """
     
-    REDIS_KEY_MODE = "trading:mode"
-    REDIS_KEY_PENDING_PREFIX = "trading:pending:"
-    REDIS_KEY_PENDING_LIST = "trading:pending_list"
-    PENDING_TRADE_TTL_SECONDS = 300  # 5 minutes
-    
-    def __init__(self, redis_client: Optional[redis.Redis] = None):
+    REDIS_KEY_MODE_PREFIX = "trading:mode"
+    REDIS_KEY_PENDING_PREFIX_BASE = "trading:pending"
+    REDIS_KEY_PENDING_LIST_PREFIX = "trading:pending_list"
+    PENDING_TRADE_TTL_SECONDS = 900  # 15 minutes
+    DEFAULT_MODE = TradingMode.SEMI_AUTO  # Default mode when key doesn't exist in Redis
+
+    def __init__(self, user_id: Optional[str] = None, redis_client: Optional[redis.Redis] = None):
+        self.user_id = get_current_user_id(user_id)
         self.redis = redis_client
         self._mode_lock = asyncio.Lock()
         self._execution_lock = asyncio.Lock()
-    
+
+    @property
+    def redis_key_mode(self) -> str:
+        return f"{self.REDIS_KEY_MODE_PREFIX}:{self.user_id}"
+
+    @property
+    def redis_key_pending_prefix(self) -> str:
+        return f"{self.REDIS_KEY_PENDING_PREFIX_BASE}:{self.user_id}:"
+
+    @property
+    def redis_key_pending_list(self) -> str:
+        return f"{self.REDIS_KEY_PENDING_LIST_PREFIX}:{self.user_id}"
+
     async def _ensure_redis(self) -> Optional[redis.Redis]:
         """Ensure Redis connection exists."""
         if self.redis is None:
-            import os
-            redis_url = os.environ.get("REDIS_URL", "redis://redis:6379")
+            # Use centralized config for Redis URL
+            redis_url = get_infra_config().redis_url
             try:
                 self.redis = redis.from_url(redis_url, decode_responses=True)
                 await self.redis.ping()
@@ -129,24 +145,45 @@ class TradingModeManager:
                 logger.warning("trading_mode_redis_connect_failed", error=str(e))
                 return None
         return self.redis
-    
+
     async def get_mode(self) -> TradingMode:
         """
         Get current trading mode.
-        
-        Returns MANUAL mode on Redis failure (fail-safe).
+
+        Always returns SEMI_AUTO.
+        If Redis contains an obsolete value (e.g. "full_auto"/"manual"), it is normalized to "semi_auto".
         """
         try:
             redis_client = await self._ensure_redis()
             if redis_client:
-                mode_value = await redis_client.get(self.REDIS_KEY_MODE)
-                if mode_value:
-                    return TradingMode(mode_value)
+                mode_value = await redis_client.get(self.redis_key_mode)
+                normalized = self.DEFAULT_MODE
+
+                if mode_value == self.DEFAULT_MODE.value:
+                    normalized = self.DEFAULT_MODE
+                elif mode_value:
+                    # Legacy/unknown mode: normalize
+                    logger.info(
+                        "trading_mode_normalized",
+                        previous_mode=mode_value,
+                        new_mode=self.DEFAULT_MODE.value,
+                    )
+                else:
+                    logger.info(
+                        "trading_mode_not_set_initializing",
+                        default_mode=self.DEFAULT_MODE.value,
+                    )
+
+                # Ensure Redis is consistent (both unset and legacy values)
+                if mode_value != self.DEFAULT_MODE.value:
+                    await redis_client.set(self.redis_key_mode, self.DEFAULT_MODE.value)
+
+                return normalized
         except Exception as e:
             logger.warning("trading_mode_get_failed", error=str(e))
-        
-        # Default to MANUAL for safety
-        return TradingMode.MANUAL
+
+        # Fail-safe: HITL-only, never auto-execute.
+        return self.DEFAULT_MODE
     
     async def set_mode(self, mode: TradingMode, user_id: Optional[str] = None) -> bool:
         """
@@ -161,9 +198,11 @@ class TradingModeManager:
         """
         async with self._mode_lock:
             try:
+                # HITL-only: only SEMI_AUTO is supported.
+                mode = self.DEFAULT_MODE
                 redis_client = await self._ensure_redis()
                 if redis_client:
-                    await redis_client.set(self.REDIS_KEY_MODE, mode.value)
+                    await redis_client.set(self.redis_key_mode, mode.value)
                     logger.info(
                         "trading_mode_changed",
                         new_mode=mode.value,
@@ -177,6 +216,8 @@ class TradingModeManager:
     async def should_execute(self, signal: Dict[str, Any]) -> ExecutionDecision:
         """
         Determine whether to execute a trade based on current mode.
+
+        HITL-only: always create a pending trade and wait for user confirmation.
         
         Args:
             signal: The trading signal to evaluate
@@ -184,29 +225,13 @@ class TradingModeManager:
         Returns:
             ExecutionDecision with action, reason, and optional pending trade ID
         """
-        mode = await self.get_mode()
-        
-        if mode == TradingMode.FULL_AUTO:
-            return ExecutionDecision(
-                action=ExecutionAction.EXECUTE,
-                reason="Full auto mode - executing immediately"
-            )
-        
-        elif mode == TradingMode.SEMI_AUTO:
-            # Create pending trade and wait for confirmation
-            pending_trade = await self._create_pending_trade(signal)
-            return ExecutionDecision(
-                action=ExecutionAction.WAIT_CONFIRMATION,
-                reason="Semi-auto mode - awaiting user confirmation",
-                pending_trade_id=pending_trade.id,
-                expires_at=pending_trade.expires_at
-            )
-        
-        else:  # MANUAL
-            return ExecutionDecision(
-                action=ExecutionAction.SKIP,
-                reason="Manual mode - trade execution disabled"
-            )
+        pending_trade = await self._create_pending_trade(signal)
+        return ExecutionDecision(
+            action=ExecutionAction.WAIT_CONFIRMATION,
+            reason="HITL-only: awaiting user confirmation",
+            pending_trade_id=pending_trade.id,
+            expires_at=pending_trade.expires_at,
+        )
     
     async def _create_pending_trade(self, signal: Dict[str, Any]) -> PendingTrade:
         """Create a pending trade entry in Redis and send notifications."""
@@ -225,14 +250,14 @@ class TradingModeManager:
             redis_client = await self._ensure_redis()
             if redis_client:
                 # Store pending trade
-                key = f"{self.REDIS_KEY_PENDING_PREFIX}{trade_id}"
+                key = f"{self.redis_key_pending_prefix}{trade_id}"
                 await redis_client.setex(
                     key,
                     self.PENDING_TRADE_TTL_SECONDS,
                     json.dumps(pending.to_dict())
                 )
                 # Add to pending list
-                await redis_client.lpush(self.REDIS_KEY_PENDING_LIST, trade_id)
+                await redis_client.lpush(self.redis_key_pending_list, trade_id)
                 
                 logger.info(
                     "pending_trade_created",
@@ -312,7 +337,7 @@ class TradingModeManager:
         try:
             redis_client = await self._ensure_redis()
             if redis_client:
-                key = f"{self.REDIS_KEY_PENDING_PREFIX}{trade_id}"
+                key = f"{self.redis_key_pending_prefix}{trade_id}"
                 data = await redis_client.get(key)
                 if data:
                     return PendingTrade.from_dict(json.loads(data))
@@ -321,16 +346,30 @@ class TradingModeManager:
         return None
     
     async def get_pending_trades(self) -> List[PendingTrade]:
-        """Get all pending trades."""
+        """Get all pending trades. Also cleans up expired/processed entries from Redis list."""
         trades = []
+        stale_ids = []
         try:
             redis_client = await self._ensure_redis()
             if redis_client:
-                trade_ids = await redis_client.lrange(self.REDIS_KEY_PENDING_LIST, 0, -1)
+                trade_ids = await redis_client.lrange(self.redis_key_pending_list, 0, -1)
                 for trade_id in trade_ids:
                     trade = await self.get_pending_trade(trade_id)
                     if trade and not trade.is_expired and trade.status == "pending":
                         trades.append(trade)
+                    else:
+                        # Trade expired, processed, or deleted from Redis — mark for cleanup
+                        stale_ids.append(trade_id)
+
+                # Clean up stale entries from the list
+                if stale_ids:
+                    for stale_id in stale_ids:
+                        await redis_client.lrem(self.redis_key_pending_list, 0, stale_id)
+                    logger.info(
+                        "pending_trades_cleanup",
+                        removed_count=len(stale_ids),
+                        remaining_count=len(trades)
+                    )
         except Exception as e:
             logger.error("pending_trades_list_failed", error=str(e))
         return trades
@@ -384,7 +423,7 @@ class TradingModeManager:
             try:
                 redis_client = await self._ensure_redis()
                 if redis_client:
-                    key = f"{self.REDIS_KEY_PENDING_PREFIX}{trade_id}"
+                    key = f"{self.redis_key_pending_prefix}{trade_id}"
                     await redis_client.setex(
                         key,
                         60,  # Keep for 1 minute after confirmation
@@ -416,7 +455,7 @@ class TradingModeManager:
         try:
             redis_client = await self._ensure_redis()
             if redis_client:
-                key = f"{self.REDIS_KEY_PENDING_PREFIX}{trade_id}"
+                key = f"{self.redis_key_pending_prefix}{trade_id}"
                 await redis_client.setex(key, 60, json.dumps(trade.to_dict()))
                 
             logger.info(
@@ -431,16 +470,18 @@ class TradingModeManager:
             return False
 
 
-# Singleton instance
-_mode_manager: Optional[TradingModeManager] = None
+# Singleton instances by user scope
+_mode_managers: Dict[str, TradingModeManager] = {}
 
 
-def get_mode_manager() -> TradingModeManager:
-    """Get the singleton TradingModeManager instance."""
-    global _mode_manager
-    if _mode_manager is None:
-        _mode_manager = TradingModeManager()
-    return _mode_manager
+def get_mode_manager(user_id: Optional[str] = None) -> TradingModeManager:
+    """Get the TradingModeManager instance scoped by user."""
+    scope = get_current_user_id(user_id)
+    manager = _mode_managers.get(scope)
+    if manager is None:
+        manager = TradingModeManager(user_id=scope)
+        _mode_managers[scope] = manager
+    return manager
 
 
 async def get_current_mode() -> TradingMode:
@@ -450,4 +491,4 @@ async def get_current_mode() -> TradingMode:
 
 async def set_trading_mode(mode: TradingMode, user_id: Optional[str] = None) -> bool:
     """Convenience function to set trading mode."""
-    return await get_mode_manager().set_mode(mode, user_id)
+    return await get_mode_manager(user_id).set_mode(mode, user_id)

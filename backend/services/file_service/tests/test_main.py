@@ -3,7 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 import sys
 import os
-from unittest.mock import patch, mock_open
+from unittest.mock import ANY, patch, mock_open
 
 # Add the app directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -18,7 +18,7 @@ def test_health_check():
     assert response.json() == {"status": "ok", "service": "File Service"}
 
 @patch('app.main.os.makedirs')
-@patch('app.main.shutil.copyfileobj')
+@patch('app.main._copyfileobj_limited', return_value=12)
 @patch('builtins.open', new_callable=mock_open)
 @patch('app.main.uuid.uuid4', return_value='mock-uuid')
 def test_upload_file_success(mock_uuid, mock_file, mock_copy, mock_makedirs):
@@ -31,6 +31,7 @@ def test_upload_file_success(mock_uuid, mock_file, mock_copy, mock_makedirs):
     data = response.json()
     assert data["file_id"] == "mock-uuid.txt"
     assert data["original_filename"] == "test.txt"
+    assert data["size"] == 12
     
     mock_file.assert_called_with('/var/uploads/mock-uuid.txt', 'wb+')
-    mock_copy.assert_called_once()
+    mock_copy.assert_called_once_with(ANY, ANY, ANY)

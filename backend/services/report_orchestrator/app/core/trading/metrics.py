@@ -113,7 +113,7 @@ class TradingMetricsCollector:
             if len(self._phase_metrics) > self.max_history:
                 self._phase_metrics = self._phase_metrics[-self.max_history:]
             
-            status = "✅" if metrics.success else "❌"
+            status = "[OK]" if metrics.success else "[FAIL]"
             logger.info(f"[Metrics] Phase {phase_name} {status} in {metrics.duration_ms:.2f}ms")
     
     def record_phase(self, phase_name: str, duration_ms: float, success: bool = True, error: str = None):

@@ -37,12 +37,12 @@ class TestResults:
     
     def ok(self, name):
         self.passed += 1
-        print(f"  ✅ {name}")
+        print(f"  [OK] {name}")
     
     def fail(self, name, expected, actual):
         self.failed += 1
         self.errors.append(f"{name}: expected {expected}, got {actual}")
-        print(f"  ❌ {name}: expected {expected}, got {actual}")
+        print(f"  [FAIL] {name}: expected {expected}, got {actual}")
     
     def summary(self):
         total = self.passed + self.failed
@@ -491,9 +491,9 @@ def run_all_tests():
     
     print("\n" + "="*60)
     if all_passed:
-        print("✅ ALL TESTS PASSED!")
+        print("[OK] ALL TESTS PASSED!")
     else:
-        print("❌ SOME TESTS FAILED - Review errors above")
+        print("[FAIL] SOME TESTS FAILED - Review errors above")
     print("="*60)
     
     return all_passed

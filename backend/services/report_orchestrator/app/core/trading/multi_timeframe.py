@@ -17,12 +17,25 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Optional, Dict, List, Tuple, Any
-import os
 
 import httpx
-import structlog
+import logging
 
-logger = structlog.get_logger(__name__)
+try:
+    import structlog
+except Exception:  # Optional in some local/dev test setups
+    structlog = None
+
+from .trading_config import get_infra_config
+
+# Import shared indicators
+try:
+    from .indicators import calculate_rsi, calculate_ema
+    USE_SHARED_INDICATORS = True
+except ImportError:
+    USE_SHARED_INDICATORS = False
+
+logger = structlog.get_logger(__name__) if structlog is not None else logging.getLogger(__name__)
 
 
 class TrendDirection(Enum):
@@ -99,10 +112,7 @@ class MultiTimeframeAnalyzer:
     """
     
     def __init__(self, okx_base_url: Optional[str] = None):
-        self.okx_base_url = okx_base_url or os.environ.get(
-            "OKX_BASE_URL", 
-            "https://www.okx.com"
-        )
+        self.okx_base_url = okx_base_url or get_infra_config().okx_base_url
         self._http_client: Optional[httpx.AsyncClient] = None
     
     async def _get_client(self) -> httpx.AsyncClient:
@@ -266,30 +276,42 @@ class MultiTimeframeAnalyzer:
                 float(candle[3]),  # low
                 float(candle[4]),  # close
             ))
-        
+
         return candles
-    
+
     def _calculate_ema(self, prices: List[float], period: int) -> float:
-        """Calculate EMA for the most recent price."""
+        """Calculate EMA for the most recent price - uses shared module."""
+        if USE_SHARED_INDICATORS:
+            # Shared module expects oldest-to-newest, prices here is newest-first
+            reversed_prices = list(reversed(prices))
+            return calculate_ema(reversed_prices, period)
+
+        # Fallback to local implementation
         if len(prices) < period:
             return prices[0] if prices else 0
-        
+
         multiplier = 2 / (period + 1)
         ema = sum(prices[-period:]) / period  # Start with SMA
-        
+
         for price in reversed(prices[:-period]):
             ema = (price * multiplier) + (ema * (1 - multiplier))
-        
+
         return ema
-    
+
     def _calculate_rsi(self, prices: List[float], period: int = 14) -> float:
-        """Calculate RSI."""
+        """Calculate RSI - uses shared module."""
+        if USE_SHARED_INDICATORS:
+            # Shared module expects oldest-to-newest, prices here is newest-first
+            reversed_prices = list(reversed(prices))
+            return calculate_rsi(reversed_prices, period)
+
+        # Fallback to local implementation
         if len(prices) < period + 1:
             return 50.0
-        
+
         gains = []
         losses = []
-        
+
         for i in range(min(period, len(prices) - 1)):
             change = prices[i] - prices[i + 1]
             if change > 0:
@@ -298,16 +320,16 @@ class MultiTimeframeAnalyzer:
             else:
                 gains.append(0)
                 losses.append(abs(change))
-        
+
         avg_gain = sum(gains) / len(gains) if gains else 0
         avg_loss = sum(losses) / len(losses) if losses else 0
-        
+
         if avg_loss == 0:
             return 100.0 if avg_gain > 0 else 50.0
-        
+
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
-        
+
         return rsi
     
     def _calculate_alignment(

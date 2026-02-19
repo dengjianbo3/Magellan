@@ -11,897 +11,44 @@ import asyncio
 import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Union
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException, Depends
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from app.core.auth import get_current_user, resolve_user_from_token, get_current_user_id
 
-from app.core.trading.paper_trader import PaperTrader, get_paper_trader
-from app.core.trading.okx_trader import OKXTrader, get_okx_trader
-from app.core.trading.trading_tools import TradingToolkit
-from app.core.trading.trading_agents import create_trading_agents, get_trading_agent_config
-from app.core.trading.trading_meeting import TradingMeeting, TradingMeetingConfig
+from app.core.trading.paper_trader import PaperTrader
+from app.core.trading.okx_trader import OKXTrader
+from app.core.trading.trading_agents import get_trading_agent_config
 from app.core.trading.agent_memory import get_memory_store
 from app.core.trading.decision_store import get_decision_store  # Redis persistence for signals
-from app.core.trading.scheduler import TradingScheduler, CooldownManager
-from app.core.trading.trigger import TriggerScheduler, TriggerAgent
+from app.core.trading.okx_credentials_store import get_okx_credentials_store, OkxCredentials
+from app.core.trading.trading_settings_store import get_trading_settings_store, TradingSettings
+from app.core.trading.scheduler import CooldownManager
 from app.models.trading_models import TradingConfig, TradingSignal
 
 logger = logging.getLogger(__name__)
 
-# Check if OKX credentials are configured
-def _use_okx_trading() -> bool:
-    """Check if OKX trading should be used based on env config"""
-    okx_key = os.getenv("OKX_API_KEY", "")
-    okx_secret = os.getenv("OKX_SECRET_KEY", "")
-    okx_pass = os.getenv("OKX_PASSPHRASE", "")
-    # Default to false - use local paper trader for easier testing
-    use_okx = os.getenv("USE_OKX_TRADING", "false").lower() == "true"
-
-    # Use OKX if credentials are set and USE_OKX_TRADING is explicitly true
-    return bool(okx_key and okx_secret and okx_pass and use_okx)
+# Import TradingSystem from new service module
+from app.services.trading_system import TradingSystem, get_trading_system
 
 router = APIRouter(prefix="/api/trading", tags=["trading"])
+AUTH_DEPENDENCIES = [Depends(get_current_user)]
 
-# Global state
-_trading_system: Optional['TradingSystem'] = None
 
-
-class TradingSystem:
-    """
-    Central trading system manager.
-
-    Coordinates scheduler, position monitor, and trading meetings.
-    Supports both local PaperTrader and OKX Demo trading.
-    """
-
-    def __init__(self, llm_service=None):
-        self.llm_service = llm_service
-        self.config = TradingConfig()
-
-        # Trader can be either PaperTrader or OKXTrader
-        self.trader: Optional[Union[PaperTrader, OKXTrader]] = None
-        self.trader_type: str = "paper"  # "paper" or "okx"
-
-        # Keep paper_trader as alias for compatibility
-        self.paper_trader: Optional[Union[PaperTrader, OKXTrader]] = None
-
-        self.toolkit: Optional[TradingToolkit] = None
-        self.scheduler: Optional[TradingScheduler] = None
-        self.trigger_scheduler: Optional[TriggerScheduler] = None  # Event-driven trigger
-        self.cooldown_manager = CooldownManager()
-
-        self._ws_clients: Dict[str, WebSocket] = {}
-        self._current_meeting: Optional[TradingMeeting] = None
-        self._trade_history: List[Dict] = []
-        self._discussion_messages: List[Dict] = []  # Store discussion messages for persistence
-        self._monitor_task: Optional[asyncio.Task] = None
-        self._initialized = False
-        self._started = False  # 🔧 FIX: Prevent duplicate start() calls
-
-    async def initialize(self):
-        """Initialize the trading system"""
-        if self._initialized:
-            return
-
-        # Determine which trader to use
-        use_okx = _use_okx_trading()
-
-        if use_okx:
-            logger.info("Initializing trading system with OKX Demo Trading...")
-            self.trader_type = "okx"
-            self.trader = await get_okx_trader(
-                initial_balance=self.config.initial_capital
-            )
-        else:
-            logger.info("Initializing trading system with Paper Trader...")
-            self.trader_type = "paper"
-            self.trader = await get_paper_trader(
-                initial_balance=self.config.initial_capital
-            )
-
-        # Set alias for compatibility
-        self.paper_trader = self.trader
-
-        # Set callbacks
-        self.trader.on_position_closed = self._on_position_closed
-        self.trader.on_tp_hit = self._on_tp_hit
-        self.trader.on_sl_hit = self._on_sl_hit
-
-        # Initialize toolkit with trader
-        self.toolkit = TradingToolkit(paper_trader=self.trader)
-
-        # Initialize scheduler
-        self.scheduler = TradingScheduler(
-            interval_hours=self.config.analysis_interval_hours,
-            on_analysis_cycle=self._on_analysis_cycle,
-            on_state_change=self._on_scheduler_state_change
-        )
-
-        # Initialize event-driven trigger scheduler
-        # Runs every 15 minutes, uses LLM to decide if immediate analysis needed
-        self.trigger_scheduler = TriggerScheduler(
-            trigger_agent=TriggerAgent(paper_trader=self.paper_trader),
-            on_trigger=self._on_trigger_event,
-            interval_minutes=15,
-            cooldown_minutes=30
-        )
-        logger.info("✅ TriggerScheduler initialized (15min interval, LLM-driven, position-aware)")
-
-        self._initialized = True
-        logger.info(f"Trading system initialized with {self.trader_type} trader")
-
-    async def start(self):
-        """Start the trading system"""
-        # 🔧 FIX: Prevent duplicate start() calls
-        if self._started:
-            logger.warning("⚠️  Trading system already started, ignoring duplicate start call")
-            return
-        
-        # 🔧 FIX: Check if monitor_task already exists
-        if self._monitor_task and not self._monitor_task.done():
-            logger.warning("⚠️  Monitor task already running, cancelling old task")
-            self._monitor_task.cancel()
-            try:
-                await self._monitor_task
-            except asyncio.CancelledError:
-                pass
-        
-        if not self._initialized:
-            await self.initialize()
-
-        if not self.config.enabled:
-            logger.warning("Trading system is disabled")
-            return
-
-        logger.info("🚀 Starting trading system...")
-        self._started = True  # 🔧 FIX: Mark as started
-        
-        await self.scheduler.start()
-
-        # Start event-driven trigger scheduler
-        if self.trigger_scheduler:
-            await self.trigger_scheduler.start()
-            logger.info("🎯 Trigger scheduler started (event-driven analysis)")
-
-        # Start position monitoring task
-        self._monitor_task = asyncio.create_task(self._monitor_loop())
-        logger.info("📊 Monitor task created")
-
-        await self._broadcast({
-            "type": "system_started",
-            "timestamp": datetime.now().isoformat()
-        })
-
-    async def stop(self):
-        """Stop the trading system"""
-        logger.info("🛑 Stopping trading system...")
-        
-        self._started = False  # 🔧 FIX: Reset started flag
-
-        if self.scheduler:
-            await self.scheduler.stop()
-
-        # Stop trigger scheduler
-        if self.trigger_scheduler:
-            await self.trigger_scheduler.stop()
-            logger.info("🛑 Trigger scheduler stopped")
-
-        if self._monitor_task:
-            self._monitor_task.cancel()
-            try:
-                await self._monitor_task
-            except asyncio.CancelledError:
-                pass
-            self._monitor_task = None
-
-        await self._broadcast({
-            "type": "system_stopped",
-            "timestamp": datetime.now().isoformat()
-        })
-
-    async def _monitor_loop(self):
-        """Monitor positions for TP/SL triggers"""
-        while True:
-            try:
-                if self.paper_trader:
-                    # Check TP/SL
-                    trigger = await self.paper_trader.check_tp_sl()
-                    if trigger:
-                        # TP or SL hit, trigger new analysis
-                        # Only trigger if scheduler is not currently analyzing
-                        from app.core.trading.scheduler import SchedulerState
-                        if self.scheduler and self.scheduler._state != SchedulerState.ANALYZING:
-                            logger.info(f"TP/SL trigger detected: {trigger}, triggering new analysis")
-                            await self.scheduler.trigger_now(reason=f"{trigger}_triggered")
-                        else:
-                            logger.info(f"TP/SL trigger detected: {trigger}, but skipping (already analyzing)")
-
-                    # Update equity
-                    account = await self.paper_trader.get_account()
-                    await self._broadcast({
-                        "type": "account_update",
-                        "account": account
-                    })
-
-                await asyncio.sleep(10)  # Check every 10 seconds
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Error in monitor loop: {e}")
-                await asyncio.sleep(30)
-
-    async def _on_trigger_event(self, context):
-        """
-        Handle LLM-driven trigger event.
-        
-        Called by TriggerScheduler when significant market events are detected.
-        Triggers an immediate analysis cycle via the main scheduler.
-        """
-        logger.info(f"🎯 Trigger event received! Urgency: {context.urgency}, Confidence: {context.confidence}%")
-        logger.info(f"   Reason: {context.reasoning}")
-        logger.info(f"   Key events: {context.key_events}")
-        
-        # Broadcast trigger event to WebSocket clients
-        await self._broadcast({
-            "type": "trigger_event",
-            "urgency": context.urgency,
-            "confidence": context.confidence,
-            "reasoning": context.reasoning,
-            "key_events": context.key_events,
-            "current_price": context.current_price,
-            "news_count": context.news_count,
-            "timestamp": context.trigger_time
-        })
-        
-        # Trigger immediate analysis via main scheduler
-        if self.scheduler:
-            reason = f"trigger_event: {context.urgency} urgency, {context.confidence}% confidence"
-            triggered = await self.scheduler.trigger_now(reason=reason)
-            if triggered:
-                logger.info("✅ Immediate analysis triggered successfully")
-            else:
-                logger.warning("⚠️ Could not trigger immediate analysis (scheduler busy or cooldown)")
-
-
-    async def _on_analysis_cycle(self, cycle_number: int, reason: str, timestamp: datetime):
-        """Handle analysis cycle"""
-        logger.info(f"Starting analysis cycle #{cycle_number}, reason: {reason}")
-
-        # ⚠️ CRITICAL: Check Tavily/MCP health before any analysis
-        tavily_healthy = await self._check_tavily_health()
-        if not tavily_healthy:
-            logger.error("🚨 Tavily/MCP search service is DOWN! Halting analysis to prevent uninformed decisions.")
-            await self._broadcast({
-                "type": "analysis_halted",
-                "reason": "tavily_unavailable",
-                "message": "Search service unavailable - cannot make informed trading decisions",
-                "timestamp": timestamp.isoformat()
-            })
-            return
-
-        # Check cooldown
-        if not self.cooldown_manager.check_cooldown():
-            logger.warning("In cooldown period, skipping analysis")
-            await self._broadcast({
-                "type": "analysis_skipped",
-                "reason": "cooldown",
-                "cooldown_status": self.cooldown_manager.get_cooldown_status()
-            })
-            return
-
-        await self._broadcast({
-            "type": "analysis_started",
-            "cycle_number": cycle_number,
-            "reason": reason,
-            "timestamp": timestamp.isoformat()
-        })
-
-        try:
-            # Run trading meeting
-            logger.info(f"[SIGNAL_DEBUG] Starting trading meeting for cycle #{cycle_number}")
-            signal = await self._run_trading_meeting(reason)
-            logger.info(f"[SIGNAL_DEBUG] Trading meeting returned signal: {signal}")
-
-            if signal:
-                logger.info(f"[SIGNAL_DEBUG] Signal is not None, direction={signal.direction}")
-                await self._broadcast({
-                    "type": "signal_generated",
-                    "signal": signal.model_dump()
-                })
-
-                # Record all decisions to history (including hold)
-                if signal.direction == "hold":
-                    # Record hold decision
-                    logger.info(f"[SIGNAL_DEBUG] Recording HOLD signal to history")
-                    self._trade_history.append({
-                        "timestamp": datetime.now().isoformat(),
-                        "signal": signal.model_dump(),
-                        "status": "hold",
-                        "trade_result": {"action": "hold", "message": "观望，不执行交易"}
-                    })
-                    logger.info(f"[SIGNAL_DEBUG] History now has {len(self._trade_history)} entries")
-                else:
-                    # 🆕 Phase 1.3: HITL - Check trading mode before execution
-                    from app.core.trading.mode_manager import get_mode_manager, TradingMode
-                    mode_manager = get_mode_manager()
-                    current_mode = await mode_manager.get_mode()
-                    
-                    if current_mode == TradingMode.MANUAL:
-                        # MANUAL mode: Only analyze, no execution
-                        logger.info(f"[HITL] MANUAL mode - Signal recorded but NOT executed: {signal.direction}")
-                        self._trade_history.append({
-                            "timestamp": datetime.now().isoformat(),
-                            "signal": signal.model_dump(),
-                            "status": "manual_mode",
-                            "trade_result": {"action": "manual_hold", "message": "手动模式：信号已记录，需手动操作"}
-                        })
-                        await self._broadcast({
-                            "type": "signal_generated",
-                            "signal": signal.model_dump(),
-                            "mode": "manual",
-                            "message": "手动模式：请根据信号自行决定是否交易"
-                        })
-                        return  # Don't execute
-                    
-                    elif current_mode == TradingMode.SEMI_AUTO:
-                        # SEMI_AUTO mode: Create pending trade for user confirmation
-                        logger.info(f"[HITL] SEMI_AUTO mode - Creating pending trade for confirmation: {signal.direction}")
-                        pending_trade = await mode_manager.add_pending_trade(
-                            direction=signal.direction,
-                            leverage=signal.leverage,
-                            entry_price=signal.entry_price,
-                            take_profit=signal.take_profit_price,
-                            stop_loss=signal.stop_loss_price,
-                            confidence=signal.confidence,
-                            reasoning=signal.reasoning,
-                            amount_percent=signal.amount_percent
-                        )
-                        
-                        self._trade_history.append({
-                            "timestamp": datetime.now().isoformat(),
-                            "signal": signal.model_dump(),
-                            "status": "pending_confirmation",
-                            "trade_id": pending_trade.trade_id,
-                            "trade_result": {"action": "pending", "message": "半自动模式：等待用户确认"}
-                        })
-                        
-                        await self._broadcast({
-                            "type": "pending_trade_created",
-                            "signal": signal.model_dump(),
-                            "trade_id": pending_trade.trade_id,
-                            "mode": "semi_auto",
-                            "message": "半自动模式：请确认或拒绝此交易"
-                        })
-                        logger.info(f"[HITL] Pending trade created: {pending_trade.trade_id}")
-                        return  # Don't auto-execute
-                    
-                    # FULL_AUTO mode: Execute automatically (original behavior)
-                    # 🔧 FIX: LangGraph execution_node only PREPARES the signal, 
-                    # it does NOT actually execute trades via the trader.
-                    # We MUST call _execute_signal to actually open the position.
-                    logger.info(f"[SIGNAL_DEBUG] FULL_AUTO mode - Executing {signal.direction} signal via _execute_signal")
-                    
-                    # Check if position already exists to prevent duplicates
-                    current_position = await self.paper_trader.get_position() if self.paper_trader else None
-                    has_existing_position = current_position and current_position.get("has_position")
-                    existing_direction = current_position.get("direction") if has_existing_position else None
-                    
-                    # 🔧 FIX: Do not skip execution if position exists.
-                    # Allow "adding to position" if the strategy dictates.
-                    # The underlying trader (Paper/OKX) will handle checks/merging.
-                    
-                    # Execute the trade
-                    trade_result = await self._execute_signal(signal)
-                    logger.info(f"[SIGNAL_DEBUG] Trade execution result: {trade_result}")
-                    
-                    # Determine actual execution status
-                    # Check if trade was really executed (not just tool ran successfully)
-                    action = trade_result.get("action", "")
-                    trade_success = trade_result.get("success", False)
-                    order_id = trade_result.get("order_id")  # OKX order ID = definitive success
-                    
-                    # If we have an order_id from OKX, the trade definitely succeeded
-                    if order_id and trade_success:
-                        trade_actually_executed = True
-                        # Fix reasoning if it has wrong tag from ExecutorAgent
-                        if signal and "[insufficient_margin]" in signal.reasoning:
-                            # Remove the incorrect tag since trade actually succeeded
-                            signal.reasoning = signal.reasoning.replace("[insufficient_margin]", "[new_long]")
-                            logger.info(f"[SIGNAL_DEBUG] Fixed reasoning tag: replaced [insufficient_margin] with [new_long]")
-                    else:
-                        # Failed actions: insufficient_margin, close_short_failed, etc.
-                        failed_actions = ["insufficient_margin", "close_short_failed", "close_long_failed", "failed"]
-                        trade_actually_executed = trade_success and action not in failed_actions
-                    
-                    self._trade_history.append({
-                        "timestamp": datetime.now().isoformat(),
-                        "signal": signal.model_dump(),
-                        "status": "executed" if trade_actually_executed else "failed",
-                        "trade_result": trade_result
-                    })
-                    logger.info(f"[SIGNAL_DEBUG] History now has {len(self._trade_history)} entries")
-
-                    # Broadcast trade executed event so frontend can refresh data
-                    await self._broadcast({
-                        "type": "trade_executed",
-                        "signal": signal.model_dump(),
-                        "success": trade_actually_executed,
-                        "trade_result": trade_result
-                    })
-            else:
-                # No signal generated - record this too
-                logger.info(f"[SIGNAL_DEBUG] Signal is None, recording no_signal status")
-                self._trade_history.append({
-                    "timestamp": datetime.now().isoformat(),
-                    "signal": None,
-                    "status": "no_signal",
-                    "trade_result": {"action": "none", "message": "未产生有效决策信号"}
-                })
-                logger.info(f"[SIGNAL_DEBUG] History now has {len(self._trade_history)} entries")
-
-        except Exception as e:
-            logger.error(f"Error in analysis cycle: {e}")
-            await self._broadcast({
-                "type": "analysis_error",
-                "error": str(e)
-            })
-
-    async def _execute_signal(self, signal: TradingSignal) -> Dict[str, Any]:
-        """
-        Execute a trading signal via the paper trader.
-
-        Args:
-            signal: The trading signal to execute
-
-        Returns:
-            Dict with execution result including success status and trade details
-        """
-        if not self.paper_trader:
-            return {"success": False, "error": "Paper trader not initialized"}
-
-        if signal.direction == "hold":
-            return {"success": True, "action": "hold", "message": "No trade executed - hold signal"}
-
-        try:
-            # Get account balance to calculate position size
-            account = await self.paper_trader.get_account()
-            available_balance = account.get("available_balance", 0)
-
-            # Calculate amount in USDT based on signal's amount_percent
-            amount_usdt = available_balance * signal.amount_percent
-
-            logger.info(f"Executing {signal.direction} signal: ${amount_usdt:.2f} @ {signal.leverage}x leverage")
-
-            # Check if we already have a position
-            position = await self.paper_trader.get_position()
-            if position and position.get("has_position"):
-                # 🔧 FIX Issue #3: 在hedge mode中不要自动关闭仓位反转
-                # 因为在OKX hedge mode中，LONG和SHORT可以同时存在
-                existing_direction = position.get("direction")
-                if existing_direction and existing_direction != signal.direction:
-                    # 检查是否是OKX trader (hedge mode)
-                    is_okx_trader = self.trader_type == "okx"
-                    
-                    if is_okx_trader:
-                        # OKX hedge mode: 不自动关闭，避免关错仓位
-                        logger.warning(f"[_execute_signal] OKX hedge mode: Cannot auto-close {existing_direction} to open {signal.direction}")
-                        return {
-                            "success": False, 
-                            "action": "blocked",
-                            "message": f"OKX hedge mode: 已存在{existing_direction}仓位，请先手动平仓后再反向开仓",
-                            "existing_direction": existing_direction,
-                            "requested_direction": signal.direction
-                        }
-                    else:
-                        # Paper trading: 可以安全关闭
-                        logger.info(f"Closing existing {existing_direction} position before opening {signal.direction}")
-                        close_result = await self.paper_trader.close_position(reason="signal_reversal")
-                        await self._broadcast({
-                            "type": "position_closed",
-                            "reason": "signal_reversal",
-                            "pnl": close_result.get("pnl", 0) if close_result else 0
-                        })
-                else:
-                    # Same direction, skip opening new position
-                    return {"success": True, "action": "skip", "message": f"Already in {existing_direction} position"}
-
-            # Execute the trade
-            if signal.direction == "long":
-                result = await self.paper_trader.open_long(
-                    symbol=signal.symbol,
-                    leverage=signal.leverage,
-                    amount_usdt=amount_usdt,
-                    tp_price=signal.take_profit_price,
-                    sl_price=signal.stop_loss_price
-                )
-            else:  # short
-                result = await self.paper_trader.open_short(
-                    symbol=signal.symbol,
-                    leverage=signal.leverage,
-                    amount_usdt=amount_usdt,
-                    tp_price=signal.take_profit_price,
-                    sl_price=signal.stop_loss_price
-                )
-
-            if result.get("success"):
-                logger.info(f"Trade executed successfully: {signal.direction} position opened")
-                await self._broadcast({
-                    "type": "trade_executed",
-                    "direction": signal.direction,
-                    "leverage": signal.leverage,
-                    "amount_usdt": amount_usdt,
-                    "entry_price": result.get("entry_price"),
-                    "tp_price": signal.take_profit_price,
-                    "sl_price": signal.stop_loss_price
-                })
-            else:
-                logger.error(f"Trade execution failed: {result.get('error')}")
-
-            return result
-
-        except Exception as e:
-            logger.error(f"Error executing signal: {e}")
-            return {"success": False, "error": str(e)}
-
-    async def _run_trading_meeting(self, reason: str) -> Optional[TradingSignal]:
-        """Run a trading meeting"""
-        # Create agents with toolkit
-        agents = create_trading_agents(toolkit=self.toolkit)
-
-        # Create meeting config
-        meeting_config = TradingMeetingConfig(
-            symbol=self.config.symbol,
-            max_leverage=self.config.risk_limits.max_leverage,
-            max_position_percent=self.config.risk_limits.max_position_percent,
-            min_confidence=self.config.risk_limits.min_confidence
-        )
-
-        # Create meeting
-        self._current_meeting = TradingMeeting(
-            agents=agents,
-            llm_service=self.llm_service,
-            config=meeting_config,
-            on_message=self._on_meeting_message,
-            toolkit=self.toolkit  # 🔧 NEW: Pass toolkit for TradeExecutor
-        )
-
-        # Run meeting
-        signal = await self._current_meeting.run(context=reason)
-        self._current_meeting = None
-
-        return signal
-
-    def _on_meeting_message(self, message: Dict):
-        """Handle meeting message"""
-        # Log for debugging
-        logger.info(f"[MEETING MSG] agent_name={message.get('agent_name')}, content_len={len(message.get('content', ''))}")
-        # Spread message first, then override type to ensure it's always "agent_message"
-        asyncio.create_task(self._broadcast({
-            **message,
-            "type": "agent_message"  # Must come LAST to override any "type" in message
-        }))
-
-    def _on_scheduler_state_change(self, old_state, new_state):
-        """Handle scheduler state change"""
-        # Broadcast state change
-        asyncio.create_task(self._broadcast({
-            "type": "scheduler_state",
-            "old_state": old_state.value,
-            "new_state": new_state.value
-        }))
-
-        # Sync TriggerLock state with main scheduler
-        async def _sync_lock():
-            if self.trigger_scheduler and self.trigger_scheduler.trigger_lock:
-                lock = self.trigger_scheduler.trigger_lock
-                
-                # Check enum values directly
-                if new_state.value == "analyzing":
-                     # Main analysis started -> Acquire lock
-                    await lock.acquire()
-                    logger.info("🔒 TriggerLock acquired (Main Analysis Started)")
-                
-                elif (old_state.value == "analyzing") and (new_state.value != "analyzing"):
-                    # Main analysis finished -> Release lock (enter cooldown)
-                    # Only release if we effectively hold the lock
-                    if lock.state == "analyzing":
-                        lock.release()
-                        logger.info("🔓 TriggerLock released (Main Analysis Finished) -> Cooldown started")
-        
-        asyncio.create_task(_sync_lock())
-
-    async def _on_position_closed(self, position, pnl: float, reason: str = None):
-        """Handle position closed"""
-        logger.info(f"Position closed with PnL: {pnl}" + (f", reason: {reason[:100]}..." if reason else ""))
-
-        # Record result
-        result = self.cooldown_manager.record_trade_result(pnl)
-
-        # Run reflection meeting to analyze why trade succeeded/failed
-        lessons = await self._run_reflection_meeting(position, pnl)
-
-        # Update agent memory with lessons learned
-        memory_store = await get_memory_store()
-        trade_id = str(uuid.uuid4())
-
-        # Use correct PascalCase agent IDs
-        trading_agents = ["TechnicalAnalyst", "MacroEconomist", "SentimentAnalyst", "QuantStrategist", "RiskAssessor"]
-        for i, agent_id in enumerate(trading_agents):
-            lesson = lessons.get(agent_id, f"交易结果: {'盈利' if pnl > 0 else '亏损'} ${abs(pnl):.2f}")
-            await memory_store.record_trade_result(
-                agent_id=agent_id,
-                agent_name=agent_id,
-                trade_id=trade_id,
-                prediction={"direction": position.direction},
-                actual_outcome={"pnl": pnl},
-                pnl=pnl,
-                lesson=lesson
-            )
-
-        await self._broadcast({
-            "type": "position_closed",
-            "pnl": pnl,
-            "can_continue": result,
-            "lessons": lessons
-        })
-
-        # Trigger new analysis if not in cooldown
-        if result:
-            await self.scheduler.trigger_now(reason="position_closed")
-
-    async def _run_reflection_meeting(self, position, pnl: float) -> Dict[str, str]:
-        """
-        Run a reflection meeting to analyze why trade succeeded or failed.
-        Each agent reflects on their prediction and learns from the outcome.
-
-        Returns:
-            Dict mapping agent_id to their learned lesson
-        """
-        logger.info(f"Starting reflection meeting for trade with PnL: {pnl}")
-
-        outcome_type = "Take Profit" if pnl > 0 else "Stop Loss"
-        lessons = {}
-
-        # Build reflection context
-        reflection_context = f"""## Trade Reflection Meeting
-
-### Trade Result
-- **Outcome**: {outcome_type}
-- **Direction**: {position.direction}
-- **Entry Price**: {position.entry_price:.2f}
-- **Exit Price**: {position.current_price:.2f}
-- **PnL**: ${pnl:.2f}
-- **Leverage**: {position.leverage}x
-
-### Please answer the following questions (within 50 words):
-1. What was the basis for your judgment?
-2. Why was your judgment {'correct' if pnl > 0 else 'incorrect'}?
-3. What did you learn from this trade?
-"""
-
-        # Create agents with toolkit
-        agents = create_trading_agents(toolkit=self.toolkit)
-
-        await self._broadcast({
-            "type": "reflection_started",
-            "pnl": pnl,
-            "outcome": outcome_type
-        })
-
-        # Have each agent reflect
-        for agent in agents:  # agents is a List, not Dict
-            try:
-                messages = [
-                    {"role": "system", "content": agent.system_prompt or agent.role_prompt},
-                    {"role": "user", "content": reflection_context}
-                ]
-
-                response = await agent._call_llm(messages)
-
-                # Extract content
-                content = ""
-                if isinstance(response, dict):
-                    if "choices" in response:
-                        try:
-                            content = response["choices"][0]["message"]["content"]
-                        except (KeyError, IndexError):
-                            pass
-                    if not content:
-                        content = response.get("content", response.get("response", ""))
-                else:
-                    content = str(response)
-
-                # Extract a concise lesson (first 200 chars)
-                lesson = content[:200] if content else f"Further analysis needed for {outcome_type} reason"
-                lessons[agent.id] = lesson
-
-                # Broadcast reflection
-                await self._broadcast({
-                    "type": "agent_reflection",
-                    "agent_id": agent.id,
-                    "agent_name": agent.name,
-                    "lesson": lesson,
-                    "outcome": outcome_type
-                })
-
-                logger.info(f"Agent {agent.name} reflection: {lesson[:100]}...")
-
-            except Exception as e:
-                logger.error(f"Error in reflection for {agent.name}: {e}")
-                lessons[agent.id] = f"Reflection failed: {str(e)[:50]}"
-
-        await self._broadcast({
-            "type": "reflection_completed",
-            "pnl": pnl,
-            "lessons_count": len(lessons)
-        })
-
-        return lessons
-
-    async def _on_tp_hit(self, position, price: float):
-        """Handle take profit hit"""
-        logger.info(f"Take profit hit at {price}")
-        await self._broadcast({
-            "type": "tp_hit",
-            "price": price,
-            "position": {
-                "direction": position.direction,
-                "entry_price": position.entry_price
-            }
-        })
-
-    async def _on_sl_hit(self, position, price: float):
-        """Handle stop loss hit"""
-        logger.info(f"Stop loss hit at {price}")
-        await self._broadcast({
-            "type": "sl_hit",
-            "price": price,
-            "position": {
-                "direction": position.direction,
-                "entry_price": position.entry_price
-            }
-        })
-
-    async def _on_pnl_update(self, pnl: float, pnl_percent: float, position):
-        """Handle PnL update"""
-        await self._broadcast({
-            "type": "pnl_update",
-            "pnl": pnl,
-            "pnl_percent": pnl_percent
-        })
-
-    async def _check_tavily_health(self) -> bool:
-        """
-        Check if Tavily/MCP search service is available.
-        Returns True if healthy, False if unavailable.
-        
-        CRITICAL: If search is down, we should NOT make trading decisions
-        as they would be based on incomplete/stale information.
-        """
-        import httpx
-        
-        web_search_url = os.getenv("WEB_SEARCH_URL", "http://web_search_service:8010")
-        
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                # Try health endpoint first
-                try:
-                    response = await client.get(f"{web_search_url}/health")
-                    if response.status_code == 200:
-                        logger.info("✅ Tavily/MCP search service is healthy")
-                        return True
-                except Exception:
-                    pass
-                
-                # Fallback: try actual search endpoint
-                try:
-                    response = await client.post(
-                        f"{web_search_url}/mcp/tools/search",
-                        json={"query": "bitcoin price", "max_results": 1},
-                        timeout=15.0
-                    )
-                    if response.status_code == 200:
-                        data = response.json()
-                        if data.get("results") or data.get("content"):
-                            logger.info("✅ Tavily/MCP search service operational (search test passed)")
-                            return True
-                except Exception as e:
-                    logger.warning(f"Tavily search test failed: {e}")
-                
-                logger.error("❌ Tavily/MCP search service is unavailable")
-                return False
-                
-        except Exception as e:
-            logger.error(f"❌ Failed to check Tavily health: {e}")
-            return False
-
-    async def _broadcast(self, message: Dict):
-        """Broadcast message to all WebSocket clients"""
-        import json
-        dead_clients = []
-
-        msg_type = message.get('type', 'unknown')
-        client_count = len(self._ws_clients)
-        if msg_type == 'agent_message':
-            logger.info(f"[BROADCAST] type={msg_type}, clients={client_count}, agent={message.get('agent_name')}")
-            # Store agent messages for persistence
-            self._discussion_messages.append({
-                'agent_name': message.get('agent_name', 'Unknown'),
-                'content': message.get('content', ''),
-                'timestamp': message.get('timestamp', datetime.now().isoformat())
-            })
-            # Keep only last 100 messages
-            if len(self._discussion_messages) > 100:
-                self._discussion_messages = self._discussion_messages[-100:]
-
-        for client_id, ws in self._ws_clients.items():
-            try:
-                # Use default=str to handle datetime objects
-                await ws.send_text(json.dumps(message, default=str))
-            except Exception as e:
-                logger.error(f"[BROADCAST] Failed to send to {client_id}: {e}")
-                dead_clients.append(client_id)
-
-        for client_id in dead_clients:
-            del self._ws_clients[client_id]
-
-    def register_ws_client(self, client_id: str, ws: WebSocket):
-        """Register WebSocket client"""
-        self._ws_clients[client_id] = ws
-        logger.info(f"WebSocket client registered: {client_id}")
-
-    def unregister_ws_client(self, client_id: str):
-        """Unregister WebSocket client"""
-        if client_id in self._ws_clients:
-            del self._ws_clients[client_id]
-            logger.info(f"WebSocket client unregistered: {client_id}")
-
-    async def get_status(self) -> Dict[str, Any]:
-        """Get system status"""
-        # Determine actual running state based on scheduler state
-        # enabled should reflect if the system is actually running, not just configured
-        is_running = False
-        if self.scheduler:
-            scheduler_state = self.scheduler.state.value
-            # Consider running if scheduler is in RUNNING, ANALYZING, or EXECUTING state
-            is_running = scheduler_state in ["running", "analyzing", "executing"]
-
-        trader_status = await self.paper_trader.get_status() if self.paper_trader else None
-
-        return {
-            "initialized": self._initialized,
-            "enabled": is_running,  # Use actual running state, not config flag
-            "config_enabled": self.config.enabled,  # Keep original config for reference
-            "demo_mode": self.config.demo_mode,
-            "symbol": self.config.symbol,
-            "trader_type": self.trader_type,  # "paper" or "okx"
-            "scheduler": self.scheduler.get_status() if self.scheduler else None,
-            "paper_trader": trader_status,
-            "trader": trader_status,  # Alias for clarity
-            "cooldown": self.cooldown_manager.get_cooldown_status(),
-            "connected_clients": len(self._ws_clients)
-        }
-
-
-async def get_trading_system(llm_service=None) -> TradingSystem:
-    """Get or create trading system singleton"""
-    global _trading_system
-    if _trading_system is None:
-        _trading_system = TradingSystem(llm_service=llm_service)
-        await _trading_system.initialize()
-    return _trading_system
+async def _get_system():
+    return await get_trading_system(user_id=get_current_user_id())
 
 
 # ===== REST API Endpoints =====
 
-@router.get("/status")
+@router.get("/status", dependencies=AUTH_DEPENDENCIES)
 async def get_status():
     """Get trading system status"""
-    system = await get_trading_system()
+    system = await _get_system()
     return await system.get_status()
 
 
-@router.get("/funding")
+@router.get("/funding", dependencies=AUTH_DEPENDENCIES)
 async def get_funding_rate():
     """Get current funding rate and cost analysis"""
     try:
@@ -910,9 +57,10 @@ async def get_funding_rate():
             get_funding_calculator,
             get_funding_config
         )
+        scope = get_current_user_id()
         
         # Get funding rate data
-        data_service = await get_funding_data_service()
+        data_service = await get_funding_data_service(scope)
         funding_rate = await data_service.get_current_rate("BTC-USDT-SWAP")
         
         if not funding_rate:
@@ -988,20 +136,20 @@ async def get_funding_rate():
         }
 
 
-@router.get("/account")
+@router.get("/account", dependencies=AUTH_DEPENDENCIES)
 async def get_account():
     """Get account information"""
-    system = await get_trading_system()
+    system = await _get_system()
     if system.paper_trader:
         account = await system.paper_trader.get_account()
         return account
     return {"error": "Paper trader not initialized"}
 
 
-@router.get("/position")
+@router.get("/position", dependencies=AUTH_DEPENDENCIES)
 async def get_position(symbol: str = "BTC-USDT-SWAP"):
     """Get current position"""
-    system = await get_trading_system()
+    system = await _get_system()
     if system.paper_trader:
         position = await system.paper_trader.get_position()
         if position:
@@ -1010,10 +158,10 @@ async def get_position(symbol: str = "BTC-USDT-SWAP"):
     return {"error": "Paper trader not initialized"}
 
 
-@router.get("/history")
+@router.get("/history", dependencies=AUTH_DEPENDENCIES)
 async def get_trade_history(limit: int = Query(default=50, le=100)):
     """Get trade history including signals and actual closed trades"""
-    system = await get_trading_system()
+    system = await _get_system()
 
     # 🔧 CRITICAL FIX: Always use async get_trade_history() for REAL OKX data
     # The old get_filtered_trade_history() returned local estimates without fees
@@ -1025,7 +173,7 @@ async def get_trade_history(limit: int = Query(default=50, le=100)):
     # 🆕 Get signals from Redis for persistence across restarts
     signals = []
     try:
-        decision_store = await get_decision_store()
+        decision_store = await get_decision_store(user_id=get_current_user_id())
         redis_signals = await decision_store.get_recent_decisions_for_frontend(limit)
         if redis_signals:
             signals = redis_signals
@@ -1044,150 +192,27 @@ async def get_trade_history(limit: int = Query(default=50, le=100)):
     }
 
 
-@router.get("/messages")
+@router.get("/messages", dependencies=AUTH_DEPENDENCIES)
 async def get_discussion_messages(limit: int = Query(default=100, le=200)):
     """Get discussion messages history for state restoration"""
-    system = await get_trading_system()
+    system = await _get_system()
     return {"messages": system._discussion_messages[-limit:]}
 
-
-# ===== SEMI_AUTO Mode: Pending Trade Management =====
-
-@router.get("/pending")
-async def get_pending_trades():
-    """Get all pending trades waiting for user confirmation (SEMI_AUTO mode)"""
-    from app.core.trading.mode_manager import get_mode_manager
-    mode_manager = get_mode_manager()
-    pending_trades = await mode_manager.get_pending_trades()
-    return {
-        "pending_trades": [t.to_dict() for t in pending_trades],
-        "count": len(pending_trades)
-    }
+# NOTE: SEMI_AUTO pending trade endpoints have been consolidated into
+# app/api/routers/trading_mode.py to avoid route conflicts.
+# Endpoints: GET /pending, POST /confirm/{trade_id}, POST /reject/{trade_id}
 
 
-@router.get("/pending/{trade_id}")
-async def get_pending_trade(trade_id: str):
-    """Get a specific pending trade by ID"""
-    from app.core.trading.mode_manager import get_mode_manager
-    mode_manager = get_mode_manager()
-    pending_trade = await mode_manager.get_pending_trade(trade_id)
-    if pending_trade:
-        return {"pending_trade": pending_trade.to_dict()}
-    raise HTTPException(status_code=404, detail=f"Pending trade {trade_id} not found")
-
-
-@router.post("/pending/{trade_id}/confirm")
-async def confirm_pending_trade(
-    trade_id: str,
-    user_id: str = Query(default="frontend", description="User confirming the trade"),
-    leverage: Optional[int] = Query(default=None, description="Optional: override leverage"),
-    tp_percent: Optional[float] = Query(default=None, description="Optional: override TP%"),
-    sl_percent: Optional[float] = Query(default=None, description="Optional: override SL%")
-):
-    """
-    Confirm a pending trade for execution (SEMI_AUTO mode).
-    
-    Optionally modify parameters before execution.
-    """
-    from app.core.trading.mode_manager import get_mode_manager
-    mode_manager = get_mode_manager()
-    
-    # Build modifications dict if any overrides provided
-    modifications = {}
-    if leverage is not None:
-        modifications["leverage"] = leverage
-    if tp_percent is not None:
-        modifications["tp_percent"] = tp_percent
-    if sl_percent is not None:
-        modifications["sl_percent"] = sl_percent
-    
-    # Confirm and get the final signal
-    final_signal = await mode_manager.confirm_trade(
-        trade_id=trade_id,
-        user_id=user_id,
-        modifications=modifications if modifications else None
-    )
-    
-    if not final_signal:
-        raise HTTPException(status_code=404, detail=f"Pending trade {trade_id} not found or already processed")
-    
-    # Execute the confirmed trade
-    system = await get_trading_system()
-    if system.paper_trader:
-        # Convert dict to TradingSignal
-        signal = TradingSignal(**final_signal) if isinstance(final_signal, dict) else final_signal
-        
-        trade_result = await system._execute_signal(signal)
-        
-        # Broadcast confirmation and execution
-        await system._broadcast({
-            "type": "trade_confirmed",
-            "trade_id": trade_id,
-            "signal": signal.model_dump() if hasattr(signal, 'model_dump') else final_signal,
-            "trade_result": trade_result,
-            "confirmed_by": user_id
-        })
-        
-        logger.info(f"[HITL] Trade {trade_id} confirmed by {user_id} and executed")
-        
-        return {
-            "success": True,
-            "trade_id": trade_id,
-            "confirmed_by": user_id,
-            "trade_result": trade_result
-        }
-    
-    raise HTTPException(status_code=500, detail="Trading system not initialized")
-
-
-@router.post("/pending/{trade_id}/reject")
-async def reject_pending_trade(
-    trade_id: str,
-    user_id: str = Query(default="frontend", description="User rejecting the trade"),
-    reason: str = Query(default="", description="Reason for rejection")
-):
-    """Reject a pending trade (SEMI_AUTO mode)"""
-    from app.core.trading.mode_manager import get_mode_manager
-    mode_manager = get_mode_manager()
-    
-    success = await mode_manager.reject_trade(
-        trade_id=trade_id,
-        user_id=user_id,
-        reason=reason
-    )
-    
-    if success:
-        # Broadcast rejection
-        system = await get_trading_system()
-        await system._broadcast({
-            "type": "trade_rejected",
-            "trade_id": trade_id,
-            "rejected_by": user_id,
-            "reason": reason
-        })
-        
-        logger.info(f"[HITL] Trade {trade_id} rejected by {user_id}: {reason}")
-        
-        return {
-            "success": True,
-            "trade_id": trade_id,
-            "rejected_by": user_id,
-            "reason": reason
-        }
-    
-    raise HTTPException(status_code=404, detail=f"Pending trade {trade_id} not found or already processed")
-
-
-@router.get("/equity")
+@router.get("/equity", dependencies=AUTH_DEPENDENCIES)
 async def get_equity_history(limit: int = Query(default=100, le=500)):
     """Get equity history for charting"""
-    system = await get_trading_system()
+    system = await _get_system()
     if system.paper_trader:
         return {"data": await system.paper_trader.get_equity_history(limit)}
     return {"data": []}
 
 
-@router.get("/drawdown")
+@router.get("/drawdown", dependencies=AUTH_DEPENDENCIES)
 async def get_max_drawdown(start_date: Optional[str] = Query(default=None, description="Start date in YYYY-MM-DD format")):
     """
     Get maximum drawdown statistics from trade history.
@@ -1203,7 +228,7 @@ async def get_max_drawdown(start_date: Optional[str] = Query(default=None, descr
         - current_drawdown_pct: Current drawdown from peak
         - trades_analyzed: Number of trades analyzed
     """
-    system = await get_trading_system()
+    system = await _get_system()
     
     if not system.paper_trader:
         return {
@@ -1259,7 +284,7 @@ async def get_max_drawdown(start_date: Optional[str] = Query(default=None, descr
             if isinstance(pnl, str):
                 try:
                     pnl = float(pnl)
-                except:
+                except (ValueError, TypeError):
                     pnl = 0
             running_equity += pnl
             equity_curve.append(running_equity)
@@ -1317,7 +342,7 @@ async def get_max_drawdown(start_date: Optional[str] = Query(default=None, descr
         }
 
 
-@router.get("/performance")
+@router.get("/performance", dependencies=AUTH_DEPENDENCIES)
 async def get_performance_metrics(start_date: Optional[str] = Query(default=None, description="Start date in YYYY-MM-DD format")):
     """
     Get performance metrics including Sharpe Ratio, Sortino Ratio, Alpha, etc.
@@ -1335,7 +360,7 @@ async def get_performance_metrics(start_date: Optional[str] = Query(default=None
         - volatility_pct: Return volatility
         - And more...
     """
-    system = await get_trading_system()
+    system = await _get_system()
     
     if not system.paper_trader:
         return {
@@ -1438,36 +463,36 @@ async def get_performance_metrics(start_date: Optional[str] = Query(default=None
         }
 
 
-@router.post("/start")
+@router.post("/start", dependencies=AUTH_DEPENDENCIES)
 async def start_trading():
     """Start auto trading"""
-    system = await get_trading_system()
+    system = await _get_system()
     await system.start()
     return {"status": "started", "message": "Trading system started"}
 
 
-@router.post("/stop")
+@router.post("/stop", dependencies=AUTH_DEPENDENCIES)
 async def stop_trading():
     """Stop auto trading"""
-    system = await get_trading_system()
+    system = await _get_system()
     await system.stop()
     return {"status": "stopped", "message": "Trading system stopped"}
 
 
-@router.post("/trigger")
+@router.post("/trigger", dependencies=AUTH_DEPENDENCIES)
 async def manual_trigger(reason: str = "manual"):
     """Manually trigger analysis cycle"""
-    system = await get_trading_system()
+    system = await _get_system()
     if system.scheduler:
         success = await system.scheduler.trigger_now(reason=reason)
         return {"triggered": success}
     return {"error": "Scheduler not initialized"}
 
 
-@router.post("/close")
+@router.post("/close", dependencies=AUTH_DEPENDENCIES)
 async def close_position():
     """Manually close current position"""
-    system = await get_trading_system()
+    system = await _get_system()
     if not system.paper_trader:
         return {"error": "Paper trader not initialized"}
 
@@ -1499,7 +524,7 @@ async def close_position():
         return {"error": str(e)}
 
 
-@router.post("/reset-metrics")
+@router.post("/reset-metrics", dependencies=AUTH_DEPENDENCIES)
 async def reset_metrics_baseline():
     """
     Reset metrics baseline - all performance metrics will be calculated from this point.
@@ -1511,7 +536,7 @@ async def reset_metrics_baseline():
     
     Returns the new baseline timestamp.
     """
-    system = await get_trading_system()
+    system = await _get_system()
     if not system.paper_trader:
         return {"error": "Trader not initialized"}
 
@@ -1524,16 +549,16 @@ async def reset_metrics_baseline():
         return {"error": str(e)}
 
 
-@router.get("/agents")
+@router.get("/agents", dependencies=AUTH_DEPENDENCIES)
 async def get_agents():
     """Get trading agent configuration"""
     return {"agents": get_trading_agent_config()}
 
 
-@router.get("/agents/memory")
+@router.get("/agents/memory", dependencies=AUTH_DEPENDENCIES)
 async def get_agent_memories():
     """Get agent memories and performance stats"""
-    memory_store = await get_memory_store()
+    memory_store = await get_memory_store(get_current_user_id())
     memories = await memory_store.get_all_memories()
     team_summary = await memory_store.get_team_summary()
 
@@ -1553,18 +578,28 @@ class TradingConfigUpdate(BaseModel):
     max_position_percent: Optional[float] = None
     enabled: Optional[bool] = None
     use_okx_trading: Optional[bool] = None  # Switch to OKX demo trading
+    okx_demo_mode: Optional[bool] = None
+    okx_api_key: Optional[str] = None
+    okx_secret_key: Optional[str] = None
+    okx_passphrase: Optional[str] = None
+    clear_okx_credentials: Optional[bool] = None
 
 
-@router.get("/config")
+@router.get("/config", dependencies=AUTH_DEPENDENCIES)
 async def get_config():
     """Get current trading configuration"""
-    system = await get_trading_system()
+    scope = get_current_user_id()
+    system = await _get_system()
+    okx_masked = await get_okx_credentials_store().get_masked(scope)
+    persisted = await get_trading_settings_store().get(scope)
     return {
         "analysis_interval_hours": system.config.analysis_interval_hours,
         "max_leverage": system.config.risk_limits.max_leverage,
         "max_position_percent": system.config.risk_limits.max_position_percent,
         "enabled": system.config.enabled,
         "trader_type": system.trader_type,  # "paper" or "okx"
+        "use_okx_trading": bool(persisted.use_okx_trading),
+        "okx": okx_masked,
         "symbol": system.config.symbol,
         "initial_capital": system.config.initial_capital,
         "risk_limits": {
@@ -1575,11 +610,68 @@ async def get_config():
     }
 
 
-@router.patch("/config")
+@router.patch("/config", dependencies=AUTH_DEPENDENCIES)
 async def update_config(update: TradingConfigUpdate):
     """Update trading configuration"""
-    system = await get_trading_system()
-    needs_restart = False
+    scope = get_current_user_id()
+    system = await _get_system()
+    needs_reset = False
+
+    # OKX creds update/clear
+    if update.clear_okx_credentials:
+        await get_okx_credentials_store().clear(scope)
+        try:
+            from app.core.trading.funding.data_service import get_funding_data_service
+            await get_funding_data_service(scope)
+        except Exception:
+            pass
+        # Safer default: revert to paper.
+        update.use_okx_trading = False
+
+    okx_key_fields_present = any(
+        v is not None for v in (update.okx_api_key, update.okx_secret_key, update.okx_passphrase)
+    )
+
+    # OKX credentials: allow updating demo_mode without re-entering keys (if already stored).
+    if okx_key_fields_present:
+        # Partial updates not supported to avoid accidentally mixing old/new secrets.
+        if not (update.okx_api_key and update.okx_secret_key and update.okx_passphrase):
+            raise HTTPException(status_code=400, detail="OKX credentials require api_key, secret_key, and passphrase")
+        await get_okx_credentials_store().set(
+            OkxCredentials(
+                api_key=update.okx_api_key,
+                secret_key=update.okx_secret_key,
+                passphrase=update.okx_passphrase,
+                demo_mode=True if update.okx_demo_mode is None else bool(update.okx_demo_mode),
+            ),
+            scope,
+        )
+        needs_reset = True
+    elif update.okx_demo_mode is not None:
+        existing = await get_okx_credentials_store().get(scope)
+        if existing and existing.is_configured():
+            await get_okx_credentials_store().set(
+                OkxCredentials(
+                    api_key=existing.api_key,
+                    secret_key=existing.secret_key,
+                    passphrase=existing.passphrase,
+                    demo_mode=bool(update.okx_demo_mode),
+                ),
+                scope,
+            )
+            needs_reset = True
+        else:
+            # No stored credentials yet. Only error if user is trying to enable OKX without creds.
+            if update.use_okx_trading:
+                raise HTTPException(status_code=400, detail="OKX demo mode provided but credentials are not configured")
+
+    # Keep funding service in sync (uses OKX keys for authenticated bills endpoints).
+    if okx_key_fields_present or update.okx_demo_mode is not None or update.clear_okx_credentials:
+        try:
+            from app.core.trading.funding.data_service import get_funding_data_service
+            await get_funding_data_service(scope)
+        except Exception:
+            pass
 
     if update.analysis_interval_hours:
         system.config.analysis_interval_hours = update.analysis_interval_hours
@@ -1596,37 +688,55 @@ async def update_config(update: TradingConfigUpdate):
     if update.enabled is not None:
         system.config.enabled = update.enabled
 
-    # Handle OKX trading switch
+    # Persist settings across reset
+    persisted = await get_trading_settings_store().update(
+        TradingSettings(
+            analysis_interval_hours=update.analysis_interval_hours,
+            max_leverage=update.max_leverage,
+            max_position_percent=update.max_position_percent,
+            enabled=update.enabled,
+            use_okx_trading=update.use_okx_trading,
+            okx_demo_mode=update.okx_demo_mode,
+        ),
+        scope,
+    )
+
+    # Handle OKX trading switch (requires reset)
     if update.use_okx_trading is not None:
+        desired_okx = bool(update.use_okx_trading)
         current_is_okx = system.trader_type == "okx"
-        if update.use_okx_trading != current_is_okx:
-            needs_restart = True
-            # Set environment variable for restart
-            os.environ["USE_OKX_TRADING"] = "true" if update.use_okx_trading else "false"
-            logger.info(f"Trader type will switch to: {'OKX Demo' if update.use_okx_trading else 'Paper Trader'}")
+        if desired_okx != current_is_okx:
+            needs_reset = True
+            if desired_okx:
+                okx = await get_okx_credentials_store().get(scope)
+                if not okx or not okx.is_configured():
+                    raise HTTPException(status_code=400, detail="OKX trading requested but credentials are not configured")
+            logger.info(f"Trader type will switch after reset: {'OKX Demo' if desired_okx else 'Paper Trader'}")
 
     response = {
         "status": "updated",
         "config": system.config.model_dump(),
         "trader_type": system.trader_type,
-        "needs_restart": needs_restart
+        "needs_reset": needs_reset,
+        "persisted": persisted.to_dict(),
+        "okx": await get_okx_credentials_store().get_masked(scope),
     }
 
-    if needs_restart:
-        response["message"] = "Trading system needs restart to apply trader type change. Please reset the system."
+    if needs_reset:
+        response["message"] = "Settings saved. Please reset the trading system to apply OKX/Paper switch."
 
     return response
 
 
-@router.post("/cooldown/end")
+@router.post("/cooldown/end", dependencies=AUTH_DEPENDENCIES)
 async def end_cooldown():
     """Force end cooldown period"""
-    system = await get_trading_system()
+    system = await _get_system()
     system.cooldown_manager.force_end_cooldown()
     return {"status": "cooldown_ended"}
 
 
-@router.post("/reset-daily-pnl")
+@router.post("/reset-daily-pnl", dependencies=AUTH_DEPENDENCIES)
 async def reset_daily_pnl():
     """
     Reset daily PnL tracking and halt status.
@@ -1639,7 +749,7 @@ async def reset_daily_pnl():
     Returns:
         Dict with old and new values
     """
-    system = await get_trading_system()
+    system = await _get_system()
     
     if not system.trader:
         return {"success": False, "error": "Trading system not initialized"}
@@ -1652,7 +762,7 @@ async def reset_daily_pnl():
         return {"success": False, "error": "Trader does not support daily PnL reset"}
 
 
-@router.post("/reset")
+@router.post("/reset", dependencies=AUTH_DEPENDENCIES)
 async def reset_trading_system():
     """
     Reset the trading system.
@@ -1665,11 +775,13 @@ async def reset_trading_system():
     - Clear agent memories
     - Re-initialize the system
     """
-    global _trading_system
+    import app.services.trading_system as ts_module
+    scope = get_current_user_id()
 
     logger.info("Resetting trading system...")
 
     try:
+        _trading_system = ts_module._trading_systems.get(scope)
         if _trading_system:
             # Stop system if running
             await _trading_system.stop()
@@ -1694,14 +806,14 @@ async def reset_trading_system():
             })
 
         # Clear agent memories
-        memory_store = await get_memory_store()
+        memory_store = await get_memory_store(scope)
         await memory_store.clear_all_memories()
 
-        # Reset singleton to force re-initialization
-        _trading_system = None
+        # Reset user-scoped singleton to force re-initialization
+        ts_module._trading_systems.pop(scope, None)
 
         # Re-initialize
-        system = await get_trading_system()
+        system = await get_trading_system(user_id=scope)
 
         logger.info("Trading system reset complete")
 
@@ -1719,6 +831,26 @@ async def reset_trading_system():
 
 # ===== WebSocket Endpoint =====
 
+async def _resolve_websocket_user(websocket: WebSocket):
+    authorization = (websocket.headers.get("authorization") or "").strip()
+    token = ""
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1].strip()
+
+    if not token:
+        token = (websocket.query_params.get("token") or "").strip()
+
+    if not token:
+        return None
+
+    try:
+        return await resolve_user_from_token(token)
+    except HTTPException:
+        return None
+
+
 @router.websocket("/ws/{session_id}")
 async def trading_websocket(websocket: WebSocket, session_id: str):
     """
@@ -1733,11 +865,17 @@ async def trading_websocket(websocket: WebSocket, session_id: str):
     - pnl_update
     - tp_hit/sl_hit
     """
-    await websocket.accept()
-    logger.info(f"Trading WebSocket connected: {session_id}")
+    current_user = await _resolve_websocket_user(websocket)
+    if not current_user:
+        await websocket.close(code=4401, reason="Not authenticated")
+        return
 
-    system = await get_trading_system()
-    system.register_ws_client(session_id, websocket)
+    await websocket.accept()
+    client_id = f"{current_user.id}:{session_id}"
+    logger.info(f"Trading WebSocket connected: {client_id}")
+
+    system = await get_trading_system(user_id=current_user.id)
+    system.register_ws_client(client_id, websocket)
 
     # Send initial status
     await websocket.send_json({
@@ -1749,7 +887,7 @@ async def trading_websocket(websocket: WebSocket, session_id: str):
         while True:
             # Keep connection alive and handle incoming messages
             data = await websocket.receive_text()
-            logger.debug(f"Received from {session_id}: {data}")
+            logger.debug(f"Received from {client_id}: {data}")
 
             # Handle commands
             import json
@@ -1761,11 +899,11 @@ async def trading_websocket(websocket: WebSocket, session_id: str):
                 pass
 
     except WebSocketDisconnect:
-        logger.info(f"Trading WebSocket disconnected: {session_id}")
+        logger.info(f"Trading WebSocket disconnected: {client_id}")
     except Exception as e:
         logger.error(f"Trading WebSocket error: {e}")
     finally:
-        system.unregister_ws_client(session_id)
+        system.unregister_ws_client(client_id)
 
 
 # ===== Mobile Status Page =====
@@ -2126,7 +1264,7 @@ MOBILE_STATUS_HTML = """<!DOCTYPE html>
 </html>
 """
 
-@router.get("/dashboard", response_class=HTMLResponse)
+@router.get("/dashboard", dependencies=AUTH_DEPENDENCIES, response_class=HTMLResponse)
 async def trading_dashboard():
     """Mobile-friendly trading status dashboard"""
     return MOBILE_STATUS_HTML
@@ -2136,7 +1274,13 @@ async def trading_dashboard():
 # Mock Testing APIs
 # ============================================
 
-@router.post("/mock/enable")
+def _require_test_endpoints_enabled():
+    # Hide these endpoints by default for PoC/hosted environments.
+    if os.getenv("ENABLE_TEST_ENDPOINTS", "false").lower() != "true":
+        raise HTTPException(status_code=404, detail="Not found")
+
+
+@router.post("/mock/enable", dependencies=AUTH_DEPENDENCIES)
 async def enable_mock_mode(scenario: str = Query(default="random", description="Scenario: bullish, bearish, neutral, random")):
     """
     Enable mock Tavily mode for testing.
@@ -2148,6 +1292,7 @@ async def enable_mock_mode(scenario: str = Query(default="random", description="
         scenario: 'bullish' (leads to LONG), 'bearish' (leads to SHORT), 
                   'neutral' (leads to HOLD), 'random' (random each time)
     """
+    _require_test_endpoints_enabled()
     from app.core.trading.mock_tavily import enable_mock_mode, set_scenario
     
     enable_mock_mode()
@@ -2167,9 +1312,10 @@ async def enable_mock_mode(scenario: str = Query(default="random", description="
     }
 
 
-@router.post("/mock/disable")
+@router.post("/mock/disable", dependencies=AUTH_DEPENDENCIES)
 async def disable_mock_mode():
     """Disable mock mode and use real Tavily API"""
+    _require_test_endpoints_enabled()
     from app.core.trading.mock_tavily import disable_mock_mode
     
     disable_mock_mode()
@@ -2181,20 +1327,22 @@ async def disable_mock_mode():
     }
 
 
-@router.get("/mock/status")
+@router.get("/mock/status", dependencies=AUTH_DEPENDENCIES)
 async def get_mock_status():
     """Get current mock mode status"""
-    import os
+    _require_test_endpoints_enabled()
     from app.core.trading.mock_tavily import is_mock_mode_enabled
+    from app.core.trading.trading_settings_store import get_trading_settings_store
     
+    persisted = await get_trading_settings_store().get(get_current_user_id())
     return {
         "mock_mode": is_mock_mode_enabled(),
         "scenario": os.getenv("MOCK_SCENARIO", "random"),
-        "okx_trading": os.getenv("USE_OKX_TRADING", "false").lower() == "true"
+        "okx_trading": bool(persisted.use_okx_trading)
     }
 
 
-@router.post("/mock/test")
+@router.post("/mock/test", dependencies=AUTH_DEPENDENCIES)
 async def run_mock_test(scenario: str = Query(default="bullish", description="Test scenario")):
     """
     Run a complete mock test cycle.
@@ -2206,30 +1354,32 @@ async def run_mock_test(scenario: str = Query(default="bullish", description="Te
     ⚠️ SAFETY: This endpoint BLOCKS execution if OKX trading is enabled.
     Mock tests only work with Paper Trader to prevent real money loss.
     """
-    import os
+    _require_test_endpoints_enabled()
     from app.core.trading.mock_tavily import enable_mock_mode, set_scenario
+    from app.core.trading.trading_settings_store import get_trading_settings_store
     
     # SAFETY CHECK: Block if OKX trading is enabled
-    system = await get_trading_system()
+    system = await _get_system()
     if system and system.trader_type == "okx":
         return {
             "success": False,
             "error": "⚠️ BLOCKED: Cannot run mock test while OKX trading is enabled!",
             "message": "Mock testing is only allowed with Paper Trader.",
-            "action_required": "Set USE_OKX_TRADING=false in .env and restart the service",
+            "action_required": "Disable OKX trading in Trading Settings and reset the system.",
             "current_trader": "okx"
         }
     
     if not system:
         return {"success": False, "error": "Trading system not initialized"}
     
-    # Additional check - ensure we're not in OKX mode
-    if os.getenv("USE_OKX_TRADING", "false").lower() == "true":
+    # Additional check - ensure persisted settings do not request OKX
+    persisted = await get_trading_settings_store().get(get_current_user_id())
+    if persisted.use_okx_trading:
         return {
             "success": False,
-            "error": "⚠️ BLOCKED: USE_OKX_TRADING is set to true in environment!",
+            "error": "⚠️ BLOCKED: OKX trading is enabled in settings!",
             "message": "Cannot run mock test with OKX trading enabled.",
-            "action_required": "Disable OKX trading first"
+            "action_required": "Disable OKX trading in Trading Settings and reset the system."
         }
     
     # Enable mock with scenario
@@ -2259,7 +1409,92 @@ async def run_mock_test(scenario: str = Query(default="bullish", description="Te
         return {"success": False, "error": str(e)}
 
 
-@router.post("/mock/test-tp-sl")
+@router.post("/mock/create-pending", dependencies=AUTH_DEPENDENCIES)
+async def create_mock_pending_trade(
+    direction: str = Query(default="long", description="long or short"),
+    leverage: int = Query(default=3, ge=1, le=50, description="Leverage 1-50"),
+    amount_percent: float = Query(default=0.2, gt=0, le=1.0, description="Position size as percent of balance"),
+    tp_percent: float = Query(default=5.0, gt=0, le=50, description="Take profit percent magnitude"),
+    sl_percent: float = Query(default=2.0, gt=0, le=50, description="Stop loss percent magnitude"),
+    symbol: str = Query(default="BTC-USDT-SWAP", description="Trading symbol"),
+):
+    """
+    Create a HITL pending trade without running the full LLM analysis cycle.
+
+    This is intended for E2E testing of the HITL confirmation loop + PaperTrader execution.
+    It is blocked when OKX trading is enabled.
+    """
+    _require_test_endpoints_enabled()
+    from app.core.trading.mode_manager import get_mode_manager
+    from app.core.trading.trading_settings_store import get_trading_settings_store
+
+    system = await _get_system()
+    if not system or not system.paper_trader:
+        return {"success": False, "error": "Trading system not initialized"}
+
+    # SAFETY CHECK: Block if OKX trading is enabled (active) OR requested in settings.
+    scope = get_current_user_id()
+    persisted = await get_trading_settings_store().get(scope)
+    if system.trader_type == "okx" or persisted.use_okx_trading:
+        return {
+            "success": False,
+            "error": "⚠️ BLOCKED: Cannot create mock pending trade while OKX trading is enabled!",
+            "message": "This endpoint is only allowed with Paper Trader.",
+            "action_required": "Disable OKX trading in Trading Settings and reset the system.",
+            "current_trader": system.trader_type,
+        }
+
+    direction = (direction or "").lower()
+    if direction not in ("long", "short"):
+        return {"success": False, "error": f"Invalid direction: {direction}"}
+
+    current_price = await system.paper_trader.get_current_price(symbol)
+    if not current_price or current_price <= 0:
+        return {"success": False, "error": "Failed to get current price"}
+
+    # Compute absolute TP/SL prices based on current price.
+    if direction == "long":
+        tp_price = current_price * (1 + tp_percent / 100.0)
+        sl_price = current_price * (1 - sl_percent / 100.0)
+    else:
+        tp_price = current_price * (1 - tp_percent / 100.0)
+        sl_price = current_price * (1 + sl_percent / 100.0)
+
+    manager = get_mode_manager(scope)
+    pending = await manager.add_pending_trade(
+        direction=direction,
+        leverage=leverage,
+        entry_price=current_price,
+        take_profit=tp_price,
+        stop_loss=sl_price,
+        confidence=75,
+        reasoning="E2E mock pending trade (HITL)",
+        amount_percent=amount_percent,
+        symbol=symbol,
+    )
+
+    # Broadcast to websocket listeners for UI parity.
+    try:
+        await system._broadcast(
+            {
+                "type": "pending_trade_created",
+                "trade_id": pending.trade_id,
+                "signal": pending.pending_trade.signal,
+                "expires_at": pending.pending_trade.expires_at.isoformat(),
+            }
+        )
+    except Exception as e:
+        logger.warning(f"[mock/create-pending] WebSocket broadcast failed: {e}")
+
+    return {
+        "success": True,
+        "trade_id": pending.trade_id,
+        "pending_trade": pending.pending_trade.to_dict(),
+        "message": "Pending trade created. Confirm via /api/trading/pending/{trade_id}/confirm",
+    }
+
+
+@router.post("/mock/test-tp-sl", dependencies=AUTH_DEPENDENCIES)
 async def test_tp_sl_trigger(trigger_type: str = Query(default="tp", description="tp or sl")):
     """
     Test TP/SL trigger by simulating price movement.
@@ -2270,7 +1505,8 @@ async def test_tp_sl_trigger(trigger_type: str = Query(default="tp", description
     Args:
         trigger_type: 'tp' for take profit, 'sl' for stop loss
     """
-    system = await get_trading_system()
+    _require_test_endpoints_enabled()
+    system = await _get_system()
     if not system or not system.paper_trader:
         return {"success": False, "error": "Trading system not initialized"}
     
@@ -2311,7 +1547,7 @@ async def test_tp_sl_trigger(trigger_type: str = Query(default="tp", description
     # Get updated position
     new_position = await system.paper_trader.get_position()
     account = await system.paper_trader.get_account()
-    
+
     return {
         "success": True,
         "trigger_type": trigger_type,
@@ -2323,13 +1559,13 @@ async def test_tp_sl_trigger(trigger_type: str = Query(default="tp", description
             "sl_price": sl_price
         },
         "result": result,
-        "position_closed": not new_position.get("has_position"),
+        "position_closed": (not new_position) or (not new_position.get("has_position")),
         "account_balance": account.get("balance"),
         "realized_pnl": account.get("realized_pnl")
     }
 
 
-@router.post("/mock/test-cooldown")
+@router.post("/mock/test-cooldown", dependencies=AUTH_DEPENDENCIES)
 async def test_cooldown(losses: int = Query(default=3, description="Number of consecutive losses to simulate")):
     """
     Test cooldown by simulating consecutive losses.
@@ -2337,7 +1573,8 @@ async def test_cooldown(losses: int = Query(default=3, description="Number of co
     After 3 consecutive losses (default), the system should enter cooldown
     and block new analysis cycles.
     """
-    system = await get_trading_system()
+    _require_test_endpoints_enabled()
+    system = await _get_system()
     if not system:
         return {"success": False, "error": "Trading system not initialized"}
     
@@ -2359,10 +1596,11 @@ async def test_cooldown(losses: int = Query(default=3, description="Number of co
     }
 
 
-@router.post("/mock/reset-cooldown")
+@router.post("/mock/reset-cooldown", dependencies=AUTH_DEPENDENCIES)
 async def reset_cooldown():
     """Reset cooldown for testing purposes."""
-    system = await get_trading_system()
+    _require_test_endpoints_enabled()
+    system = await _get_system()
     if not system:
         return {"success": False, "error": "Trading system not initialized"}
     
@@ -2376,7 +1614,7 @@ async def reset_cooldown():
     }
 
 
-@router.post("/mock/open-position")
+@router.post("/mock/open-position", dependencies=AUTH_DEPENDENCIES)
 async def open_test_position(
     direction: str = Query(default="long", description="long or short"),
     leverage: int = Query(default=3, description="Leverage 1-20"),
@@ -2386,7 +1624,8 @@ async def open_test_position(
     Open a test position directly for TP/SL testing.
     This bypasses the full analysis cycle for quick testing.
     """
-    system = await get_trading_system()
+    _require_test_endpoints_enabled()
+    system = await _get_system()
     if not system or not system.paper_trader:
         return {"success": False, "error": "Trading system not initialized"}
     
@@ -2452,35 +1691,102 @@ class UserDecision(BaseModel):
     timestamp: str
 
 
-# In-memory storage for decisions (should be Redis in production)
-_user_decisions: List[Dict[str, Any]] = []
+def _normalize_preference_action(action: str) -> str:
+    normalized = (action or "").strip().lower()
+    if normalized in ("confirm", "confirmed"):
+        return "confirmed"
+    if normalized in ("defer", "reject", "rejected"):
+        return "rejected"
+    if normalized in ("modify", "modified"):
+        return "modified"
+    if normalized == "expired":
+        return "expired"
+    return "rejected"
 
 
-@router.post("/decision")
-async def record_user_decision(decision: UserDecision):
+def _safe_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+@router.post("/decision", dependencies=AUTH_DEPENDENCIES)
+async def record_user_decision(
+    decision: UserDecision,
+    current_user=Depends(get_current_user),
+):
     """
     Record user's decision on AI trading signal.
     
     This data is valuable for RLHF training - each decision represents
     high-quality human feedback on AI trading recommendations.
     """
-    decision_data = decision.model_dump()
-    decision_data['recorded_at'] = datetime.now().isoformat()
-    
-    # Store decision
-    _user_decisions.insert(0, decision_data)
-    
-    # Keep only last 1000 decisions in memory
-    if len(_user_decisions) > 1000:
-        _user_decisions.pop()
-    
-    logger.info(f"[RLHF] User decision recorded: {decision.action} for {decision.original_signal.get('direction', 'N/A')}")
-    
-    # Calculate statistics
-    total = len(_user_decisions)
-    confirms = len([d for d in _user_decisions if d['action'] == 'confirm'])
-    defers = len([d for d in _user_decisions if d['action'] == 'defer'])
-    modifies = len([d for d in _user_decisions if d['action'] == 'modify'])
+    from app.core.trading.preference_learner import get_preference_learner
+
+    learner = get_preference_learner()
+    original_signal = decision.original_signal or {}
+    mapped_action = _normalize_preference_action(decision.action)
+
+    direction = str(
+        original_signal.get("direction")
+        or original_signal.get("final_direction")
+        or "hold"
+    )
+    leverage = _safe_int(
+        original_signal.get("leverage")
+        or original_signal.get("final_leverage")
+        or 1,
+        1,
+    )
+    confidence = _safe_int(original_signal.get("confidence") or 50, 50)
+    stop_loss_percent = _safe_float(
+        original_signal.get("stop_loss_percent")
+        or original_signal.get("sl_percent")
+        or original_signal.get("stop_loss")
+        or 3.0,
+        3.0,
+    )
+    take_profit_percent = _safe_float(
+        original_signal.get("take_profit_percent")
+        or original_signal.get("tp_percent")
+        or original_signal.get("take_profit")
+        or 6.0,
+        6.0,
+    )
+
+    metadata = {
+        "raw_action": decision.action,
+        "defer_reason": decision.defer_reason,
+        "recorded_at": datetime.now().isoformat(),
+    }
+
+    prefs = await learner.record_decision(
+        trade_id=decision.decision_id,
+        user_id=current_user.id,
+        direction=direction,
+        leverage=leverage,
+        confidence=confidence,
+        stop_loss_percent=stop_loss_percent,
+        take_profit_percent=take_profit_percent,
+        action=mapped_action,
+        modified_leverage=decision.modified_leverage,
+        metadata=metadata,
+    )
+
+    confirm_only = max(0, prefs.confirmed_count - prefs.modified_count)
+    total = prefs.total_decisions
+    confirms = confirm_only
+    defers = prefs.rejected_count
+    modifies = prefs.modified_count
+    logger.info(f"[RLHF] User decision recorded: {decision.action} for {direction}")
     
     return {
         "success": True,
@@ -2496,26 +1802,34 @@ async def record_user_decision(decision: UserDecision):
     }
 
 
-@router.get("/decisions")
-async def get_user_decisions(limit: int = Query(default=50, le=200)):
+@router.get("/decisions", dependencies=AUTH_DEPENDENCIES)
+async def get_user_decisions(
+    limit: int = Query(default=50, le=200),
+    current_user=Depends(get_current_user),
+):
     """
     Get history of user decisions.
     
     This endpoint demonstrates the data collection capability to investors.
     """
-    decisions = _user_decisions[:limit]
-    
-    # Calculate statistics
-    total = len(_user_decisions)
-    confirms = len([d for d in _user_decisions if d['action'] == 'confirm'])
-    defers = len([d for d in _user_decisions if d['action'] == 'defer'])
-    modifies = len([d for d in _user_decisions if d['action'] == 'modify'])
-    
-    # Analyze defer reasons
+    from app.core.trading.preference_learner import get_preference_learner
+
+    learner = get_preference_learner()
+    decisions = await learner.get_recent_decisions(current_user.id, limit)
+    prefs = await learner.get_preferences(current_user.id)
+
+    total = prefs.total_decisions
+    confirms = max(0, prefs.confirmed_count - prefs.modified_count)
+    defers = prefs.rejected_count
+    modifies = prefs.modified_count
+
     defer_reasons = {}
-    for d in _user_decisions:
-        if d['action'] == 'defer' and d.get('defer_reason'):
-            reason = d['defer_reason']
+    for d in decisions:
+        if d.get("action") != "rejected":
+            continue
+        metadata = d.get("metadata") or {}
+        reason = metadata.get("defer_reason")
+        if reason:
             defer_reasons[reason] = defer_reasons.get(reason, 0) + 1
     
     return {
@@ -2540,48 +1854,16 @@ async def get_user_decisions(limit: int = Query(default=50, le=200)):
     }
 
 
-@router.post("/execute")
+@router.post("/execute", dependencies=AUTH_DEPENDENCIES, deprecated=True)
 async def execute_trade(request: Dict[str, Any]):
     """
-    Execute a trade after user confirmation.
-    
-    This is called after user confirms or modifies the AI decision.
+    [DEPRECATED] Direct trade execution — use POST /pending/{trade_id}/confirm instead.
+
+    Kept for backward compatibility with legacy frontend paths.
+    New code should use the HITL pending trade confirmation flow.
     """
-    system = await get_trading_system()
-    if not system or not system.paper_trader:
-        return {"success": False, "error": "Trading system not initialized"}
-    
-    direction = request.get("direction", "long")
-    leverage = request.get("leverage", 5)
-    take_profit = request.get("take_profit")
-    stop_loss = request.get("stop_loss")
-    
-    try:
-        # Get account balance
-        account = await system.paper_trader.get_account()
-        available = account.get("available_balance", 0)
-        amount_usdt = available * 0.3  # Use 30% of available balance
-        
-        if direction == "long":
-            result = await system.paper_trader.open_long(
-                symbol="BTC-USDT-SWAP",
-                leverage=leverage,
-                amount_usdt=amount_usdt,
-                tp_price=take_profit,
-                sl_price=stop_loss
-            )
-        else:
-            result = await system.paper_trader.open_short(
-                symbol="BTC-USDT-SWAP",
-                leverage=leverage,
-                amount_usdt=amount_usdt,
-                tp_price=take_profit,
-                sl_price=stop_loss
-            )
-        
-        logger.info(f"[UserConfirm] Trade executed: {direction} {leverage}x, result={result.get('success')}")
-        return result
-        
-    except Exception as e:
-        logger.error(f"[UserConfirm] Trade execution failed: {e}")
-        return {"success": False, "error": str(e)}
+    # HITL-only: direct execution is intentionally disabled to avoid bypassing confirmation flow.
+    raise HTTPException(
+        status_code=410,
+        detail="Direct execution is disabled. Use POST /api/trading/pending/{trade_id}/confirm.",
+    )

@@ -7,6 +7,7 @@ import redis
 from typing import Optional, Dict, Any
 from datetime import timedelta
 import os
+from typing import List
 
 
 class SessionStore:
@@ -82,7 +83,16 @@ class SessionStore:
             print(f"[SessionStore] ❌ Failed to save session {session_id}: {e}")
             return False
 
-    def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+    def _session_owned_by_user(self, session_data: Dict[str, Any], user_id: Optional[str]) -> bool:
+        if not user_id:
+            return True
+        owner_user_id = (
+            session_data.get("user_id")
+            or (session_data.get("request") or {}).get("user_id")
+        )
+        return str(owner_user_id or "") == str(user_id)
+
+    def get_session(self, session_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Retrieve session from Redis.
 
@@ -101,6 +111,8 @@ class SessionStore:
                 return None
 
             context = json.loads(value)
+            if not self._session_owned_by_user(context, user_id):
+                return None
             print(f"[SessionStore] ✅ Retrieved session: {session_id}")
             return context
 
@@ -224,7 +236,7 @@ class SessionStore:
             print(f"[SessionStore] ❌ Failed to save report {report_id}: {e}")
             return False
 
-    def get_report(self, report_id: str) -> Optional[Dict[str, Any]]:
+    def get_report(self, report_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Retrieve report from Redis.
 
@@ -243,6 +255,8 @@ class SessionStore:
                 return None
 
             report_data = json.loads(value)
+            if not self._report_owned_by_user(report_data, user_id):
+                return None
             print(f"[SessionStore] ✅ Retrieved report: {report_id}")
             return report_data
 
@@ -250,7 +264,12 @@ class SessionStore:
             print(f"[SessionStore] ❌ Failed to get report {report_id}: {e}")
             return None
 
-    def get_all_reports(self, limit: int = 100) -> list:
+    def _report_owned_by_user(self, report_data: Dict[str, Any], user_id: Optional[str]) -> bool:
+        if not user_id:
+            return True
+        return str(report_data.get("user_id") or "") == str(user_id)
+
+    def get_all_reports(self, limit: int = 100, user_id: Optional[str] = None) -> list:
         """
         Get all reports (most recent first).
 
@@ -262,13 +281,16 @@ class SessionStore:
         """
         try:
             # Get report IDs from sorted set (newest first)
-            report_ids = self.redis_client.zrevrange('reports:all', 0, limit - 1)
+            fetch_limit = max(limit * 5, limit)
+            report_ids = self.redis_client.zrevrange('reports:all', 0, fetch_limit - 1)
 
             reports = []
             for report_id in report_ids:
                 report_data = self.get_report(report_id)
-                if report_data:
+                if report_data and self._report_owned_by_user(report_data, user_id):
                     reports.append(report_data)
+                    if len(reports) >= limit:
+                        break
 
             print(f"[SessionStore] ✅ Retrieved {len(reports)} reports")
             return reports
@@ -277,7 +299,7 @@ class SessionStore:
             print(f"[SessionStore] ❌ Failed to get all reports: {e}")
             return []
 
-    def delete_report(self, report_id: str) -> bool:
+    def delete_report(self, report_id: str, user_id: Optional[str] = None) -> bool:
         """
         Delete report from Redis.
 
@@ -288,6 +310,10 @@ class SessionStore:
             True if deleted, False otherwise
         """
         try:
+            if self.get_report(report_id, user_id=user_id) is None:
+                print(f"[SessionStore] ⚠️  Report not found: {report_id}")
+                return False
+
             key = f"report:{report_id}"
 
             # Delete from reports list
@@ -309,7 +335,7 @@ class SessionStore:
 
     # ==================== Roundtable History Management ====================
 
-    def get_roundtable_reports(self, limit: int = 50) -> list:
+    def get_roundtable_reports(self, limit: int = 50, user_id: Optional[str] = None) -> list:
         """
         Get all roundtable discussion reports (most recent first).
 
@@ -321,12 +347,16 @@ class SessionStore:
         """
         try:
             # Get report IDs from sorted set (newest first)
-            report_ids = self.redis_client.zrevrange('reports:all', 0, limit * 2 - 1)  # Get more to filter
+            report_ids = self.redis_client.zrevrange('reports:all', 0, limit * 5 - 1)  # Get more to filter
 
             roundtable_reports = []
             for report_id in report_ids:
                 report_data = self.get_report(report_id)
-                if report_data and report_data.get('type') == 'roundtable':
+                if (
+                    report_data
+                    and report_data.get('type') == 'roundtable'
+                    and self._report_owned_by_user(report_data, user_id)
+                ):
                     # Return only essential info for list display
                     roundtable_reports.append({
                         'id': report_id,
@@ -349,7 +379,7 @@ class SessionStore:
             print(f"[SessionStore] ❌ Failed to get roundtable reports: {e}")
             return []
 
-    def get_roundtable_report_full(self, report_id: str) -> Optional[Dict[str, Any]]:
+    def get_roundtable_report_full(self, report_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Get full roundtable report including meeting minutes for reference.
 
@@ -368,6 +398,8 @@ class SessionStore:
             if report_data.get('type') != 'roundtable':
                 print(f"[SessionStore] ⚠️  Report {report_id} is not a roundtable report")
                 return None
+            if not self._report_owned_by_user(report_data, user_id):
+                return None
 
             return report_data
 
@@ -375,7 +407,7 @@ class SessionStore:
             print(f"[SessionStore] ❌ Failed to get roundtable report {report_id}: {e}")
             return None
 
-    def search_similar_roundtables(self, topic: str, limit: int = 5) -> list:
+    def search_similar_roundtables(self, topic: str, limit: int = 5, user_id: Optional[str] = None) -> list:
         """
         Search for roundtable reports with similar topics.
 
@@ -388,7 +420,7 @@ class SessionStore:
         """
         try:
             # Get all roundtable reports
-            all_roundtables = self.get_roundtable_reports(limit=100)
+            all_roundtables = self.get_roundtable_reports(limit=100, user_id=user_id)
 
             # Simple keyword matching (can be enhanced with vector search later)
             topic_lower = topic.lower()
@@ -422,7 +454,12 @@ class SessionStore:
 
     # ==================== Analysis Result Caching ====================
 
-    def _generate_cache_key(self, target: Dict[str, Any], scenario_id: str) -> str:
+    def _generate_cache_key(
+        self,
+        target: Dict[str, Any],
+        scenario_id: str,
+        user_id: Optional[str] = None,
+    ) -> str:
         """
         Generate a cache key based on analysis target and scenario.
 
@@ -437,13 +474,15 @@ class SessionStore:
         # Create a stable hash from target data
         target_str = json.dumps(target, sort_keys=True, ensure_ascii=False)
         target_hash = hashlib.md5(target_str.encode()).hexdigest()[:12]
-        return f"analysis_cache:{scenario_id}:{target_hash}"
+        user_scope = str(user_id or "anonymous")
+        return f"analysis_cache:{user_scope}:{scenario_id}:{target_hash}"
 
     def cache_analysis_result(
         self,
         target: Dict[str, Any],
         scenario_id: str,
         result: Dict[str, Any],
+        user_id: Optional[str] = None,
         ttl_hours: int = 1
     ) -> bool:
         """
@@ -459,7 +498,7 @@ class SessionStore:
             True if successful, False otherwise
         """
         try:
-            cache_key = self._generate_cache_key(target, scenario_id)
+            cache_key = self._generate_cache_key(target, scenario_id, user_id=user_id)
             value = json.dumps(result, ensure_ascii=False, default=str)
 
             self.redis_client.setex(
@@ -478,7 +517,8 @@ class SessionStore:
     def get_cached_analysis(
         self,
         target: Dict[str, Any],
-        scenario_id: str
+        scenario_id: str,
+        user_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Retrieve cached analysis result.
@@ -491,7 +531,7 @@ class SessionStore:
             Cached result if found and not expired, None otherwise
         """
         try:
-            cache_key = self._generate_cache_key(target, scenario_id)
+            cache_key = self._generate_cache_key(target, scenario_id, user_id=user_id)
             value = self.redis_client.get(cache_key)
 
             if value is None:
@@ -509,7 +549,8 @@ class SessionStore:
     def invalidate_analysis_cache(
         self,
         target: Dict[str, Any] = None,
-        scenario_id: str = None
+        scenario_id: str = None,
+        user_id: Optional[str] = None
     ) -> int:
         """
         Invalidate analysis cache.
@@ -524,12 +565,18 @@ class SessionStore:
         """
         try:
             if target and scenario_id:
-                cache_key = self._generate_cache_key(target, scenario_id)
+                cache_key = self._generate_cache_key(target, scenario_id, user_id=user_id)
                 return self.redis_client.delete(cache_key)
             elif scenario_id:
-                pattern = f"analysis_cache:{scenario_id}:*"
+                if user_id:
+                    pattern = f"analysis_cache:{user_id}:{scenario_id}:*"
+                else:
+                    pattern = f"analysis_cache:*:{scenario_id}:*"
             else:
-                pattern = "analysis_cache:*"
+                if user_id:
+                    pattern = f"analysis_cache:{user_id}:*"
+                else:
+                    pattern = "analysis_cache:*"
 
             keys = self.redis_client.keys(pattern)
             if keys:
@@ -579,6 +626,39 @@ class SessionStore:
                 'connection_status': 'error'
             }
 
+    def list_sessions(self, limit: int = 200, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        List DD sessions (best-effort, most-recent unknown order).
+
+        NOTE: Redis doesn't keep an index for sessions currently; this scans keys.
+        Use only for lightweight dashboards/admin views.
+        """
+        sessions: List[Dict[str, Any]] = []
+        try:
+            # scan_iter avoids blocking Redis like KEYS for larger datasets.
+            for key in self.redis_client.scan_iter(match="dd_session:*", count=200):
+                if len(sessions) >= limit:
+                    break
+                raw = self.redis_client.get(key)
+                if not raw:
+                    continue
+                try:
+                    parsed = json.loads(raw)
+                    if user_id:
+                        session_user_id = (
+                            parsed.get("user_id")
+                            or (parsed.get("request") or {}).get("user_id")
+                        )
+                        if str(session_user_id or "") != str(user_id):
+                            continue
+                    sessions.append(parsed)
+                except Exception:
+                    continue
+            return sessions
+        except Exception as e:
+            print(f"[SessionStore] ❌ Failed to list sessions: {e}")
+            return []
+
     def close(self):
         """Close Redis connection."""
         try:
@@ -586,3 +666,33 @@ class SessionStore:
             print("[SessionStore] ✅ Closed Redis connection")
         except Exception as e:
             print(f"[SessionStore] ❌ Failed to close connection: {e}")
+
+    # ==================== Uploaded File Ownership ====================
+
+    def set_uploaded_file_owner(self, file_id: str, user_id: str, ttl_days: int = 7) -> bool:
+        if not file_id or not user_id:
+            return False
+        key = f"uploaded_file_owner:{file_id}"
+        try:
+            self.redis_client.setex(
+                key,
+                timedelta(days=ttl_days),
+                str(user_id),
+            )
+            return True
+        except Exception as e:
+            print(f"[SessionStore] ❌ Failed to set file owner for {file_id}: {e}")
+            return False
+
+    def get_uploaded_file_owner(self, file_id: str) -> Optional[str]:
+        if not file_id:
+            return None
+        key = f"uploaded_file_owner:{file_id}"
+        try:
+            value = self.redis_client.get(key)
+            if value is None:
+                return None
+            return str(value)
+        except Exception as e:
+            print(f"[SessionStore] ❌ Failed to get file owner for {file_id}: {e}")
+            return None

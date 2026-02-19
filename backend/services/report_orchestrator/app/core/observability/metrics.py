@@ -8,7 +8,7 @@ Usage:
     from core.observability import signals_generated, agent_latency
     
     # Increment counter
-    signals_generated.labels(direction="long", mode="full_auto").inc()
+    signals_generated.labels(direction="long", mode="semi_auto").inc()
     
     # Record histogram
     with agent_latency.labels(agent_name="TechnicalAnalyst").time():
@@ -27,7 +27,7 @@ from fastapi import Response
 signals_generated = Counter(
     'trading_signals_generated_total',
     'Total number of trading signals generated',
-    ['direction', 'mode']  # long/short/hold, full_auto/semi_auto/manual
+    ['direction', 'mode']  # long/short/hold, semi_auto
 )
 
 notifications_sent = Counter(
@@ -104,7 +104,7 @@ execution_latency = Histogram(
 
 current_mode = Gauge(
     'trading_mode_current',
-    'Current trading mode (0=manual, 1=semi_auto, 2=full_auto)'
+    'Current trading mode (1=semi_auto)'
 )
 
 position_pnl = Gauge(
@@ -161,11 +161,10 @@ def set_system_info(version: str, environment: str):
 def update_mode_metric(mode: str):
     """Update the current mode gauge."""
     mode_values = {
-        "manual": 0,
         "semi_auto": 1,
-        "full_auto": 2
     }
-    current_mode.set(mode_values.get(mode, 0))
+    # HITL-only: default to semi_auto.
+    current_mode.set(mode_values.get(mode, 1))
 
 
 def update_circuit_state(circuit_name: str, state: str):
@@ -203,8 +202,8 @@ def setup_metrics():
     Initialize metrics with default values.
     Call this at application startup.
     """
-    # Set initial mode (default to manual)
-    current_mode.set(0)
+    # Set initial mode (HITL-only)
+    current_mode.set(1)
     
     # Set initial degradation level (default to full)
     degradation_level.set(0)

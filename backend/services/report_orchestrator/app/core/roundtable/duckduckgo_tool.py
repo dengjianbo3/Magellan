@@ -109,28 +109,40 @@ For realtime/critical data, use web_search with priority="realtime" instead."""
             
             for i, r in enumerate(results, 1):
                 if search_type == "news":
+                    body = r.get("body", "")
+                    date = r.get("date", "")
                     formatted_results.append({
                         "title": r.get("title", ""),
                         "url": r.get("url", ""),
-                        "body": r.get("body", ""),
-                        "date": r.get("date", ""),
-                        "source": r.get("source", "")
+                        "content": body,
+                        "published_date": date,
+                        "score": 0.0,
+                        "source": r.get("source", ""),
+                        # Backward-compatible aliases
+                        "body": body,
+                        "date": date,
                     })
                     summary_parts.append(
                         f"\n{i}. [{r.get('source', 'News')}] {r.get('title', '')}\n"
-                        f"   Date: {r.get('date', 'N/A')}\n"
-                        f"   {r.get('body', '')[:150]}...\n"
+                        f"   Date: {date or 'N/A'}\n"
+                        f"   {body[:150]}...\n"
                     )
                 else:
+                    body = r.get("body", "")
                     formatted_results.append({
                         "title": r.get("title", ""),
                         "url": r.get("href", ""),
-                        "body": r.get("body", "")
+                        "content": body,
+                        "published_date": None,
+                        "score": 0.0,
+                        # Backward-compatible aliases
+                        "body": body,
+                        "date": None,
                     })
                     summary_parts.append(
                         f"\n{i}. {r.get('title', '')}\n"
                         f"   URL: {r.get('href', '')}\n"
-                        f"   {r.get('body', '')[:150]}...\n"
+                        f"   {body[:150]}...\n"
                     )
             
             return {

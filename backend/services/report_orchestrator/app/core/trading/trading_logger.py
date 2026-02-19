@@ -13,24 +13,36 @@ from typing import Optional, Dict, Any, List
 
 import redis.asyncio as redis
 
+from .trading_config import get_infra_config
+from app.core.auth import get_current_user_id
+
 logger = logging.getLogger(__name__)
 
 
 class TradingLogger:
     """
     Redis-based trading logger for debugging and audit trail.
-    
+
     Key Structure:
     - trading:decisions:latest - Last 100 decision records (LIST)
     - trading:positions:latest - Last 100 position events (LIST)
     """
-    
+
     MAX_ENTRIES = 100  # Keep last 100 entries
-    
-    def __init__(self, redis_url: str = "redis://redis:6379"):
-        self.redis_url = redis_url
+
+    def __init__(self, redis_url: str = None, user_id: Optional[str] = None):
+        self.redis_url = redis_url or get_infra_config().redis_url
+        self.user_id = get_current_user_id(user_id)
         self._redis: Optional[redis.Redis] = None
         self._initialized = False
+
+    @property
+    def decisions_key(self) -> str:
+        return f"trading:decisions:latest:{self.user_id}"
+
+    @property
+    def positions_key(self) -> str:
+        return f"trading:positions:latest:{self.user_id}"
         
     async def initialize(self):
         """Initialize Redis connection."""
@@ -97,10 +109,10 @@ class TradingLogger:
             }
             
             # Add to list (newest first)
-            await self._redis.lpush("trading:decisions:latest", json.dumps(entry))
+            await self._redis.lpush(self.decisions_key, json.dumps(entry))
             
             # Trim to MAX_ENTRIES
-            await self._redis.ltrim("trading:decisions:latest", 0, self.MAX_ENTRIES - 1)
+            await self._redis.ltrim(self.decisions_key, 0, self.MAX_ENTRIES - 1)
             
             logger.info(f"[TradingLogger] Decision logged: {decision_id} - {final_decision.get('direction', 'unknown')}")
             
@@ -173,10 +185,10 @@ class TradingLogger:
             }
             
             # Add to list (newest first)
-            await self._redis.lpush("trading:positions:latest", json.dumps(entry))
+            await self._redis.lpush(self.positions_key, json.dumps(entry))
             
             # Trim to MAX_ENTRIES
-            await self._redis.ltrim("trading:positions:latest", 0, self.MAX_ENTRIES - 1)
+            await self._redis.ltrim(self.positions_key, 0, self.MAX_ENTRIES - 1)
             
             # Log summary
             if event_type == "close":
@@ -194,7 +206,7 @@ class TradingLogger:
             return []
             
         try:
-            entries = await self._redis.lrange("trading:decisions:latest", 0, limit - 1)
+            entries = await self._redis.lrange(self.decisions_key, 0, limit - 1)
             return [json.loads(e) for e in entries]
         except Exception as e:
             logger.error(f"[TradingLogger] Failed to get decisions: {e}")
@@ -206,23 +218,23 @@ class TradingLogger:
             return []
             
         try:
-            entries = await self._redis.lrange("trading:positions:latest", 0, limit - 1)
+            entries = await self._redis.lrange(self.positions_key, 0, limit - 1)
             return [json.loads(e) for e in entries]
         except Exception as e:
             logger.error(f"[TradingLogger] Failed to get positions: {e}")
             return []
 
 
-# Singleton instance
-_trading_logger: Optional[TradingLogger] = None
+# Singleton instances scoped by user
+_trading_loggers: Dict[str, TradingLogger] = {}
 
 
-async def get_trading_logger(redis_url: str = "redis://redis:6379") -> TradingLogger:
-    """Get or create the singleton TradingLogger instance."""
-    global _trading_logger
-    
-    if _trading_logger is None:
-        _trading_logger = TradingLogger(redis_url)
-        await _trading_logger.initialize()
-    
-    return _trading_logger
+async def get_trading_logger(redis_url: str = None, user_id: Optional[str] = None) -> TradingLogger:
+    """Get or create the TradingLogger instance scoped by user."""
+    scope = get_current_user_id(user_id)
+    logger_instance = _trading_loggers.get(scope)
+    if logger_instance is None:
+        logger_instance = TradingLogger(redis_url=redis_url, user_id=scope)
+        await logger_instance.initialize()
+        _trading_loggers[scope] = logger_instance
+    return logger_instance

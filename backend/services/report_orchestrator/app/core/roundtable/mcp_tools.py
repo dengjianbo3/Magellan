@@ -3,13 +3,52 @@ MCP Tools for Roundtable Discussion Agents
 为圆桌讨论专家提供的 MCP 工具集
 """
 import os
+from contextvars import ContextVar, Token
 from typing import Any, Dict, List, Optional
+import httpx
 from .tool import Tool
 from .mcp_client import MCPClient
+from ..service_endpoints import get_internal_knowledge_url
+from app.services.knowledge_access import search_knowledge_base as shared_search_knowledge_base
 
 
 # 全局 MCP Client 实例 (懒加载)
 _mcp_client: Optional[MCPClient] = None
+_ALLOWED_KNOWLEDGE_CATEGORIES = {"general", "financial", "market", "legal"}
+_roundtable_knowledge_preferences: ContextVar[Dict[str, Any]] = ContextVar(
+    "roundtable_knowledge_preferences",
+    default={"enabled": True, "category": None},
+)
+
+
+def normalize_knowledge_category(category: Optional[str]) -> Optional[str]:
+    """Normalize user-facing knowledge scope into backend category filter."""
+    if not isinstance(category, str):
+        return None
+    normalized = category.strip().lower()
+    if not normalized or normalized == "all":
+        return None
+    if normalized in _ALLOWED_KNOWLEDGE_CATEGORIES:
+        return normalized
+    return None
+
+
+def set_roundtable_knowledge_preferences(
+    *,
+    enabled: Optional[bool] = None,
+    category: Optional[str] = None,
+) -> Token:
+    """Set per-request knowledge preferences for roundtable tool creation."""
+    current = _roundtable_knowledge_preferences.get()
+    return _roundtable_knowledge_preferences.set({
+        "enabled": current.get("enabled", True) if enabled is None else bool(enabled),
+        "category": current.get("category") if category is None else normalize_knowledge_category(category),
+    })
+
+
+def reset_roundtable_knowledge_preferences(token: Token) -> None:
+    """Reset per-request knowledge preferences."""
+    _roundtable_knowledge_preferences.reset(token)
 
 def get_mcp_client() -> MCPClient:
     """获取全局 MCP Client 实例"""
@@ -94,14 +133,45 @@ Example: Search news from last week, set time_range="week" or topic="news" with 
                 params["days"] = days
 
             # Call web-search service search tool via MCP Client
-            result = await self.mcp_client.call_tool(
+            raw = await self.mcp_client.call_tool(
                 server_name="web-search",
                 tool_name="search",
                 **params
             )
 
-            # MCP response already contains success, summary, results
-            return result
+            # Normalize MCP envelope:
+            # web_search_service returns {"success": bool, "result": {...}, "error": ...}
+            # while agent/tool chain expects top-level {"success", "summary", "results", ...}
+            payload = raw.get("result") if isinstance(raw, dict) and isinstance(raw.get("result"), dict) else raw
+            if not isinstance(payload, dict):
+                payload = {}
+
+            raw_results = payload.get("results", [])
+            normalized_results: List[Dict[str, Any]] = []
+            if isinstance(raw_results, list):
+                for item in raw_results:
+                    if not isinstance(item, dict):
+                        continue
+                    content = item.get("content") or item.get("body") or ""
+                    published_date = item.get("published_date") or item.get("date")
+                    normalized_results.append({
+                        "title": item.get("title", ""),
+                        "url": item.get("url", ""),
+                        "content": content,
+                        "published_date": published_date,
+                        "score": float(item.get("score", 0.0) or 0.0),
+                        # Backward-compatible aliases
+                        "body": content,
+                        "date": published_date,
+                    })
+
+            return {
+                "success": bool(raw.get("success", payload.get("success", True))) if isinstance(raw, dict) else True,
+                "summary": payload.get("summary", ""),
+                "results": normalized_results,
+                "query": payload.get("query", query),
+                "error": raw.get("error") if isinstance(raw, dict) else None,
+            }
 
         except Exception as e:
             print(f"[TavilySearchTool] MCP call failed: {e}")
@@ -259,7 +329,9 @@ class KnowledgeBaseTool(Tool):
 
     def __init__(
         self,
-        knowledge_service_url: str = "http://internal_knowledge_service:8009"
+        knowledge_service_url: Optional[str] = None,
+        enabled: Optional[bool] = None,
+        default_category: Optional[str] = None,
     ):
         """
         Args:
@@ -269,7 +341,11 @@ class KnowledgeBaseTool(Tool):
             name="search_knowledge_base",
             description="Search internal knowledge base for relevant documents and information. Suitable for querying uploaded BPs, research reports, internal documents, etc."
         )
-        self.knowledge_service_url = knowledge_service_url
+        self.knowledge_service_url = knowledge_service_url or get_internal_knowledge_url()
+        preference = _roundtable_knowledge_preferences.get()
+        self.enabled = preference.get("enabled", True) if enabled is None else bool(enabled)
+        category_source = preference.get("category") if default_category is None else default_category
+        self.default_category = normalize_knowledge_category(category_source)
 
     async def execute(self, query: str, **kwargs) -> Dict[str, Any]:
         """
@@ -282,43 +358,51 @@ class KnowledgeBaseTool(Tool):
         Returns:
             Search results
         """
-        top_k = kwargs.get("top_k", 3)
+        if not self.enabled:
+            return {
+                "success": True,
+                "summary": "Knowledge base retrieval is disabled for this discussion.",
+                "results": [],
+                "documents": [],
+                "disabled": True,
+            }
+
+        top_k = kwargs.get("top_k", kwargs.get("limit", 3))
+        category = normalize_knowledge_category(kwargs.get("category", self.default_category))
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.knowledge_service_url}/search",
-                    json={
-                        "query": query,
-                        "top_k": top_k
-                    }
-                )
-                response.raise_for_status()
-                result = response.json()
-
-                documents = result.get("documents", [])
-                if not documents:
-                    return {
-                        "success": True,
-                        "summary": f"No relevant content found in knowledge base for '{query}'.",
-                        "documents": []
-                    }
-
-                # Build summary
-                summary_parts = [f"Found {len(documents)} relevant items in knowledge base for '{query}':\n"]
-                for i, doc in enumerate(documents, 1):
-                    summary_parts.append(
-                        f"\n{i}. {doc.get('source', 'Unknown')}\n"
-                        f"   Content: {doc.get('content', '')[:200]}...\n"
-                        f"   Relevance: {doc.get('score', 0):.2f}"
-                    )
-
+            result = await shared_search_knowledge_base(
+                self.knowledge_service_url,
+                query=query,
+                top_k=top_k,
+                category=category,
+                timeout=30.0,
+            )
+            documents = result.get("results", [])
+            if not documents:
                 return {
                     "success": True,
-                    "summary": "".join(summary_parts),
-                    "documents": documents,
-                    "query": query
+                    "summary": f"No relevant content found in knowledge base for '{query}'.",
+                    "results": [],
+                    "documents": [],
                 }
+
+            summary_parts = [f"Found {len(documents)} relevant items in knowledge base for '{query}':\n"]
+            for i, doc in enumerate(documents, 1):
+                summary_parts.append(
+                    f"\n{i}. {doc.get('source', 'Unknown')}\n"
+                    f"   Content: {doc.get('content', '')[:200]}...\n"
+                    f"   Relevance: {doc.get('score', 0.0):.2f}"
+                )
+
+            return {
+                "success": True,
+                "summary": "".join(summary_parts),
+                "results": documents,
+                "documents": documents,
+                "query": result.get("query", query),
+                "category": category,
+            }
 
         except Exception as e:
             print(f"[KnowledgeBaseTool] Search failed: {e}")
@@ -344,6 +428,12 @@ class KnowledgeBaseTool(Tool):
                         "type": "integer",
                         "description": "Return top K most relevant results",
                         "default": 3
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Optional knowledge scope. Use 'all' for no category filter.",
+                        "enum": ["all", "general", "financial", "market", "legal"],
+                        "default": "all",
                     }
                 },
                 "required": ["query"]

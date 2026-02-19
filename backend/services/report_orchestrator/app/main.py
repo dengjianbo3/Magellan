@@ -8,7 +8,7 @@ import uuid
 import time
 from datetime import datetime
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -26,6 +26,7 @@ from .core.intent_recognizer import IntentRecognizer, ConversationManager
 
 # V5: Import Redis session store
 from .core.session_store import SessionStore
+from .core.auth import CurrentUser, get_current_user, resolve_user_from_token
 
 # Phase 4: Import API routers
 from .api.routers import health_router, reports_router, dashboard_router
@@ -60,10 +61,11 @@ JSON_LOGS = os.getenv("JSON_LOGS", "false").lower() == "true"
 configure_logging(log_level=LOG_LEVEL, json_logs=JSON_LOGS)
 logger = get_logger(__name__)
 
-# --- Service Discovery ---
-EXTERNAL_DATA_URL = "http://external_data_service:8006"
-LLM_GATEWAY_URL = "http://llm_gateway:8003"
-FILE_SERVICE_URL = "http://file_service:8001"
+# --- Service Discovery (prefer env, fall back to docker-compose internal DNS names) ---
+# docker-compose uses PUBLIC_DATA_URL to point at external_data_service
+EXTERNAL_DATA_URL = os.getenv("PUBLIC_DATA_URL", os.getenv("EXTERNAL_DATA_URL", "http://external_data_service:8006"))
+LLM_GATEWAY_URL = os.getenv("LLM_GATEWAY_URL", "http://llm_gateway:8003")
+FILE_SERVICE_URL = os.getenv("FILE_SERVICE_URL", "http://file_service:8001")
 
 # --- Check Standalone Mode ---
 STANDALONE_MODE = os.getenv("STANDALONE_MODE", "false").lower() == "true"
@@ -109,9 +111,9 @@ async def _auto_start_trading():
     """Auto-start trading system after a short delay to ensure all services are ready."""
     await asyncio.sleep(10)  # Wait for services to be ready
     try:
-        from .api.trading_routes import get_trading_system
+        from app.services.trading_system import get_trading_system
         logger.info("Auto-starting trading system...")
-        system = await get_trading_system()
+        system = await get_trading_system(user_id="system")
         await system.start()
         logger.info("Trading system auto-started successfully")
     except Exception as e:
@@ -125,10 +127,20 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# --- CORS config ---
+def _parse_cors_origins(raw: str):
+    raw = (raw or "").strip()
+    if not raw:
+        return ["http://localhost:5174", "http://localhost:8081"]
+    if raw == "*" or raw.lower() == "all":
+        return ["*"]
+    parts = [p.strip() for p in raw.split(",")]
+    return [p for p in parts if p]
+
 # --- CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=_parse_cors_origins(os.getenv("CORS_ALLOW_ORIGINS", "")),
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
@@ -145,7 +157,7 @@ active_meetings: Dict[str, Any] = {}
 
 # Phase 4: Initialize Roundtable Router dependencies
 set_active_meetings(active_meetings)
-set_llm_gateway_url("http://llm_gateway:8003")
+set_llm_gateway_url(LLM_GATEWAY_URL)
 print("[main.py] ✅ Roundtable Router initialized")
 
 # Phase 2: Initialize Prometheus metrics
@@ -232,7 +244,7 @@ class WebSocketMessage(BaseModel):
     preliminary_report: Optional[FullReportResponse] = None
     key_questions: Optional[List[str]] = None
 
-USER_SERVICE_URL = "http://user_service:8008"
+USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://user_service:8008")
 
 class UserPersona(BaseModel):
     investment_style: Optional[str] = "Balanced"
@@ -242,6 +254,13 @@ class UserPersona(BaseModel):
 @app.websocket("/ws/start_analysis")
 async def websocket_analysis_endpoint(websocket: WebSocket):
     await websocket.accept()
+    token = (websocket.query_params.get("token") or "").strip()
+    try:
+        current_user = await resolve_user_from_token(token)
+    except Exception as auth_error:
+        logger.warning(f"[Legacy WS] Authentication failed for /ws/start_analysis: {auth_error}")
+        await websocket.close(code=1008, reason="Authentication required")
+        return
     session_id = ""
     user_persona = UserPersona()
     selected_ticker = ""
@@ -250,7 +269,10 @@ async def websocket_analysis_endpoint(websocket: WebSocket):
         # 1. Wait for the initial request
         initial_request = await websocket.receive_json()
         ticker = initial_request.get("ticker")
-        user_id = initial_request.get("user_id", "default_user")
+        requested_user_id = initial_request.get("user_id")
+        user_id = current_user.id
+        if requested_user_id and str(requested_user_id) != str(user_id):
+            logger.info(f"[Legacy WS] Ignoring mismatched requested user_id={requested_user_id}; using authenticated user_id={user_id}")
 
         if not ticker:
             await websocket.close(code=1008, reason="Ticker not provided")
@@ -429,7 +451,10 @@ async def websocket_analysis_endpoint(websocket: WebSocket):
 
 
 @app.post("/get_instant_feedback", response_model=InstantFeedbackResponse, tags=["Agent Workflow"])
-async def get_instant_feedback(request: InstantFeedbackRequest):
+async def get_instant_feedback(
+    request: InstantFeedbackRequest,
+    _: CurrentUser = Depends(get_current_user),
+):
     """
     Provides instant feedback on a user's input based on the current analysis context.
     """
@@ -467,11 +492,15 @@ def read_root():
 # ============================================================================
 
 # V5: Initialize Redis Session Store for persistence
+REQUIRE_REDIS = os.getenv("REPORT_ORCH_REQUIRE_REDIS", "false").lower() == "true"
 try:
     session_store = SessionStore()  # Uses REDIS_URL from environment
     print("[main.py] ✅ SessionStore initialized successfully")
 except Exception as e:
     print(f"[main.py] ❌ Failed to initialize SessionStore: {e}")
+    if REQUIRE_REDIS:
+        # PoC/hosted environments should fail-fast to avoid silent data loss.
+        raise
     print("[main.py] ⚠️  Falling back to in-memory storage")
     session_store = None
 
@@ -544,16 +573,21 @@ def save_session(session_id: str, context: DDSessionContext) -> bool:
         return True
 
 
-def get_session(session_id: str) -> Optional[DDSessionContext]:
+def get_session(session_id: str, user_id: Optional[str] = None) -> Optional[DDSessionContext]:
     """Get session from Redis or fallback to in-memory storage."""
     if session_store:
-        context_dict = session_store.get_session(session_id)
+        context_dict = session_store.get_session(session_id, user_id=user_id)
         if context_dict:
             return DDSessionContext(**context_dict)
         return None
     else:
         # Fallback to in-memory
-        return dd_sessions.get(session_id)
+        context = dd_sessions.get(session_id)
+        if not context:
+            return None
+        if user_id and str(getattr(context, "user_id", "") or "") != str(user_id):
+            return None
+        return context
 
 
 def session_exists(session_id: str) -> bool:
@@ -574,13 +608,18 @@ def _save_report_to_store(report_id: str, report_data: Dict[str, Any]) -> bool:
         return True
 
 
-def _get_report_from_store(report_id: str) -> Optional[Dict[str, Any]]:
+def _get_report_from_store(report_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Get report from Redis or fallback to in-memory storage."""
     if session_store:
-        return session_store.get_report(report_id)
+        return session_store.get_report(report_id, user_id=user_id)
     else:
         # Fallback to in-memory
-        return next((r for r in saved_reports if r["id"] == report_id), None)
+        report = next((r for r in saved_reports if r["id"] == report_id), None)
+        if not report:
+            return None
+        if user_id and str(report.get("user_id") or "") != str(user_id):
+            return None
+        return report
 
 
 def _get_all_reports_from_store(limit: int = 100) -> List[Dict[str, Any]]:
@@ -592,14 +631,20 @@ def _get_all_reports_from_store(limit: int = 100) -> List[Dict[str, Any]]:
         return saved_reports[:limit]
 
 
-def _delete_report_from_store(report_id: str) -> bool:
+def _delete_report_from_store(report_id: str, user_id: Optional[str] = None) -> bool:
     """Delete report from Redis or fallback to in-memory storage."""
     if session_store:
-        return session_store.delete_report(report_id)
+        return session_store.delete_report(report_id, user_id=user_id)
     else:
         # Fallback to in-memory
         global saved_reports
-        report_index = next((i for i, r in enumerate(saved_reports) if r["id"] == report_id), None)
+        report_index = next(
+            (
+                i for i, r in enumerate(saved_reports)
+                if r["id"] == report_id and (not user_id or str(r.get("user_id") or "") == str(user_id))
+            ),
+            None,
+        )
         if report_index is not None:
             saved_reports.pop(report_index)
             return True
@@ -608,7 +653,7 @@ def _delete_report_from_store(report_id: str) -> bool:
 
 # Phase 4: Initialize Export and DD Workflow Router dependencies
 set_get_report_func(_get_report_from_store)
-set_session_funcs(session_exists, get_session, save_session)
+set_session_funcs(get_session, save_session)
 print("[main.py] ✅ Export Router and DD Workflow Router initialized")
 
 
@@ -629,6 +674,14 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
     DDWorkflowMessage with real-time progress updates
     """
     await websocket.accept()
+    token = (websocket.query_params.get("token") or "").strip()
+    try:
+        current_user = await resolve_user_from_token(token)
+    except Exception as auth_error:
+        print(f"[DD WS] Authentication failed: {auth_error}", flush=True)
+        await websocket.close(code=1008, reason="Authentication required")
+        return
+
     print(f"[DEBUG] WebSocket connection accepted", flush=True)
     session_id = ""
     
@@ -648,7 +701,7 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
         bp_file_base64 = initial_request.get("bp_file_base64")  # Legacy: base64 encoded file
         file_id = initial_request.get("file_id")  # V5: File ID from upload API
         bp_filename = initial_request.get("bp_filename", "business_plan.pdf")
-        user_id = initial_request.get("user_id", "default_user")
+        user_id = current_user.id
 
         # V5: Extract frontend configuration
         project_name = initial_request.get("project_name")
@@ -656,10 +709,17 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
         data_sources = initial_request.get("data_sources", [])
         priority = initial_request.get("priority", "normal")
         description = initial_request.get("description")
+        knowledge_config = initial_request.get("knowledge", {})
+        if not isinstance(knowledge_config, dict):
+            knowledge_config = {}
+        knowledge_enabled_raw = knowledge_config.get("enabled", initial_request.get("use_knowledge_base"))
+        knowledge_category = knowledge_config.get("category", initial_request.get("knowledge_category"))
+        knowledge_enabled = bool(knowledge_enabled_raw) if knowledge_enabled_raw is not None else False
 
         print(f"[DEBUG] company_name={company_name}, has_bp_base64={bp_file_base64 is not None}, file_id={file_id}", flush=True)
         print(f"[DEBUG] project_name={project_name}, selected_agents={selected_agents}", flush=True)
         print(f"[DEBUG] data_sources={data_sources}, priority={priority}", flush=True)
+        print(f"[DEBUG] knowledge_enabled={knowledge_enabled}, knowledge_category={knowledge_category}", flush=True)
 
         if not company_name:
             print(f"[DEBUG] Missing company_name, closing connection", flush=True)
@@ -678,6 +738,19 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
         if file_id:
             try:
                 print(f"[DEBUG] Loading file from File Service: {file_id}", flush=True)
+                try:
+                    if session_store:
+                        owner_user_id = session_store.get_uploaded_file_owner(file_id)
+                        if owner_user_id and str(owner_user_id) != str(user_id):
+                            await websocket.send_json({
+                                "status": "error",
+                                "message": "无权访问该上传文件"
+                            })
+                            await websocket.close(code=1008, reason="File ownership mismatch")
+                            return
+                except Exception as owner_check_error:
+                    print(f"[WARN] File ownership check failed for {file_id}: {owner_check_error}", flush=True)
+
                 # Load file from shared volume
                 file_path = f"/var/uploads/{file_id}"
 
@@ -730,7 +803,9 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
                 selected_agents=selected_agents,
                 data_sources=data_sources,
                 priority=priority,
-                description=description
+                description=description,
+                knowledge_enabled=knowledge_enabled,
+                knowledge_category=knowledge_category,
             )
             print(f"[DEBUG] DDStateMachine created successfully", flush=True)
         except Exception as create_error:
@@ -779,6 +854,7 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
                 saved_report = {
                     "id": report_id,
                     "session_id": session_id,
+                    "user_id": user_id,
                     "project_name": project_name or company_name,
                     "company_name": company_name,
                     "analysis_type": "due-diligence",
@@ -888,7 +964,7 @@ async def health_check():
     # Check LLM Gateway (optional - don't fail health check if down)
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get("http://llm_gateway:8003/health", timeout=2.0)
+            response = await client.get(f"{LLM_GATEWAY_URL}/health", timeout=2.0)
             if response.status_code == 200:
                 health_status["checks"]["llm_gateway"] = {
                     "status": "healthy",
@@ -971,6 +1047,15 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
     """
     await websocket.accept()
     print(f"[ROUNDTABLE] WebSocket connection accepted", flush=True)
+    current_user = None
+
+    token = (websocket.query_params.get("token") or "").strip()
+    try:
+        current_user = await resolve_user_from_token(token)
+    except Exception as auth_error:
+        print(f"[ROUNDTABLE] Authentication failed: {auth_error}", flush=True)
+        await websocket.close(code=1008, reason="Authentication required")
+        return
 
     # Import roundtable components
     from .core.roundtable import Meeting, Message
@@ -990,6 +1075,11 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
         create_quant_strategist,
         create_deal_structurer,
         create_ma_advisor
+    )
+    from .core.roundtable.mcp_tools import (
+        normalize_knowledge_category,
+        reset_roundtable_knowledge_preferences,
+        set_roundtable_knowledge_preferences,
     )
     from .core.agent_event_bus import AgentEventBus
 
@@ -1013,6 +1103,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
     }
 
     session_id = None
+    kb_preferences_token = None
 
     try:
         # Wait for initial request
@@ -1026,6 +1117,26 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
             company_name = initial_request.get("company_name", "目标公司")
             context = initial_request.get("context", {})
             language = initial_request.get("language", "en")  # Default to English for hybrid mode
+
+            knowledge_context = context.get("knowledge", {}) if isinstance(context, dict) else {}
+            if not isinstance(knowledge_context, dict):
+                knowledge_context = {}
+            knowledge_enabled_raw = knowledge_context.get("enabled")
+            if knowledge_enabled_raw is None and isinstance(context, dict):
+                knowledge_enabled_raw = context.get("use_knowledge_base")
+            knowledge_category_raw = knowledge_context.get("category")
+            if knowledge_category_raw is None and isinstance(context, dict):
+                knowledge_category_raw = context.get("knowledge_category")
+            knowledge_enabled = bool(knowledge_enabled_raw) if knowledge_enabled_raw is not None else False
+            knowledge_category = normalize_knowledge_category(knowledge_category_raw)
+            kb_preferences_token = set_roundtable_knowledge_preferences(
+                enabled=knowledge_enabled,
+                category=knowledge_category,
+            )
+            print(
+                f"[ROUNDTABLE] Knowledge config: enabled={knowledge_enabled}, category={knowledge_category or 'all'}",
+                flush=True,
+            )
 
             # Generate session ID
             session_id = f"roundtable_{company_name}_{uuid.uuid4().hex[:8]}"
@@ -1146,6 +1257,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
 
             # Store meeting in global dict for Human-in-the-Loop support
             active_meetings[session_id] = meeting
+            meeting._owner_user_id = current_user.id
             print(f"[ROUNDTABLE] Meeting stored with session_id: {session_id}", flush=True)
 
             # Link the meeting state to the meeting object
@@ -1276,6 +1388,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                     report_id = f"roundtable_{session_id}"
                     roundtable_report = {
                         "id": report_id,
+                        "user_id": current_user.id,
                         "type": "roundtable",  # 圆桌会议类型
                         "topic": topic,  # 讨论主题 (用于历史列表显示)
                         "title": topic,  # 兼容性字段
@@ -1289,7 +1402,11 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                             "max_rounds": max_rounds,
                             "num_agents": num_agents,
                             "agents": [a.name for a in agents],
-                            "language": language
+                            "language": language,
+                            "knowledge": {
+                                "enabled": knowledge_enabled,
+                                "category": knowledge_category or "all",
+                            },
                         },
                         "meeting_minutes": meeting_minutes,  # 会议纪要 (Markdown)
                         "discussion_summary": {
@@ -1369,6 +1486,13 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                 })
         except Exception as send_error:
             print(f"[ROUNDTABLE] Failed to send error message: {send_error}", flush=True)
+    finally:
+        if kb_preferences_token is not None:
+            reset_roundtable_knowledge_preferences(kb_preferences_token)
+        if session_id:
+            removed = active_meetings.pop(session_id, None)
+            if removed is not None:
+                print(f"[ROUNDTABLE] Cleaned up active meeting: {session_id}", flush=True)
 
 
 # ============================================================================
@@ -1418,6 +1542,13 @@ async def websocket_conversation_endpoint(websocket: WebSocket):
     """
     await websocket.accept()
     print(f"[CONVERSATION] WebSocket connection accepted", flush=True)
+    token = (websocket.query_params.get("token") or "").strip()
+    try:
+        current_user = await resolve_user_from_token(token)
+    except Exception as auth_error:
+        print(f"[CONVERSATION] Authentication failed: {auth_error}", flush=True)
+        await websocket.close(code=1008, reason="Authentication required")
+        return
 
     # Initialize intent recognizer and conversation manager
     intent_recognizer = IntentRecognizer(llm_gateway_url=LLM_GATEWAY_URL)
@@ -1473,7 +1604,13 @@ async def websocket_conversation_endpoint(websocket: WebSocket):
                 company_name = message.get("company_name", "")
                 bp_file_base64 = message.get("bp_file_base64")
                 bp_filename = message.get("bp_filename", "business_plan.pdf")
-                user_id = message.get("user_id", "default_user")
+                requested_user_id = message.get("user_id")
+                user_id = current_user.id
+                if requested_user_id and str(requested_user_id) != str(user_id):
+                    print(
+                        f"[CONVERSATION] Ignoring mismatched requested user_id={requested_user_id}; using authenticated user_id={user_id}",
+                        flush=True,
+                    )
 
                 if action == "start_dd_analysis":
                     # Start DD analysis workflow
@@ -1512,7 +1649,9 @@ async def websocket_conversation_endpoint(websocket: WebSocket):
                             company_name=company_name,
                             bp_file_content=bp_file_content,
                             bp_filename=bp_filename,
-                            user_id=user_id
+                            user_id=user_id,
+                            knowledge_enabled=bool(message.get("use_knowledge_base", False)),
+                            knowledge_category=message.get("knowledge_category"),
                         )
 
                         # Store session
@@ -1546,13 +1685,91 @@ async def websocket_conversation_endpoint(websocket: WebSocket):
                         "message": f"正在快速获取「{company_name}」的基本信息..."
                     })
 
-                    # TODO: Implement quick overview logic
-                    # For now, send a simple response
-                    await websocket.send_json({
-                        "type": "quick_overview_result",
-                        "company_name": company_name,
-                        "summary": "快速概览功能即将推出..."
-                    })
+                    try:
+                        async with httpx.AsyncClient(timeout=30.0) as client:
+                            # Step 1: Get company basic info
+                            await websocket.send_json({
+                                "type": "quick_overview_progress",
+                                "step": "fetching_data",
+                                "message": "正在获取公司数据..."
+                            })
+
+                            public_data_resp = await client.post(
+                                f"{EXTERNAL_DATA_URL}/get_company_info",
+                                json={"ticker": company_name}
+                            )
+
+                            if public_data_resp.status_code != 200:
+                                raise Exception(f"无法获取公司信息: {public_data_resp.status_code}")
+
+                            response_data = public_data_resp.json()
+
+                            # Handle ambiguity - return options to user
+                            if response_data.get('status') == 'multiple_options':
+                                await websocket.send_json({
+                                    "type": "quick_overview_ambiguity",
+                                    "company_name": company_name,
+                                    "options": response_data.get('data', []),
+                                    "message": "找到多个匹配的公司，请选择："
+                                })
+                                continue
+
+                            public_data = response_data.get('data', {})
+
+                            # Step 2: Generate quick summary with LLM
+                            await websocket.send_json({
+                                "type": "quick_overview_progress",
+                                "step": "generating_summary",
+                                "message": "正在生成概览..."
+                            })
+
+                            prompt = f"""请根据以下公司数据，生成一份简洁的快速概览（不超过200字）。
+包含：公司名称、主营业务、市值/估值、近期表现亮点。
+
+公司数据:
+{json.dumps(public_data, ensure_ascii=False, indent=2)}
+
+请用中文回复，格式简洁明了。"""
+
+                            summary = await call_llm_gateway(client, [{"role": "user", "parts": [prompt]}])
+
+                            # Build quick overview result
+                            overview_result = {
+                                "company_name": public_data.get('company_name', company_name),
+                                "ticker": public_data.get('ticker', company_name),
+                                "summary": summary,
+                                "key_metrics": {
+                                    "market_cap": public_data.get('market_cap'),
+                                    "sector": public_data.get('sector'),
+                                    "industry": public_data.get('industry'),
+                                    "price": public_data.get('current_price'),
+                                    "change_percent": public_data.get('price_change_percent'),
+                                },
+                                "generated_at": datetime.now().isoformat()
+                            }
+
+                            await websocket.send_json({
+                                "type": "quick_overview_result",
+                                "company_name": overview_result["company_name"],
+                                "ticker": overview_result["ticker"],
+                                "summary": overview_result["summary"],
+                                "key_metrics": overview_result["key_metrics"],
+                                "generated_at": overview_result["generated_at"]
+                            })
+
+                            print(f"[CONVERSATION] Quick overview completed for: {company_name}", flush=True)
+
+                    except Exception as overview_error:
+                        print(f"[CONVERSATION] Quick overview failed: {overview_error}", flush=True)
+                        import traceback
+                        traceback.print_exc()
+
+                        await websocket.send_json({
+                            "type": "quick_overview_error",
+                            "company_name": company_name,
+                            "error": str(overview_error),
+                            "message": f"快速概览获取失败: {str(overview_error)}"
+                        })
 
                 elif action == "free_chat":
                     # Free chat mode
@@ -1626,6 +1843,24 @@ async def websocket_analysis_v2(websocket: WebSocket, session_id: str):
     import asyncio
 
     await websocket.accept()
+    token = (websocket.query_params.get("token") or "").strip()
+    try:
+        current_user = await resolve_user_from_token(token)
+    except Exception as auth_error:
+        logger.warning(f"[V2 WS] Authentication failed for session={session_id}: {auth_error}")
+        await websocket.close(code=1008, reason="Authentication required")
+        return
+
+    # Ensure the pre-created session belongs to the authenticated user.
+    if session_store:
+        try:
+            existing = session_store.get_session(session_id, user_id=current_user.id)
+            if not existing and session_store.session_exists(session_id):
+                await websocket.close(code=1008, reason="Session ownership mismatch")
+                return
+        except Exception as store_err:
+            logger.warning(f"[V2 WS] Session ownership check skipped due to store error: {store_err}")
+
     logger.info(f"[V2 WS] Client connected: session={session_id}")
 
     # Stage 2: 心跳处理和消息路由
@@ -1684,6 +1919,7 @@ async def websocket_analysis_v2(websocket: WebSocket, session_id: str):
 
         # 解析请求
         request = AnalysisRequest(**analysis_request)
+        request = request.model_copy(update={"user_id": current_user.id})
 
         # 根据scenario创建对应的Orchestrator
         orchestrator = None
@@ -1751,7 +1987,7 @@ async def websocket_analysis_v2(websocket: WebSocket, session_id: str):
                     "error": str(e)
                 }
             })
-        except:
+        except Exception:
             pass
 
 

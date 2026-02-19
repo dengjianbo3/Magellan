@@ -95,7 +95,7 @@ class HTTPMCPConnection(MCPServerConnection):
             try:
                 response = await self.client.get("/health")
                 self.connected = response.status_code == 200
-            except:
+            except httpx.RequestError:
                 # 即使没有health端点，也认为连接成功
                 self.connected = True
             return self.connected
@@ -141,7 +141,7 @@ class HTTPMCPConnection(MCPServerConnection):
                 )
                 response.raise_for_status()
                 return response.json()
-            except:
+            except httpx.HTTPStatusError:
                 # 再尝试直接工具名
                 try:
                     response = await self.client.post(
@@ -150,7 +150,7 @@ class HTTPMCPConnection(MCPServerConnection):
                     )
                     response.raise_for_status()
                     return response.json()
-                except:
+                except httpx.HTTPStatusError:
                     return {
                         "success": False,
                         "error": f"HTTP error: {e.response.status_code}",
@@ -172,7 +172,7 @@ class HTTPMCPConnection(MCPServerConnection):
             response = await self.client.get("/tools")
             response.raise_for_status()
             return response.json().get("tools", [])
-        except:
+        except httpx.RequestError:
             # 返回配置中定义的工具
             return [{"name": t} for t in self.config.tools]
 
@@ -254,8 +254,8 @@ class MCPClient:
                 self.config[name] = MCPServerConfig(
                     name=name,
                     server_type=MCPServerType(server_config.get("type", "http")),
-                    url=server_config.get("url", ""),
-                    description=server_config.get("description", ""),
+                    url=self._resolve_value(server_config.get("url", "")),
+                    description=self._resolve_value(server_config.get("description", "")),
                     tools=server_config.get("tools", []),
                     auth=self._resolve_auth(server_config.get("auth", {})),
                     timeout=server_config.get("timeout", 30),
@@ -265,15 +265,21 @@ class MCPClient:
         except Exception as e:
             logger.error(f"Failed to load MCP config: {e}")
 
+    def _resolve_value(self, value: Any) -> Any:
+        """Resolve ${ENV_NAME} style values."""
+        if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+            expr = value[2:-1]
+            if ":-" in expr:
+                env_var, default = expr.split(":-", 1)
+                return os.environ.get(env_var, default)
+            return os.environ.get(expr, "")
+        return value
+
     def _resolve_auth(self, auth_config: Dict[str, str]) -> Dict[str, str]:
         """解析认证配置（支持环境变量）"""
         resolved = {}
         for key, value in auth_config.items():
-            if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
-                env_var = value[2:-1]
-                resolved[key] = os.environ.get(env_var, "")
-            else:
-                resolved[key] = value
+            resolved[key] = self._resolve_value(value)
         return resolved
 
     def register_server(self, config: MCPServerConfig):

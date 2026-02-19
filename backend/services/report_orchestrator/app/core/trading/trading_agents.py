@@ -7,7 +7,11 @@ Following the atomic agent design principle:
 - This module only orchestrates them with trading tools
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.core.trading.trading_tools import TradingToolkit
+
 from app.core.agent_registry import get_registry
 from app.core.roundtable.investment_agents import create_leader
 import logging
@@ -15,7 +19,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def create_trading_agents(toolkit=None) -> List[Any]:
+def create_trading_agents(toolkit: Optional["TradingToolkit"] = None) -> List[Any]:
     """
     Create trading agents by loading atomic agents from AgentRegistry
     and adding trading-specific tools.
@@ -62,7 +66,7 @@ def create_trading_agents(toolkit=None) -> List[Any]:
             # Pass language='en' for English output (better for LLM understanding)
             agent = registry.create_agent(agent_id, language='en')
             agents.append(agent)
-            logger.info(f"✅ Loaded agent '{agent_id}' -> name='{agent.name}', id='{agent.id}'")
+            logger.info(f"[OK] Loaded agent '{agent_id}' -> name='{agent.name}', id='{agent.id}'")
         except Exception as e:
             logger.error(f"Failed to load agent '{agent_id}' from registry: {e}")
             import traceback
@@ -80,7 +84,7 @@ def create_trading_agents(toolkit=None) -> List[Any]:
     # Register trading tools if toolkit provided
     if toolkit:
         analysis_tools = toolkit.get_analysis_tools()
-        # ❌ REMOVED: execution_tools - Leader no longer executes trades
+        # [FAIL] REMOVED: execution_tools - Leader no longer executes trades
         # execution_tools = toolkit.get_execution_tools()
 
         for agent in agents:

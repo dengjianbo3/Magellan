@@ -8,11 +8,11 @@ BP Parser Agent
 使用 Gemini 3 API 直接解析 PDF，不走 Kafka
 """
 import base64
-import os
 import logging
 from typing import Dict, Any
 
 from app.parsers.gemini_pdf_parser import get_gemini_parser
+from app.core.uploaded_file_locator import locate_uploaded_file
 
 logger = logging.getLogger(__name__)
 
@@ -55,25 +55,15 @@ class BPParserAgent:
         # Method 1: Read file from disk using file_id (preferred, avoids Kafka size limits)
         bp_file_id = target.get('bp_file_id')
         bp_content = None
-        
+
         if bp_file_id:
-            import os
-            UPLOAD_DIR = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
-                "uploads"
-            )
-            
-            # Find file with matching file_id prefix
-            for filename in os.listdir(UPLOAD_DIR):
-                if filename.startswith(bp_file_id):
-                    file_path = os.path.join(UPLOAD_DIR, filename)
-                    with open(file_path, 'rb') as f:
-                        bp_content = f.read()
-                    bp_filename = filename
-                    logger.info(f"📄 Loaded BP from disk: {file_path}, size: {len(bp_content)} bytes")
-                    break
-            
-            if not bp_content:
+            file_path = locate_uploaded_file(bp_file_id)
+            if file_path:
+                with open(file_path, 'rb') as f:
+                    bp_content = f.read()
+                bp_filename = bp_filename or file_path.rsplit("/", 1)[-1]
+                logger.info(f"📄 Loaded BP from disk: {file_path}, size: {len(bp_content)} bytes")
+            else:
                 logger.error(f"File not found for file_id: {bp_file_id}")
                 return {
                     "success": False,

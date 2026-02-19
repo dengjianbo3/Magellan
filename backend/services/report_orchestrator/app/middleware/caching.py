@@ -125,10 +125,23 @@ CACHE_CONFIG = {
 
 def generate_cache_key(request: Request) -> str:
     """Generate a unique cache key for a request."""
+    auth_scope = "public"
+    auth_header = request.headers.get("authorization") or ""
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+        if token:
+            auth_scope = hashlib.md5(token.encode()).hexdigest()[:16]
+    elif request.query_params.get("token"):
+        auth_scope = hashlib.md5(request.query_params.get("token", "").encode()).hexdigest()[:16]
+
+    filtered_query = sorted(
+        (k, v) for k, v in request.query_params.items() if k.lower() != "token"
+    )
     key_parts = [
         request.method,
         str(request.url.path),
-        str(sorted(request.query_params.items()))
+        str(filtered_query),
+        auth_scope,
     ]
     key_string = "|".join(key_parts)
     return hashlib.md5(key_string.encode()).hexdigest()

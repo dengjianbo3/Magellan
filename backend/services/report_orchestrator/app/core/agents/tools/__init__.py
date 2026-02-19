@@ -7,12 +7,6 @@ Agent 工具模块
 
 # 从现有实现导入工具
 from app.core.roundtable.tool import Tool
-from app.core.roundtable.analysis_tools import (
-    TavilySearchTool,
-    InternalKnowledgeTool,
-    create_tavily_search_tool,
-    create_internal_knowledge_tool
-)
 from app.core.roundtable.enhanced_tools import (
     YahooFinanceTool,
     SECEdgarTool,
@@ -25,12 +19,24 @@ from app.core.roundtable.mcp_tool_bridge import (
     create_mcp_tools,
     get_mcp_tool_for_agent
 )
+from app.core.roundtable.mcp_tools import TavilySearchTool, KnowledgeBaseTool
 from app.core.roundtable.serper_tool import SerperSearchTool
 
 from typing import Optional, Dict, Any, List
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Backward-compat alias: historical name used across some prompts/config.
+InternalKnowledgeTool = KnowledgeBaseTool
+
+
+def create_tavily_search_tool(max_results: int = 3) -> TavilySearchTool:
+    return TavilySearchTool(max_results=max_results)
+
+
+def create_internal_knowledge_tool(knowledge_service_url: Optional[str] = None) -> KnowledgeBaseTool:
+    return KnowledgeBaseTool(knowledge_service_url=knowledge_service_url)
 
 
 class AnalysisToolkit:
@@ -126,4 +132,3 @@ __all__ = [
     "AnalysisToolkit",
     "get_analysis_toolkit",
 ]
-

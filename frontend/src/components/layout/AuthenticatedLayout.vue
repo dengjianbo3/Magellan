@@ -1,28 +1,76 @@
 <template>
-  <div class="flex h-screen overflow-hidden">
-    <!-- Sidebar -->
-    <AppSidebar
-      :active-tab="currentTab"
-      @navigate="handleNavigate"
-      @start-analysis="handleStartAnalysis"
-    />
+  <div class="relative isolate flex h-screen overflow-hidden bg-background-dark">
+    <!-- Background decoration -->
+    <div class="pointer-events-none absolute inset-0 z-0">
+      <div class="absolute -left-40 -top-36 h-[420px] w-[420px] rounded-full bg-primary/10 blur-3xl"></div>
+      <div class="absolute -right-32 top-1/4 h-[320px] w-[320px] rounded-full bg-accent-cyan/10 blur-3xl"></div>
+      <div class="absolute bottom-0 left-1/3 h-[260px] w-[420px] -translate-x-1/2 rounded-full bg-primary-dark/10 blur-3xl"></div>
+    </div>
+
+    <!-- Desktop Sidebar -->
+    <div class="relative z-20 hidden h-full md:block">
+      <AppSidebar
+        :active-tab="currentTab"
+        @navigate="handleNavigate"
+        @start-analysis="handleStartAnalysis"
+      />
+    </div>
+
+    <!-- Mobile Sidebar Drawer -->
+    <transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div v-if="mobileSidebarOpen" class="fixed inset-0 z-[70] md:hidden">
+        <button
+          class="absolute inset-0 bg-black/60 backdrop-blur-[1px]"
+          aria-label="Close navigation"
+          @click="mobileSidebarOpen = false"
+        />
+        <div class="absolute inset-y-0 left-0">
+          <AppSidebar
+            :active-tab="currentTab"
+            @navigate="handleNavigate"
+            @start-analysis="handleStartAnalysis"
+          />
+        </div>
+      </div>
+    </transition>
 
     <!-- Main Content Area -->
-    <main class="flex-1 flex flex-col overflow-hidden relative">
+    <main class="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden">
       <!-- Top Bar -->
-      <header class="flex items-center justify-between px-8 py-5 bg-background-dark/60 backdrop-blur-md border-b border-white/5 z-40">
-        <div class="flex items-center gap-3">
-          <h2 class="text-2xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-text-secondary tracking-tight">{{ currentPageTitle }}</h2>
+      <header class="sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-white/10 bg-background-dark/75 px-4 py-4 backdrop-blur-xl md:px-8 md:py-5">
+        <div class="flex min-w-0 items-center gap-3">
+          <button
+            class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-text-secondary transition-colors hover:text-text-primary md:hidden"
+            aria-label="Open navigation"
+            @click="toggleMobileSidebar"
+          >
+            <span class="material-symbols-outlined">menu</span>
+          </button>
+          <div class="min-w-0">
+            <h2 class="truncate text-xl font-display font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-text-secondary md:text-2xl">
+              {{ currentPageTitle }}
+            </h2>
+            <p class="hidden truncate text-xs text-text-tertiary sm:block">
+              {{ currentPageSubtitle }}
+            </p>
+          </div>
         </div>
 
-        <div class="flex items-center gap-6">
+        <div class="flex items-center gap-3 md:gap-5">
           <!-- Search -->
-          <div class="relative group">
+          <div class="relative hidden group lg:block">
             <div class="absolute inset-0 bg-primary/20 blur-md rounded-lg opacity-0 group-focus-within:opacity-100 transition-opacity duration-500"></div>
             <input
               type="text"
               placeholder="Search..."
-              class="relative z-10 w-64 px-4 py-2 pl-10 rounded-lg bg-white/5 border border-white/10 text-text-primary placeholder-text-secondary focus:outline-none focus:border-primary/50 focus:bg-surface/50 transition-all duration-300"
+              class="relative z-10 w-56 rounded-lg border border-white/10 bg-white/5 px-4 py-2 pl-10 text-text-primary placeholder-text-secondary transition-all duration-300 focus:bg-surface/50 focus:outline-none focus:border-primary/50 xl:w-72"
             />
             <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary z-20">
               search
@@ -30,7 +78,7 @@
           </div>
 
           <!-- Notifications -->
-          <button class="relative p-2 rounded-lg hover:bg-white/5 transition-colors group">
+          <button class="relative hidden rounded-lg p-2 transition-colors group hover:bg-white/5 sm:inline-flex">
             <span class="material-symbols-outlined text-text-secondary group-hover:text-primary transition-colors">
               notifications
             </span>
@@ -41,16 +89,16 @@
           <div class="relative" ref="userMenuRef">
             <button
               @click="toggleUserMenu"
-              class="flex items-center gap-3 pl-6 border-l border-white/10 hover:bg-white/5 rounded-lg px-3 py-2 transition-colors"
+              class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-2 transition-colors hover:bg-white/10 md:gap-3 md:px-3"
             >
               <div class="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center shadow-glow-sm border border-white/10">
                 <span class="text-white text-sm font-bold">{{ userInitials }}</span>
               </div>
-              <div class="flex flex-col text-left">
+              <div class="hidden text-left md:flex md:flex-col">
                 <p class="text-sm font-semibold text-text-primary tracking-wide">{{ displayName }}</p>
                 <p class="text-xs text-primary font-medium">{{ displayRole }}</p>
               </div>
-              <span class="material-symbols-outlined text-text-secondary text-sm">
+              <span class="material-symbols-outlined hidden text-sm text-text-secondary md:inline-flex">
                 {{ showUserMenu ? 'expand_less' : 'expand_more' }}
               </span>
             </button>
@@ -92,15 +140,17 @@
       </header>
 
       <!-- Content Area -->
-      <div class="flex-1 overflow-auto p-8 scroll-smooth">
-        <router-view />
+      <div class="flex-1 overflow-auto px-4 pb-8 pt-5 scroll-smooth md:px-8 md:pb-10 md:pt-6">
+        <div class="mx-auto w-full max-w-[1520px]">
+          <router-view />
+        </div>
       </div>
     </main>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useI18n } from '@/i18n';
@@ -112,6 +162,7 @@ const authStore = useAuthStore();
 const { t } = useI18n();
 
 const showUserMenu = ref(false);
+const mobileSidebarOpen = ref(false);
 const userMenuRef = ref(null);
 
 // Page titles mapping
@@ -124,6 +175,17 @@ const pageTitles = {
   Agents: 'AI Agents',
   Knowledge: 'Knowledge Base',
   Settings: 'Settings'
+};
+
+const pageSubtitles = {
+  Dashboard: 'Overview and key operational metrics',
+  ReportsView: 'Generated analyses and exported documents',
+  AnalysisWizard: 'Configure and run scenario-based analysis',
+  Roundtable: 'Multi-agent expert discussion workspace',
+  AutoTrading: 'Automated strategy monitoring and execution',
+  Agents: 'AI agent capabilities and status',
+  Knowledge: 'Uploaded documents and retrieval controls',
+  Settings: 'Account and system preferences'
 };
 
 // Computed properties
@@ -142,14 +204,15 @@ const currentTab = computed(() => {
 });
 
 const currentPageTitle = computed(() => pageTitles[route.name] || 'Dashboard');
+const currentPageSubtitle = computed(() => pageSubtitles[route.name] || '');
 
 const displayName = computed(() => authStore.userName || 'User');
 const displayRole = computed(() => {
   const roleMap = {
-    admin: '系统管理员',
-    institution: '机构用户',
-    analyst: '投资分析师',
-    guest: '访客'
+    admin: t('roles.admin') || 'System Administrator',
+    institution: t('roles.institution') || 'Institution User',
+    analyst: t('roles.analyst') || 'Investment Analyst',
+    guest: t('roles.guest') || 'Guest'
   };
   return roleMap[authStore.userRole] || authStore.userRole;
 });
@@ -170,6 +233,10 @@ const toggleUserMenu = () => {
   showUserMenu.value = !showUserMenu.value;
 };
 
+const toggleMobileSidebar = () => {
+  mobileSidebarOpen.value = !mobileSidebarOpen.value;
+};
+
 const handleClickOutside = (event) => {
   if (userMenuRef.value && !userMenuRef.value.contains(event.target)) {
     showUserMenu.value = false;
@@ -177,6 +244,7 @@ const handleClickOutside = (event) => {
 };
 
 const handleNavigate = (tabId) => {
+  mobileSidebarOpen.value = false;
   const tabToRoute = {
     dashboard: 'Dashboard',
     reports: 'ReportsView',
@@ -191,6 +259,7 @@ const handleNavigate = (tabId) => {
 };
 
 const handleStartAnalysis = () => {
+  mobileSidebarOpen.value = false;
   router.push({ name: 'AnalysisWizard' });
 };
 
@@ -213,4 +282,11 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside);
 });
+
+watch(
+  () => route.fullPath,
+  () => {
+    mobileSidebarOpen.value = false;
+  }
+);
 </script>

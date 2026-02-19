@@ -16,7 +16,10 @@ matplotlib.use('Agg')  # Use non-interactive backend for server-side generation
 
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
-import seaborn as sns
+try:
+    import seaborn as sns
+except Exception:  # Optional dependency in some dev/test setups
+    sns = None
 import numpy as np
 from typing import Dict, Any, List, Union
 import io
@@ -28,7 +31,11 @@ OutputPath = Union[str, io.BytesIO]
 logger = logging.getLogger(__name__)
 
 # Set style for professional charts
-sns.set_style("whitegrid")
+if sns is not None:
+    sns.set_style("whitegrid")
+else:
+    # Keep imports working even when seaborn isn't installed.
+    plt.style.use("default")
 
 # Configure fonts for Chinese support
 # Search for available Chinese fonts in the system
@@ -121,6 +128,42 @@ class ChartGenerator:
         plt.close(fig)
         return output_path
 
+    def generate_empty_chart(self, message: str, output_path: OutputPath) -> OutputPath:
+        """Generate a truthful empty-state chart instead of demo/sample data."""
+        fig, ax = plt.subplots(figsize=(10, 4))
+        ax.axis("off")
+        ax.text(
+            0.5,
+            0.55,
+            message,
+            ha="center",
+            va="center",
+            fontsize=14,
+            fontweight="bold",
+            color="#E5E7EB",
+            wrap=True,
+        )
+        hint = "Provide more structured numbers in the report to enable charts." if self.language == "en" else "请在报告中包含结构化数字信息以启用图表。"
+        ax.text(
+            0.5,
+            0.35,
+            hint,
+            ha="center",
+            va="center",
+            fontsize=10,
+            color="#9CA3AF",
+            wrap=True,
+        )
+        return self._save_figure(fig, output_path)
+
+    @staticmethod
+    def _require_series(name: str, values: Any) -> List[Any]:
+        if values is None:
+            raise ValueError(f"Missing required field: {name}")
+        if not isinstance(values, (list, tuple)) or len(values) == 0:
+            raise ValueError(f"Missing required series: {name}")
+        return list(values)
+
     def generate_revenue_chart(
         self,
         financial_data: Dict[str, Any],
@@ -139,9 +182,11 @@ class ChartGenerator:
         """
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Extract revenue data
-        years = financial_data.get('years', [2021, 2022, 2023])
-        revenue = financial_data.get('revenue', [1000000, 1500000, 2200000])
+        # Extract revenue data (no demo defaults)
+        years = self._require_series("years", financial_data.get("years"))
+        revenue = self._require_series("revenue", financial_data.get("revenue"))
+        if len(years) != len(revenue):
+            raise ValueError("years and revenue length mismatch")
 
         # Plot
         ax.plot(years, revenue, marker='o', linewidth=3, markersize=10, color=self.color_palette['primary'])
@@ -189,10 +234,12 @@ class ChartGenerator:
         """
         fig, ax = plt.subplots(figsize=(10, 6))
 
-        # Extract profit data
-        years = financial_data.get('years', [2021, 2022, 2023])
-        gross_margin = financial_data.get('gross_margin', [0.45, 0.52, 0.58])
-        net_margin = financial_data.get('net_margin', [0.15, 0.22, 0.28])
+        # Extract profit data (no demo defaults)
+        years = self._require_series("years", financial_data.get("years"))
+        gross_margin = self._require_series("gross_margin", financial_data.get("gross_margin"))
+        net_margin = self._require_series("net_margin", financial_data.get("net_margin"))
+        if not (len(years) == len(gross_margin) == len(net_margin)):
+            raise ValueError("years/gross_margin/net_margin length mismatch")
 
         x = np.arange(len(years))
         width = 0.35
@@ -263,6 +310,9 @@ class ChartGenerator:
                 categories.append(label)
                 scores.append(health_metrics[key] * 100)  # Convert to 0-100 scale
 
+        if not categories:
+            raise ValueError("No health metrics available")
+
         # Create horizontal bar chart
         colors = [self.color_palette['success'] if s >= 70 else
                  self.color_palette['warning'] if s >= 50 else
@@ -308,9 +358,11 @@ class ChartGenerator:
         """
         fig, ax = plt.subplots(figsize=(10, 8))
 
-        # Extract data
-        companies = market_data.get('companies', ['Target Company', 'Competitor A', 'Competitor B', 'Others'])
-        shares = market_data.get('shares', [15, 25, 20, 40])
+        # Extract data (no demo defaults)
+        companies = self._require_series("companies", market_data.get("companies"))
+        shares = self._require_series("shares", market_data.get("shares"))
+        if len(companies) != len(shares):
+            raise ValueError("companies and shares length mismatch")
 
         # Create pie chart
         colors = [self.color_palette['primary'], self.color_palette['info'],
@@ -350,10 +402,17 @@ class ChartGenerator:
         """
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Extract data
-        years = market_data.get('years', [2019, 2020, 2021, 2022, 2023])
-        market_size = market_data.get('market_size', [500, 650, 850, 1100, 1400])  # in millions
-        growth_rate = market_data.get('growth_rate', [None, 30, 31, 29, 27])  # YoY %
+        # Extract data (no demo defaults)
+        years = self._require_series("years", market_data.get("years"))
+        market_size = self._require_series("market_size", market_data.get("market_size"))
+        growth_rate = market_data.get("growth_rate")
+        if len(years) != len(market_size):
+            raise ValueError("years and market_size length mismatch")
+        # growth_rate is optional; if provided, it must align with years length
+        if growth_rate is not None:
+            growth_rate = self._require_series("growth_rate", growth_rate)
+            if len(growth_rate) != len(years):
+                raise ValueError("growth_rate length mismatch")
 
         # Create dual-axis chart
         color1 = self.color_palette['primary']
@@ -366,8 +425,13 @@ class ChartGenerator:
 
         # Growth rate line (secondary axis)
         ax2 = ax.twinx()
-        ax2.plot(years[1:], growth_rate[1:], marker='s', linewidth=2, markersize=8,
-                color=color2, linestyle='--', label='Growth Rate' if self.language == 'en' else '增长率')
+        if growth_rate is not None:
+            # Accept either raw % values or 0-1, normalize into %.
+            gr = [float(x) for x in growth_rate]
+            if max(gr) <= 2.0:
+                gr = [x * 100.0 for x in gr]
+            ax2.plot(years, gr, marker='s', linewidth=2, markersize=8,
+                    color=color2, linestyle='--', label='Growth Rate' if self.language == 'en' else '增长率')
 
         # Labels and title
         title = "Market Growth Trend" if self.language == "en" else "市场增长趋势"
@@ -412,14 +476,18 @@ class ChartGenerator:
         fig, ax = plt.subplots(figsize=(10, 8))
 
         # Extract risk data
+        if not risks:
+            raise ValueError("No risk data available")
         probabilities = []
         impacts = []
         labels = []
 
         for risk in risks:
-            prob = risk.get('probability', 0.5)  # 0-1 scale
-            impact = risk.get('impact', 0.5)     # 0-1 scale
-            name = risk.get('name', 'Unknown Risk')
+            if "probability" not in risk or "impact" not in risk:
+                raise ValueError("Risk item missing probability/impact")
+            prob = float(risk["probability"])  # 0-1 scale preferred
+            impact = float(risk["impact"])     # 0-1 scale preferred
+            name = str(risk.get('name') or 'Risk')
 
             probabilities.append(prob * 100)  # Convert to 0-100
             impacts.append(impact * 100)
@@ -510,6 +578,9 @@ class ChartGenerator:
             if key in team_scores:
                 categories.append(label)
                 scores.append(team_scores[key] * 10)  # Convert to 0-10 scale
+
+        if not categories:
+            raise ValueError("No team score data available")
 
         # Number of variables
         num_vars = len(categories)

@@ -161,10 +161,16 @@ class BaseOrchestrator(ABC):
         核心协调逻辑 - 主入口
         """
         try:
+            # Persist an initial snapshot so /status can recover even if the WS disconnects early.
+            # Do NOT save as report here (only saved on completion).
+            await self._save_session(status_override="initializing")
+
             # 1. 验证目标
             await self._send_status("initializing", f"正在验证{self.scenario.value}分析目标...")
             if not await self._validate_target():
                 raise ValueError("分析目标验证失败")
+
+            await self._save_session(status_override="running")
 
             # 2. 根据depth选择执行路径
             if self.request.config.depth == AnalysisDepth.QUICK:
@@ -191,6 +197,7 @@ class BaseOrchestrator(ABC):
         # 构建快速workflow
         self.workflow = self._build_workflow_from_templates(self.workflow_templates)
         await self._send_workflow_start()
+        await self._save_session(status_override="running")
 
         # 执行快速workflow
         for step in self.workflow:
@@ -298,6 +305,7 @@ class BaseOrchestrator(ABC):
         # 构建workflow
         self.workflow = await self._build_workflow()
         await self._send_workflow_start()
+        await self._save_session(status_override="running")
 
         # 执行工作流
         for step in self.workflow:
@@ -390,7 +398,7 @@ class BaseOrchestrator(ABC):
                     "target": self.request.target,
                     "results": self.results
                 })
-            except:
+            except Exception:
                 return False
 
         return True
@@ -422,6 +430,7 @@ class BaseOrchestrator(ABC):
         step.status = "running"
         step.started_at = datetime.now().isoformat()
         await self._send_step_start(step)
+        await self._save_session(status_override="running")
 
         try:
             # 获取对应的模板
@@ -442,6 +451,7 @@ class BaseOrchestrator(ABC):
             self.results[step.id] = result
 
             await self._send_step_complete(step)
+            await self._save_session(status_override="running")
 
         except Exception as e:
             step.status = "error"
@@ -449,6 +459,7 @@ class BaseOrchestrator(ABC):
             step.completed_at = datetime.now().isoformat()
 
             await self._send_step_error(step, str(e))
+            await self._save_session(status_override="error", error=str(e))
             raise
 
     def _get_step_template(self, step_id: str) -> Optional[WorkflowStepTemplate]:
@@ -558,7 +569,7 @@ class BaseOrchestrator(ABC):
             "objective": step.name,
             "inputs": inputs,
             "target": self.request.target,
-            "config": self.request.config.dict(),
+            "config": self.request.config.model_dump(),
             "data_sources": template.data_sources,
             "quick_mode": template.quick_mode,
             "context": {
@@ -743,30 +754,36 @@ class BaseOrchestrator(ABC):
     async def _save_session(
         self,
         quick_judgment: Optional[Dict[str, Any]] = None,
-        final_report: Optional[Dict[str, Any]] = None
+        final_report: Optional[Dict[str, Any]] = None,
+        status_override: Optional[str] = None,
+        error: Optional[str] = None,
     ):
         """
         保存session和report到Redis
         """
         try:
             # Construct session context
+            status = status_override or ("completed" if (final_report or quick_judgment) else "running")
             context = {
                 "session_id": self.session_id,
+                "user_id": self.request.user_id,
                 "scenario": self.scenario.value,
-                "request": self.request.dict(),
-                "status": "completed" if (final_report or quick_judgment) else "running",
+                "request": self.request.model_dump(),
+                "status": status,
                 "results": self.results,
-                "workflow": [step.dict() for step in self.workflow],
+                "workflow": [step.model_dump() for step in self.workflow],
                 "started_at": self.started_at,
                 "updated_at": datetime.now().isoformat()
             }
+            if error:
+                context["error"] = error
 
             if quick_judgment:
                 # Handle Pydantic models in quick_judgment
-                if hasattr(quick_judgment, 'dict'):
+                if hasattr(quick_judgment, 'model_dump'):
+                    context["quick_judgment"] = quick_judgment.model_dump()
+                elif hasattr(quick_judgment, 'dict'):
                     context["quick_judgment"] = quick_judgment.dict()
-                elif hasattr(quick_judgment, 'model_dump'):
-                     context["quick_judgment"] = quick_judgment.model_dump()
                 else:
                     context["quick_judgment"] = quick_judgment
             
@@ -781,22 +798,23 @@ class BaseOrchestrator(ABC):
                 # Prepare quick_judgment data for report
                 qj_data = {}
                 if quick_judgment:
-                    if hasattr(quick_judgment, 'dict'):
-                        qj_data = quick_judgment.dict()
-                    elif hasattr(quick_judgment, 'model_dump'):
+                    if hasattr(quick_judgment, 'model_dump'):
                         qj_data = quick_judgment.model_dump()
+                    elif hasattr(quick_judgment, 'dict'):
+                        qj_data = quick_judgment.dict()
                     else:
                         qj_data = quick_judgment
 
                 report_data = {
                     "id": self.session_id, # Use session_id as report_id for simplicity
                     "session_id": self.session_id,
+                    "user_id": self.request.user_id,
                     "project_name": self.request.project_name,
                     "company_name": self.request.target.get("company_name") or self.request.target.get("target_name") or self.request.target.get("ticker") or "Unknown Target",
                     "analysis_type": self.scenario.value,
                     "status": "completed",
                     "created_at": datetime.now().isoformat(),
-                    "steps": [step.dict() for step in self.workflow],
+                    "steps": [step.model_dump() for step in self.workflow],
                     "preliminary_im": final_report if final_report else {}, # Map final report structure here
                     "quick_judgment": qj_data
                 }

@@ -6,9 +6,17 @@ Report Storage Service
 """
 
 import logging
+import os
 from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    v = os.getenv(name)
+    if v is None:
+        return default
+    return str(v).strip().lower() in ("1", "true", "yes", "on")
 
 
 class ReportStorage:
@@ -28,6 +36,10 @@ class ReportStorage:
         self._session_store = session_store
         self._memory_storage: List[Dict[str, Any]] = []  # 内存回退存储
         self._use_redis = session_store is not None
+        self._allow_memory_fallback = _env_bool("REPORT_STORAGE_ALLOW_MEMORY_FALLBACK", True)
+
+        if not self._use_redis and not self._allow_memory_fallback:
+            raise RuntimeError("Redis is required for report storage (REPORT_STORAGE_ALLOW_MEMORY_FALLBACK=false)")
 
         if self._use_redis:
             logger.info("ReportStorage initialized with Redis backend")
@@ -56,6 +68,8 @@ class ReportStorage:
                 return self._session_store.save_report(report_id, report_data, ttl_days=ttl_days)
             except Exception as e:
                 logger.error(f"Failed to save report to Redis: {e}")
+                if not self._allow_memory_fallback:
+                    raise
                 # Fall through to memory storage
                 self._use_redis = False
 
@@ -71,7 +85,7 @@ class ReportStorage:
             self._memory_storage.append(report_data)
         return True
 
-    def get(self, report_id: str) -> Optional[Dict[str, Any]]:
+    def get(self, report_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         获取单个报告
 
@@ -83,15 +97,22 @@ class ReportStorage:
         """
         if self._use_redis:
             try:
-                return self._session_store.get_report(report_id)
+                return self._session_store.get_report(report_id, user_id=user_id)
             except Exception as e:
                 logger.error(f"Failed to get report from Redis: {e}")
+                if not self._allow_memory_fallback:
+                    raise
                 self._use_redis = False
 
         # 内存存储
-        return next((r for r in self._memory_storage if r.get("id") == report_id), None)
+        report = next((r for r in self._memory_storage if r.get("id") == report_id), None)
+        if not report:
+            return None
+        if user_id is not None and str(report.get("user_id") or "") != str(user_id):
+            return None
+        return report
 
-    def get_all(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_all(self, limit: int = 100, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         获取所有报告
 
@@ -103,15 +124,20 @@ class ReportStorage:
         """
         if self._use_redis:
             try:
-                return self._session_store.get_all_reports(limit=limit)
+                return self._session_store.get_all_reports(limit=limit, user_id=user_id)
             except Exception as e:
                 logger.error(f"Failed to get all reports from Redis: {e}")
+                if not self._allow_memory_fallback:
+                    raise
                 self._use_redis = False
 
         # 内存存储
-        return self._memory_storage[:limit]
+        if user_id is None:
+            return self._memory_storage[:limit]
+        filtered = [r for r in self._memory_storage if str(r.get("user_id") or "") == str(user_id)]
+        return filtered[:limit]
 
-    def delete(self, report_id: str) -> bool:
+    def delete(self, report_id: str, user_id: Optional[str] = None) -> bool:
         """
         删除报告
 
@@ -123,14 +149,19 @@ class ReportStorage:
         """
         if self._use_redis:
             try:
-                return self._session_store.delete_report(report_id)
+                return self._session_store.delete_report(report_id, user_id=user_id)
             except Exception as e:
                 logger.error(f"Failed to delete report from Redis: {e}")
+                if not self._allow_memory_fallback:
+                    raise
                 self._use_redis = False
 
         # 内存存储
         report_index = next(
-            (i for i, r in enumerate(self._memory_storage) if r.get("id") == report_id),
+            (
+                i for i, r in enumerate(self._memory_storage)
+                if r.get("id") == report_id and (user_id is None or str(r.get("user_id") or "") == str(user_id))
+            ),
             None
         )
         if report_index is not None:
@@ -138,14 +169,16 @@ class ReportStorage:
             return True
         return False
 
-    def count(self) -> int:
+    def count(self, user_id: Optional[str] = None) -> int:
         """获取报告总数"""
         if self._use_redis:
             try:
-                return len(self._session_store.get_all_reports(limit=10000))
+                return len(self._session_store.get_all_reports(limit=10000, user_id=user_id))
             except Exception:
                 pass
-        return len(self._memory_storage)
+        if user_id is None:
+            return len(self._memory_storage)
+        return len([r for r in self._memory_storage if str(r.get("user_id") or "") == str(user_id)])
 
 
 # 单例实例

@@ -3,11 +3,12 @@
 Team Analysis Agent for Team Due Diligence (TDD).
 团队分析 Agent，用于团队尽职调查
 """
-import httpx
 import json
 import re
 from typing import List, Dict, Any
 from ..models.dd_models import TeamMember, TeamAnalysisOutput
+from ..services.web_search_access import search_web as shared_search_web
+from ..core.llm_helper import LLMHelper
 
 
 class TeamAnalysisAgent:
@@ -17,6 +18,7 @@ class TeamAnalysisAgent:
         self.external_data_url = external_data_url
         self.web_search_url = web_search_url
         self.llm_gateway_url = llm_gateway_url
+        self.llm = LLMHelper(llm_gateway_url=self.llm_gateway_url, timeout=120)
         # V4: EventBus for real-time updates (set by caller)
         self.event_bus = None
     
@@ -85,34 +87,31 @@ class TeamAnalysisAgent:
     ) -> List[Dict[str, Any]]:
         """Search for team background information using Web Search Service"""
         all_results = []
-        
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            # Search for each key team member
-            for member in team_members[:3]:  # Limit to top 3 members to save time
-                query = f"{member.name} {company_name} {member.title} background"
-                
-                try:
-                    response = await client.post(
-                        f"{self.web_search_url}/search",
-                        json={"query": query, "max_results": 3}
-                    )
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        results = data.get("results", [])
-                        all_results.extend([
-                            {
-                                "member_name": member.name,
-                                "title": r.get("title", ""),
-                                "url": r.get("url", ""),
-                                "content": r.get("content", ""),
-                                "score": r.get("score", 0.0)
-                            }
-                            for r in results
-                        ])
-                except Exception as e:
-                    print(f"Warning: Web search failed for {member.name}: {e}")
-                    continue
+
+        # Search for each key team member
+        for member in team_members[:3]:  # Limit to top 3 members to save time
+            query = f"{member.name} {company_name} {member.title} background"
+
+            try:
+                results = await shared_search_web(
+                    self.web_search_url,
+                    query=query,
+                    max_results=3,
+                    timeout=60.0,
+                )
+                all_results.extend([
+                    {
+                        "member_name": member.name,
+                        "title": r.get("title", ""),
+                        "url": r.get("url", ""),
+                        "content": r.get("content", ""),
+                        "score": r.get("score", 0.0)
+                    }
+                    for r in results
+                ])
+            except Exception as e:
+                print(f"Warning: Web search failed for {member.name}: {e}")
+                continue
         
         return all_results
     
@@ -210,39 +209,27 @@ class TeamAnalysisAgent:
     
     async def _call_llm(self, prompt: str) -> str:
         """Call LLM Gateway for analysis"""
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            try:
-                response = await client.post(
-                    f"{self.llm_gateway_url}/chat",
-                    json={
-                        "history": [
-                            {"role": "user", "parts": [prompt]}
-                        ]
-                    }
-                )
+        result = await self.llm.call(prompt=prompt, response_format="text")
+        if "content" in result:
+            return result["content"]
 
-                if response.status_code != 200:
-                    raise Exception(f"LLM Gateway returned {response.status_code}: {response.text}")
-
-                result = response.json()
-                return result.get("content", "")
-            except httpx.RemoteProtocolError as e:
-                print(f"[Team Agent] LLM server disconnected: {e}", flush=True)
-                return """```json
-{
-    "summary": "由于LLM服务暂时不可用，无法完成完整的团队分析。",
-    "strengths": [],
-    "concerns": ["LLM服务连接失败"],
-    "experience_match_score": 5.0
-}
-```"""
-            except httpx.TimeoutException as e:
-                print(f"[Team Agent] LLM request timeout: {e}", flush=True)
-                return """```json
+        if result.get("error") == "timeout":
+            print("[Team Agent] LLM request timeout", flush=True)
+            return """```json
 {
     "summary": "LLM请求超时，无法完成团队分析。",
     "strengths": [],
     "concerns": ["分析请求超时"],
+    "experience_match_score": 5.0
+}
+```"""
+
+        print(f"[Team Agent] LLM call failed: {result}", flush=True)
+        return """```json
+{
+    "summary": "由于LLM服务暂时不可用，无法完成完整的团队分析。",
+    "strengths": [],
+    "concerns": ["LLM服务连接失败"],
     "experience_match_score": 5.0
 }
 ```"""

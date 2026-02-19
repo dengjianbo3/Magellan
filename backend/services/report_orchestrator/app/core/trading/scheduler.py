@@ -12,18 +12,9 @@ from datetime import datetime, timedelta
 from typing import Optional, Callable, Any, Dict
 from enum import Enum
 
+from app.core.trading.trading_config import get_env_int as _get_env_int
+
 logger = logging.getLogger(__name__)
-
-
-def _get_env_int(key: str, default: int) -> int:
-    """Get integer from environment variable"""
-    val = os.getenv(key)
-    if val:
-        try:
-            return int(val)
-        except ValueError:
-            pass
-    return default
 
 
 class SchedulerState(Enum):
@@ -215,6 +206,9 @@ class TradingScheduler:
                     )
                 except asyncio.TimeoutError:
                     logger.error("Scheduled analysis cycle timed out after 1 hour")
+                    # 🔧 FIX: Reset state to RUNNING so scheduler doesn't get stuck
+                    self._set_state(SchedulerState.RUNNING)
+                    logger.info("[Scheduler] State reset to RUNNING after timeout")
 
             except asyncio.CancelledError:
                 logger.info("Scheduler loop cancelled")
@@ -245,12 +239,12 @@ class TradingScheduler:
                     reason=reason,
                     timestamp=self._last_run
                 )
-                logger.info(f"✅ Analysis cycle #{self._run_count} completed successfully")
+                logger.info(f"[OK] Analysis cycle #{self._run_count} completed successfully")
             else:
                 logger.warning("No analysis callback registered")
 
         except Exception as e:
-            logger.error(f"❌ Error in analysis cycle #{self._run_count}: {e}", exc_info=True)
+            logger.error(f"[FAIL] Error in analysis cycle #{self._run_count}: {e}", exc_info=True)
 
         finally:
             if not self._stop_event.is_set():
@@ -313,7 +307,13 @@ class CooldownManager:
                 return False
         else:
             self._consecutive_losses = 0
-            logger.info("Win recorded, consecutive loss counter reset")
+            # 🔧 FIX: A winning trade should also end any active cooldown
+            if self._in_cooldown:
+                self._in_cooldown = False
+                self._cooldown_until = None
+                logger.info("Win during cooldown — cooldown ended early")
+            else:
+                logger.info("Win recorded, consecutive loss counter reset")
 
         return True
 

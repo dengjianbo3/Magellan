@@ -5,7 +5,7 @@ Analysis Module V2 - 统一数据模型
 
 from enum import Enum
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ============ 枚举定义 ============
@@ -46,6 +46,32 @@ class RecommendationType(str, Enum):
     BUY = "BUY"                  # 建议投资
     PASS = "PASS"                # 不建议投资
     FURTHER_DD = "FURTHER_DD"    # 建议深入尽调
+
+
+class KnowledgeBaseConfig(BaseModel):
+    """知识库检索配置"""
+    enabled: bool = False
+    category: str = Field("all", description="知识库类别过滤: all/general/financial/market/legal")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_fields(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        normalized = dict(data)
+        if "enabled" not in normalized and "useKnowledgeBase" in normalized:
+            normalized["enabled"] = bool(normalized["useKnowledgeBase"])
+        if "category" not in normalized and "knowledgeCategory" in normalized:
+            normalized["category"] = normalized["knowledgeCategory"]
+
+        category = normalized.get("category")
+        if not isinstance(category, str):
+            normalized["category"] = "all"
+        else:
+            cleaned = category.strip().lower()
+            normalized["category"] = cleaned if cleaned else "all"
+        return normalized
 
 
 # ============ Target Models (5个场景的目标对象) ============
@@ -104,12 +130,39 @@ class AnalysisConfig(BaseModel):
     selected_agents: List[str] = Field(default_factory=list)
     data_sources: List[str] = Field(default_factory=list)
     language: str = Field("zh", description="报告语言")
+    knowledge: KnowledgeBaseConfig = Field(default_factory=KnowledgeBaseConfig, description="知识库检索配置")
 
     # 场景专属参数 (支持各场景的特定配置)
     scenario_params: Dict[str, Any] = Field(
         default_factory=dict,
         description="场景特定参数,如早期投资的priority/risk_appetite、成长期的growth_model等"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_fields(cls, data: Any) -> Any:
+        """
+        Backward compatibility for older clients:
+        - `mode` -> `depth`
+        - `focusAreas` -> `focus_areas`
+        """
+        if not isinstance(data, dict):
+            return data
+
+        normalized = dict(data)
+        if "depth" not in normalized and "mode" in normalized:
+            normalized["depth"] = normalized["mode"]
+        if "focus_areas" not in normalized and "focusAreas" in normalized:
+            normalized["focus_areas"] = normalized["focusAreas"]
+        if "knowledge" not in normalized:
+            knowledge: Dict[str, Any] = {}
+            if "useKnowledgeBase" in normalized:
+                knowledge["enabled"] = normalized["useKnowledgeBase"]
+            if "knowledgeCategory" in normalized:
+                knowledge["category"] = normalized["knowledgeCategory"]
+            if knowledge:
+                normalized["knowledge"] = knowledge
+        return normalized
 
 
 class UserPreferences(BaseModel):

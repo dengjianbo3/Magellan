@@ -1,14 +1,14 @@
 <template>
-  <div class="space-y-8">
+  <div class="page-shell">
     <!-- Page Header -->
-    <div class="flex items-end justify-between">
+    <div class="page-header">
       <div>
-        <h1 class="text-3xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-text-secondary mb-2 tracking-tight">{{ t('dashboard.title') }}</h1>
-        <p class="text-text-secondary text-lg font-light">{{ t('dashboard.welcome') }}</p>
+        <h1 class="page-title page-title-gradient">{{ t('dashboard.title') }}</h1>
+        <p class="page-subtitle">{{ t('dashboard.welcome') }}</p>
       </div>
       <button
         @click="handleExportClick"
-        class="group flex items-center gap-2 px-6 py-2.5 rounded-lg bg-gradient-to-r from-primary to-primary-dark text-white font-bold shadow-glow-sm hover:shadow-glow hover:scale-105 transition-all duration-300"
+        class="page-primary-btn group"
       >
         <span class="material-symbols-outlined group-hover:animate-bounce">download</span>
         {{ t('dashboard.exportReport') }}
@@ -128,7 +128,7 @@
         <span class="material-symbols-outlined text-primary">smart_toy</span>
         {{ t('dashboard.activeAgents') }}
       </h3>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div v-if="activeAgents.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <AgentCard
           v-for="agent in activeAgents"
           :key="agent.name"
@@ -137,6 +137,9 @@
           :tasks="agent.tasks"
           :icon="agent.icon"
         />
+      </div>
+      <div v-else class="text-sm text-text-secondary bg-white/5 border border-white/10 rounded-xl p-4">
+        {{ t('dashboard.noAgentData') || 'No agent usage data yet.' }}
       </div>
     </div>
   </div>
@@ -147,7 +150,9 @@ import { ref, computed, onMounted } from 'vue';
 import Chart from 'chart.js/auto';
 import { useLanguage } from '../composables/useLanguage';
 import { useToast } from '../composables/useToast';
-import { API_BASE } from '@/config/api';
+import { apiUrl } from '@/config/api';
+import { readJsonResponse } from '@/services/httpResponse';
+import { getAuthHeaders } from '@/services/authHeaders';
 import StatCard from '../components/dashboard/StatCard.vue';
 import ReportItem from '../components/dashboard/ReportItem.vue';
 import AgentCard from '../components/dashboard/AgentCard.vue';
@@ -172,6 +177,7 @@ const statsData = ref(null);
 const recentReportsData = ref([]);
 const trendsData = ref(null);
 const performanceData = ref(null);
+const agentsData = ref([]);
 const loading = ref(true);
 
 const stats = computed(() => {
@@ -179,28 +185,28 @@ const stats = computed(() => {
     return [
       {
         title: t('dashboard.stats.totalReports'),
-        value: '0',
+        value: '-',
         change: '+0%',
         trend: 'neutral',
         icon: 'article'
       },
       {
         title: t('dashboard.stats.activeAnalyses'),
-        value: '0',
+        value: '-',
         change: '+0',
         trend: 'neutral',
         icon: 'analytics'
       },
       {
         title: t('dashboard.stats.aiAgents'),
-        value: '6',
+        value: '-',
         change: '0',
         trend: 'neutral',
         icon: 'smart_toy'
       },
       {
         title: t('dashboard.stats.successRate'),
-        value: '0%',
+        value: '-',
         change: '+0%',
         trend: 'neutral',
         icon: 'trending_up'
@@ -281,32 +287,15 @@ const handleQuickAction = (action) => {
   }
 };
 
-const activeAgents = computed(() => [
-  {
-    name: t('analysis.step2.agents.marketAnalyst.name'),
-    status: t('dashboard.agentStatus.active'),
-    tasks: 12,
-    icon: 'show_chart'
-  },
-  {
-    name: t('analysis.step2.agents.financialExpert.name'),
-    status: t('dashboard.agentStatus.active'),
-    tasks: 8,
-    icon: 'account_balance'
-  },
-  {
-    name: t('analysis.step2.agents.teamEvaluator.name'),
-    status: t('dashboard.agentStatus.idle'),
-    tasks: 0,
-    icon: 'groups'
-  },
-  {
-    name: t('analysis.step2.agents.riskAssessor.name'),
-    status: t('dashboard.agentStatus.active'),
-    tasks: 5,
-    icon: 'shield'
-  }
-]);
+const activeAgents = computed(() => {
+  // Use real usage data from backend (top agents). If none, show empty list.
+  return (agentsData.value || []).slice(0, 4).map(a => ({
+    name: a.name || a.agent_id || 'Agent',
+    status: (a.status || '').toLowerCase() || t('dashboard.agentStatus.active') || 'active',
+    tasks: Number(a.usage_count || 0),
+    icon: 'smart_toy'
+  }));
+});
 
 // Fetch dashboard data
 const fetchDashboardData = async () => {
@@ -314,32 +303,40 @@ const fetchDashboardData = async () => {
     loading.value = true;
 
     // Fetch stats
-    const statsResponse = await fetch(`${API_BASE}/api/dashboard/stats`);
-    if (statsResponse.ok) {
-      const data = await statsResponse.json();
-      statsData.value = data.stats;
-    }
+    const statsResponse = await fetch(apiUrl('/api/dashboard/stats'), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    const statsPayload = await readJsonResponse(statsResponse, 'Dashboard stats');
+    statsData.value = statsPayload.stats;
 
     // Fetch recent reports
-    const reportsResponse = await fetch(`${API_BASE}/api/dashboard/recent-reports?limit=4`);
-    if (reportsResponse.ok) {
-      const data = await reportsResponse.json();
-      recentReportsData.value = data.reports;
-    }
+    const reportsResponse = await fetch(apiUrl('/api/dashboard/recent-reports?limit=4'), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    const reportsPayload = await readJsonResponse(reportsResponse, 'Recent reports');
+    recentReportsData.value = reportsPayload.reports;
 
     // Fetch trends data
-    const trendsResponse = await fetch(`${API_BASE}/api/dashboard/trends?days=7`);
-    if (trendsResponse.ok) {
-      const data = await trendsResponse.json();
-      trendsData.value = data;
-    }
+    const trendsResponse = await fetch(apiUrl('/api/dashboard/trends?days=7'), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    trendsData.value = await readJsonResponse(trendsResponse, 'Dashboard trends');
 
     // Fetch performance data
-    const performanceResponse = await fetch(`${API_BASE}/api/dashboard/agent-performance`);
-    if (performanceResponse.ok) {
-      const data = await performanceResponse.json();
-      performanceData.value = data.performance;
-    }
+    const performanceResponse = await fetch(apiUrl('/api/dashboard/agent-performance'), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    const performancePayload = await readJsonResponse(performanceResponse, 'Agent performance');
+    performanceData.value = performancePayload.performance;
+    agentsData.value = performancePayload.agents || [];
 
     loading.value = false;
   } catch (error) {

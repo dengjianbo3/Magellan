@@ -80,33 +80,6 @@ export default defineConfig({
     middlewareMode: false,
     // Proxy API requests to backend
     proxy: {
-      // Trading API -> report_orchestrator
-      '/api/trading': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        ws: true  // Enable WebSocket proxy
-      },
-      // Roundtable API -> report_orchestrator
-      '/api/roundtable': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        ws: true
-      },
-      // Analysis API -> report_orchestrator
-      '/api/analysis': {
-        target: 'http://localhost:8000',
-        changeOrigin: true
-      },
-      // Reports API -> report_orchestrator
-      '/api/reports': {
-        target: 'http://localhost:8000',
-        changeOrigin: true
-      },
-      // Session API -> report_orchestrator
-      '/api/sessions': {
-        target: 'http://localhost:8000',
-        changeOrigin: true
-      },
       // Auth API -> auth_service
       '/api/auth': {
         target: 'http://localhost:8007',
@@ -117,10 +90,17 @@ export default defineConfig({
         target: 'http://localhost:8003',
         changeOrigin: true
       },
-      // Web Search API
-      '/api/search': {
-        target: 'http://localhost:8004',
-        changeOrigin: true
+      // All other API routes -> report_orchestrator
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        ws: true
+      },
+      // Non-/api websocket routes (e.g. /ws/roundtable)
+      '/ws': {
+        target: 'ws://localhost:8000',
+        changeOrigin: true,
+        ws: true
       }
     }
   },

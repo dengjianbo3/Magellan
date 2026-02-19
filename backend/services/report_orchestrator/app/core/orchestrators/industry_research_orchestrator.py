@@ -107,7 +107,7 @@ class IndustryResearchOrchestrator(BaseOrchestrator):
         context = {
             "scenario": "industry-research",
             "target": self.request.target,
-            "config": self.request.config.dict(),
+            "config": self.request.config.model_dump(),
             "market_analysis": {
                 **market_result,
                 "market_score": market_result.get("score", 0) # Assuming result has score or similar
@@ -253,7 +253,7 @@ class IndustryResearchOrchestrator(BaseOrchestrator):
         context = {
             "scenario": InvestmentScenario.INDUSTRY_RESEARCH.value,
             "target": self.request.target,
-            "config": self.request.config.dict(),
+            "config": self.request.config.model_dump(),
             
             # Map results from workflow steps to standard keys expected by synthesizer
             "market_analysis": {

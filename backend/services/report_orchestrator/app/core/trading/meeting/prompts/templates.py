@@ -7,35 +7,20 @@ Used when YAML files are not available.
 
 import os
 
-
-def _get_env_int(key: str, default: int) -> int:
-    val = os.getenv(key)
-    if val:
-        try:
-            return int(val)
-        except ValueError:
-            pass
-    return default
-
-
-def _get_env_float(key: str, default: float) -> float:
-    val = os.getenv(key)
-    if val:
-        try:
-            return float(val)
-        except ValueError:
-            pass
-    return default
+from app.core.trading.trading_config import (
+    get_env_float as _get_env_float,
+    get_env_int as _get_env_int,
+)
 
 
 class PromptTemplates:
     """
     Default prompt templates.
-    
+
     These templates are used as fallbacks when external
     YAML configurations are not available.
     """
-    
+
     # Anti-bias statement to include in analysis prompts
     ANTI_BIAS_STATEMENT = """**CRITICAL: Avoid Confirmation Bias**
 - Your analysis must be OBJECTIVE
@@ -43,7 +28,28 @@ class PromptTemplates:
 - Analyze BOTH directions (long AND short) with equal rigor
 - If data suggests a different view, say so clearly
 - Your job is to find truth, not to justify existing positions"""
-    
+
+    # Check if neutral voting is enabled (anti-bias feature)
+    NEUTRAL_VOTING_ENABLED = os.getenv('NEUTRAL_VOTING_ENABLED', 'false').lower() == 'true'
+
+    @classmethod
+    def get_neutral_vote_json_template(cls) -> str:
+        """Get neutral vote JSON template (anti-bias format)."""
+        max_lev = _get_env_int("MAX_LEVERAGE", 20)
+        min_sl = _get_env_float("MIN_STOP_LOSS_PERCENT", 0.5)
+        max_sl = _get_env_float("MAX_STOP_LOSS_PERCENT", 10.0)
+        default_tp = _get_env_float("DEFAULT_TP_PERCENT", 5.0)
+
+        return f'''{{
+  "bullish_score": <0-100>,
+  "bearish_score": <0-100>,
+  "confidence": <0-100>,
+  "leverage": <1-{max_lev}>,
+  "take_profit_percent": <1-{default_tp*4:.0f}>,
+  "stop_loss_percent": <{min_sl}-{max_sl}>,
+  "reasoning": "<balanced analysis covering both bullish and bearish factors>"
+}}'''
+
     @classmethod
     def get_vote_json_template(cls) -> str:
         """Get vote JSON template with dynamic ranges from config."""
@@ -148,7 +154,11 @@ Provide **objective analysis**:
     
     @classmethod
     def get_vote_prompt(cls, symbol: str, position_summary: str) -> str:
-        """Get vote collection prompt."""
+        """Get vote collection prompt (supports both legacy and neutral voting)."""
+        # Use neutral voting if enabled (anti-bias feature)
+        if cls.NEUTRAL_VOTING_ENABLED:
+            return cls.get_neutral_vote_prompt(symbol, position_summary)
+
         return f"""Based on your analysis, provide your trading vote for {symbol}.
 
 {position_summary}
@@ -169,6 +179,39 @@ Provide **objective analysis**:
 - Be specific about confidence (0-100)
 - Consider risk/reward in your suggestions
 - Provide clear reasoning"""
+
+    @classmethod
+    def get_neutral_vote_prompt(cls, symbol: str, position_summary: str) -> str:
+        """
+        Get neutral vote prompt (anti-bias format).
+
+        Key innovation: Agents output bullish_score/bearish_score instead of direction.
+        This eliminates linguistic bias toward "long" or "short".
+        """
+        return f"""Based on your analysis, evaluate the market for {symbol}.
+
+{position_summary}
+
+**IMPORTANT: Neutral Scoring System**
+Instead of choosing a direction, rate the strength of arguments for BOTH sides:
+
+**Output your analysis as JSON:**
+```json
+{cls.get_neutral_vote_json_template()}
+```
+
+**Scoring Guide**:
+- `bullish_score` (0-100): How strong are the arguments FOR price going UP?
+- `bearish_score` (0-100): How strong are the arguments FOR price going DOWN?
+- You MUST seriously evaluate BOTH directions, not just favor one.
+- A balanced market might have both scores around 50-60.
+- An extremely bullish market might be 85 bullish / 25 bearish.
+- An extremely bearish market might be 25 bullish / 85 bearish.
+
+**CRITICAL**:
+- Base your scores ONLY on your analysis
+- Evaluate BOTH directions with equal rigor
+- Provide balanced reasoning covering both bullish and bearish factors"""
     
     @classmethod
     def get_leader_prompt(cls, meeting_context: str) -> str:

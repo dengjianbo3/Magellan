@@ -23,6 +23,11 @@ from app.core.roundtable.rewoo_agent import ReWOOAgent
 from app.core.roundtable.tool import FunctionTool
 from app.models.trading_models import TradingSignal
 from app.core.trading.price_service import get_current_btc_price
+from app.core.trading.trading_config import (
+    get_infra_config,
+    get_env_float as _get_env_float,
+    get_env_int as _get_env_int,
+)
 from app.core.trading.decision_store import TradingDecision, TradingDecisionStore
 
 # Funding fee awareness imports
@@ -41,25 +46,6 @@ from app.core.trading.funding import (
 from app.core.trading.atr_stop_loss import calculate_dynamic_sl, get_atr_calculator
 
 logger = logging.getLogger(__name__)
-
-# ========== Config from Environment ==========
-def _get_env_float(key: str, default: float) -> float:
-    val = os.getenv(key)
-    if val:
-        try:
-            return float(val)
-        except ValueError:
-            pass
-    return default
-
-def _get_env_int(key: str, default: int) -> int:
-    val = os.getenv(key)
-    if val:
-        try:
-            return int(val)
-        except ValueError:
-            pass
-    return default
 
 # Read trading config from environment (same as TradingMeetingConfig)
 EXECUTOR_CONFIG = {
@@ -112,23 +98,24 @@ class ExecutorAgent(ReWOOAgent):
         safety_guard=None,
         on_message: Optional[Callable] = None,
         symbol: str = "BTC-USDT-SWAP",
-        llm_gateway_url: str = "http://llm_gateway:8003"
+        llm_gateway_url: str = None,
+        user_id: Optional[str] = None,
     ):
         """
         Initialize ExecutorAgent.
-        
+
         Args:
             toolkit: Trading toolkit with trading functions
             paper_trader: Paper trading client
             safety_guard: Optional SafetyGuard for risk checks
             on_message: Callback for progress messages
             symbol: Trading symbol
-            llm_gateway_url: LLM gateway service URL
+            llm_gateway_url: LLM gateway service URL (uses config if None)
         """
         super().__init__(
             name="TradeExecutor",
             role_prompt=self._get_executor_role_prompt(),
-            llm_gateway_url=llm_gateway_url,
+            llm_gateway_url=llm_gateway_url or get_infra_config().llm_gateway_url,
             model="gpt-4",
             temperature=1.0  # Match other ReWOO agents - low temp (0.3) caused instability
         )
@@ -138,13 +125,14 @@ class ExecutorAgent(ReWOOAgent):
         self.safety_guard = safety_guard
         self.on_message = on_message
         self.symbol = symbol
+        self.user_id = user_id or getattr(toolkit, "user_id", None)
         
         # Result container for tool execution
         self._result: Dict[str, Any] = {"signal": None}
         self._executed_tools: List[Dict[str, Any]] = []
         
         # Decision store for Redis persistence
-        self._decision_store = TradingDecisionStore()
+        self._decision_store = TradingDecisionStore(user_id=self.user_id)
         self._current_context: Optional[Dict[str, Any]] = None  # For saving with decision
         
         # Position context (updated before each execution)
@@ -404,9 +392,13 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
         """
         self._result = {"signal": None}
         self._executed_tools = []
-        
+
+        # HITL-only: never execute trades during analysis. Tools should only generate signals.
+        original_paper_trader = self.paper_trader
+        self.paper_trader = None
+
         logger.info("[ExecutorAgent] Starting execution phase (ReWOO pattern)...")
-        
+
         # Store context for decision saving
         self._current_context = {
             "leader_summary": leader_summary,
@@ -414,7 +406,7 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
             "position_context": position_context,
             "trigger_reason": trigger_reason or "scheduled"
         }
-        
+
         # Build query for ReWOO analysis (with async funding context)
         query = await self._build_execution_query(
             leader_summary=leader_summary,
@@ -424,61 +416,65 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
         
         # Retry parameters for LLM instability
         max_attempts = 2
-        
-        for attempt in range(1, max_attempts + 1):
-            try:
-                # Reset result for each attempt
-                self._result = {"signal": None}
-                self._executed_tools = []
-                
-                if attempt > 1:
-                    logger.info(f"[ExecutorAgent] ⟳ Retry attempt {attempt}/{max_attempts}...")
-                
-                # Use ReWOO 3-phase analysis (inherited from ReWOOAgent)
-                result = await self.analyze_with_rewoo(query, self._current_context)
-                
-                # Check if we got a signal from tool execution
-                if self._result.get("signal"):
-                    signal = self._result["signal"]
-                    logger.info(f"[ExecutorAgent] ✅ Execution complete: {signal.direction.upper()}")
-                    # Save decision to Redis
-                    await self._save_decision(signal)
-                    return signal
-                
-                # If no tool was called, try to parse decision from result text
-                if result:
-                    signal = self._parse_decision_from_text(result, position_context)
-                    if signal:
+
+        try:
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    # Reset result for each attempt
+                    self._result = {"signal": None}
+                    self._executed_tools = []
+
+                    if attempt > 1:
+                        logger.info(f"[ExecutorAgent] ⟳ Retry attempt {attempt}/{max_attempts}...")
+
+                    # Use ReWOO 3-phase analysis (inherited from ReWOOAgent)
+                    result = await self.analyze_with_rewoo(query, self._current_context)
+
+                    # Check if we got a signal from tool execution
+                    if self._result.get("signal"):
+                        signal = self._result["signal"]
+                        logger.info(f"[ExecutorAgent] [OK] Execution complete: {signal.direction.upper()}")
+                        # Save decision to Redis
                         await self._save_decision(signal)
                         return signal
-                
-                # No signal generated - retry if attempts remaining
-                if attempt < max_attempts:
-                    logger.warning(f"[ExecutorAgent] No signal on attempt {attempt}, retrying...")
-                    continue
-                
-                # All retries exhausted - fallback to HOLD
-                logger.warning("[ExecutorAgent] No signal generated after all attempts, defaulting to HOLD")
-                signal = await self._generate_hold_signal("No tool call made after retries, defaulting to HOLD")
-                await self._save_decision(signal)
-                return signal
-                    
-            except Exception as e:
-                logger.error(f"[ExecutorAgent] Execution failed on attempt {attempt}: {e}")
-                if attempt < max_attempts:
-                    logger.info(f"[ExecutorAgent] Retrying after exception...")
-                    continue
-                    
-                import traceback
-                traceback.print_exc()
-                signal = await self._generate_hold_signal(f"Execution error: {str(e)}")
-                await self._save_decision(signal)
-                return signal
-        
-        # Should not reach here, but fallback just in case
-        signal = await self._generate_hold_signal("Unexpected fallback")
-        await self._save_decision(signal)
-        return signal
+
+                    # If no tool was called, try to parse decision from result text
+                    if result:
+                        signal = self._parse_decision_from_text(result, position_context)
+                        if signal:
+                            await self._save_decision(signal)
+                            return signal
+
+                    # No signal generated - retry if attempts remaining
+                    if attempt < max_attempts:
+                        logger.warning(f"[ExecutorAgent] No signal on attempt {attempt}, retrying...")
+                        continue
+
+                    # All retries exhausted - fallback to HOLD
+                    logger.warning("[ExecutorAgent] No signal generated after all attempts, defaulting to HOLD")
+                    signal = await self._generate_hold_signal("No tool call made after retries, defaulting to HOLD")
+                    await self._save_decision(signal)
+                    return signal
+
+                except Exception as e:
+                    logger.error(f"[ExecutorAgent] Execution failed on attempt {attempt}: {e}")
+                    if attempt < max_attempts:
+                        logger.info(f"[ExecutorAgent] Retrying after exception...")
+                        continue
+
+                    import traceback
+                    traceback.print_exc()
+                    signal = await self._generate_hold_signal(f"Execution error: {str(e)}")
+                    await self._save_decision(signal)
+                    return signal
+
+            # Should not reach here, but fallback just in case
+            signal = await self._generate_hold_signal("Unexpected fallback")
+            await self._save_decision(signal)
+            return signal
+        finally:
+            # 🔧 Always restore paper_trader after execution
+            self.paper_trader = original_paper_trader
     
     async def _save_decision(self, signal: TradingSignal):
         """
@@ -506,7 +502,7 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
                 leader_summary=self._current_context.get("leader_summary", ""),
                 agent_votes=self._current_context.get("agent_votes", []),
                 position_context=self._current_context.get("position_context", {}),
-                was_executed=True,
+                was_executed=False,
             )
             
             await self._decision_store.save_decision(decision)
@@ -757,7 +753,7 @@ Analyze the consensus and make a decisive action."""
                         sl_price=sl_price
                     )
                     action_taken = "add_to_long"
-                    logger.info(f"[ExecutorAgent] ✅ Added ${add_amount:.2f} to long position")
+                    logger.info(f"[ExecutorAgent] [OK] Added ${add_amount:.2f} to long position")
                 else:
                     action_taken = "maintain_long_small_amount"
                     logger.info("[ExecutorAgent] Add amount too small, maintaining position")
@@ -772,7 +768,7 @@ Analyze the consensus and make a decisive action."""
                 # Close short first
                 close_result = await self.paper_trader.close_position(symbol=self.symbol)
                 if close_result.get("success"):
-                    logger.info("[ExecutorAgent] ✅ Closed short position")
+                    logger.info("[ExecutorAgent] [OK] Closed short position")
                     # Now open long
                     amount_usdt = min(available_margin * amount_percent, available_margin - self.SAFETY_BUFFER)
                     trade_result = await self.paper_trader.open_long(
@@ -923,7 +919,7 @@ Analyze the consensus and make a decisive action."""
                         sl_price=sl_price
                     )
                     action_taken = "add_to_short"
-                    logger.info(f"[ExecutorAgent] ✅ Added ${add_amount:.2f} to short position")
+                    logger.info(f"[ExecutorAgent] [OK] Added ${add_amount:.2f} to short position")
                 else:
                     action_taken = "maintain_short_small_amount"
                     logger.info("[ExecutorAgent] Add amount too small, maintaining position")
@@ -937,7 +933,7 @@ Analyze the consensus and make a decisive action."""
             if self.paper_trader:
                 close_result = await self.paper_trader.close_position(symbol=self.symbol)
                 if close_result.get("success"):
-                    logger.info("[ExecutorAgent] ✅ Closed long position")
+                    logger.info("[ExecutorAgent] [OK] Closed long position")
                     amount_usdt = min(available_margin * amount_percent, available_margin - self.SAFETY_BUFFER)
                     trade_result = await self.paper_trader.open_short(
                         symbol=self.symbol,
@@ -1059,10 +1055,10 @@ Analyze the consensus and make a decisive action."""
         if position.get("has_position") and self.paper_trader:
             trade_result = await self.paper_trader.close_position(symbol=self.symbol)
             if trade_result.get("success"):
-                logger.info(f"[ExecutorAgent] ✅ Closed {position.get('direction')} position")
+                logger.info(f"[ExecutorAgent] [OK] Closed {position.get('direction')} position")
                 action_taken = f"closed_{position.get('direction')}"
             else:
-                logger.error(f"[ExecutorAgent] ❌ Failed to close: {trade_result.get('error')}")
+                logger.error(f"[ExecutorAgent] [FAIL] Failed to close: {trade_result.get('error')}")
                 action_taken = "close_failed"
         else:
             logger.info("[ExecutorAgent] No position to close")
@@ -1180,7 +1176,7 @@ Analyze the consensus and make a decisive action."""
                     )
                     
                     if trade_result.get("success"):
-                        logger.info(f"[ExecutorAgent] ✅ Added ${add_amount:.2f} to long position")
+                        logger.info(f"[ExecutorAgent] [OK] Added ${add_amount:.2f} to long position")
                         action_taken = "added_to_long"
                     else:
                         logger.error(f"[ExecutorAgent] Add failed: {trade_result.get('error')}")
@@ -1283,7 +1279,7 @@ Analyze the consensus and make a decisive action."""
                     )
                     
                     if trade_result.get("success"):
-                        logger.info(f"[ExecutorAgent] ✅ Added ${add_amount:.2f} to short position")
+                        logger.info(f"[ExecutorAgent] [OK] Added ${add_amount:.2f} to short position")
                         action_taken = "added_to_short"
                     else:
                         logger.error(f"[ExecutorAgent] Add failed: {trade_result.get('error')}")
@@ -1362,7 +1358,7 @@ Analyze the consensus and make a decisive action."""
                 )
                 
                 if trade_result.get("success"):
-                    logger.info(f"[ExecutorAgent] ✅ Reduced position by {reduce_percent*100:.0f}%")
+                    logger.info(f"[ExecutorAgent] [OK] Reduced position by {reduce_percent*100:.0f}%")
                     action_taken = f"reduced_{position.get('direction')}_{reduce_percent*100:.0f}p"
                 else:
                     # Fallback to full close if partial not supported
@@ -1415,12 +1411,12 @@ Analyze the consensus and make a decisive action."""
             async def force_close_callback(symbol: str, reason: str) -> Dict:
                 """Callback to force close position when funding impact exceeds threshold."""
                 if self.paper_trader:
-                    logger.warning(f"[ExecutorAgent] 🚨 Force closing position: {reason}")
+                    logger.warning(f"[ExecutorAgent] [ALERT] Force closing position: {reason}")
                     return await self.paper_trader.close_position(symbol=symbol, reason=reason)
                 return {"success": False, "error": "No paper trader available"}
             
             monitor.register_close_callback(force_close_callback)
-            logger.info("[ExecutorAgent] ✅ Funding impact monitor callback registered")
+            logger.info("[ExecutorAgent] [OK] Funding impact monitor callback registered")
             
         except Exception as e:
             logger.warning(f"[ExecutorAgent] Failed to setup funding monitor: {e}")
@@ -1445,7 +1441,7 @@ Analyze the consensus and make a decisive action."""
             direction = current_direction if current_direction else "long"
             
             # Get funding context provider
-            context_provider = await get_funding_context_provider()
+            context_provider = await get_funding_context_provider(self.user_id)
             
             # Generate context with expected parameters
             funding_context = await context_provider.generate_context(
@@ -1473,7 +1469,7 @@ Analyze the consensus and make a decisive action."""
             Dict with should_delay, wait_minutes, reason
         """
         try:
-            data_service = await get_funding_data_service()
+            data_service = await get_funding_data_service(self.user_id)
             funding_rate = await data_service.get_current_rate(self.symbol)
             
             if not funding_rate:
@@ -1511,7 +1507,7 @@ Analyze the consensus and make a decisive action."""
             Dict with viability assessment
         """
         try:
-            data_service = await get_funding_data_service()
+            data_service = await get_funding_data_service(self.user_id)
             funding_rate = await data_service.get_current_rate(self.symbol)
             
             if not funding_rate:
@@ -1551,4 +1547,3 @@ Analyze the consensus and make a decisive action."""
         except Exception as e:
             logger.warning(f"[ExecutorAgent] Trade viability check failed: {e}")
             return {"viable": True, "reason": f"Error: {str(e)}"}
-

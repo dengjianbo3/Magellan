@@ -4,22 +4,12 @@ Vote Domain Models
 Represents agent votes and voting-related structures.
 """
 
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import List
 
-
-def _get_env_float(key: str, default: float) -> float:
-    """Get float from environment variable"""
-    val = os.getenv(key)
-    if val:
-        try:
-            return float(val)
-        except ValueError:
-            pass
-    return default
+from app.core.trading.trading_config import get_env_float as _get_env_float
 
 
 def _get_default_tp() -> float:

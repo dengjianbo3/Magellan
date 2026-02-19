@@ -22,6 +22,7 @@ except ImportError:
 from app.core.trading.execution_config import (
     ExecutionPlan, ExecutionResult, get_execution_config
 )
+from app.core.trading.trading_config import get_infra_config
 
 logger = logging.getLogger(__name__)
 
@@ -30,27 +31,28 @@ class SlippageAnalyzer:
     """
     Analyze orderbook to estimate slippage for a given order size.
     """
-    
+
     async def _get_orderbook(self, symbol: str = "BTC", limit: int = 100) -> Optional[Dict]:
         """Get orderbook from Binance or fallback exchanges"""
         if not httpx:
             logger.warning("httpx not installed, skipping orderbook fetch")
             return None
-            
+
         # Normalize symbol
         symbol = symbol.upper().replace('-USDT', '').replace('/USDT', '').replace('USDT', '')
-        
+
         try:
+            binance_url = f"{get_infra_config().binance_base_url}/api/v3/depth"
             async with httpx.AsyncClient(timeout=10) as client:
                 response = await client.get(
-                    "https://api.binance.com/api/v3/depth",
+                    binance_url,
                     params={"symbol": f"{symbol}USDT", "limit": limit}
                 )
                 if response.status_code == 200:
                     return response.json()
         except Exception as e:
             logger.warning(f"Orderbook fetch failed: {e}")
-        
+
         return None
     
     async def analyze_slippage(
@@ -436,7 +438,7 @@ class SlicedExecutor:
                             if volatility_recheck.get("should_abort"):
                                 result.status = "aborted"
                                 result.abort_reason = f"Volatility too high: {volatility_recheck.get('volatility_percent', 0):.2f}%"
-                                logger.error(f"[SmartExecutor] ❌ Aborting due to sustained volatility")
+                                logger.error(f"[SmartExecutor] [FAIL] Aborting due to sustained volatility")
                                 break
             
             # Calculate final metrics

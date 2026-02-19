@@ -4,8 +4,12 @@
  */
 
 // Environment variables for API URLs
-const DD_API_URL = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
-const DD_WS_URL = import.meta.env.VITE_WS_BASE || 'ws://localhost:8000';
+import { API_BASE, WS_BASE } from '@/config/api';
+import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
+import { readJsonResponse } from '@/services/httpResponse';
+
+const DD_API_URL = API_BASE;
+const DD_WS_URL = WS_BASE;
 const DD_WS_ENDPOINT = `${DD_WS_URL}/ws/start_dd_analysis`;
 
 export class DDAnalysisService {
@@ -78,16 +82,13 @@ export class DDAnalysisService {
     try {
       const response = await fetch(`${DD_API_URL}/api/upload_bp`, {
         method: 'POST',
+        headers: {
+          ...getAuthHeaders()
+        },
         body: formData,
         // Don't set Content-Type header, let browser set it with boundary
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-        throw new Error(errorData.detail || `Upload failed: ${response.statusText}`);
-      }
-
-      return await response.json();
+      return await readJsonResponse(response, 'BP file upload');
     } catch (error) {
       console.error('[DD Service] Upload error:', error);
       throw error;
@@ -104,7 +105,7 @@ export class DDAnalysisService {
         console.log(`[DD Service] ${isReconnecting ? 'Reconnecting' : 'Connecting'} to WebSocket...`);
 
         // 创建WebSocket连接
-        this.ws = new WebSocket(DD_WS_ENDPOINT);
+        this.ws = new WebSocket(appendTokenToUrl(DD_WS_ENDPOINT));
 
         this.ws.onopen = () => {
           console.log('[DD Service] WebSocket connected');
@@ -113,6 +114,14 @@ export class DDAnalysisService {
           this.reconnectAttempts = 0; // Reset on successful connection
 
           // 发送初始分析请求（完整配置）
+          const knowledgeEnabled =
+            this.config.useKnowledgeBase ??
+            this.config.knowledge?.enabled ??
+            false;
+          const knowledgeCategory =
+            this.config.knowledgeCategory ||
+            this.config.knowledge?.category ||
+            'all';
           const request = {
             company_name: this.config.companyName || this.config.company || 'Unknown Company',
             user_id: 'default_user',
@@ -122,7 +131,11 @@ export class DDAnalysisService {
             selected_agents: this.config.selectedAgents || [],
             data_sources: this.config.dataSources || [],
             priority: this.config.priority || 'normal',
-            description: this.config.description || ''
+            description: this.config.description || '',
+            knowledge: {
+              enabled: Boolean(knowledgeEnabled),
+              category: knowledgeCategory
+            }
           };
 
           // V5: Add file_id if file was uploaded
@@ -322,42 +335,40 @@ export class DDAnalysisService {
    * 获取DD会话状态（HTTP API）
    */
   async getSessionStatus(sessionId) {
-    const response = await fetch(`${DD_API_URL}/dd_session/${sessionId}`);
-    if (!response.ok) {
-      throw new Error(`Failed to get session status: ${response.statusText}`);
-    }
-    return await response.json();
+    const response = await fetch(`${DD_API_URL}/api/dd/session/${sessionId}`, {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    return await readJsonResponse(response, 'Get DD session status');
   }
 
   /**
-   * 保存报告到后端（需要实现后端API）
+   * 保存报告到后端
    */
   async saveReport(reportData) {
-    // TODO: 实现报告保存API
     const response = await fetch(`${DD_API_URL}/api/reports`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...getAuthHeaders()
       },
       body: JSON.stringify(reportData)
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to save report: ${response.statusText}`);
-    }
-
-    return await response.json();
+    return await readJsonResponse(response, 'Save report');
   }
 
   /**
    * 获取所有报告列表
    */
   async getReports() {
-    const response = await fetch(`${DD_API_URL}/api/reports`);
-    if (!response.ok) {
-      throw new Error(`Failed to get reports: ${response.statusText}`);
-    }
-    return await response.json();
+    const response = await fetch(`${DD_API_URL}/api/reports`, {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    return await readJsonResponse(response, 'Get reports');
   }
 }
 

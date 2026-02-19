@@ -12,6 +12,9 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 import redis.asyncio as redis
 
+from .trading_config import get_infra_config
+from app.core.auth import get_current_user_id
+
 logger = logging.getLogger(__name__)
 
 
@@ -125,21 +128,22 @@ class TradingDecision:
 class TradingDecisionStore:
     """
     Redis store for trading decisions.
-    
+
     Features:
     - Save decisions with automatic expiry (30 days)
     - Load recent decisions for frontend
     - Query by trade_id
-    
+
     Key pattern: trading:decisions:<trade_id>
     List key for recent: trading:decisions:recent (LPUSH sorted list)
     """
-    
-    def __init__(self, redis_url: str = "redis://redis:6379"):
-        self.redis_url = redis_url
+
+    def __init__(self, redis_url: str = None, user_id: Optional[str] = None):
+        self.redis_url = redis_url or get_infra_config().redis_url
+        self.user_id = get_current_user_id(user_id)
         self._redis: Optional[redis.Redis] = None
-        self.key_prefix = "trading:decisions:"
-        self.recent_list_key = "trading:decisions:recent"
+        self.key_prefix = f"trading:decisions:{self.user_id}:"
+        self.recent_list_key = f"trading:decisions:recent:{self.user_id}"
         self.max_recent = 50  # Keep last 50 decisions in memory
         self.expiry_seconds = 30 * 24 * 3600  # 30 days
     
@@ -259,14 +263,16 @@ class TradingDecisionStore:
         return decisions[0] if decisions else None
 
 
-# Singleton instance for easy import
-_decision_store: Optional[TradingDecisionStore] = None
+# Singleton instances for easy import (scoped by user)
+_decision_stores: Dict[str, TradingDecisionStore] = {}
 
 
-async def get_decision_store(redis_url: str = "redis://redis:6379") -> TradingDecisionStore:
-    """Get or create the decision store singleton"""
-    global _decision_store
-    if _decision_store is None:
-        _decision_store = TradingDecisionStore(redis_url)
-        await _decision_store.connect()
-    return _decision_store
+async def get_decision_store(redis_url: str = None, user_id: Optional[str] = None) -> TradingDecisionStore:
+    """Get or create the decision store singleton scoped by user."""
+    scope = get_current_user_id(user_id)
+    store = _decision_stores.get(scope)
+    if store is None:
+        store = TradingDecisionStore(redis_url=redis_url, user_id=scope)
+        await store.connect()
+        _decision_stores[scope] = store
+    return store

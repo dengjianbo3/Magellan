@@ -4,8 +4,10 @@ Crypto Analyst Agent - 加密项目深度分析Agent
 支持多步骤分析: 项目识别、技术研究、团队调查、代币经济学深度分析
 """
 from typing import Dict, Any, List, Optional
-import httpx
 from pydantic import BaseModel, Field
+from ..services.web_search_access import search_web as shared_search_web
+from ..core.llm_helper import LLMHelper
+from ..core.service_endpoints import DEFAULT_WEB_SEARCH_URL
 
 
 class ProjectInfo(BaseModel):
@@ -112,11 +114,12 @@ class CryptoAnalystAgent:
 
     def __init__(
         self,
-        web_search_url: str = "http://web_search_service:8010",
+        web_search_url: str = DEFAULT_WEB_SEARCH_URL,
         llm_gateway_url: str = "http://llm_gateway:8003"
     ):
         self.web_search_url = web_search_url
         self.llm_gateway_url = llm_gateway_url
+        self.llm = LLMHelper(llm_gateway_url=self.llm_gateway_url, timeout=60)
 
     async def analyze(
         self,
@@ -536,15 +539,12 @@ class CryptoAnalystAgent:
     async def _web_search(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
         """网络搜索"""
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.web_search_url}/search",
-                    json={"query": query, "max_results": max_results}
-                )
-
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get("results", [])
+            return await shared_search_web(
+                self.web_search_url,
+                query=query,
+                max_results=max_results,
+                timeout=30.0,
+            )
         except Exception as e:
             print(f"[CryptoAnalystAgent] Web search failed: {e}")
 
@@ -552,23 +552,10 @@ class CryptoAnalystAgent:
 
     async def _call_llm(self, prompt: str) -> Dict[str, Any]:
         """调用LLM"""
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    f"{self.llm_gateway_url}/chat",
-                    json={
-                        "messages": [{"role": "user", "content": prompt}],
-                        "response_format": "json",
-                        "temperature": 0.3
-                    }
-                )
-
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get("content", {})
-        except Exception as e:
-            print(f"[CryptoAnalystAgent] LLM call failed: {e}")
-
+        result = await self.llm.call(prompt=prompt, response_format="json")
+        if isinstance(result, dict) and "error" not in result:
+            return result
+        print(f"[CryptoAnalystAgent] LLM call failed: {result}")
         return {"error": "LLM调用失败"}
 
     def _format_search_results(self, results: List[Dict[str, Any]]) -> str:

@@ -12,6 +12,8 @@ from typing import Optional, Dict, Any, List
 
 import httpx
 
+from .trading_config import get_infra_config
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,11 +32,6 @@ class PriceService:
     - NO hardcoded fallback prices - raises error if all sources fail
     """
 
-    # API endpoints
-    BINANCE_URL = "https://api.binance.com/api/v3/ticker/price"
-    OKX_URL = "https://www.okx.com/api/v5/market/ticker"
-    COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price"
-
     # Cache settings
     CACHE_TTL_SECONDS = 30  # Cache price for 30 seconds
 
@@ -44,6 +41,12 @@ class PriceService:
         self._last_fetch: Optional[datetime] = None
         self._last_valid_price: Optional[float] = None  # Store last valid price for short-term failures
         self._client: Optional[httpx.AsyncClient] = None
+
+        # API endpoints from config
+        infra = get_infra_config()
+        self.binance_url = f"{infra.binance_base_url}/api/v3/ticker/price"
+        self.okx_url = f"{infra.okx_base_url}/api/v5/market/ticker"
+        self.coingecko_url = f"{infra.coingecko_base_url}/api/v3/simple/price"
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client"""
@@ -120,7 +123,7 @@ class PriceService:
         try:
             client = await self._get_client()
             response = await client.get(
-                self.BINANCE_URL,
+                self.binance_url,
                 params={"symbol": "BTCUSDT"}
             )
 
@@ -144,7 +147,7 @@ class PriceService:
         try:
             client = await self._get_client()
             response = await client.get(
-                self.OKX_URL,
+                self.okx_url,
                 params={"instId": "BTC-USDT"}
             )
 
@@ -170,7 +173,7 @@ class PriceService:
         try:
             client = await self._get_client()
             response = await client.get(
-                self.COINGECKO_URL,
+                self.coingecko_url,
                 params={
                     "ids": "bitcoin",
                     "vs_currencies": "usd"
@@ -254,7 +257,7 @@ class PriceService:
                 limit = hours // 24
 
             response = await client.get(
-                "https://api.binance.com/api/v3/klines",
+                f"{self.binance_url.rsplit('/api', 1)[0]}/api/v3/klines",
                 params={
                     "symbol": "BTCUSDT",
                     "interval": interval,
@@ -287,7 +290,7 @@ class PriceService:
             days = max(1, hours // 24)
 
             response = await client.get(
-                "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
+                f"{self.coingecko_url.rsplit('/api', 1)[0]}/api/v3/coins/bitcoin/market_chart",
                 params={
                     "vs_currency": "usd",
                     "days": days

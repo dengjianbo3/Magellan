@@ -1,17 +1,24 @@
 <template>
-  <div class="max-w-7xl mx-auto p-8 min-h-screen flex flex-col">
+  <div class="page-shell max-w-7xl mx-auto flex flex-col pb-2">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title page-title-gradient">{{ t('sidebar.analysis') }}</h1>
+        <p class="page-subtitle">{{ steps[currentStep].label }}</p>
+      </div>
+    </div>
+
     <!-- Back Button -->
     <button 
       v-if="currentStep === 1"
       @click="currentStep--"
-      class="self-start mb-6 flex items-center gap-2 text-text-secondary hover:text-primary transition-colors"
+      class="self-start flex items-center gap-2 text-text-secondary hover:text-primary transition-colors"
     >
       <span class="material-symbols-outlined">arrow_back</span>
       {{ t('common.back') || 'Back' }}
     </button>
 
     <!-- Wizard Steps Indicator -->
-    <div class="glass-panel rounded-2xl p-8 mb-8 relative overflow-hidden">
+    <div class="glass-panel rounded-2xl p-6 md:p-8 relative overflow-hidden">
       <div class="relative z-10 flex justify-between items-start">
         <!-- Progress Line Container (Constrained to centers of first/last circles) -->
         <div class="absolute top-6 -translate-y-1/2 left-6 right-6 h-1 -z-10">
@@ -65,7 +72,7 @@
     </div>
 
     <!-- Wizard Content Area -->
-    <div class="glass-panel rounded-2xl p-8 flex-grow relative overflow-hidden min-h-[600px]">
+    <div class="glass-panel rounded-2xl p-6 md:p-8 flex-grow relative overflow-hidden min-h-[600px]">
       <!-- Background Decorative Elements -->
       <div class="absolute top-0 right-0 w-96 h-96 bg-primary/5 blur-[100px] rounded-full pointer-events-none"></div>
       <div class="absolute bottom-0 left-0 w-96 h-96 bg-accent-violet/5 blur-[100px] rounded-full pointer-events-none"></div>
@@ -117,29 +124,29 @@
       v-if="showRecoveryDialog && pendingSession"
       class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50"
     >
-      <div class="glass-panel border border-white/10 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
+      <div class="modal-shell max-w-md mx-4">
         <div class="flex flex-col items-center text-center mb-6">
           <div class="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mb-4 shadow-[0_0_20px_rgba(56,189,248,0.3)]">
             <span class="material-symbols-outlined text-primary text-3xl">history</span>
           </div>
-          <h3 class="text-xl font-bold text-white mb-2">{{ t('analysisWizard.sessionRecovery') || '检测到未完成的分析' }}</h3>
+          <h3 class="text-xl font-bold text-white mb-2">{{ t('analysisWizard.sessionRecovery') || 'Incomplete Analysis Detected' }}</h3>
           <p class="text-sm text-text-secondary">
-            {{ t('analysisWizard.sessionRecoveryDesc') || '您有一个进行中的分析任务，是否要继续？' }}
+            {{ t('analysisWizard.sessionRecoveryDesc') || 'You have an in-progress analysis. Continue?' }}
           </p>
         </div>
 
         <!-- Session Info -->
         <div class="mb-6 p-4 rounded-xl bg-white/5 border border-white/10">
           <div class="flex items-center justify-between mb-2">
-            <span class="text-text-secondary text-sm">{{ t('analysisWizard.projectName') || '项目名称' }}</span>
+            <span class="text-text-secondary text-sm">{{ t('analysisWizard.projectName') || 'Project Name' }}</span>
             <span class="text-white font-medium">{{ pendingSession.projectName }}</span>
           </div>
           <div class="flex items-center justify-between mb-2">
-            <span class="text-text-secondary text-sm">{{ t('analysisWizard.scenario') || '分析场景' }}</span>
+            <span class="text-text-secondary text-sm">{{ t('analysisWizard.scenario') || 'Scenario' }}</span>
             <span class="text-primary font-medium">{{ pendingSession.scenario?.name || pendingSession.scenario?.id }}</span>
           </div>
           <div class="flex items-center justify-between">
-            <span class="text-text-secondary text-sm">{{ t('analysisWizard.startedAt') || '开始时间' }}</span>
+            <span class="text-text-secondary text-sm">{{ t('analysisWizard.startedAt') || 'Started At' }}</span>
             <span class="text-text-secondary text-sm">{{ new Date(pendingSession.startedAt).toLocaleString() }}</span>
           </div>
         </div>
@@ -149,13 +156,13 @@
             @click="dismissRecovery"
             class="flex-1 px-6 py-3 rounded-xl border border-white/10 text-white hover:bg-white/10 transition-colors font-bold"
           >
-            {{ t('analysisWizard.startNew') || '开始新分析' }}
+            {{ t('analysisWizard.startNew') || 'Start New' }}
           </button>
           <button
             @click="recoverSession"
             class="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-primary-dark text-white hover:shadow-glow transition-all font-bold"
           >
-            {{ t('analysisWizard.continueSession') || '继续分析' }}
+            {{ t('analysisWizard.continueSession') || 'Continue' }}
           </button>
         </div>
       </div>

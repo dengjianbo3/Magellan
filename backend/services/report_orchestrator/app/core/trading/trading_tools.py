@@ -19,19 +19,10 @@ except ImportError:
 
 from app.core.roundtable.tool import FunctionTool
 from app.core.trading.price_service import get_current_btc_price, PriceServiceError
+from app.core.trading.trading_config import get_infra_config, get_env_int as _get_env_int
+from app.core.auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
-
-
-def _get_env_int(key: str, default: int) -> int:
-    """Get integer from environment variable"""
-    val = os.getenv(key)
-    if val:
-        try:
-            return int(val)
-        except ValueError:
-            pass
-    return default
 
 
 class TradingToolkitConfig:
@@ -56,16 +47,23 @@ class TradingToolkit:
     Tools are designed to be registered with agents for use in roundtable meetings.
     """
 
-    def __init__(self, paper_trader=None, config: TradingToolkitConfig = None):
+    def __init__(self, paper_trader=None, config: TradingToolkitConfig = None, user_id: Optional[str] = None):
         self.paper_trader = paper_trader
         self.config = config or TradingToolkitConfig()
+        self.user_id = get_current_user_id(user_id)
         self._tools = {}
         self._build_tools()
 
     def _build_tools(self):
-        """Build all trading tools"""
+        """Build all trading tools by category."""
+        self._build_market_data_tools()
+        self._build_account_tools()
+        self._build_execution_tools()
+        self._build_analysis_tools()
+        self._build_advanced_tools()
 
-        # Market Data Tools
+    def _build_market_data_tools(self):
+        """Build market data retrieval tools."""
         self._tools['get_market_price'] = FunctionTool(
             name="get_market_price",
             description=f"Get current market price and 24h data including price, change percentage, and volume",
@@ -127,7 +125,8 @@ class TradingToolkit:
             func=self._calculate_indicators
         )
 
-        # Account Tools
+    def _build_account_tools(self):
+        """Build account management tools."""
         self._tools['get_account_balance'] = FunctionTool(
             name="get_account_balance",
             description=(
@@ -155,7 +154,23 @@ class TradingToolkit:
             func=self._get_current_position
         )
 
-        # Trading Execution Tools
+        self._tools['get_trade_history'] = FunctionTool(
+            name="get_trade_history",
+            description="Get historical trade records",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "default": 20
+                    }
+                }
+            },
+            func=self._get_trade_history
+        )
+
+    def _build_execution_tools(self):
+        """Build trading execution tools."""
         self._tools['open_long'] = FunctionTool(
             name="open_long",
             description=f"Open long position (buy). ⚠️ MUST provide all 4 parameters: leverage, amount_usdt, tp_percent, sl_percent! Call will fail if any parameter is missing!",
@@ -255,7 +270,6 @@ class TradingToolkit:
             func=self._close_position
         )
 
-        # Hold Decision Tool
         self._tools['hold'] = FunctionTool(
             name="hold",
             description="Decide to hold/wait, no trading action. Call this when market is unclear or risk is too high",
@@ -272,7 +286,8 @@ class TradingToolkit:
             func=self._hold
         )
 
-        # Analysis Tools
+    def _build_analysis_tools(self):
+        """Build market analysis tools."""
         self._tools['get_fear_greed_index'] = FunctionTool(
             name="get_fear_greed_index",
             description="Get crypto Fear & Greed Index reflecting market sentiment",
@@ -295,22 +310,6 @@ class TradingToolkit:
             func=self._get_funding_rate
         )
 
-        self._tools['get_trade_history'] = FunctionTool(
-            name="get_trade_history",
-            description="Get historical trade records",
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "limit": {
-                        "type": "integer",
-                        "default": 20
-                    }
-                }
-            },
-            func=self._get_trade_history
-        )
-
-        # Web Search Tool - Tavily
         self._tools['tavily_search'] = FunctionTool(
             name="tavily_search",
             description="Search for crypto news and market info using Tavily search engine, get latest market updates, major events, regulatory news, etc.",
@@ -349,7 +348,8 @@ class TradingToolkit:
             func=self._tavily_search
         )
 
-        # Smart Execution Analysis Tool
+    def _build_advanced_tools(self):
+        """Build advanced analysis and execution tools."""
         self._tools['analyze_execution_conditions'] = FunctionTool(
             name="analyze_execution_conditions",
             description=(
@@ -381,7 +381,6 @@ class TradingToolkit:
             func=self._analyze_execution_conditions
         )
 
-        # Technical Analysis Tool (comprehensive)
         self._tools['technical_analysis'] = FunctionTool(
             name="technical_analysis",
             description=(
@@ -417,7 +416,6 @@ class TradingToolkit:
             func=self._technical_analysis
         )
 
-        # Orderbook Analyzer Tool
         self._tools['orderbook_analyzer'] = FunctionTool(
             name="orderbook_analyzer",
             description=(
@@ -474,10 +472,11 @@ class TradingToolkit:
         try:
             # Fetch REAL price from Binance API
             import httpx
+            binance_url = f"{get_infra_config().binance_base_url}/api/v3/ticker/24hr"
             async with httpx.AsyncClient(timeout=10.0) as client:
                 # Get 24h ticker data from Binance
                 response = await client.get(
-                    "https://api.binance.com/api/v3/ticker/24hr",
+                    binance_url,
                     params={"symbol": "BTCUSDT"}
                 )
 
@@ -578,9 +577,10 @@ class TradingToolkit:
 
             # Fetch REAL klines from Binance
             import httpx
+            binance_klines_url = f"{get_infra_config().binance_base_url}/api/v3/klines"
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.get(
-                    "https://api.binance.com/api/v3/klines",
+                    binance_klines_url,
                     params={
                         "symbol": "BTCUSDT",
                         "interval": interval,
@@ -637,8 +637,8 @@ class TradingToolkit:
         if self.paper_trader:
             try:
                 base_price = await self.paper_trader.get_current_price()
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"[TradingTools] paper_trader.get_current_price failed: {e}")
         # If paper_trader fails, use price_service (Binance -> OKX -> CoinGecko)
         if base_price is None:
             try:
@@ -696,9 +696,10 @@ class TradingToolkit:
             }
             interval = interval_map.get(timeframe, "4h")
 
+            binance_klines_url = f"{get_infra_config().binance_base_url}/api/v3/klines"
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.get(
-                    "https://api.binance.com/api/v3/klines",
+                    binance_klines_url,
                     params={
                         "symbol": "BTCUSDT",
                         "interval": interval,
@@ -820,8 +821,8 @@ class TradingToolkit:
         if self.paper_trader:
             try:
                 current_price = await self.paper_trader.get_current_price()
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"[TradingTools] paper_trader.get_current_price failed: {e}")
         # If paper_trader fails, use price_service (Binance -> OKX -> CoinGecko)
         if current_price is None:
             try:
@@ -1469,10 +1470,11 @@ class TradingToolkit:
             # Map timeframe to OKX format
             tf_map = {'1m': '1m', '5m': '5m', '15m': '15m', '1h': '1H', '4h': '4H', '1d': '1D'}
             okx_tf = tf_map.get(timeframe.lower(), '4H')
-            
+
+            okx_candles_url = f"{get_infra_config().okx_base_url}/api/v5/market/candles"
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.get(
-                    "https://www.okx.com/api/v5/market/candles",
+                    okx_candles_url,
                     params={"instId": api_symbol, "bar": okx_tf, "limit": "100"}
                 )
                 
@@ -1535,7 +1537,7 @@ class TradingToolkit:
 💰 Price: ${current_price:,.2f} ({price_change:+.2f}% 24h)
 📊 RSI(14): {rsi:.1f} {'🔴 Overbought' if rsi > 70 else '🟢 Oversold' if rsi < 30 else '⚪ Neutral'}
 📈 EMA20: ${ema20:,.2f} | EMA50: ${ema50:,.2f}
-🎯 Support: ${support:,.2f} | Resistance: ${resistance:,.2f}
+[TARGET] Support: ${support:,.2f} | Resistance: ${resistance:,.2f}
 📈 Trend: {trend} ({strength})"""
 
                 logger.info(f"[TradingTools] Technical analysis: {symbol} {timeframe} -> {trend}")
@@ -1557,10 +1559,11 @@ class TradingToolkit:
         try:
             import httpx
             clean_symbol = symbol.upper().replace('-USDT', '').replace('/USDT', '').replace('USDT', '').strip()
-            
+
+            binance_depth_url = f"{get_infra_config().binance_base_url}/api/v3/depth"
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
-                    "https://api.binance.com/api/v3/depth",
+                    binance_depth_url,
                     params={"symbol": f"{clean_symbol}USDT", "limit": min(depth * 5, 100)}
                 )
                 
@@ -1589,7 +1592,7 @@ class TradingToolkit:
                 summary = f"""📊 Orderbook: {clean_symbol}/USDT
 💰 Bid: ${best_bid:,.2f} | Ask: ${best_ask:,.2f} | Spread: {spread:.4f}%
 📊 Volume: Bid {total_bid:,.2f} | Ask {total_ask:,.2f} | Ratio: {ratio:.2f}
-🎯 Support: ${support:,.2f} | Resistance: ${resistance:,.2f}
+[TARGET] Support: ${support:,.2f} | Resistance: ${resistance:,.2f}
 💡 Sentiment: {sentiment}"""
 
                 logger.info(f"[TradingTools] Orderbook: {clean_symbol} ratio={ratio:.2f}")
@@ -1605,4 +1608,3 @@ class TradingToolkit:
         except Exception as e:
             logger.error(f"[TradingTools] Orderbook error: {e}")
             return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
-

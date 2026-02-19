@@ -3,7 +3,6 @@
 Risk Agent for generating DD question lists.
 风险 Agent，用于生成尽职调查问题清单
 """
-import httpx
 import json
 import re
 from typing import List, Dict, Any
@@ -13,6 +12,7 @@ from ..models.dd_models import (
     BPStructuredData,
     DDQuestion
 )
+from ..core.llm_helper import LLMHelper
 
 
 class RiskAgent:
@@ -20,6 +20,7 @@ class RiskAgent:
     
     def __init__(self, llm_gateway_url: str):
         self.llm_gateway_url = llm_gateway_url
+        self.llm = LLMHelper(llm_gateway_url=self.llm_gateway_url, timeout=180)
     
     async def generate_dd_questions(
         self,
@@ -178,21 +179,10 @@ class RiskAgent:
     
     async def _call_llm(self, prompt: str) -> str:
         """Call LLM Gateway"""
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            response = await client.post(
-                f"{self.llm_gateway_url}/chat",
-                json={
-                    "history": [
-                        {"role": "user", "parts": [prompt]}
-                    ]
-                }
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"LLM Gateway returned {response.status_code}")
-            
-            result = response.json()
-            return result.get("content", "")
+        result = await self.llm.call(prompt=prompt, response_format="text")
+        if "content" in result:
+            return result["content"]
+        raise RuntimeError(f"LLM call failed: {result}")
     
     def _parse_llm_response(self, llm_response: str) -> List[DDQuestion]:
         """Parse LLM response into DDQuestion list"""

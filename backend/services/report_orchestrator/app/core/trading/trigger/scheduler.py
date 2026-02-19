@@ -19,10 +19,13 @@ try:
     from .agent import TriggerAgent, TriggerContext
     from .lock import TriggerLock
     from .fast_monitor import FastMonitor, FastTriggerResult
+    from ..exceptions import TriggerError, LLMError
 except ImportError:
     from agent import TriggerAgent, TriggerContext
     from lock import TriggerLock
     from fast_monitor import FastMonitor, FastTriggerResult
+    TriggerError = Exception
+    LLMError = Exception
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +108,16 @@ class TriggerScheduler:
         while self._state == SchedulerState.RUNNING:
             try:
                 await self.run_check()
-                    
+
+            except TriggerError as e:
+                logger.error(f"[TriggerScheduler] Trigger system error: {e}")
+            except LLMError as e:
+                logger.error(f"[TriggerScheduler] LLM error: {e}")
+            except asyncio.CancelledError:
+                logger.info("[TriggerScheduler] Loop cancelled")
+                break
             except Exception as e:
-                logger.error(f"[TriggerScheduler] Check error: {e}")
+                logger.error(f"[TriggerScheduler] Unexpected error: {type(e).__name__}: {e}")
             
             # 等待下一次检查
             await asyncio.sleep(self.interval_minutes * 60)
@@ -138,11 +148,11 @@ class TriggerScheduler:
                 if fast_result.should_trigger:
                     self._fast_trigger_count += 1
                     conditions_str = ", ".join([c.name for c in fast_result.conditions])
-                    logger.info(f"[TriggerScheduler] ⚡ FastMonitor triggered: [{conditions_str}] urgency={fast_result.urgency}")
+                    logger.info(f"[TriggerScheduler] [FAST] FastMonitor triggered: [{conditions_str}] urgency={fast_result.urgency}")
                 else:
                     logger.debug("[TriggerScheduler] FastMonitor: No hard conditions triggered")
-            except Exception as e:
-                logger.error(f"[TriggerScheduler] FastMonitor error: {e}")
+            except TriggerError as e:
+                logger.error(f"[TriggerScheduler] FastMonitor trigger error: {e}")
                 # FastMonitor 失败不阻塞后续流程
         
         # 决定是否需要运行 Layer 2 (TriggerAgent)
@@ -198,7 +208,7 @@ class TriggerScheduler:
             
             # ========== Layer 3: 触发完整分析 ==========
             self._trigger_count += 1
-            logger.info(f"[TriggerScheduler] 🎯 TRIGGER! Confidence={context.confidence}%, Urgency={context.urgency}")
+            logger.info(f"[TriggerScheduler] [TARGET] TRIGGER! Confidence={context.confidence}%, Urgency={context.urgency}")
             
             # 释放 Check 锁
             self.trigger_lock.release_check()
@@ -212,10 +222,18 @@ class TriggerScheduler:
             
             return result
             
-        except Exception as e:
-            logger.error(f"[TriggerScheduler] Error during Layer 2 check: {e}")
+        except LLMError as e:
+            logger.error(f"[TriggerScheduler] LLM error during Layer 2 check: {e}")
             self.trigger_lock.release_check()
-            raise e
+            raise TriggerError(f"LLM analysis failed: {e}") from e
+        except TriggerError as e:
+            logger.error(f"[TriggerScheduler] Trigger error during Layer 2 check: {e}")
+            self.trigger_lock.release_check()
+            raise
+        except Exception as e:
+            logger.error(f"[TriggerScheduler] Unexpected error during Layer 2 check: {type(e).__name__}: {e}")
+            self.trigger_lock.release_check()
+            raise TriggerError(f"Layer 2 check failed: {e}") from e
     
     def get_status(self) -> Dict:
         """获取调度器状态"""

@@ -1,13 +1,19 @@
 <template>
   <div class="w-full max-w-7xl mx-auto">
-    <!-- Mock Data Warning Banner -->
-    <div v-if="usingMockData" class="mb-8 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 backdrop-blur-sm">
+    <!-- Backend Unavailable Banner -->
+    <div v-if="loadError" class="mb-8 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 backdrop-blur-sm">
       <div class="flex items-center gap-3">
-        <span class="material-symbols-outlined text-amber-400 text-2xl">warning</span>
+        <span class="material-symbols-outlined text-rose-400 text-2xl">error</span>
         <div class="flex-1">
-          <p class="text-amber-300 font-medium">{{ t('analysisWizard.mockDataWarning') || '⚠️ Backend service is unavailable. Using demo data for display.' }}</p>
-          <p class="text-amber-400/70 text-sm mt-1">{{ t('analysisWizard.mockDataHint') || 'Please start the backend service to use real analysis features.' }}</p>
+          <p class="text-rose-300 font-medium">{{ t('analysisWizard.backendUnavailable') || 'Backend service is unavailable. Please start backend services.' }}</p>
+          <p class="text-rose-400/70 text-sm mt-1">{{ loadError }}</p>
         </div>
+        <button
+          class="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white text-sm font-bold transition-colors"
+          @click="reloadScenarios"
+        >
+          {{ t('common.retry') || 'Retry' }}
+        </button>
       </div>
     </div>
 
@@ -33,7 +39,7 @@
           selectedScenario === scenario.id
             ? 'bg-surface border-primary shadow-[0_0_30px_rgba(56,189,248,0.2)] scale-105 z-10'
             : 'bg-surface/40 border-white/5 hover:border-primary/30 hover:bg-surface/60 hover:-translate-y-2 hover:shadow-xl',
-          scenario.status === 'coming_soon' ? 'opacity-60 cursor-not-allowed grayscale hover:transform-none' : ''
+          scenario.status && scenario.status !== 'active' ? 'opacity-60 cursor-not-allowed grayscale hover:transform-none' : ''
         ]"
         @click="selectScenario(scenario)"
       >
@@ -68,14 +74,17 @@
           </div>
         </div>
 
-        <!-- Coming Soon Badge -->
-        <div v-if="scenario.status === 'coming_soon'" class="absolute top-4 right-4 bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase shadow-lg backdrop-blur-md">
-          {{ t('analysisWizard.comingSoon') }}
-        </div>
-
         <!-- Selected Indicator -->
         <div v-if="selectedScenario === scenario.id" class="absolute top-4 right-4 text-primary animate-fade-in">
           <span class="material-symbols-outlined text-3xl drop-shadow-[0_0_10px_rgba(56,189,248,0.8)]">check_circle</span>
+        </div>
+
+        <!-- Coming Soon Badge -->
+        <div
+          v-if="scenario.status && scenario.status !== 'active'"
+          class="absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-bold tracking-wide bg-amber-500/20 text-amber-300 border border-amber-500/30"
+        >
+          {{ t('analysisWizard.comingSoon') || 'Coming Soon' }}
         </div>
       </div>
     </div>
@@ -111,7 +120,7 @@ const emit = defineEmits(['scenario-selected']);
 const loading = ref(true);
 const rawScenarios = ref([]);
 const selectedScenario = ref(null);
-const usingMockData = ref(false);
+const loadError = ref('');
 
 // Icon mapping: backend icon names to emojis
 const iconMap = {
@@ -148,32 +157,11 @@ const scenarios = computed(() => {
 });
 
 onMounted(async () => {
-  try {
-    // Use mock data if service fails or for demo purposes since backend might not be running
-    try {
-        rawScenarios.value = await analysisServiceV2.getScenarios();
-        usingMockData.value = false;
-    } catch (e) {
-        console.warn("Backend fetch failed, using mock data for demo visuals");
-        usingMockData.value = true;
-        rawScenarios.value = [
-            { id: 'early-stage-investment', name: 'Early Stage VC', description: 'Analyze pre-seed/seed startups focusing on team and market potential.', icon: '🚀', quick_mode_duration: '3-5分钟', standard_mode_duration: '30-45分钟', status: 'active' },
-            { id: 'growth-investment', name: 'Growth Equity', description: 'Evaluate scaling companies with established metrics and unit economics.', icon: '📈', quick_mode_duration: '3-5分钟', standard_mode_duration: '30-45分钟', status: 'coming_soon' },
-            { id: 'public-market-investment', name: 'Public Markets', description: 'Comprehensive analysis of publicly traded securities and reports.', icon: '🏛️', quick_mode_duration: '3-5分钟', standard_mode_duration: '20-30分钟', status: 'coming_soon' },
-             { id: 'alternative-investment', name: 'Alternative Assets', description: 'Real estate, crypto, and other non-traditional asset classes.', icon: '💎', quick_mode_duration: '3-5分钟', standard_mode_duration: '25-35分钟', status: 'coming_soon' },
-             { id: 'industry-research', name: 'Industry Research', description: 'Deep dive into specific market sectors and competitive landscapes.', icon: '🔍', quick_mode_duration: '5-8分钟', standard_mode_duration: '45-60分钟', status: 'coming_soon' },
-        ];
-    }
-    loading.value = false;
-  } catch (error) {
-    console.error('Failed to load scenarios:', error);
-    usingMockData.value = true;
-    loading.value = false;
-  }
+  await reloadScenarios();
 });
 
 function selectScenario(scenario) {
-  if (scenario.status === 'coming_soon') {
+  if (scenario.status && scenario.status !== 'active') {
     return; // 暂不支持的场景,不能选择
   }
   selectedScenario.value = scenario.id;
@@ -183,6 +171,19 @@ function handleNext() {
   if (selectedScenario.value) {
     const scenario = rawScenarios.value.find(s => s.id === selectedScenario.value);
     emit('scenario-selected', scenario);
+  }
+}
+
+async function reloadScenarios() {
+  loading.value = true;
+  loadError.value = '';
+  try {
+    rawScenarios.value = await analysisServiceV2.getScenarios();
+  } catch (e) {
+    rawScenarios.value = [];
+    loadError.value = e?.message || String(e);
+  } finally {
+    loading.value = false;
   }
 }
 </script>

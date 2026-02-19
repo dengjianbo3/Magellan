@@ -206,7 +206,7 @@ class HoldingTimeManager:
         # Normal
         remaining_hours = max(0, recommended_max - current_holding_hours)
         return (
-            f"✅ 正常：资金费影响 {funding_impact_percent:.0f}%。"
+            f"[OK] 正常：资金费影响 {funding_impact_percent:.0f}%。"
             f"已持仓 {current_holding_hours:.1f}h，建议最长 {recommended_max}h "
             f"(还可持有约 {remaining_hours:.0f}h)。"
         )

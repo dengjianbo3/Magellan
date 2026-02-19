@@ -9,8 +9,9 @@ Provides advanced search capabilities with hybrid search, reranking, and context
 from typing import List, Dict, Any, Optional, Tuple
 from rank_bm25 import BM25Okapi
 import numpy as np
-from sentence_transformers import CrossEncoder
 import re
+import inspect
+import os
 
 
 class RAGService:
@@ -25,14 +26,10 @@ class RAGService:
         """
         self.vector_store = vector_store_service
 
-        # Initialize cross-encoder for reranking (lightweight multilingual model)
-        # This model scores query-document pairs for better relevance
-        try:
-            self.reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
-            print("[RAGService] ✅ Cross-encoder reranker initialized")
-        except Exception as e:
-            print(f"[RAGService] ⚠️ Failed to load reranker: {e}. Will use without reranking.")
-            self.reranker = None
+        # Keep reranker disabled by default to avoid local model downloads.
+        # (Can be replaced by remote reranking service later if needed.)
+        self.reranker = None
+        print("[RAGService] ℹ️ Local cross-encoder reranker disabled")
 
         # BM25 index cache (will be built on-demand)
         self.bm25_index = None
@@ -170,7 +167,7 @@ class RAGService:
         top_k: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Rerank results using cross-encoder model
+        Rerank results using a reranker model (if enabled)
 
         Args:
             query: Search query
@@ -335,7 +332,7 @@ class RAGService:
             print("[RAGService] Refreshing BM25 index...")
 
             # Get all documents from vector store
-            documents = self.vector_store.list_documents(limit=10000)
+            documents = self.vector_store.list_documents(limit=10000, include_full_text=True)
 
             if not documents:
                 print("[RAGService] No documents found to index")
@@ -349,7 +346,7 @@ class RAGService:
             print(f"[RAGService] Error refreshing BM25 index: {e}")
             return False
 
-    def get_answer_with_sources(
+    async def get_answer_with_sources(
         self,
         query: str,
         llm_client,
@@ -386,10 +383,10 @@ class RAGService:
 请提供详细且准确的回答，并在回答中引用相关的参考资料。"""
 
         try:
-            # Call LLM (this would integrate with your llm_gateway)
-            # For now, return context and prompt for the caller to use
+            answer = await self._generate_answer(prompt=prompt, llm_client=llm_client)
             return {
                 'query': query,
+                'answer': answer,
                 'context': rag_context['context'],
                 'sources': rag_context['sources'],
                 'prompt': prompt,
@@ -404,3 +401,42 @@ class RAGService:
                 'error': str(e),
                 'num_sources': rag_context['num_sources']
             }
+
+    async def _generate_answer(self, prompt: str, llm_client=None) -> str:
+        """
+        Generate final answer with either injected llm_client or default LLM gateway client.
+        """
+        # Prefer injected client for explicit integrations/tests.
+        if llm_client is not None:
+            if hasattr(llm_client, "call"):
+                result = llm_client.call(prompt=prompt, response_format="text")
+                if inspect.isawaitable(result):
+                    result = await result
+                if isinstance(result, dict):
+                    content = result.get("content")
+                    if content:
+                        return str(content)
+            elif callable(llm_client):
+                result = llm_client(prompt=prompt)
+                if inspect.isawaitable(result):
+                    result = await result
+                if isinstance(result, str) and result.strip():
+                    return result
+                if isinstance(result, dict) and result.get("content"):
+                    return str(result["content"])
+
+            raise RuntimeError("Injected llm_client did not return valid content")
+
+        # Fallback to default gateway.
+        from ..core.llm_helper import LLMHelper
+
+        timeout = int(os.getenv("RAG_LLM_TIMEOUT", "60"))
+        helper = LLMHelper(
+            llm_gateway_url=os.getenv("LLM_GATEWAY_URL", "http://llm_gateway:8003"),
+            timeout=timeout,
+        )
+        result = await helper.call(prompt=prompt, response_format="text")
+        content = result.get("content") if isinstance(result, dict) else None
+        if not content:
+            raise RuntimeError(f"LLM generation failed: {result}")
+        return str(content)

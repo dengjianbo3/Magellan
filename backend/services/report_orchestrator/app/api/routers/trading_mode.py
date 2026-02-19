@@ -2,15 +2,17 @@
 Trading Mode API Router
 
 Provides endpoints for:
-- Getting/setting trading mode (FULL_AUTO, SEMI_AUTO, MANUAL)
-- Managing pending trades in SEMI_AUTO mode
+- Getting trading mode (HITL-only)
+- Managing pending trades (confirmation workflow)
 - Confirming or rejecting pending trades
 """
 
+import logging
 from datetime import datetime
-from typing import Optional, List
-from fastapi import APIRouter, HTTPException
+from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from ...core.auth import CurrentUser, get_current_user
 
 from app.core.trading.mode_manager import (
     TradingMode,
@@ -18,8 +20,15 @@ from app.core.trading.mode_manager import (
     PendingTrade,
     get_mode_manager,
 )
+from app.core.trading.price_service import get_current_btc_price
 
-router = APIRouter(prefix="/api/trading", tags=["Trading Mode"])
+logger = logging.getLogger(__name__)
+
+router = APIRouter(
+    prefix="/api/trading",
+    tags=["Trading Mode"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 # ============================================================================
@@ -34,7 +43,7 @@ class ModeResponse(BaseModel):
 
 class SetModeRequest(BaseModel):
     """Request to set trading mode."""
-    mode: str = Field(..., description="Trading mode: full_auto, semi_auto, manual")
+    mode: str = Field(..., description="Trading mode (HITL-only): semi_auto")
     user_id: Optional[str] = Field(None, description="User ID for audit")
 
 
@@ -49,9 +58,14 @@ class SetModeResponse(BaseModel):
 class PendingTradeResponse(BaseModel):
     """Response for a pending trade."""
     id: str
+    symbol: str = "BTC-USDT-SWAP"
     direction: str
     leverage: int
     confidence: int
+    entry_price: float = 0.0
+    take_profit_price: float = 0.0
+    stop_loss_price: float = 0.0
+    amount_percent: float = 0.5
     take_profit_percent: float
     stop_loss_percent: float
     reasoning: str
@@ -69,8 +83,10 @@ class PendingTradesResponse(BaseModel):
 
 class ConfirmTradeRequest(BaseModel):
     """Request to confirm a pending trade."""
-    user_id: str = Field(..., description="User confirming the trade")
+    user_id: Optional[str] = Field(None, description="Deprecated: ignored; authenticated user is used")
+    direction: Optional[str] = Field(None, description="Modified direction (long/short)")
     leverage: Optional[int] = Field(None, description="Modified leverage")
+    amount_percent: Optional[float] = Field(None, description="Modified position size (0.1-1.0)")
     take_profit_percent: Optional[float] = Field(None, description="Modified TP")
     stop_loss_percent: Optional[float] = Field(None, description="Modified SL")
 
@@ -85,8 +101,174 @@ class ConfirmTradeResponse(BaseModel):
 
 class RejectTradeRequest(BaseModel):
     """Request to reject a pending trade."""
-    user_id: str
+    user_id: Optional[str] = None
     reason: Optional[str] = ""
+
+
+# ============================================================================
+# Trade Execution Helper
+# ============================================================================
+
+async def execute_confirmed_trade(signal: Dict[str, Any], user_id: str) -> Dict[str, Any]:
+    """
+    Execute a confirmed trade signal.
+
+    Args:
+        signal: The confirmed trade signal containing direction, leverage, etc.
+
+    Returns:
+        Execution result with success status and details
+    """
+    direction = signal.get("direction", "").lower()
+
+    # Skip execution for hold signals
+    if direction == "hold" or direction == "":
+        logger.info("[TradeExecution] Hold signal - no trade to execute")
+        return {
+            "success": True,
+            "action": "hold",
+            "message": "No trade executed (hold signal)"
+        }
+
+    from app.services.trading_system import get_trading_system
+    system = await get_trading_system(user_id=user_id)
+    paper_trader = system.paper_trader
+    if not paper_trader:
+        return {"success": False, "error": "Trader not initialized"}
+
+    # Get current price for TP/SL calculation
+    current_price = await get_current_btc_price()
+    if not current_price or current_price <= 0:
+        logger.error("[TradeExecution] Failed to get current price")
+        return {
+            "success": False,
+            "error": "Failed to get current price"
+        }
+
+    # Extract trade parameters
+    leverage = signal.get("leverage", 5)
+    amount_percent = signal.get("amount_percent", 0.2)  # Default 20%
+    tp_percent = signal.get("take_profit_percent", None)
+    sl_percent = signal.get("stop_loss_percent", None)
+
+    # Prefer explicit TP/SL prices from the signal (HITL workflow usually provides absolute prices).
+    tp_price = signal.get("take_profit_price") or signal.get("tp_price")
+    sl_price = signal.get("stop_loss_price") or signal.get("sl_price")
+
+    # If percent-based overrides are present, prefer percent computation.
+    if tp_percent is not None or sl_percent is not None:
+        tp_price = None
+        sl_price = None
+
+    # Validate provided TP/SL prices against current execution price.
+    if tp_price is not None and sl_price is not None:
+        try:
+            tp_price = float(tp_price)
+            sl_price = float(sl_price)
+        except (TypeError, ValueError):
+            tp_price = None
+            sl_price = None
+
+    if tp_price is not None and sl_price is not None:
+        if direction == "long":
+            if tp_price <= current_price or sl_price >= current_price:
+                tp_price = None
+                sl_price = None
+        else:  # short
+            if tp_price >= current_price or sl_price <= current_price:
+                tp_price = None
+                sl_price = None
+
+    # Get account status for position sizing.
+    # PaperTrader.get_status() uses "balance", while some other traders may expose "available_balance".
+    status = await paper_trader.get_status()
+    available_balance = status.get("available_balance")
+    if available_balance is None:
+        available_balance = status.get("balance", 0)
+
+    if available_balance <= 0:
+        logger.error("[TradeExecution] No available balance")
+        return {
+            "success": False,
+            "error": "Insufficient balance"
+        }
+
+    # Calculate position size in USDT
+    amount_usdt = available_balance * amount_percent
+
+    # If explicit prices aren't available/valid, fall back to percent-based TP/SL.
+    if tp_price is None or sl_price is None:
+        tp_percent = float(tp_percent if tp_percent is not None else 5.0)
+        sl_percent = float(sl_percent if sl_percent is not None else 2.0)
+
+        if direction == "long":
+            tp_price = current_price * (1 + tp_percent / 100)
+            sl_price = current_price * (1 - sl_percent / 100)
+        else:  # short
+            tp_price = current_price * (1 - tp_percent / 100)
+            sl_price = current_price * (1 + sl_percent / 100)
+
+    logger.info(
+        f"[TradeExecution] Executing {direction.upper()} trade: "
+        f"leverage={leverage}x, amount=${amount_usdt:.2f}, "
+        f"TP=${tp_price:.2f}, SL=${sl_price:.2f}"
+    )
+
+    try:
+        # Execute the trade
+        if direction == "long":
+            result = await paper_trader.open_long(
+                symbol="BTC-USDT-SWAP",
+                leverage=leverage,
+                amount_usdt=amount_usdt,
+                tp_price=tp_price,
+                sl_price=sl_price
+            )
+        elif direction == "short":
+            result = await paper_trader.open_short(
+                symbol="BTC-USDT-SWAP",
+                leverage=leverage,
+                amount_usdt=amount_usdt,
+                tp_price=tp_price,
+                sl_price=sl_price
+            )
+        else:
+            return {
+                "success": False,
+                "error": f"Invalid direction: {direction}"
+            }
+
+        if result.get("success"):
+            logger.info(
+                f"[TradeExecution] ✅ Trade executed successfully: "
+                f"{direction.upper()} @ ${float(result.get('executed_price') or result.get('entry_price') or 0):.2f}"
+            )
+            return {
+                "success": True,
+                "action": direction,
+                "entry_price": result.get("executed_price") or result.get("entry_price"),
+                "size": result.get("executed_amount") or result.get("size"),
+                "leverage": leverage,
+                "tp_price": tp_price,
+                "sl_price": sl_price,
+                "message": f"Successfully opened {direction} position"
+            }
+        else:
+            error_msg = result.get("error", "Unknown error")
+            logger.error(f"[TradeExecution] ❌ Trade failed: {error_msg}")
+            return {
+                "success": False,
+                "error": error_msg
+            }
+
+    except Exception as e:
+        logger.error(f"[TradeExecution] ❌ Exception during trade execution: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 
 # ============================================================================
@@ -94,9 +276,7 @@ class RejectTradeRequest(BaseModel):
 # ============================================================================
 
 MODE_DESCRIPTIONS = {
-    TradingMode.FULL_AUTO: "Trades are executed automatically without user intervention",
     TradingMode.SEMI_AUTO: "Trades require user confirmation before execution",
-    TradingMode.MANUAL: "Analysis only - no trades are executed automatically",
 }
 
 
@@ -105,14 +285,14 @@ MODE_DESCRIPTIONS = {
 # ============================================================================
 
 @router.get("/mode", response_model=ModeResponse)
-async def get_trading_mode():
+async def get_trading_mode(current_user: CurrentUser = Depends(get_current_user)):
     """
     Get the current trading mode.
     
     Returns:
         Current mode and its description
     """
-    manager = get_mode_manager()
+    manager = get_mode_manager(current_user.id)
     mode = await manager.get_mode()
     
     return ModeResponse(
@@ -122,7 +302,10 @@ async def get_trading_mode():
 
 
 @router.post("/mode", response_model=SetModeResponse)
-async def set_trading_mode(request: SetModeRequest):
+async def set_trading_mode(
+    request: SetModeRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Set the trading mode.
     
@@ -132,19 +315,18 @@ async def set_trading_mode(request: SetModeRequest):
     Returns:
         Success status and mode change details
     """
-    # Validate mode
-    try:
-        new_mode = TradingMode(request.mode.lower())
-    except ValueError:
+    # HITL-only: only semi_auto is supported.
+    if request.mode.lower() != TradingMode.SEMI_AUTO.value:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid mode: {request.mode}. Valid modes: full_auto, semi_auto, manual"
+            detail="Only semi_auto (HITL) mode is supported.",
         )
+    new_mode = TradingMode.SEMI_AUTO
     
-    manager = get_mode_manager()
+    manager = get_mode_manager(current_user.id)
     previous_mode = await manager.get_mode()
     
-    success = await manager.set_mode(new_mode, request.user_id)
+    success = await manager.set_mode(new_mode, current_user.id)
     
     if not success:
         raise HTTPException(
@@ -161,13 +343,13 @@ async def set_trading_mode(request: SetModeRequest):
 
 
 @router.get("/pending", response_model=PendingTradesResponse)
-async def get_pending_trades():
+async def get_pending_trades(current_user: CurrentUser = Depends(get_current_user)):
     """
     Get all pending trades awaiting confirmation.
     
-    Only applicable in SEMI_AUTO mode.
+    HITL-only: always applicable.
     """
-    manager = get_mode_manager()
+    manager = get_mode_manager(current_user.id)
     trades = await manager.get_pending_trades()
     
     now = datetime.now()
@@ -176,14 +358,29 @@ async def get_pending_trades():
     for trade in trades:
         signal = trade.signal
         expires_in = int((trade.expires_at - now).total_seconds())
+
+        direction = signal.get("direction", "unknown")
+        entry_price = float(signal.get("entry_price") or 0.0)
+        tp_price = float(signal.get("take_profit_price") or 0.0)
+        sl_price = float(signal.get("stop_loss_price") or 0.0)
+
+        # Keep legacy percent fields for backward compatibility (positive magnitudes).
+        sign = -1 if direction == "short" else 1
+        tp_pct = ((tp_price / entry_price - 1) * 100 * sign) if entry_price and tp_price else 0.0
+        sl_pct = ((1 - sl_price / entry_price) * 100 * sign) if entry_price and sl_price else 0.0
         
         trade_responses.append(PendingTradeResponse(
             id=trade.id,
-            direction=signal.get("direction", "unknown"),
+            symbol=signal.get("symbol", "BTC-USDT-SWAP"),
+            direction=direction,
             leverage=signal.get("leverage", 1),
             confidence=signal.get("confidence", 0),
-            take_profit_percent=signal.get("take_profit_percent", 0),
-            stop_loss_percent=signal.get("stop_loss_percent", 0),
+            entry_price=entry_price,
+            take_profit_price=tp_price,
+            stop_loss_price=sl_price,
+            amount_percent=float(signal.get("amount_percent") or 0.5),
+            take_profit_percent=float(tp_pct),
+            stop_loss_percent=float(sl_pct),
             reasoning=signal.get("reasoning", ""),
             created_at=trade.created_at.isoformat(),
             expires_at=trade.expires_at.isoformat(),
@@ -198,9 +395,9 @@ async def get_pending_trades():
 
 
 @router.get("/pending/{trade_id}", response_model=PendingTradeResponse)
-async def get_pending_trade(trade_id: str):
+async def get_pending_trade(trade_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """Get a specific pending trade by ID."""
-    manager = get_mode_manager()
+    manager = get_mode_manager(current_user.id)
     trade = await manager.get_pending_trade(trade_id)
     
     if not trade:
@@ -209,14 +406,27 @@ async def get_pending_trade(trade_id: str):
     now = datetime.now()
     signal = trade.signal
     expires_in = int((trade.expires_at - now).total_seconds())
-    
+
+    direction = signal.get("direction", "unknown")
+    entry_price = float(signal.get("entry_price") or 0.0)
+    tp_price = float(signal.get("take_profit_price") or 0.0)
+    sl_price = float(signal.get("stop_loss_price") or 0.0)
+    sign = -1 if direction == "short" else 1
+    tp_pct = ((tp_price / entry_price - 1) * 100 * sign) if entry_price and tp_price else 0.0
+    sl_pct = ((1 - sl_price / entry_price) * 100 * sign) if entry_price and sl_price else 0.0
+
     return PendingTradeResponse(
         id=trade.id,
-        direction=signal.get("direction", "unknown"),
+        symbol=signal.get("symbol", "BTC-USDT-SWAP"),
+        direction=direction,
         leverage=signal.get("leverage", 1),
         confidence=signal.get("confidence", 0),
-        take_profit_percent=signal.get("take_profit_percent", 0),
-        stop_loss_percent=signal.get("stop_loss_percent", 0),
+        entry_price=entry_price,
+        take_profit_price=tp_price,
+        stop_loss_price=sl_price,
+        amount_percent=float(signal.get("amount_percent") or 0.5),
+        take_profit_percent=float(tp_pct),
+        stop_loss_percent=float(sl_pct),
         reasoning=signal.get("reasoning", ""),
         created_at=trade.created_at.isoformat(),
         expires_at=trade.expires_at.isoformat(),
@@ -225,64 +435,126 @@ async def get_pending_trade(trade_id: str):
     )
 
 
-@router.post("/confirm/{trade_id}", response_model=ConfirmTradeResponse)
-async def confirm_pending_trade(trade_id: str, request: ConfirmTradeRequest):
+@router.post("/pending/{trade_id}/confirm", response_model=ConfirmTradeResponse)
+async def confirm_pending_trade(
+    trade_id: str,
+    request: ConfirmTradeRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Confirm a pending trade for execution.
-    
+
     Optionally modify leverage, TP, or SL before execution.
+    This endpoint actually executes the trade after confirmation.
     """
-    manager = get_mode_manager()
-    
+    manager = get_mode_manager(current_user.id)
+
     # Build modifications dict
     modifications = {}
+    if request.direction is not None:
+        modifications["direction"] = request.direction
     if request.leverage is not None:
         modifications["leverage"] = request.leverage
+    if request.amount_percent is not None:
+        modifications["amount_percent"] = request.amount_percent
     if request.take_profit_percent is not None:
         modifications["take_profit_percent"] = request.take_profit_percent
     if request.stop_loss_percent is not None:
         modifications["stop_loss_percent"] = request.stop_loss_percent
-    
+
     signal = await manager.confirm_trade(
         trade_id=trade_id,
-        user_id=request.user_id,
+        user_id=current_user.id,
         modifications=modifications if modifications else None
     )
-    
+
     if signal is None:
         raise HTTPException(
             status_code=404,
             detail="Trade not found, expired, or already processed"
         )
-    
-    # TODO: Trigger actual trade execution here
-    # For now, return the confirmed signal
-    
+
+    # Execute the confirmed trade
+    execution_result = await execute_confirmed_trade(signal, user_id=current_user.id)
+
+    # Broadcast WebSocket event for frontend
+    try:
+        from app.services.trading_system import get_trading_system
+        system = await get_trading_system(user_id=current_user.id)
+        if execution_result.get("success"):
+            await system._broadcast({
+                "type": "trade_confirmed",
+                "trade_id": trade_id,
+                "signal": signal,
+                "trade_result": execution_result,
+                "confirmed_by": current_user.id
+            })
+        else:
+            await system._broadcast({
+                "type": "trade_confirm_failed",
+                "trade_id": trade_id,
+                "error": execution_result.get("error", "Unknown error")
+            })
+    except Exception as ws_err:
+        logger.warning(f"[ConfirmTrade] WebSocket broadcast failed: {ws_err}")
+
+    if not execution_result.get("success"):
+        logger.error(
+            f"[ConfirmTrade] Trade {trade_id} confirmed but execution failed: "
+            f"{execution_result.get('error')}"
+        )
+        return ConfirmTradeResponse(
+            success=False,
+            trade_id=trade_id,
+            message=f"Trade confirmed but execution failed: {execution_result.get('error')}",
+            executed_signal=signal
+        )
+
+    # Merge execution result into signal for response
+    signal["execution_result"] = execution_result
+
     return ConfirmTradeResponse(
         success=True,
         trade_id=trade_id,
-        message="Trade confirmed and queued for execution",
+        message=f"Trade confirmed and executed: {execution_result.get('message', 'Success')}",
         executed_signal=signal
     )
 
 
-@router.post("/reject/{trade_id}")
-async def reject_pending_trade(trade_id: str, request: RejectTradeRequest):
+@router.post("/pending/{trade_id}/reject")
+async def reject_pending_trade(
+    trade_id: str,
+    request: RejectTradeRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """Reject a pending trade."""
-    manager = get_mode_manager()
-    
+    manager = get_mode_manager(current_user.id)
+
     success = await manager.reject_trade(
         trade_id=trade_id,
-        user_id=request.user_id,
+        user_id=current_user.id,
         reason=request.reason or ""
     )
-    
+
     if not success:
         raise HTTPException(
             status_code=404,
             detail="Trade not found or already processed"
         )
-    
+
+    # Broadcast WebSocket event for frontend
+    try:
+        from app.services.trading_system import get_trading_system
+        system = await get_trading_system(user_id=current_user.id)
+        await system._broadcast({
+            "type": "trade_rejected",
+            "trade_id": trade_id,
+            "rejected_by": current_user.id,
+            "reason": request.reason or ""
+        })
+    except Exception as ws_err:
+        logger.warning(f"[RejectTrade] WebSocket broadcast failed: {ws_err}")
+
     return {
         "success": True,
         "trade_id": trade_id,
@@ -434,7 +706,7 @@ class AgentWeightsResponse(BaseModel):
 
 
 @router.get("/agent-weights", response_model=AgentWeightsResponse)
-async def get_agent_weights(include_performance: bool = False):
+async def get_agent_weights(include_performance: bool = False, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get current learned weights for all agents.
     
@@ -443,7 +715,7 @@ async def get_agent_weights(include_performance: bool = False):
     """
     from app.core.trading.weight_learner import get_weight_learner
     
-    learner = get_weight_learner()
+    learner = get_weight_learner(current_user.id)
     weights = await learner.get_all_weights()
     
     performance = None
@@ -464,7 +736,10 @@ class RecordOutcomeRequest(BaseModel):
 
 
 @router.post("/agent-weights/record-outcome")
-async def record_trade_outcome(request: RecordOutcomeRequest):
+async def record_trade_outcome(
+    request: RecordOutcomeRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Record trade outcome to update agent weights.
     
@@ -478,7 +753,7 @@ async def record_trade_outcome(request: RecordOutcomeRequest):
             detail="actual_outcome must be 'profitable', 'loss', or 'neutral'"
         )
     
-    learner = get_weight_learner()
+    learner = get_weight_learner(current_user.id)
     updated_weights = await learner.record_trade_outcome(
         agent_predictions=request.agent_predictions,
         actual_outcome=request.actual_outcome,
@@ -493,11 +768,11 @@ async def record_trade_outcome(request: RecordOutcomeRequest):
 
 
 @router.post("/agent-weights/reset/{agent_name}")
-async def reset_agent_weight(agent_name: str):
+async def reset_agent_weight(agent_name: str, current_user: CurrentUser = Depends(get_current_user)):
     """Reset an agent's weight to default (1.0)."""
     from app.core.trading.weight_learner import get_weight_learner
     
-    learner = get_weight_learner()
+    learner = get_weight_learner(current_user.id)
     new_weight = await learner.reset_agent_weight(agent_name)
     
     return {
@@ -523,7 +798,7 @@ class UserPreferencesResponse(BaseModel):
 
 
 @router.get("/user-preferences", response_model=UserPreferencesResponse)
-async def get_user_preferences(user_id: str = "default"):
+async def get_user_preferences(current_user: CurrentUser = Depends(get_current_user)):
     """
     Get learned preferences for a user.
     
@@ -532,7 +807,7 @@ async def get_user_preferences(user_id: str = "default"):
     from app.core.trading.preference_learner import get_preference_learner
     
     learner = get_preference_learner()
-    prefs = await learner.get_preferences(user_id)
+    prefs = await learner.get_preferences(current_user.id)
     prefs_dict = prefs.to_dict()
     
     return UserPreferencesResponse(
@@ -562,7 +837,10 @@ class RecordDecisionRequest(BaseModel):
 
 
 @router.post("/user-preferences/record-decision")
-async def record_user_decision(request: RecordDecisionRequest):
+async def record_user_decision(
+    request: RecordDecisionRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Record a user's trade decision to update preferences.
     
@@ -579,7 +857,7 @@ async def record_user_decision(request: RecordDecisionRequest):
     learner = get_preference_learner()
     prefs = await learner.record_decision(
         trade_id=request.trade_id,
-        user_id=request.user_id,
+        user_id=current_user.id,
         direction=request.direction,
         leverage=request.leverage,
         confidence=request.confidence,
@@ -599,15 +877,18 @@ async def record_user_decision(request: RecordDecisionRequest):
 
 
 @router.get("/user-preferences/recent-decisions")
-async def get_recent_decisions(user_id: str = "default", limit: int = 20):
+async def get_recent_decisions(
+    limit: int = 20,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """Get recent trade decisions for a user."""
     from app.core.trading.preference_learner import get_preference_learner
     
     learner = get_preference_learner()
-    decisions = await learner.get_recent_decisions(user_id, limit)
+    decisions = await learner.get_recent_decisions(current_user.id, limit)
     
     return {
-        "user_id": user_id,
+        "user_id": current_user.id,
         "count": len(decisions),
         "decisions": decisions,
     }
@@ -624,7 +905,10 @@ class SuggestAdjustmentsRequest(BaseModel):
 
 
 @router.post("/user-preferences/suggest")
-async def suggest_signal_adjustments(request: SuggestAdjustmentsRequest):
+async def suggest_signal_adjustments(
+    request: SuggestAdjustmentsRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Get suggested adjustments for a trade signal based on user preferences.
     
@@ -633,7 +917,7 @@ async def suggest_signal_adjustments(request: SuggestAdjustmentsRequest):
     from app.core.trading.preference_learner import get_preference_learner
     
     learner = get_preference_learner()
-    prefs = await learner.get_preferences(request.user_id)
+    prefs = await learner.get_preferences(current_user.id)
     
     signal = {
         "direction": request.direction,
@@ -657,16 +941,16 @@ async def suggest_signal_adjustments(request: SuggestAdjustmentsRequest):
 
 
 @router.post("/user-preferences/reset")
-async def reset_user_preferences(user_id: str = "default"):
+async def reset_user_preferences(current_user: CurrentUser = Depends(get_current_user)):
     """Reset user preferences to defaults."""
     from app.core.trading.preference_learner import get_preference_learner
     
     learner = get_preference_learner()
-    prefs = await learner.reset_preferences(user_id)
+    prefs = await learner.reset_preferences(current_user.id)
     
     return {
         "success": True,
-        "user_id": user_id,
+        "user_id": current_user.id,
         "message": "Preferences reset to defaults",
         "preferences": prefs.to_dict(),
     }

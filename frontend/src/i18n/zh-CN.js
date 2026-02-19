@@ -34,6 +34,30 @@ export default {
     expand: '展开'
   },
 
+  offline: {
+    bannerTitle: '您当前处于离线状态',
+    bannerSubtitle: '部分功能可能无法使用，请检查网络连接',
+    retry: '重试连接',
+    restored: '网络连接已恢复',
+    stillDown: '网络仍然不可用'
+  },
+
+  connection: {
+    retry: '重试',
+    disconnected: '未连接',
+    connecting: '连接中...',
+    connected: '已连接',
+    error: '连接错误',
+    reconnecting: '重连中...'
+  },
+
+  roles: {
+    admin: '系统管理员',
+    institution: '机构用户',
+    analyst: '投资分析师',
+    guest: '访客'
+  },
+
   // Authentication
   auth: {
     // Login
@@ -621,7 +645,8 @@ export default {
       notifications: '通知',
       security: '安全',
       api: 'API 密钥',
-      appearance: '外观'
+      appearance: '外观',
+      language: '语言'
     },
 
     profile: {
@@ -704,6 +729,16 @@ export default {
         en: 'English',
         zhTW: '繁體中文'
       }
+    },
+
+    language: {
+      title: '语言',
+      label: '界面语言',
+      switchHint: '切换后将立即生效。',
+      languages: {
+        zhCN: '简体中文',
+        en: 'English'
+      }
     }
   },
 
@@ -734,6 +769,14 @@ export default {
     focusAreas: '重点关注领域',
     optional: '可选',
     reportLanguage: '报告语言',
+    knowledgeBase: '知识库',
+    enableKnowledgeBase: '启用知识库检索',
+    knowledgeBaseScope: '知识库范围',
+    knowledgeScopeAll: '全部知识库',
+    knowledgeScopeGeneral: '通用资料',
+    knowledgeScopeFinancial: '财务资料',
+    knowledgeScopeMarket: '市场资料',
+    knowledgeScopeLegal: '法律资料',
     analysisSummary: '分析预览',
     depth: '深度',
     estimatedTime: '预计耗时',
@@ -1093,6 +1136,7 @@ export default {
 
     // Settings Modal
     loadingConfig: '加载配置中...',
+    traderBackend: '交易环境',
     okxDemoTrading: 'OKX 模拟交易',
     localPaperTrading: '本地模拟交易',
     okxDemo: 'OKX 模拟',

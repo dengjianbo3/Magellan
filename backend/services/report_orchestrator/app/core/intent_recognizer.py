@@ -13,7 +13,7 @@ import re
 from typing import Dict, List, Tuple
 from enum import Enum
 from pydantic import BaseModel
-import httpx
+from .llm_helper import LLMHelper
 
 
 class IntentType(str, Enum):
@@ -113,6 +113,7 @@ class IntentRecognizer:
 
     def __init__(self, llm_gateway_url: str = "http://llm_gateway:8003"):
         self.llm_gateway_url = llm_gateway_url
+        self.llm = LLMHelper(llm_gateway_url=self.llm_gateway_url, timeout=10)
 
     async def recognize(self, user_input: str) -> Intent:
         """
@@ -229,23 +230,13 @@ class IntentRecognizer:
 
 请只返回意图类型（如 "dd_analysis"），不要其他内容。"""
 
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
-                    f"{self.llm_gateway_url}/chat",
-                    json={
-                        "history": [
-                            {"role": "user", "parts": [prompt]}
-                        ]
-                    }
-                )
+            llm_result = await self.llm.call(prompt=prompt, response_format="text")
+            content = llm_result.get("content", "").strip().lower()
 
-                if response.status_code == 200:
-                    content = response.json().get("content", "").strip().lower()
-
-                    # Parse LLM response
-                    for intent_type in IntentType:
-                        if intent_type.value in content:
-                            return intent_type, 0.85  # LLM classification confidence
+            # Parse LLM response
+            for intent_type in IntentType:
+                if intent_type.value in content:
+                    return intent_type, 0.85  # LLM classification confidence
 
         except Exception as e:
             print(f"[IntentRecognizer] LLM classification failed: {e}")

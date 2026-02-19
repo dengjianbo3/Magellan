@@ -19,6 +19,7 @@ from typing import Optional, Dict, List, Any
 from app.models.trading_models import (
     Position, AccountBalance, MarketData
 )
+from app.core.trading.trading_config import get_infra_config
 
 logger = logging.getLogger(__name__)
 
@@ -35,18 +36,20 @@ class OKXClient:
     - Get market data
     """
 
-    BASE_URL = "https://www.okx.com"
-
     def __init__(
         self,
         api_key: Optional[str] = None,
         secret_key: Optional[str] = None,
         passphrase: Optional[str] = None,
-        demo_mode: Optional[bool] = None  # Changed to Optional to detect if explicitly passed
+        demo_mode: Optional[bool] = None,  # Changed to Optional to detect if explicitly passed
+        base_url: Optional[str] = None
     ):
-        self.api_key = api_key or os.getenv("OKX_API_KEY", "")
-        self.secret_key = secret_key or os.getenv("OKX_SECRET_KEY", "")
-        self.passphrase = passphrase or os.getenv("OKX_PASSPHRASE", "")
+        self.base_url = base_url or get_infra_config().okx_base_url
+        # IMPORTANT:
+        # Use None to mean "fall back to environment", but allow empty string to explicitly disable env credentials.
+        self.api_key = os.getenv("OKX_API_KEY", "") if api_key is None else api_key
+        self.secret_key = os.getenv("OKX_SECRET_KEY", "") if secret_key is None else secret_key
+        self.passphrase = os.getenv("OKX_PASSPHRASE", "") if passphrase is None else passphrase
         
         # If demo_mode not explicitly passed, read from environment variable
         if demo_mode is None:
@@ -146,7 +149,7 @@ class OKXClient:
                 # Check for dangerous permissions
                 if 'withdraw' in perm.lower():
                     logger.warning("=" * 60)
-                    logger.warning("🚨 SECURITY WARNING: API KEY HAS WITHDRAW PERMISSION!")
+                    logger.warning("[ALERT] SECURITY WARNING: API KEY HAS WITHDRAW PERMISSION!")
                     logger.warning("   This is a security risk for automated trading.")
                     logger.warning("   Recommendation: Create a new API key with only 'Trade' permission.")
                     logger.warning("=" * 60)
@@ -155,7 +158,7 @@ class OKXClient:
                 # Check for trade permission
                 if 'trade' not in perm.lower() and perm:
                     logger.error("=" * 60)
-                    logger.error("❌ API KEY DOES NOT HAVE TRADE PERMISSION!")
+                    logger.error("[FAIL] API KEY DOES NOT HAVE TRADE PERMISSION!")
                     logger.error("   Trading operations will fail.")
                     logger.error("   Please update API key permissions in OKX.")
                     logger.error("=" * 60)
@@ -164,7 +167,7 @@ class OKXClient:
                 if not ip:
                     logger.warning("[API Security] ⚠️ No IP whitelist configured - consider adding for extra security")
                 else:
-                    logger.info(f"[API Security] ✅ IP whitelist active: {ip}")
+                    logger.info(f"[API Security] [OK] IP whitelist active: {ip}")
                     
         except Exception as e:
             logger.warning(f"[API Security] Could not verify API permissions: {e}")
@@ -202,12 +205,12 @@ class OKXClient:
                     })
 
                     if result.get('code') == '0':
-                        logger.info("✅ Successfully switched to Single-currency margin mode")
+                        logger.info("[OK] Successfully switched to Single-currency margin mode")
                     else:
-                        logger.error(f"❌ Failed to switch account mode: {result.get('msg')}")
+                        logger.error(f"[FAIL] Failed to switch account mode: {result.get('msg')}")
                         logger.error("   Please manually switch in OKX web/app settings")
                 else:
-                    logger.info(f"✅ OKX account mode OK (acctLv={acct_lv})")
+                    logger.info(f"[OK] OKX account mode OK (acctLv={acct_lv})")
 
                 # Check position mode
                 if pos_mode == 'net_mode':
@@ -218,7 +221,7 @@ class OKXClient:
                     })
 
                     if result.get('code') == '0':
-                        logger.info("✅ Successfully switched to long_short_mode (bidirectional position)")
+                        logger.info("[OK] Successfully switched to long_short_mode (bidirectional position)")
                     else:
                         error_msg = result.get('msg', '')
                         if '51020' in str(result):
@@ -226,7 +229,7 @@ class OKXClient:
                         else:
                             logger.error(f"Failed to switch position mode: {error_msg}")
                 else:
-                    logger.info("✅ OKX account already in long_short_mode (bidirectional position)")
+                    logger.info("[OK] OKX account already in long_short_mode (bidirectional position)")
 
         except Exception as e:
             logger.error(f"Error checking/setting account config: {e}")
@@ -262,7 +265,7 @@ class OKXClient:
             self._session = aiohttp.ClientSession(timeout=timeout)
 
         body_str = json.dumps(body) if body else ''
-        url = self.BASE_URL + path
+        url = self.base_url + path
         proxy = self._get_proxy()
         
         last_error = None
@@ -428,7 +431,7 @@ class OKXClient:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 # Use public API for ticker
                 inst_id = symbol  # e.g., "BTC-USDT-SWAP"
-                url = f"{self.BASE_URL}/api/v5/market/ticker?instId={inst_id}"
+                url = f"{self.base_url}/api/v5/market/ticker?instId={inst_id}"
 
                 async with session.get(url, proxy=proxy) as resp:
                     data = await resp.json()
@@ -761,11 +764,11 @@ class OKXClient:
                         if actual_size > 1:  # Likely in contracts not BTC
                             actual_size = actual_size * contract_val
                             
-                        logger.info(f"[OKXClient] ✅ Order {order_id} CONFIRMED: price=${actual_price:.2f}, size={actual_size:.6f}")
+                        logger.info(f"[OKXClient] [OK] Order {order_id} CONFIRMED: price=${actual_price:.2f}, size={actual_size:.6f}")
                         return actual_price, actual_size
                     
                     elif state in ['canceled', 'cancelled']:
-                        logger.error(f"[OKXClient] ❌ Order {order_id} was CANCELLED!")
+                        logger.error(f"[OKXClient] [FAIL] Order {order_id} was CANCELLED!")
                         return expected_price, 0  # Size 0 indicates failed order
                     
                     elif state == 'live':
@@ -823,9 +826,9 @@ class OKXClient:
                     'reduceOnly': 'true'  # Ensure this only reduces position
                 })
                 if result.get('code') == '0':
-                    logger.info(f"[OKXClient] ✅ Take Profit set at ${tp_price:.2f} for {sz_str} contracts")
+                    logger.info(f"[OKXClient] [OK] Take Profit set at ${tp_price:.2f} for {sz_str} contracts")
                 else:
-                    logger.error(f"[OKXClient] ❌ Failed to set TP: {result.get('msg')} (code={result.get('code')})")
+                    logger.error(f"[OKXClient] [FAIL] Failed to set TP: {result.get('msg')} (code={result.get('code')})")
 
             if sl_price:
                 result = await self._request('POST', '/api/v5/trade/order-algo', {
@@ -840,9 +843,9 @@ class OKXClient:
                     'reduceOnly': 'true'  # Ensure this only reduces position
                 })
                 if result.get('code') == '0':
-                    logger.info(f"[OKXClient] ✅ Stop Loss set at ${sl_price:.2f} for {sz_str} contracts")
+                    logger.info(f"[OKXClient] [OK] Stop Loss set at ${sl_price:.2f} for {sz_str} contracts")
                 else:
-                    logger.error(f"[OKXClient] ❌ Failed to set SL: {result.get('msg')} (code={result.get('code')})")
+                    logger.error(f"[OKXClient] [FAIL] Failed to set SL: {result.get('msg')} (code={result.get('code')})")
 
         except Exception as e:
             logger.error(f"Error setting TP/SL: {e}")
@@ -1006,7 +1009,7 @@ class OKXClient:
                 }
                 bar = bar_map.get(timeframe.lower(), '4H')
 
-                url = f"{self.BASE_URL}/api/v5/market/candles?instId={symbol}&bar={bar}&limit={limit}"
+                url = f"{self.base_url}/api/v5/market/candles?instId={symbol}&bar={bar}&limit={limit}"
 
                 async with session.get(url, proxy=proxy) as resp:
                     data = await resp.json()
@@ -1035,14 +1038,53 @@ class OKXClient:
             raise RuntimeError(f"Failed to fetch klines from OKX: {e}")
 
 
-# Singleton instance
-_okx_client: Optional[OKXClient] = None
+# Singleton instances by credential fingerprint
+_okx_clients: Dict[str, OKXClient] = {}
 
 
-async def get_okx_client() -> OKXClient:
-    """Get or create OKX client singleton"""
-    global _okx_client
-    if _okx_client is None:
-        _okx_client = OKXClient()
-        await _okx_client.initialize()
-    return _okx_client
+def _fp(api_key: str, passphrase: str, demo_mode: bool, base_url: str) -> str:
+    # Do not include secret_key in fingerprints to reduce risk of accidental disclosure.
+    return f"{api_key[-6:]}:{passphrase[-2:]}:{'demo' if demo_mode else 'real'}:{base_url}"
+
+
+async def get_okx_client(
+    api_key: Optional[str] = None,
+    secret_key: Optional[str] = None,
+    passphrase: Optional[str] = None,
+    demo_mode: Optional[bool] = None,
+    base_url: Optional[str] = None,
+) -> OKXClient:
+    """
+    Get or create OKX client singleton.
+
+    Security default:
+    - We do NOT auto-use server-side .env OKX credentials unless OKX_ALLOW_ENV_CREDENTIALS=true.
+    - For hosted testing, users should configure credentials via the frontend, which passes them here.
+    """
+    allow_env = os.getenv("OKX_ALLOW_ENV_CREDENTIALS", "false").lower() == "true"
+
+    # If caller did not provide credentials and env use is not allowed, force-empty creds (mock mode).
+    if not allow_env and api_key is None and secret_key is None and passphrase is None:
+        api_key = ""
+        secret_key = ""
+        passphrase = ""
+
+    # Evaluate fingerprint for recreation.
+    eff_demo_mode = (os.getenv("OKX_DEMO_MODE", "true").lower() == "true") if demo_mode is None else bool(demo_mode)
+    eff_base_url = base_url or get_infra_config().okx_base_url
+    eff_api_key = os.getenv("OKX_API_KEY", "") if api_key is None else api_key
+    eff_passphrase = os.getenv("OKX_PASSPHRASE", "") if passphrase is None else passphrase
+    fp = _fp(eff_api_key or "", eff_passphrase or "", eff_demo_mode, eff_base_url)
+
+    client = _okx_clients.get(fp)
+    if client is None:
+        client = OKXClient(
+            api_key=api_key,
+            secret_key=secret_key,
+            passphrase=passphrase,
+            demo_mode=demo_mode,
+            base_url=base_url,
+        )
+        await client.initialize()
+        _okx_clients[fp] = client
+    return client

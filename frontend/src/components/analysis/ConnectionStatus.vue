@@ -25,7 +25,7 @@
       :disabled="isReconnecting"
     >
       <span class="material-symbols-outlined">refresh</span>
-      {{ t('connection.retry') || '重试' }}
+      {{ t('connection.retry') || 'Retry' }}
     </button>
   </div>
 </template>
@@ -54,11 +54,11 @@ const isReconnecting = ref(false);
 // Computed
 const statusText = computed(() => {
   const statusMap = {
-    'disconnected': t('connection.disconnected') || '未连接',
-    'connecting': t('connection.connecting') || '连接中...',
-    'connected': t('connection.connected') || '已连接',
-    'error': t('connection.error') || '连接错误',
-    'reconnecting': t('connection.reconnecting') || '重连中...'
+    'disconnected': t('connection.disconnected') || 'Disconnected',
+    'connecting': t('connection.connecting') || 'Connecting...',
+    'connected': t('connection.connected') || 'Connected',
+    'error': t('connection.error') || 'Connection Error',
+    'reconnecting': t('connection.reconnecting') || 'Reconnecting...'
   };
   return statusMap[connectionState.value] || connectionState.value;
 });

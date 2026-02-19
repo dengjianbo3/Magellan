@@ -52,10 +52,28 @@ class SearchCache:
                 raise
         return self._redis
     
-    def _generate_key(self, query: str, priority: str) -> str:
+    def _normalize_search_params(self, search_params: Optional[Dict[str, Any]]) -> str:
+        """Build stable fingerprint string for cache partitioning by search context."""
+        if not search_params:
+            return ""
+
+        # Keep deterministic compact fields only; ignore None/empty values.
+        filtered = {
+            str(k): search_params[k]
+            for k in sorted(search_params.keys())
+            if search_params[k] not in (None, "", [])
+        }
+        if not filtered:
+            return ""
+        return json.dumps(filtered, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+    def _generate_key(self, query: str, priority: str, search_params: Optional[Dict[str, Any]] = None) -> str:
         """生成缓存key"""
         # 规范化查询
         normalized = query.lower().strip()
+        params_fingerprint = self._normalize_search_params(search_params)
+        if params_fingerprint:
+            normalized = f"{normalized}||{params_fingerprint}"
         # 生成hash
         query_hash = hashlib.md5(normalized.encode()).hexdigest()[:12]
         return f"search_cache:{priority}:{query_hash}"
@@ -113,7 +131,12 @@ class SearchCache:
         # 默认 - 6小时
         return 21600
     
-    async def get(self, query: str, priority: str) -> Optional[Dict[str, Any]]:
+    async def get(
+        self,
+        query: str,
+        priority: str,
+        search_params: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
         """
         从缓存获取搜索结果
         
@@ -129,7 +152,7 @@ class SearchCache:
             if ttl == 0:
                 return None  # 不该使用缓存
             
-            key = self._generate_key(query, priority)
+            key = self._generate_key(query, priority, search_params=search_params)
             cached = await self.redis.get(key)
             
             if cached:
@@ -148,7 +171,8 @@ class SearchCache:
         self, 
         query: str, 
         priority: str, 
-        result: Dict[str, Any]
+        result: Dict[str, Any],
+        search_params: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
         缓存搜索结果
@@ -166,7 +190,7 @@ class SearchCache:
             if ttl == 0:
                 return False  # 不缓存
             
-            key = self._generate_key(query, priority)
+            key = self._generate_key(query, priority, search_params=search_params)
             
             # 添加缓存元数据
             result_with_meta = {

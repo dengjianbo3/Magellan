@@ -1,36 +1,28 @@
 <template>
-  <div class="max-w-7xl mx-auto p-6 space-y-6">
+  <div class="page-shell max-w-7xl mx-auto">
     <!-- Header -->
-    <!-- Header -->
-    <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-2">
+    <div class="page-header">
       <div>
-        <h1 class="text-2xl font-bold text-white tracking-tight">{{ t('trading.title') || 'AI 自动交易系统' }}</h1>
-        <p class="text-text-secondary text-sm mt-1">
-          {{ t('trading.subtitle') || 'AI 驱动的自动化加密货币交易' }}
+        <h1 class="page-title page-title-gradient !text-2xl md:!text-3xl">{{ t('trading.title') || 'AI Auto Trading System' }}</h1>
+        <p class="page-subtitle">
+          {{ t('trading.subtitle') || 'AI-powered automated crypto trading' }}
         </p>
       </div>
 
       <!-- Controls & Status -->
       <div class="flex flex-wrap items-center gap-3">
 
-        <!-- 1. Trading Mode (Context) -->
-        <div class="flex items-center h-10 bg-white/5 rounded-lg p-1 border border-white/5 backdrop-blur-sm">
-             <button @click="setTradingMode('manual')" :disabled="changingMode" class="h-full px-3 rounded-md text-xs font-bold transition-all flex items-center" :class="tradingMode.mode === 'manual' ? 'bg-red-500/20 text-red-400 shadow-sm' : 'text-text-secondary hover:text-white'">手动</button>
-             <button @click="setTradingMode('semi_auto')" :disabled="changingMode" class="h-full px-3 rounded-md text-xs font-bold transition-all flex items-center" :class="tradingMode.mode === 'semi_auto' ? 'bg-yellow-500/20 text-yellow-400 shadow-sm' : 'text-text-secondary hover:text-white'">半自动</button>
-             <button @click="setTradingMode('full_auto')" :disabled="changingMode" class="h-full px-3 rounded-md text-xs font-bold transition-all flex items-center" :class="tradingMode.mode === 'full_auto' ? 'bg-emerald-500/20 text-emerald-400 shadow-sm' : 'text-text-secondary hover:text-white'">全自动</button>
-        </div>
-        
-        <!-- 2. Next Analysis (Pulse) -->
+        <!-- 1. Next Analysis (Pulse) -->
         <div class="flex items-center h-10 gap-3 bg-white/5 rounded-lg px-4 border border-white/5 backdrop-blur-sm">
           <div class="flex items-baseline gap-2">
-            <span class="text-[10px] text-text-secondary uppercase tracking-wider font-semibold">下次分析</span>
+            <span class="text-[10px] text-text-secondary uppercase tracking-wider font-semibold">Next Analysis</span>
             <span class="text-sm font-mono font-bold text-accent-cyan">{{ countdown }}</span>
           </div>
           <div class="w-px h-4 bg-white/10"></div>
           <button
             @click="triggerAnalysis"
             class="group p-1 rounded hover:bg-primary/20 text-primary transition-all active:scale-95 flex items-center justify-center"
-            :title="'立即触发'"
+            :title="'Trigger Now'"
           >
             <span class="material-symbols-outlined text-lg group-hover:text-amber-400 transition-colors">bolt</span>
           </button>
@@ -43,7 +35,7 @@
              <span :class="['relative inline-flex rounded-full h-2.5 w-2.5', systemStatus.enabled ? 'bg-emerald-500' : 'bg-red-500']"></span>
           </span>
           <span :class="['text-xs font-bold', systemStatus.enabled ? 'text-emerald-400' : 'text-text-secondary']">
-            {{ systemStatus.enabled ? '运行中' : '已停止' }}
+            {{ systemStatus.enabled ? 'Running' : 'Stopped' }}
           </span>
         </div>
 
@@ -56,7 +48,7 @@
             class="flex items-center h-10 px-4 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-semibold shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 transition-all active:scale-95"
             >
             <span class="material-symbols-outlined mr-1.5 text-lg">play_arrow</span>
-            <span class="text-sm">启动</span>
+            <span class="text-sm">Start</span>
             </button>
             <button
             v-else
@@ -64,7 +56,7 @@
             class="flex items-center h-10 px-4 rounded-lg bg-white/10 hover:bg-red-500/20 text-white hover:text-red-400 font-semibold border border-white/10 hover:border-red-500/50 transition-all active:scale-95"
             >
             <span class="material-symbols-outlined mr-1.5 text-lg">stop</span>
-            <span class="text-sm">停止</span>
+            <span class="text-sm">Stop</span>
             </button>
 
             <!-- Separator -->
@@ -76,7 +68,7 @@
             class="hidden lg:flex items-center h-10 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium border border-white/5 hover:border-white/10 transition-all active:scale-95"
             >
             <span class="material-symbols-outlined mr-1.5 text-lg">groups</span>
-            <span class="text-xs">专家团队</span>
+            <span class="text-xs">Expert Team</span>
             </button>
 
             <!-- Pending Trades Alert -->
@@ -86,14 +78,14 @@
             class="flex items-center h-10 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold shadow-lg shadow-amber-500/20 animate-pulse transition-all active:scale-95"
             >
             <span class="material-symbols-outlined mr-1.5 text-lg">notifications_active</span>
-            <span class="text-xs">{{ pendingTrades.length }} 待办</span>
+            <span class="text-xs">{{ pendingTrades.length }} Pending</span>
             </button>
 
             <!-- Settings -->
             <button
             @click="openSettings"
-            class="h-10 w-10 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 text-text-secondary hover:text-white border border-white/5 hover:border-white/10 transition-all"
-            :title="'设置'"
+            class="icon-btn"
+            :title="'Settings'"
             >
             <span class="material-symbols-outlined text-lg">settings</span>
             </button>
@@ -109,45 +101,45 @@
       <div class="col-span-12 lg:col-span-4 sticky top-6 z-10 space-y-6">
         
         <!-- Account Overview -->
-        <div class="glass-panel rounded-xl p-6">
+        <div class="section-card">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
             <span class="material-symbols-outlined mr-2 text-primary">account_balance_wallet</span>
-            账户概览
+            Account Overview
           </h3>
 
           <div class="space-y-3">
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary text-sm">交易起始日期</span>
+              <span class="text-text-secondary text-sm">Trading Start Date</span>
               <span class="text-white">{{ tradingStartDateFormatted }}</span>
             </div>
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary text-sm">起始金额</span>
+              <span class="text-text-secondary text-sm">Starting Capital</span>
               <span class="text-white font-medium">${{ formatNumber(initialCapital) }}</span>
             </div>
             <div class="flex justify-between items-center pt-2 border-t border-white/10">
-              <span class="text-text-secondary">当前权益</span>
+              <span class="text-text-secondary">Current Equity</span>
               <span class="text-2xl font-bold text-white">${{ formatNumber(account.totalEquity) }}</span>
             </div>
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary">总盈利</span>
+              <span class="text-text-secondary">Total Profit</span>
               <span :class="totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400'" class="font-semibold">
                 {{ totalProfit >= 0 ? '+' : '' }}${{ formatNumber(totalProfit) }}
                 <span class="text-sm">({{ totalProfitPercent >= 0 ? '+' : '' }}{{ totalProfitPercent.toFixed(2) }}%)</span>
               </span>
             </div>
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary">最大回撤</span>
+              <span class="text-text-secondary">Max Drawdown</span>
               <span class="text-red-400 font-medium">-{{ drawdown.maxDrawdownPct?.toFixed(2) || 0 }}%</span>
             </div>
             <div v-if="btcBenchmark.startPrice > 0" class="pt-2 border-t border-white/10 space-y-2">
                <div class="flex justify-between items-center">
-                 <span class="text-text-secondary text-sm">BTC 同期收益</span>
+                 <span class="text-text-secondary text-sm">BTC Benchmark Return</span>
                  <span :class="btcBenchmark.returnPercent >= 0 ? 'text-emerald-400' : 'text-red-400'" class="text-sm">
                    {{ btcBenchmark.returnPercent >= 0 ? '+' : '' }}{{ btcBenchmark.returnPercent.toFixed(2) }}%
                  </span>
                </div>
                <div class="flex justify-between items-center">
-                 <span class="text-text-secondary font-medium">超额收益 (Alpha)</span>
+                 <span class="text-text-secondary font-medium">Excess Return (Alpha)</span>
                  <span :class="alpha >= 0 ? 'text-emerald-400' : 'text-red-400'" class="font-bold text-lg">
                    {{ alpha >= 0 ? '+' : '' }}{{ alpha?.toFixed(2) || 0 }}%
                  </span>
@@ -157,10 +149,10 @@
         </div>
 
         <!-- Current Position -->
-        <div class="glass-panel rounded-xl p-6">
+        <div class="section-card">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
             <span class="material-symbols-outlined mr-2 text-accent-cyan">trending_up</span>
-            当前持仓
+            Current Position
           </h3>
           <template v-if="position.hasPosition">
             <div class="space-y-3">
@@ -173,8 +165,8 @@
               <div class="grid grid-cols-2 gap-3 text-sm">
                 <div><span class="text-text-secondary block">Entry</span><span class="text-white">${{ formatNumber(position.entryPrice) }}</span></div>
                 <div><span class="text-text-secondary block">Current</span><span class="text-white">${{ formatNumber(position.currentPrice) }}</span></div>
-                <div><span class="text-text-secondary block">TP</span><span class="text-emerald-400">{{ position.takeProfitPrice > 0 ? '$' + formatNumber(position.takeProfitPrice) : '未设置' }}</span></div>
-                <div><span class="text-text-secondary block">SL</span><span class="text-red-400">{{ position.stopLossPrice > 0 ? '$' + formatNumber(position.stopLossPrice) : '未设置' }}</span></div>
+                <div><span class="text-text-secondary block">TP</span><span class="text-emerald-400">{{ position.takeProfitPrice > 0 ? '$' + formatNumber(position.takeProfitPrice) : 'Not set' }}</span></div>
+                <div><span class="text-text-secondary block">SL</span><span class="text-red-400">{{ position.stopLossPrice > 0 ? '$' + formatNumber(position.stopLossPrice) : 'Not set' }}</span></div>
               </div>
               <div class="pt-3 border-t border-white/10 flex justify-between items-center">
                  <span class="text-text-secondary">P&L</span>
@@ -206,12 +198,12 @@
       <div class="col-span-12 lg:col-span-8 space-y-6">
         
         <!-- Equity Curve Chart -->
-        <div class="glass-panel rounded-xl p-6">
+        <div class="section-card">
           <div class="flex items-center justify-between mb-4">
 
             <h3 class="text-lg font-semibold text-white flex items-center">
               <span class="material-symbols-outlined mr-2 text-primary">show_chart</span>
-              权益曲线
+              Equity Curve
             </h3>
           </div>
           <div class="h-64">
@@ -220,10 +212,10 @@
         </div>
 
         <!-- Live Discussion (Fixed Height, Internal Scroll) -->
-        <div class="glass-panel rounded-xl p-6 flex flex-col h-[700px]">
+        <div class="section-card flex flex-col h-[700px]">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center sticky top-0 bg-[#0f172a]/95 backdrop-blur z-10 py-2 border-b border-white/5">
             <span class="material-symbols-outlined mr-2 text-accent-violet">forum</span>
-            实时讨论
+            Live Discussion
             <span v-if="isAnalyzing" class="ml-2 flex items-center text-primary text-sm"><span class="animate-pulse mr-1">●</span> Live</span>
           </h3>
 
@@ -236,7 +228,7 @@
                        <span class="material-symbols-outlined text-sm group-open:rotate-180 transition-transform">expand_more</span>
                        <div class="flex items-center gap-2">
                           <span class="px-2 py-0.5 rounded bg-primary/20 text-primary text-xs font-bold">{{ msg.agentName }}</span>
-                          <span class="text-xs">思考过程 (Thinking Process)</span>
+                          <span class="text-xs">Reasoning (Thinking Process)</span>
                        </div>
                     </summary>
                     <div class="mt-2 pl-6 pt-2 border-l-2 border-white/5 text-gray-400 text-sm prose prose-sm prose-invert max-w-none leading-relaxed" v-html="renderMarkdown(msg.parsed.reasoning)"></div>
@@ -246,7 +238,7 @@
                  <div class="pl-0">
                     <div class="flex items-center justify-between mb-2">
                        <span class="text-xs font-mono text-text-secondary">{{ formatTime(msg.timestamp) }}</span>
-                       <span class="text-xs font-bold text-accent-cyan">结论 (Decision Ticket)</span>
+                       <span class="text-xs font-bold text-accent-cyan">Decision Ticket</span>
                     </div>
 
                     <!-- Signal Card (Visualized JSON) -->
@@ -321,18 +313,18 @@
     </div>
 
     <!-- Agent Performance Panel -->
-    <div class="glass-panel rounded-xl p-6">
+    <div class="section-card">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold text-white flex items-center">
           <span class="material-symbols-outlined mr-2 text-accent-cyan">leaderboard</span>
-          智能体表现 (Agent Performance)
+          Agent Performance
         </h3>
         <button
           @click="fetchAgentPerformance"
           class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-all"
         >
           <span class="material-symbols-outlined align-middle text-base mr-1">refresh</span>
-          刷新
+          Refresh
         </button>
       </div>
 
@@ -368,12 +360,12 @@
         <table class="w-full text-sm">
           <thead>
             <tr class="text-text-secondary border-b border-white/10">
-              <th class="text-left py-3 px-4">智能体</th>
-              <th class="text-right py-3 px-4">交易数</th>
-              <th class="text-right py-3 px-4">胜场</th>
-              <th class="text-right py-3 px-4">胜率</th>
-              <th class="text-right py-3 px-4">总盈亏</th>
-              <th class="text-left py-3 px-4">最新反思</th>
+              <th class="text-left py-3 px-4">Agent</th>
+              <th class="text-right py-3 px-4">Trades</th>
+              <th class="text-right py-3 px-4">Wins</th>
+              <th class="text-right py-3 px-4">Win Rate</th>
+              <th class="text-right py-3 px-4">Total PnL</th>
+              <th class="text-left py-3 px-4">Latest Lesson</th>
             </tr>
           </thead>
           <tbody>
@@ -412,11 +404,11 @@
     </div>
 
     <!-- Trade History (Full Width Bottom) -->
-    <div class="glass-panel rounded-xl p-6">
+    <div class="section-card">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold text-white flex items-center">
           <span class="material-symbols-outlined mr-2 text-primary">history</span>
-          交易历史
+          Trade History
         </h3>
         <button @click="fetchTradeHistory" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-all flex items-center">
            <span class="material-symbols-outlined text-sm mr-1">refresh</span> Refresh
@@ -424,7 +416,7 @@
       </div>
       <div class="max-h-[500px] overflow-y-auto">
          <table class="w-full text-sm">
-            <thead><tr class="text-text-secondary border-b border-white/10 sticky top-0 bg-[#0f172a] z-10"><th class="text-left py-3 px-4">时间</th><th class="text-left py-3 px-4">方向</th><th class="text-right py-3 px-4">入场价</th><th class="text-right py-3 px-4">盈亏</th></tr></thead>
+            <thead><tr class="text-text-secondary border-b border-white/10 sticky top-0 bg-[#0f172a] z-10"><th class="text-left py-3 px-4">Time</th><th class="text-left py-3 px-4">Direction</th><th class="text-right py-3 px-4">Entry Price</th><th class="text-right py-3 px-4">PnL</th></tr></thead>
             <tbody>
               <tr v-for="trade in tradeHistory" :key="trade.id" class="border-b border-white/5 hover:bg-white/5 transition-colors">
                 <td class="py-3 px-4 text-white font-mono">{{ formatDate(trade.timestamp) }}</td>
@@ -444,7 +436,7 @@
       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       @click.self="showSettings = false"
     >
-      <div class="glass-panel rounded-xl p-6 w-full max-w-md mx-4">
+      <div class="modal-shell max-w-md mx-4">
         <div class="flex items-center justify-between mb-6">
           <h3 class="text-lg font-semibold text-white flex items-center">
             <span class="material-symbols-outlined mr-2 text-primary">settings</span>
@@ -462,15 +454,15 @@
         </div>
 
         <div v-else class="space-y-4">
-          <!-- Trading Mode Toggle -->
+          <!-- Trader Backend Toggle -->
           <div class="p-4 rounded-lg bg-white/5 border border-white/10">
             <div class="flex items-center justify-between">
-              <div>
-                <h4 class="text-sm font-medium text-white">{{ t('trading.tradingMode') || 'Trading Mode' }}</h4>
-                <p class="text-xs text-text-secondary mt-1">
-                  {{ settingsForm.useOkxTrading ? (t('trading.okxDemoTrading') || 'OKX Demo Trading') : (t('trading.localPaperTrading') || 'Local Paper Trading') }}
-                </p>
-              </div>
+	              <div>
+	                <h4 class="text-sm font-medium text-white">{{ t('trading.traderBackend') || 'Trading Environment' }}</h4>
+	                <p class="text-xs text-text-secondary mt-1">
+	                  {{ settingsForm.useOkxTrading ? `OKX (${settingsForm.okxDemoMode ? 'Demo' : 'Live'})` : (t('trading.localPaperTrading') || 'Local Paper Trading') }}
+	                </p>
+	              </div>
               <label class="relative inline-flex items-center cursor-pointer">
                 <input
                   type="checkbox"
@@ -478,14 +470,57 @@
                   class="sr-only peer"
                 >
                 <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                <span class="ml-2 text-sm text-white">{{ t('trading.okxDemo') || 'OKX Demo' }}</span>
-              </label>
-            </div>
-            <p v-if="settingsForm.useOkxTrading" class="text-xs text-amber-400 mt-2">
-              <span class="material-symbols-outlined align-middle text-sm">warning</span>
-              {{ t('trading.okxApiWarning') || 'Requires OKX API credentials configured in the backend' }}
-            </p>
-          </div>
+	                <span class="ml-2 text-sm text-white">OKX</span>
+	              </label>
+	            </div>
+	            <div v-if="settingsForm.useOkxTrading" class="mt-3 space-y-3">
+              <p class="text-xs text-text-secondary">
+                Current OKX Credentials: 
+                <span v-if="settingsForm.okxConfigured" class="text-emerald-400 font-mono">****{{ settingsForm.okxApiKeyLast4 }}</span>
+                <span v-else class="text-amber-400">Not configured</span>
+              </p>
+              <div class="grid grid-cols-1 gap-2">
+                <input
+                  v-model="settingsForm.okxApiKey"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="OKX API Key"
+                  class="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-primary"
+                />
+                <input
+                  v-model="settingsForm.okxSecretKey"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="OKX Secret Key"
+                  class="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-primary"
+                />
+                <input
+                  v-model="settingsForm.okxPassphrase"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="OKX Passphrase"
+                  class="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-primary"
+                />
+              </div>
+	              <div class="flex items-center justify-between">
+	                <label class="flex items-center gap-2 text-xs text-text-secondary">
+	                  <input type="checkbox" v-model="settingsForm.okxDemoMode" class="accent-primary" />
+	                  Demo (x-simulated-trading)
+	                </label>
+                <button
+                  v-if="settingsForm.okxConfigured"
+                  @click="clearOkxCredentials"
+                  class="text-xs text-red-400 hover:text-red-300 underline"
+                  type="button"
+                >
+                  Clear OKX Credentials
+                </button>
+	              </div>
+	              <p v-if="!settingsForm.okxDemoMode" class="text-xs text-red-400">
+	                You are selecting OKX live mode. Ensure this is intentional and use an API key without withdrawal permission.
+	              </p>
+	            </div>
+	          </div>
 
           <!-- Analysis Interval -->
           <div>
@@ -582,15 +617,15 @@
       v-if="showDecisionModal"
       class="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
     >
-      <div class="glass-panel rounded-xl p-6 w-full max-w-lg mx-4 border border-primary/30 shadow-2xl">
+      <div class="modal-shell max-w-lg mx-4 border border-primary/30 shadow-2xl">
         <!-- Header -->
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-lg font-semibold text-white flex items-center">
             <span class="material-symbols-outlined mr-2 text-primary animate-pulse">smart_toy</span>
-            AI 投资委员会决策
+            AI Trading Committee Decision
           </h3>
           <span class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-400">
-            待确认
+            Pending Confirmation
           </span>
         </div>
 
@@ -598,24 +633,24 @@
         <div class="bg-white/5 rounded-lg p-4 mb-4">
           <div class="grid grid-cols-3 gap-4 text-center mb-4">
             <div>
-              <span class="text-text-secondary text-xs block mb-1">方向</span>
-              <span 
+              <span class="text-text-secondary text-xs block mb-1">Direction</span>
+              <span
                 :class="[
                   'px-3 py-1 rounded-lg font-bold text-lg',
-                  pendingDecision.direction === 'long' 
-                    ? 'bg-emerald-500/20 text-emerald-400' 
+                  (showModifyPanel ? modifiedDirection : pendingDecision.direction) === 'long'
+                    ? 'bg-emerald-500/20 text-emerald-400'
                     : 'bg-red-500/20 text-red-400'
                 ]"
               >
-                {{ pendingDecision.direction === 'long' ? 'LONG ↑' : 'SHORT ↓' }}
+                {{ (showModifyPanel ? modifiedDirection : pendingDecision.direction) === 'long' ? 'LONG ↑' : 'SHORT ↓' }}
               </span>
             </div>
             <div>
-              <span class="text-text-secondary text-xs block mb-1">杠杆</span>
+              <span class="text-text-secondary text-xs block mb-1">Leverage</span>
               <span class="text-white font-bold text-lg">{{ modifiedLeverage }}x</span>
             </div>
             <div>
-              <span class="text-text-secondary text-xs block mb-1">置信度</span>
+              <span class="text-text-secondary text-xs block mb-1">Confidence</span>
               <span 
                 :class="[
                   'font-bold text-lg',
@@ -630,14 +665,14 @@
 
           <div class="grid grid-cols-2 gap-4 text-sm">
             <div class="flex justify-between">
-              <span class="text-text-secondary">止盈价</span>
+              <span class="text-text-secondary">Take Profit</span>
               <span class="text-emerald-400 font-medium">
                 ${{ formatNumber(pendingDecision.take_profit) }}
                 <span class="text-xs">(+{{ ((pendingDecision.take_profit / pendingDecision.current_price - 1) * 100).toFixed(1) }}%)</span>
               </span>
             </div>
             <div class="flex justify-between">
-              <span class="text-text-secondary">止损价</span>
+              <span class="text-text-secondary">Stop Loss</span>
               <span class="text-red-400 font-medium">
                 ${{ formatNumber(pendingDecision.stop_loss) }}
                 <span class="text-xs">({{ ((pendingDecision.stop_loss / pendingDecision.current_price - 1) * 100).toFixed(1) }}%)</span>
@@ -650,18 +685,45 @@
         <div class="bg-white/5 rounded-lg p-4 mb-4 max-h-32 overflow-y-auto">
           <div class="text-text-secondary text-xs mb-2 flex items-center">
             <span class="material-symbols-outlined text-sm mr-1">psychology</span>
-            Leader 综合意见
+            Leader Rationale
           </div>
           <p class="text-white text-sm leading-relaxed">
-            {{ pendingDecision.reasoning || '综合技术面、宏观面、市场情绪等多维度分析...' }}
+            {{ pendingDecision.reasoning || 'Combined view across technicals, macro, and sentiment analyses...' }}
           </p>
         </div>
 
         <!-- Modification Panel -->
         <div v-if="showModifyPanel" class="bg-white/5 rounded-lg p-4 mb-4 border border-primary/30">
-          <div class="text-text-secondary text-xs mb-3">修改参数</div>
-          <div class="flex items-center gap-4">
-            <label class="text-sm text-white">杠杆倍数:</label>
+          <div class="text-text-secondary text-xs mb-3">Modify Parameters</div>
+
+          <!-- Direction Toggle -->
+          <div class="flex items-center gap-4 mb-3">
+            <label class="text-sm text-white w-20">Direction:</label>
+            <div class="flex gap-2 flex-1">
+              <button
+                @click="modifiedDirection = 'long'"
+                :class="[
+                  'flex-1 px-3 py-2 rounded-lg text-sm font-bold transition-all',
+                  modifiedDirection === 'long'
+                    ? 'bg-emerald-500/30 text-emerald-400 border border-emerald-500/50'
+                    : 'bg-white/5 text-text-secondary hover:bg-white/10'
+                ]"
+              >LONG ↑</button>
+              <button
+                @click="modifiedDirection = 'short'"
+                :class="[
+                  'flex-1 px-3 py-2 rounded-lg text-sm font-bold transition-all',
+                  modifiedDirection === 'short'
+                    ? 'bg-red-500/30 text-red-400 border border-red-500/50'
+                    : 'bg-white/5 text-text-secondary hover:bg-white/10'
+                ]"
+              >SHORT ↓</button>
+            </div>
+          </div>
+
+          <!-- Leverage Slider -->
+          <div class="flex items-center gap-4 mb-3">
+            <label class="text-sm text-white w-20">Leverage:</label>
             <input
               type="range"
               v-model="modifiedLeverage"
@@ -671,11 +733,25 @@
             />
             <span class="text-primary font-bold w-12 text-right">{{ modifiedLeverage }}x</span>
           </div>
+
+          <!-- Amount Percent Slider -->
+          <div class="flex items-center gap-4">
+            <label class="text-sm text-white w-20">Position:</label>
+            <input
+              type="range"
+              v-model.number="modifiedAmountPercent"
+              :min="0.1"
+              :max="1.0"
+              :step="0.1"
+              class="flex-1"
+            />
+            <span class="text-primary font-bold w-12 text-right">{{ (modifiedAmountPercent * 100).toFixed(0) }}%</span>
+          </div>
         </div>
 
         <!-- Defer Reasons (shown when deferring) -->
         <div v-if="showDeferReasons" class="bg-white/5 rounded-lg p-4 mb-4 border border-red-500/30">
-          <div class="text-text-secondary text-xs mb-3">请选择搁置原因</div>
+          <div class="text-text-secondary text-xs mb-3">Select defer reason</div>
           <div class="grid grid-cols-2 gap-2">
             <label 
               v-for="reason in deferReasonOptions" 
@@ -692,10 +768,10 @@
             </label>
           </div>
           <input
-            v-if="selectedDeferReason === '其他'"
+            v-if="selectedDeferReason === 'Other'"
             v-model="customDeferReason"
             type="text"
-            placeholder="请输入原因..."
+            placeholder="Enter reason..."
             class="mt-2 w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
           />
         </div>
@@ -708,7 +784,7 @@
             class="flex-1 px-4 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <span class="material-symbols-outlined text-lg">check_circle</span>
-            确认执行
+            Confirm Execution
           </button>
           <button
             @click="toggleModifyPanel"
@@ -716,7 +792,7 @@
             class="px-4 py-3 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <span class="material-symbols-outlined text-lg">edit</span>
-            修改
+            Modify
           </button>
           <button
             @click="toggleDeferReasons"
@@ -724,7 +800,7 @@
             class="px-4 py-3 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <span class="material-symbols-outlined text-lg">close</span>
-            搁置
+            Defer
           </button>
         </div>
 
@@ -735,13 +811,13 @@
           :disabled="processingDecision"
           class="w-full mt-3 px-4 py-2 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-all disabled:opacity-50"
         >
-          确认搁置
+          Confirm Deferral
         </button>
 
         <!-- User Responsibility Notice -->
         <div class="mt-4 text-center text-xs text-text-secondary">
           <span class="material-symbols-outlined text-sm align-middle mr-1">info</span>
-          请仔细确认后再执行交易
+          Please review carefully before executing trades
         </div>
       </div>
     </div>
@@ -754,7 +830,7 @@
        <div class="p-6 border-b border-white/10 flex justify-between items-center sticky top-0 bg-[#0f172a] z-10">
          <h3 class="text-xl font-bold text-white flex items-center">
            <span class="material-symbols-outlined mr-2 text-accent-cyan">groups</span>
-           专家团队
+           Expert Team
          </h3>
          <button @click="showTeamModal = false" class="text-text-secondary hover:text-white transition-colors">
            <span class="material-symbols-outlined text-2xl">close</span>
@@ -787,6 +863,9 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useLanguage } from '@/composables/useLanguage.js';
+import { apiUrl, wsUrl as buildWsUrl } from '@/config/api';
+import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
+import { readJsonResponse } from '@/services/httpResponse';
 import Chart from 'chart.js/auto';
 import { marked } from 'marked';
 
@@ -796,7 +875,7 @@ marked.setOptions({
   gfm: true
 });
 
-const { t } = useLanguage();
+const { t, locale } = useLanguage();
 
 // Chart
 const equityChartCanvas = ref(null);
@@ -834,15 +913,15 @@ const position = ref({
 });
 
 const agents = ref([
-  { id: 'technical-analyst', name: '技术分析师', role: '技术面', icon: 'candlestick_chart', winRate: 0.65 },
-  { id: 'macro-economist', name: '宏观分析师', role: '宏观面', icon: 'public', winRate: 0.58 },
-  { id: 'sentiment-analyst', name: '情绪分析师', role: '情绪面', icon: 'psychology', winRate: 0.62 },
-  { id: 'onchain-analyst', name: '链上分析师', role: '链上数据', icon: 'link', winRate: 0.60 },
-  { id: 'risk-manager', name: '风险管理', role: '风控', icon: 'shield', winRate: 0.70 },
-  { id: 'quant-strategist', name: '量化策略', role: '量化', icon: 'analytics', winRate: 0.55 },
-  { id: 'trading-executor', name: '交易执行', role: '执行', icon: 'play_arrow', winRate: 0 },
-  { id: 'position-monitor', name: '仓位监控', role: '监控', icon: 'monitoring', winRate: 0 },
-  { id: 'trading-leader', name: '主持人', role: '协调', icon: 'emoji_events', winRate: 0.68 }
+  { id: 'technical-analyst', name: 'Technical Analyst', role: 'Technical', icon: 'candlestick_chart', winRate: 0.65 },
+  { id: 'macro-economist', name: 'Macro Analyst', role: 'Macro', icon: 'public', winRate: 0.58 },
+  { id: 'sentiment-analyst', name: 'Sentiment Analyst', role: 'Sentiment', icon: 'psychology', winRate: 0.62 },
+  { id: 'onchain-analyst', name: 'On-chain Analyst', role: 'On-chain', icon: 'link', winRate: 0.60 },
+  { id: 'risk-manager', name: 'Risk Management', role: 'Risk', icon: 'shield', winRate: 0.70 },
+  { id: 'quant-strategist', name: 'Quant Strategy', role: 'Quant', icon: 'analytics', winRate: 0.55 },
+  { id: 'trading-executor', name: 'Trade Execution', role: 'Execution', icon: 'play_arrow', winRate: 0 },
+  { id: 'position-monitor', name: 'Position Monitor', role: 'Monitoring', icon: 'monitoring', winRate: 0 },
+  { id: 'trading-leader', name: 'Host', role: 'Coordination', icon: 'emoji_events', winRate: 0.68 }
 ]);
 
 const discussionMessages = ref([]);
@@ -860,7 +939,13 @@ const settingsForm = ref({
   analysisInterval: 4,
   maxLeverage: 20,
   maxPositionPercent: 0.3,
-  useOkxTrading: false  // Whether to use OKX demo trading
+  useOkxTrading: false,  // Whether to use OKX demo trading
+  okxConfigured: false,
+  okxApiKeyLast4: '',
+  okxDemoMode: true,
+  okxApiKey: '',
+  okxSecretKey: '',
+  okxPassphrase: ''
 });
 const loadingConfig = ref(false);
 
@@ -880,12 +965,14 @@ const pendingDecision = ref({
   reasoning: ''
 });
 const modifiedLeverage = ref(5);
+const modifiedDirection = ref('long');
+const modifiedAmountPercent = ref(0.5);
 const showModifyPanel = ref(false);
 const showDeferReasons = ref(false);
 const selectedDeferReason = ref('');
 const customDeferReason = ref('');
 const processingDecision = ref(false);
-const deferReasonOptions = ['杠杆过高', '方向不同意', '止损太紧', '市场不确定', '其他'];
+const deferReasonOptions = ['Leverage too high', 'Direction disagreement', 'Stop-loss too tight', 'Market uncertain', 'Other'];
 const decisionHistory = ref([]);  // Store user decisions for display
 
 // Drawdown data
@@ -917,11 +1004,7 @@ const performanceData = ref({
   tradesAnalyzed: 0
 });
 
-// Phase 0-3: HITL, MTF, Agent Weights, Degradation
-const tradingMode = ref({
-  mode: 'semi_auto',
-  description: ''
-});
+// Phase 0-3: MTF, Agent Weights, Degradation
 
 const mtfAnalysis = ref({
   overall_direction: 'neutral',
@@ -943,23 +1026,22 @@ const systemHealth = ref({
   capabilities: {}
 });
 
-const changingMode = ref(false);
-
 
 // WebSocket
 let ws = null;
 let countdownInterval = null;
 
 // Computed
-// Fixed initial capital - matches OKX demo account
-const INITIAL_CAPITAL = 5000;
-const initialCapital = ref(INITIAL_CAPITAL);
+// Initial capital from backend API (via account.initialBalance)
+const initialCapital = computed(() => {
+  return account.value.initialBalance || account.value.totalEquity || 10000;
+});
 
 // Trading start date - earliest trade timestamp
 const tradingStartDate = computed(() => {
   if (!tradeHistory.value || tradeHistory.value.length === 0) return null;
   // Find the earliest trade
-  const sorted = [...tradeHistory.value].sort((a, b) => 
+  const sorted = [...tradeHistory.value].sort((a, b) =>
     new Date(a.timestamp) - new Date(b.timestamp)
   );
   return sorted[0]?.timestamp ? new Date(sorted[0].timestamp) : null;
@@ -975,26 +1057,24 @@ const tradingStartDateFormatted = computed(() => {
   });
 });
 
-// Total profit = current equity - initial capital
+// Total profit = current equity - initial capital (from API)
 const totalProfit = computed(() => {
-  return account.value.totalEquity - INITIAL_CAPITAL;
+  return account.value.totalEquity - initialCapital.value;
 });
 
 // Total profit percent
 const totalProfitPercent = computed(() => {
-  if (INITIAL_CAPITAL === 0) return 0;
-  return (totalProfit.value / INITIAL_CAPITAL) * 100;
+  if (initialCapital.value === 0) return 0;
+  return (totalProfit.value / initialCapital.value) * 100;
 });
 
 // Use initial_balance from account API for accurate PnL calculation
 const totalPnl = computed(() => {
-  const initial = account.value.initialBalance || account.value.totalEquity;
-  return account.value.totalEquity - initial;
+  return account.value.totalEquity - initialCapital.value;
 });
 const totalPnlPercent = computed(() => {
-  const initial = account.value.initialBalance || account.value.totalEquity;
-  if (initial === 0) return 0;
-  return (totalPnl.value / initial) * 100;
+  if (initialCapital.value === 0) return 0;
+  return (totalPnl.value / initialCapital.value) * 100;
 });
 
 // BTC benchmark data for alpha calculation
@@ -1035,8 +1115,8 @@ const performanceMetrics = computed(() => {
 const intervalText = computed(() => {
   // Prefer actual scheduler state over settings form
   const hours = systemStatus.value.scheduler?.interval_hours || settingsForm.value.analysisInterval || 4;
-  const locale = localStorage.getItem('language') || 'zh-CN';
-  if (locale === 'en') {
+  const lang = locale.value || localStorage.getItem('locale') || 'zh-CN';
+  if (lang.startsWith('en')) {
     return `Analysis every ${hours} hour${hours > 1 ? 's' : ''}`;
   }
   return `每 ${hours} 小时分析一次`;
@@ -1078,10 +1158,28 @@ function formatTime(timestamp) {
   return new Date(timestamp).toLocaleTimeString();
 }
 
+function withAuthHeaders(headers = {}) {
+  return {
+    ...getAuthHeaders(),
+    ...(headers || {})
+  };
+}
+
+function tradingFetch(path, options = {}) {
+  return fetch(appendTokenToUrl(apiUrl(path)), {
+    ...options,
+    headers: withAuthHeaders(options.headers)
+  });
+}
+
+async function parseTradingJson(response, label) {
+  return readJsonResponse(response, label);
+}
+
 async function fetchStatus() {
   try {
-    const response = await fetch('/api/trading/status');
-    const data = await response.json();
+    const response = await tradingFetch('/api/trading/status');
+    const data = await parseTradingJson(response, 'Trading status');
     systemStatus.value = data;
   } catch (e) {
     console.error('Error fetching status:', e);
@@ -1090,8 +1188,8 @@ async function fetchStatus() {
 
 async function fetchAccount() {
   try {
-    const response = await fetch('/api/trading/account');
-    const data = await response.json();
+    const response = await tradingFetch('/api/trading/account');
+    const data = await parseTradingJson(response, 'Trading account');
     if (!data.error) {
       account.value = {
         totalEquity: data.total_equity || 10000,
@@ -1107,8 +1205,8 @@ async function fetchAccount() {
 
 async function fetchPosition() {
   try {
-    const response = await fetch('/api/trading/position');
-    const data = await response.json();
+    const response = await tradingFetch('/api/trading/position');
+    const data = await parseTradingJson(response, 'Trading position');
     if (data.has_position !== undefined) {
       position.value = {
         hasPosition: data.has_position || false,
@@ -1131,8 +1229,8 @@ async function fetchPosition() {
 
 async function fetchEquityHistory() {
   try {
-    const response = await fetch('/api/trading/equity?limit=100');
-    const data = await response.json();
+    const response = await tradingFetch('/api/trading/equity?limit=100');
+    const data = await parseTradingJson(response, 'Trading equity history');
     if (data.data) {
       equityHistory.value = data.data;
       updateEquityChart();
@@ -1147,8 +1245,8 @@ async function fetchDrawdown() {
     const endpoint = drawdownStartDate.value
       ? `/api/trading/drawdown?start_date=${drawdownStartDate.value}`
       : '/api/trading/drawdown';
-    const response = await fetch(endpoint);
-    const data = await response.json();
+    const response = await tradingFetch(endpoint);
+    const data = await parseTradingJson(response, 'Trading drawdown');
     drawdown.value = {
       maxDrawdownPct: data.max_drawdown_pct || 0,
       maxDrawdownUsd: data.max_drawdown_usd || 0,
@@ -1170,8 +1268,8 @@ async function fetchPerformance() {
     const endpoint = drawdownStartDate.value
       ? `/api/trading/performance?start_date=${drawdownStartDate.value}`
       : '/api/trading/performance';
-    const response = await fetch(endpoint);
-    const data = await response.json();
+    const response = await tradingFetch(endpoint);
+    const data = await parseTradingJson(response, 'Trading performance');
     performanceData.value = {
       sharpeRatio: data.sharpe_ratio || 0,
       sortinoRatio: data.sortino_ratio || 0,
@@ -1191,24 +1289,11 @@ async function fetchPerformance() {
   }
 }
 
-// Phase 0-3: Fetch HITL Mode
-async function fetchTradingMode() {
-  try {
-    const response = await fetch('/api/trading/mode');
-    const data = await response.json();
-    if (data.mode) {
-      tradingMode.value = data;
-    }
-  } catch (e) {
-    console.error('Error fetching trading mode:', e);
-  }
-}
-
 // Phase 3.1: Fetch MTF Analysis
 async function fetchMtfAnalysis() {
   try {
-    const response = await fetch('/api/trading/mtf-analysis');
-    const data = await response.json();
+    const response = await tradingFetch('/api/trading/mtf-analysis');
+    const data = await parseTradingJson(response, 'Trading MTF analysis');
     if (data.overall_direction) {
       mtfAnalysis.value = data;
     }
@@ -1220,8 +1305,8 @@ async function fetchMtfAnalysis() {
 // Phase 3.2: Fetch Agent Weights
 async function fetchAgentWeights() {
   try {
-    const response = await fetch('/api/trading/agent-weights');
-    const data = await response.json();
+    const response = await tradingFetch('/api/trading/agent-weights');
+    const data = await parseTradingJson(response, 'Trading agent weights');
     if (data.weights) {
       learnedWeights.value = data.weights;
     }
@@ -1233,8 +1318,8 @@ async function fetchAgentWeights() {
 // Phase 2.3: Fetch Degradation Status
 async function fetchDegradation() {
   try {
-    const response = await fetch('/api/trading/degradation');
-    const data = await response.json();
+    const response = await tradingFetch('/api/trading/degradation');
+    const data = await parseTradingJson(response, 'Trading degradation');
     if (data.level) {
       systemHealth.value = data;
     }
@@ -1243,38 +1328,16 @@ async function fetchDegradation() {
   }
 }
 
-// Set Trading Mode (HITL)
-async function setTradingMode(mode) {
-  changingMode.value = true;
-  try {
-    const response = await fetch('/api/trading/mode', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode })
-    });
-    const data = await response.json();
-    if (data.success) {
-      tradingMode.value = { mode: data.new_mode, description: '' };
-      await fetchTradingMode();
-      // Fetch pending trades if switching to semi_auto
-      if (mode === 'semi_auto') {
-        await fetchPendingTrades();
-      }
-    }
-  } catch (e) {
-    console.error('Error setting trading mode:', e);
-  } finally {
-    changingMode.value = false;
-  }
-}
-
 // Fetch Pending Trades (HITL Semi-Auto)
 async function fetchPendingTrades() {
   try {
-    const response = await fetch('/api/trading/pending');
-    const data = await response.json();
+    const response = await tradingFetch('/api/trading/pending');
+    const data = await parseTradingJson(response, 'Trading pending trades');
     if (data.trades) {
       pendingTrades.value = data.trades;
+    } else if (data.pending_trades) {
+      // Fallback for alternative response format
+      pendingTrades.value = data.pending_trades;
     }
   } catch (e) {
     console.error('Error fetching pending trades:', e);
@@ -1284,13 +1347,13 @@ async function fetchPendingTrades() {
 // Open Pending Trade Modal for confirmation
 function openPendingTradeModal(trade) {
   pendingDecision.value = {
-    decision_id: trade.trade_id,
+    trade_id: trade.id || trade.trade_id,
     direction: trade.direction,
     leverage: trade.leverage,
     confidence: trade.confidence,
-    take_profit: trade.take_profit,
-    stop_loss: trade.stop_loss,
-    current_price: trade.entry_price,
+    take_profit: trade.take_profit_price || trade.take_profit || 0,
+    stop_loss: trade.stop_loss_price || trade.stop_loss || 0,
+    current_price: trade.entry_price || 0,
     reasoning: trade.reasoning || ''
   };
   modifiedLeverage.value = trade.leverage;
@@ -1337,8 +1400,8 @@ async function fetchBtcBenchmark() {
 
 async function fetchTradeHistory() {
   try {
-    const response = await fetch('/api/trading/history?limit=50');
-    const data = await response.json();
+    const response = await tradingFetch('/api/trading/history?limit=50');
+    const data = await parseTradingJson(response, 'Trading history');
 
     const allTrades = [];
 
@@ -1416,7 +1479,7 @@ function parseDiscussionContent(content) {
     return {
       hasJson: true,
       parsedJson: parsedJson,
-      reasoning: reasoning || '查看详细分析过程...',
+      reasoning: reasoning || 'View detailed reasoning...',
       conclusion: fullBlock
     };
   }
@@ -1426,8 +1489,8 @@ function parseDiscussionContent(content) {
 
 async function fetchDiscussionMessages() {
   try {
-    const response = await fetch('/api/trading/messages?limit=100');
-    const data = await response.json();
+    const response = await tradingFetch('/api/trading/messages?limit=100');
+    const data = await parseTradingJson(response, 'Trading messages');
     if (data.messages && data.messages.length > 0) {
       discussionMessages.value = data.messages.map(msg => ({
         agentName: msg.agent_name,
@@ -1443,7 +1506,7 @@ async function fetchDiscussionMessages() {
 
 async function startTrading() {
   try {
-    await fetch('/api/trading/start', { method: 'POST' });
+    await tradingFetch('/api/trading/start', { method: 'POST' });
     systemStatus.value.enabled = true;
   } catch (e) {
     console.error('Error starting trading:', e);
@@ -1452,7 +1515,7 @@ async function startTrading() {
 
 async function stopTrading() {
   try {
-    await fetch('/api/trading/stop', { method: 'POST' });
+    await tradingFetch('/api/trading/stop', { method: 'POST' });
     systemStatus.value.enabled = false;
   } catch (e) {
     console.error('Error stopping trading:', e);
@@ -1461,7 +1524,7 @@ async function stopTrading() {
 
 async function triggerAnalysis() {
   try {
-    await fetch('/api/trading/trigger', { method: 'POST' });
+    await tradingFetch('/api/trading/trigger', { method: 'POST' });
   } catch (e) {
     console.error('Error triggering analysis:', e);
   }
@@ -1481,50 +1544,95 @@ function toggleDeferReasons() {
 async function handleConfirmDecision() {
   processingDecision.value = true;
   try {
-    const decision = {
-      decision_id: pendingDecision.value.decision_id,
-      action: 'confirm',
-      original_signal: { ...pendingDecision.value },
-      modified_leverage: showModifyPanel.value ? modifiedLeverage.value : pendingDecision.value.leverage,
-      timestamp: new Date().toISOString()
-    };
-    
-    // Record decision to backend
-    await fetch('/api/trading/decision', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(decision)
-    });
-    
+    const tradeId = pendingDecision.value.trade_id;
+    const isModified = showModifyPanel.value;
+    const finalDirection = isModified ? modifiedDirection.value : pendingDecision.value.direction;
+    const finalLeverage = isModified ? modifiedLeverage.value : pendingDecision.value.leverage;
+    const finalAmountPercent = isModified ? modifiedAmountPercent.value : null;
+
+    if (tradeId) {
+      // SEMI_AUTO mode: Use the proper pending trade confirm API
+      // Only send modified fields
+      const body = { user_id: 'frontend' };
+      if (isModified) {
+        body.direction = finalDirection;
+        body.leverage = Number(finalLeverage);
+        body.amount_percent = Number(finalAmountPercent);
+      }
+
+      const response = await tradingFetch(`/api/trading/pending/${tradeId}/confirm`, {
+        method: 'POST',
+        headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(body)
+      });
+      const result = await parseTradingJson(response, 'Confirm pending trade');
+
+      if (!result.success) {
+        discussionMessages.value.push({
+          agentName: 'System',
+          content: `❌ Trade confirmation failed: ${result.message || result.detail || 'Unknown error'}`,
+          timestamp: new Date().toISOString()
+        });
+        // Close modal even on failure — trade is no longer actionable
+        showDecisionModal.value = false;
+        resetDecisionState();
+        return;
+      }
+
+      // Record to RLHF decision history (non-blocking)
+      tradingFetch('/api/trading/decision', {
+        method: 'POST',
+        headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          decision_id: tradeId,
+          action: isModified ? 'modified' : 'confirm',
+          original_signal: { ...pendingDecision.value },
+          modified_direction: finalDirection,
+          modified_leverage: finalLeverage,
+          modified_amount_percent: finalAmountPercent,
+          timestamp: new Date().toISOString()
+        })
+      }).catch(() => {});
+
+    } else {
+      // HITL-only: should never execute directly without a pending trade id.
+      discussionMessages.value.push({
+        agentName: 'System',
+        content: '❌ Cannot confirm: missing trade_id (wait until pending trade is created)',
+        timestamp: new Date().toISOString()
+      });
+      showDecisionModal.value = false;
+      resetDecisionState();
+      return;
+    }
+
     // Add to local history
     decisionHistory.value.unshift({
-      ...decision,
-      display: `${pendingDecision.value.direction.toUpperCase()} ${modifiedLeverage.value}x → ✓ 确认执行`
+      decision_id: tradeId || `decision-${Date.now()}`,
+      action: 'confirm',
+      display: `${finalDirection.toUpperCase()} ${finalLeverage}x${finalAmountPercent ? ` ${Math.round(finalAmountPercent * 100)}%` : ''} → ✓ Confirm Execution${isModified ? ' (Modified)' : ''}`
     });
-    
-    // Execute the trade
-    await fetch('/api/trading/execute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        direction: pendingDecision.value.direction,
-        leverage: showModifyPanel.value ? modifiedLeverage.value : pendingDecision.value.leverage,
-        take_profit: pendingDecision.value.take_profit,
-        stop_loss: pendingDecision.value.stop_loss
-      })
-    });
-    
-    discussionMessages.value.push({
-      agentName: '系统',
-      content: `✓ 用户确认执行 ${pendingDecision.value.direction.toUpperCase()} ${showModifyPanel.value ? modifiedLeverage.value : pendingDecision.value.leverage}x`,
-      timestamp: new Date().toISOString()
-    });
-    
+
+    // Note: modal close and data refresh handled by 'trade_confirmed' WebSocket event
+    // But close modal immediately for responsiveness
     showDecisionModal.value = false;
     resetDecisionState();
-    
+
+    // Refresh data
+    fetchPosition();
+    fetchAccount();
+    fetchTradeHistory();
+
   } catch (e) {
     console.error('Error confirming decision:', e);
+    const isExpired = String(e?.message || '').includes('(404)');
+    discussionMessages.value.push({
+      agentName: 'System',
+      content: isExpired
+        ? '⏰ Trade expired, please wait for the next signal'
+        : `❌ Error while confirming trade: ${e.message || 'Network error'}`,
+      timestamp: new Date().toISOString()
+    });
   } finally {
     processingDecision.value = false;
   }
@@ -1533,39 +1641,83 @@ async function handleConfirmDecision() {
 async function handleDeferDecision() {
   processingDecision.value = true;
   try {
-    const reason = selectedDeferReason.value === '其他' ? customDeferReason.value : selectedDeferReason.value;
-    const decision = {
-      decision_id: pendingDecision.value.decision_id,
-      action: 'defer',
-      original_signal: { ...pendingDecision.value },
-      defer_reason: reason,
-      timestamp: new Date().toISOString()
-    };
-    
-    // Record decision to backend
-    await fetch('/api/trading/decision', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(decision)
-    });
-    
+    const reason = selectedDeferReason.value === 'Other' ? customDeferReason.value : selectedDeferReason.value;
+    const tradeId = pendingDecision.value.trade_id;
+
+    if (tradeId) {
+      // SEMI_AUTO mode: Use the proper pending trade reject API
+      const response = await tradingFetch(`/api/trading/pending/${tradeId}/reject`, {
+        method: 'POST',
+        headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          user_id: 'frontend',
+          reason: reason || 'User deferred'
+        })
+      });
+      const result = await parseTradingJson(response, 'Reject pending trade');
+
+      if (!result.success) {
+        discussionMessages.value.push({
+          agentName: 'System',
+          content: `❌ Trade rejection failed: ${result.message || result.detail || 'Unknown error'}`,
+          timestamp: new Date().toISOString()
+        });
+        // Close modal even on failure — trade is no longer actionable
+        showDecisionModal.value = false;
+        resetDecisionState();
+        return;
+      }
+
+      // Record to RLHF decision history (non-blocking)
+      tradingFetch('/api/trading/decision', {
+        method: 'POST',
+        headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          decision_id: tradeId,
+          action: 'defer',
+          original_signal: { ...pendingDecision.value },
+          defer_reason: reason,
+          timestamp: new Date().toISOString()
+        })
+      }).catch(() => {});
+
+    } else {
+      // Fallback: just record the decision (legacy path)
+      await tradingFetch('/api/trading/decision', {
+        method: 'POST',
+        headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          decision_id: `decision-${Date.now()}`,
+          action: 'defer',
+          original_signal: { ...pendingDecision.value },
+          defer_reason: reason,
+          timestamp: new Date().toISOString()
+        })
+      });
+    }
+
     // Add to local history
     decisionHistory.value.unshift({
-      ...decision,
-      display: `${pendingDecision.value.direction.toUpperCase()} ${pendingDecision.value.leverage}x → ✕ 搁置 (${reason})`
+      decision_id: tradeId || `decision-${Date.now()}`,
+      action: 'defer',
+      display: `${pendingDecision.value.direction.toUpperCase()} ${pendingDecision.value.leverage}x → ✕ Defer (${reason})`
     });
-    
-    discussionMessages.value.push({
-      agentName: '系统',
-      content: `✕ 用户搁置决策，原因: ${reason}`,
-      timestamp: new Date().toISOString()
-    });
-    
+
+    // Note: modal close handled by 'trade_rejected' WebSocket event
     showDecisionModal.value = false;
     resetDecisionState();
-    
+    fetchPendingTrades();
+
   } catch (e) {
     console.error('Error deferring decision:', e);
+    const isExpired = String(e?.message || '').includes('(404)');
+    discussionMessages.value.push({
+      agentName: 'System',
+      content: isExpired
+        ? '⏰ Trade expired, please wait for the next signal'
+        : `❌ Error while rejecting trade: ${e.message || 'Network error'}`,
+      timestamp: new Date().toISOString()
+    });
   } finally {
     processingDecision.value = false;
   }
@@ -1582,19 +1734,19 @@ async function closePosition() {
   if (closingPosition.value) return;
   closingPosition.value = true;
   try {
-    const response = await fetch('/api/trading/close', { method: 'POST' });
-    const data = await response.json();
+    const response = await tradingFetch('/api/trading/close', { method: 'POST' });
+    const data = await parseTradingJson(response, 'Close position');
     if (data.error) {
       console.error('Error closing position:', data.error);
       discussionMessages.value.push({
-        agentName: '系统',
-        content: `平仓失败: ${data.error}`,
+        agentName: 'System',
+        content: `Close position failed: ${data.error}`,
         timestamp: new Date().toISOString()
       });
     } else {
       discussionMessages.value.push({
-        agentName: '系统',
-        content: `手动平仓成功，盈亏: $${data.pnl?.toFixed(2) || '0.00'}`,
+        agentName: 'System',
+        content: `Manual close succeeded, PnL: $${data.pnl?.toFixed(2) || '0.00'}`,
         timestamp: new Date().toISOString()
       });
       await fetchPosition();
@@ -1610,8 +1762,8 @@ async function closePosition() {
 
 async function fetchAgentPerformance() {
   try {
-    const response = await fetch('/api/trading/agents/memory');
-    const data = await response.json();
+    const response = await tradingFetch('/api/trading/agents/memory');
+    const data = await parseTradingJson(response, 'Trading agent memory');
     if (data.team_summary) {
       agentPerformance.value = data;
     }
@@ -1628,14 +1780,20 @@ async function openSettings() {
 async function fetchConfig() {
   loadingConfig.value = true;
   try {
-    const response = await fetch('/api/trading/config');
-    const data = await response.json();
+    const response = await tradingFetch('/api/trading/config');
+    const data = await parseTradingJson(response, 'Trading config');
     if (data) {
       settingsForm.value = {
         analysisInterval: data.analysis_interval_hours || 4,
         maxLeverage: data.max_leverage || 20,
         maxPositionPercent: data.max_position_percent || 0.3,
-        useOkxTrading: data.trader_type === 'okx'
+        useOkxTrading: !!data.use_okx_trading,
+        okxConfigured: !!data.okx?.configured,
+        okxApiKeyLast4: data.okx?.api_key_last4 || '',
+        okxDemoMode: data.okx?.demo_mode ?? true,
+        okxApiKey: '',
+        okxSecretKey: '',
+        okxPassphrase: ''
       };
     }
   } catch (e) {
@@ -1648,27 +1806,48 @@ async function fetchConfig() {
 async function saveSettings() {
   savingSettings.value = true;
   try {
-    const response = await fetch('/api/trading/config', {
+    const okxSelected = !!settingsForm.value.useOkxTrading;
+    const okxApiKey = (settingsForm.value.okxApiKey || '').trim();
+    const okxSecretKey = (settingsForm.value.okxSecretKey || '').trim();
+    const okxPassphrase = (settingsForm.value.okxPassphrase || '').trim();
+
+    if (okxSelected && !settingsForm.value.okxConfigured && !(okxApiKey && okxSecretKey && okxPassphrase)) {
+      alert('Selecting OKX requires API Key / Secret Key / Passphrase');
+      return;
+    }
+
+    if (okxSelected && !settingsForm.value.okxDemoMode) {
+      const ok = confirm('You are switching to OKX live mode (not demo). Continue?');
+      if (!ok) return;
+    }
+
+    const response = await tradingFetch('/api/trading/config', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         analysis_interval_hours: parseInt(settingsForm.value.analysisInterval),
         max_leverage: parseInt(settingsForm.value.maxLeverage),
         max_position_percent: parseFloat(settingsForm.value.maxPositionPercent),
-        use_okx_trading: settingsForm.value.useOkxTrading
+        use_okx_trading: okxSelected,
+        okx_demo_mode: !!settingsForm.value.okxDemoMode,
+        ...(okxSelected && okxApiKey && okxSecretKey && okxPassphrase ? {
+          okx_api_key: okxApiKey,
+          okx_secret_key: okxSecretKey,
+          okx_passphrase: okxPassphrase
+        } : {})
       })
     });
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Update trading config');
     if (data.status === 'updated') {
       showSettings.value = false;
 
-      let message = '设置已更新';
-      if (data.needs_restart) {
-        message = '设置已更新。切换交易模式需要重置系统才能生效。';
+      let message = 'Settings updated';
+      if (data.needs_reset) {
+        message = 'Settings updated. Changing trading environment requires a system reset to take effect.';
       }
 
       discussionMessages.value.push({
-        agentName: '系统',
+        agentName: 'System',
         content: message,
         parsed: parseDiscussionContent(message),
         timestamp: new Date().toISOString()
@@ -1681,6 +1860,35 @@ async function saveSettings() {
   }
 }
 
+async function clearOkxCredentials() {
+  if (!confirm('Clear OKX credentials? It will switch back to PaperTrader (system reset required).')) return;
+  savingSettings.value = true;
+  try {
+    const response = await tradingFetch('/api/trading/config', {
+      method: 'PATCH',
+      headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        clear_okx_credentials: true,
+        use_okx_trading: false
+      })
+    });
+    const data = await parseTradingJson(response, 'Clear OKX credentials');
+    if (data.status === 'updated') {
+      await fetchConfig();
+      discussionMessages.value.push({
+        agentName: 'System',
+        content: 'OKX credentials cleared. Please reset the system to apply changes.',
+        parsed: parseDiscussionContent('OKX credentials cleared. Please reset the system to apply changes.'),
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (e) {
+    console.error('Error clearing OKX credentials:', e);
+  } finally {
+    savingSettings.value = false;
+  }
+}
+
 async function resetSystem() {
   if (!confirm('Are you sure you want to reset the trading system? This will close all positions and clear all history.')) {
     return;
@@ -1688,11 +1896,11 @@ async function resetSystem() {
 
   resettingSystem.value = true;
   try {
-    const response = await fetch('/api/trading/reset', {
+    const response = await tradingFetch('/api/trading/reset', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: withAuthHeaders({ 'Content-Type': 'application/json' })
     });
-    const data = await response.json();
+    const data = await parseTradingJson(response, 'Reset trading system');
 
     if (data.status === 'reset_complete') {
       // Clear local state
@@ -1739,16 +1947,17 @@ function connectWebSocket() {
   if (!isComponentMounted) return;
 
   const sessionId = 'trading-' + Date.now();
-  // In development, connect directly to backend (port 8000)
-  // In production, use the same host
-  const isDev = window.location.port === '5173';
-  const wsHost = isDev ? 'localhost:8000' : window.location.host;
-  const wsUrl = `ws://${wsHost}/api/trading/ws/${sessionId}`;
+  const socketUrl = appendTokenToUrl(buildWsUrl(`/api/trading/ws/${sessionId}`));
 
-  ws = new WebSocket(wsUrl);
+  ws = new WebSocket(socketUrl);
 
   ws.onopen = () => {
     console.log('Trading WebSocket connected');
+    // Restore state after reconnection
+    fetchStatus();
+    fetchAccount();
+    fetchPosition();
+    fetchPendingTrades();
   };
 
   ws.onmessage = (event) => {
@@ -1778,8 +1987,8 @@ function handleWebSocketMessage(msg) {
     case 'system_started':
       systemStatus.value.enabled = true;
       discussionMessages.value.push({
-        agentName: '系统',
-        content: '交易系统已启动，正在进行首次分析...',
+        agentName: 'System',
+        content: 'Trading system started. Running initial analysis...',
         timestamp: new Date().toISOString()
       });
       break;
@@ -1788,8 +1997,8 @@ function handleWebSocketMessage(msg) {
       systemStatus.value.enabled = false;
       isAnalyzing.value = false;
       discussionMessages.value.push({
-        agentName: '系统',
-        content: '交易系统已停止',
+        agentName: 'System',
+        content: 'Trading system stopped',
         timestamp: new Date().toISOString()
       });
       break;
@@ -1798,8 +2007,8 @@ function handleWebSocketMessage(msg) {
       isAnalyzing.value = true;
       discussionMessages.value = [];
       discussionMessages.value.push({
-        agentName: '系统',
-        content: '开始新一轮市场分析...',
+        agentName: 'System',
+        content: 'Starting a new round of market analysis...',
         timestamp: new Date().toISOString()
       });
       break;
@@ -1807,8 +2016,8 @@ function handleWebSocketMessage(msg) {
     case 'analysis_error':
       isAnalyzing.value = false;
       discussionMessages.value.push({
-        agentName: '系统',
-        content: `分析出错: ${msg.error || '未知错误'}`,
+        agentName: 'System',
+        content: `Analysis error: ${msg.error || 'Unknown error'}`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -1831,11 +2040,11 @@ function handleWebSocketMessage(msg) {
     case 'signal_generated':
       isAnalyzing.value = false;
       const signal = msg.signal || {};
-      
+
       // Synthesize Leader Message content for Discussion Panel
       // We wrap the signal in valid JSON markdown so it renders as a Ticket
       const signalReasoning = signal.reasoning || msg.reasoning || 'Market analysis complete.';
-      
+
       // Construct the display payload
       const displayPayload = {
         direction: signal.direction || 'hold',
@@ -1855,38 +2064,98 @@ function handleWebSocketMessage(msg) {
          parsed: parseDiscussionContent(leaderContent),
          timestamp: new Date().toISOString()
       });
-      
+
       // Auto-scroll
       nextTick(() => {
         if (discussionContainer.value) {
           discussionContainer.value.scrollTop = discussionContainer.value.scrollHeight;
         }
       });
-      
+
       // Check if this is a HOLD signal (no action needed)
       if (msg.signal?.direction === 'hold' || !msg.signal?.direction) {
-        break; // Message already pushed above
+        break;
       }
-      
-      // Show decision confirmation modal for LONG/SHORT signals
+
+      discussionMessages.value.push({
+        agentName: 'System',
+        content: `🔔 Signal generated: ${signal.direction?.toUpperCase()} ${signal.leverage}x - awaiting confirmation...`,
+        timestamp: new Date().toISOString()
+      });
+      break;
+
+    case 'pending_trade_created': {
+      // SEMI_AUTO mode: Show confirmation modal with real trade_id from backend
+      const pendingSignal = msg.signal || {};
+      const pendingReasoning = pendingSignal.reasoning || '';
+
       pendingDecision.value = {
-        decision_id: `decision-${Date.now()}`,
-        direction: signal.direction || 'long',
-        leverage: signal.leverage || 5,
-        confidence: signal.confidence || 70,
-        take_profit: signal.take_profit_price || 0,
-        stop_loss: signal.stop_loss_price || 0,
-        current_price: signal.entry_price || 0,
-        reasoning: signalReasoning
+        trade_id: msg.trade_id,
+        direction: pendingSignal.direction || 'long',
+        leverage: pendingSignal.leverage || 5,
+        confidence: pendingSignal.confidence || 70,
+        take_profit: pendingSignal.take_profit_price || 0,
+        stop_loss: pendingSignal.stop_loss_price || 0,
+        current_price: pendingSignal.entry_price || 0,
+        amount_percent: pendingSignal.amount_percent || 0.5,
+        reasoning: pendingReasoning
       };
-      
+
       modifiedLeverage.value = pendingDecision.value.leverage;
+      modifiedDirection.value = pendingDecision.value.direction;
+      modifiedAmountPercent.value = pendingDecision.value.amount_percent;
       showDecisionModal.value = true;
 
-      
+      // Refresh pending trades list
+      fetchPendingTrades();
+
       discussionMessages.value.push({
-        agentName: '系统',
-        content: `🔔 交易信号生成: ${signal.direction?.toUpperCase()} ${signal.leverage}x - 请确认执行`,
+        agentName: 'System',
+        content: `🔔 ${msg.message || 'Semi-auto mode: please confirm or reject this trade'}`,
+        timestamp: new Date().toISOString()
+      });
+
+      // Auto-scroll
+      nextTick(() => {
+        if (discussionContainer.value) {
+          discussionContainer.value.scrollTop = discussionContainer.value.scrollHeight;
+        }
+      });
+      break;
+    }
+
+    case 'trade_confirmed':
+      // Trade was confirmed and executed successfully
+      showDecisionModal.value = false;
+      resetDecisionState();
+      fetchPosition();
+      fetchAccount();
+      fetchTradeHistory();
+      fetchPendingTrades();
+      discussionMessages.value.push({
+        agentName: 'System',
+        content: `✅ Trade confirmed and executed: ${msg.signal?.direction?.toUpperCase() || ''} ${msg.signal?.leverage || ''}x (confirmed by: ${msg.confirmed_by || 'user'})`,
+        timestamp: new Date().toISOString()
+      });
+      break;
+
+    case 'trade_confirm_failed':
+      // Trade confirmation succeeded but execution failed
+      discussionMessages.value.push({
+        agentName: 'System',
+        content: `❌ Execution failed after confirmation: ${msg.error || 'Unknown error'}`,
+        timestamp: new Date().toISOString()
+      });
+      break;
+
+    case 'trade_rejected':
+      // Trade was rejected by user
+      showDecisionModal.value = false;
+      resetDecisionState();
+      fetchPendingTrades();
+      discussionMessages.value.push({
+        agentName: 'System',
+        content: `✕ Trade rejected${msg.reason ? ': ' + msg.reason : ''} (action by: ${msg.rejected_by || 'user'})`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -1897,10 +2166,10 @@ function handleWebSocketMessage(msg) {
       fetchAccount();
       fetchTradeHistory();
       discussionMessages.value.push({
-        agentName: '系统',
+        agentName: 'System',
         content: msg.success
-          ? `交易执行成功: ${msg.signal?.direction?.toUpperCase()} ${msg.signal?.leverage || 1}x`
-          : `交易执行失败: ${msg.trade_result?.error || '未知错误'}`,
+          ? `Trade executed successfully: ${msg.signal?.direction?.toUpperCase()} ${msg.signal?.leverage || 1}x`
+          : `Trade execution failed: ${msg.trade_result?.error || 'Unknown error'}`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -1918,8 +2187,8 @@ function handleWebSocketMessage(msg) {
       fetchPosition();
       fetchTradeHistory();
       discussionMessages.value.push({
-        agentName: '系统',
-        content: `仓位已平仓，盈亏: $${msg.pnl?.toFixed(2) || '0.00'}`,
+        agentName: 'System',
+        content: `Position closed, PnL: $${msg.pnl?.toFixed(2) || '0.00'}`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -2060,16 +2329,12 @@ async function refreshAllData() {
     fetchPosition(),
     fetchTradeHistory(),
     fetchPerformance(),
-    fetchTradingMode(),
     fetchMtfAnalysis(),
     fetchAgentWeights(),
     fetchDiscussionMessages(),
-    fetchDegradation()
+    fetchDegradation(),
+    fetchPendingTrades(),
   ]);
-  // Fetch pending trades only in semi_auto mode
-  if (tradingMode.value.mode === 'semi_auto') {
-    await fetchPendingTrades();
-  }
 }
 
 
@@ -2086,10 +2351,10 @@ onMounted(async () => {
     fetchDiscussionMessages(),  // Restore discussion messages on page load
     fetchDrawdown(),  // Fetch drawdown data
     fetchPerformance(),  // Fetch performance metrics from backend
-    fetchTradingMode(),  // Phase 1.3: HITL Mode
     fetchMtfAnalysis(),  // Phase 3.1: MTF Analysis
     fetchAgentWeights(),  // Phase 3.2: Agent Weights
-    fetchDegradation()  // Phase 2.3: Degradation Status
+    fetchDegradation(),  // Phase 2.3: Degradation Status
+    fetchPendingTrades(),
   ]);
 
 

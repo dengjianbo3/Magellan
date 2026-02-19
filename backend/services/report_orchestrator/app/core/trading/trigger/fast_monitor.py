@@ -22,29 +22,47 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
+# Import centralized config and constants
+try:
+    from ..trading_config import (
+        get_infra_config,
+        get_env_float as _get_env_float,
+        get_env_int as _get_env_int,
+    )
+    from ..constants import PRICE, VOLUME, RSI, CACHE
+    from ..indicators import (
+        calculate_rsi,
+        calculate_ema,
+        get_closes_from_candles
+    )
+    USE_SHARED_INDICATORS = True
+except ImportError:
+    get_infra_config = None
+    PRICE = None
+    VOLUME = None
+    RSI = None
+    CACHE = None
+    USE_SHARED_INDICATORS = False
+
+    def _get_env_float(key: str, default: float) -> float:
+        val = os.getenv(key)
+        if val:
+            try:
+                return float(val)
+            except ValueError:
+                pass
+        return default
+
+    def _get_env_int(key: str, default: int) -> int:
+        val = os.getenv(key)
+        if val:
+            try:
+                return int(val)
+            except ValueError:
+                pass
+        return default
+
 logger = logging.getLogger(__name__)
-
-
-def _get_env_float(key: str, default: float) -> float:
-    """Get float from environment variable"""
-    val = os.getenv(key)
-    if val:
-        try:
-            return float(val)
-        except ValueError:
-            pass
-    return default
-
-
-def _get_env_int(key: str, default: int) -> int:
-    """Get int from environment variable"""
-    val = os.getenv(key)
-    if val:
-        try:
-            return int(val)
-        except ValueError:
-            pass
-    return default
 
 
 @dataclass
@@ -92,139 +110,185 @@ class FastMonitorConfig:
     """
     
     def __init__(self):
+        # Get default values from constants if available
+        price_spike_1m = PRICE.SPIKE_1M if PRICE else 1.5
+        price_spike_5m = PRICE.SPIKE_5M if PRICE else 2.5
+        price_spike_15m = PRICE.SPIKE_15M if PRICE else 3.5
+        volume_spike = VOLUME.SPIKE_MULTIPLIER if VOLUME else 2.0
+        rsi_overbought = RSI.OVERBOUGHT if RSI else 70
+        rsi_oversold = RSI.OVERSOLD if RSI else 30
+
         # ===== 价格急变 =====
-        self.PRICE_SPIKE_1M = _get_env_float("MONITOR_PRICE_SPIKE_1M", 1.5)       # 1分钟变动 ±1.5%
-        self.PRICE_SPIKE_5M = _get_env_float("MONITOR_PRICE_SPIKE_5M", 2.5)       # 5分钟变动 ±2.5%
-        self.PRICE_SPIKE_15M = _get_env_float("MONITOR_PRICE_SPIKE_15M", 4.0)     # 15分钟变动 ±4.0%
-        
+        self.PRICE_SPIKE_1M = _get_env_float("MONITOR_PRICE_SPIKE_1M", price_spike_1m)
+        self.PRICE_SPIKE_5M = _get_env_float("MONITOR_PRICE_SPIKE_5M", price_spike_5m)
+        self.PRICE_SPIKE_15M = _get_env_float("MONITOR_PRICE_SPIKE_15M", 4.0)
+
         # ===== 成交量异常 =====
-        self.VOLUME_SPIKE_5M = _get_env_float("MONITOR_VOLUME_SPIKE_5M", 3.0)     # 5分钟成交量 > 3x 均值
-        self.VOLUME_SPIKE_1M = _get_env_float("MONITOR_VOLUME_SPIKE_1M", 5.0)     # 1分钟成交量 > 5x 均值
-        
+        self.VOLUME_SPIKE_5M = _get_env_float("MONITOR_VOLUME_SPIKE_5M", 3.0)
+        self.VOLUME_SPIKE_1M = _get_env_float("MONITOR_VOLUME_SPIKE_1M", 5.0)
+
         # ===== 资金费率 =====
-        self.FUNDING_RATE_EXTREME = _get_env_float("MONITOR_FUNDING_EXTREME", 0.1)    # 资金费率 > 0.1% (每8h)
-        self.FUNDING_RATE_CHANGE = _get_env_float("MONITOR_FUNDING_CHANGE", 0.05)     # 资金费率变化 > 0.05%
-        
+        self.FUNDING_RATE_EXTREME = _get_env_float("MONITOR_FUNDING_EXTREME", 0.1)
+        self.FUNDING_RATE_CHANGE = _get_env_float("MONITOR_FUNDING_CHANGE", 0.05)
+
         # ===== 持仓量 =====
-        self.OI_CHANGE_15M = _get_env_float("MONITOR_OI_CHANGE_15M", 3.0)         # 15分钟 OI 变化 > 3%
-        self.OI_CHANGE_1H = _get_env_float("MONITOR_OI_CHANGE_1H", 5.0)           # 1小时 OI 变化 > 5%
-        
+        self.OI_CHANGE_15M = _get_env_float("MONITOR_OI_CHANGE_15M", 3.0)
+        self.OI_CHANGE_1H = _get_env_float("MONITOR_OI_CHANGE_1H", 5.0)
+
         # ===== 技术指标 =====
-        self.RSI_OVERBOUGHT = _get_env_int("MONITOR_RSI_OVERBOUGHT", 85)          # RSI > 85 极端超买
-        self.RSI_OVERSOLD = _get_env_int("MONITOR_RSI_OVERSOLD", 15)              # RSI < 15 极端超卖
-        self.EMA_DEVIATION = _get_env_float("MONITOR_EMA_DEVIATION", 5.0)         # 价格 vs EMA20 偏离 > 5%
+        self.RSI_OVERBOUGHT = _get_env_int("MONITOR_RSI_OVERBOUGHT", 85)
+        self.RSI_OVERSOLD = _get_env_int("MONITOR_RSI_OVERSOLD", 15)
+        self.EMA_DEVIATION = _get_env_float("MONITOR_EMA_DEVIATION", 5.0)
 
 
 class FastMonitor:
     """
     快速硬条件监控器
-    
-    每 1-5 分钟运行一次，检测市场异常情况
-    无 LLM 调用开销，纯规则计算
+
+    每 1-5 分钟运行一次，检测市场异常情况。
+    无 LLM 调用开销，纯规则计算。
+
+    检测条件包括:
+        - 价格急变 (1m/5m/15m)
+        - 成交量异常
+        - 资金费率极端值
+        - 持仓量变化
+        - RSI 超买/超卖
+
+    Attributes:
+        symbol: 交易对符号
+        config: 监控配置阈值
+        base_url: OKX API 基础 URL
     """
-    
+
     def __init__(
         self,
         symbol: str = "BTC-USDT-SWAP",
         config: FastMonitorConfig = None
     ):
+        """
+        初始化快速监控器。
+
+        Args:
+            symbol: 交易对符号，默认 "BTC-USDT-SWAP"
+            config: 监控配置，默认使用 FastMonitorConfig()
+        """
         self.symbol = symbol
         self.config = config or FastMonitorConfig()
-        self.base_url = "https://www.okx.com"
-        
-        # 价格历史 (用于计算变化)
-        self._price_history: deque = deque(maxlen=60)  # 60个数据点
-        self._last_price_time: Optional[datetime] = None
-        
+        self.base_url = get_infra_config().okx_base_url if get_infra_config else "https://www.okx.com"
+
+        # 价格历史 (用于计算变化和状态报告)
+        history_maxlen = CACHE.PRICE_HISTORY_MAXLEN if CACHE else 60
+        self._price_history: deque = deque(maxlen=history_maxlen)
+
         # 缓存数据
         self._last_funding_rate: Optional[float] = None
         self._last_open_interest: Optional[float] = None
         self._last_oi_time: Optional[datetime] = None
-        
+
         logger.info(f"[FastMonitor] Initialized for {symbol}")
     
+    async def _fetch_all_market_data(self, session) -> Dict[str, Any]:
+        """并行获取所有市场数据"""
+        tasks = [
+            self._fetch_ticker(session),
+            self._fetch_candles(session, "1m", 10),
+            self._fetch_candles(session, "5m", 25),
+            self._fetch_candles(session, "15m", 50),
+            self._fetch_funding_rate(session),
+            self._fetch_open_interest(session),
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        return {
+            "ticker": results[0] if not isinstance(results[0], Exception) else {},
+            "candles_1m": results[1] if not isinstance(results[1], Exception) else [],
+            "candles_5m": results[2] if not isinstance(results[2], Exception) else [],
+            "candles_15m": results[3] if not isinstance(results[3], Exception) else [],
+            "funding_data": results[4] if not isinstance(results[4], Exception) else {},
+            "oi_data": results[5] if not isinstance(results[5], Exception) else {},
+        }
+
+    def _run_all_checks(self, data: Dict[str, Any]) -> List[FastTriggerCondition]:
+        """执行所有条件检测"""
+        triggered_conditions = []
+        current_price = float(data["ticker"].get("last", 0)) if data["ticker"] else 0
+
+        # 1. 价格急变检测
+        triggered_conditions.extend(self._check_price_spikes(
+            data["candles_1m"], data["candles_5m"], data["candles_15m"]
+        ))
+
+        # 2. 成交量异常检测
+        triggered_conditions.extend(self._check_volume_spikes(
+            data["candles_1m"], data["candles_5m"]
+        ))
+
+        # 3. 资金费率检测
+        triggered_conditions.extend(self._check_funding_rate(data["funding_data"]))
+
+        # 4. 持仓量变化检测
+        triggered_conditions.extend(self._check_open_interest(data["oi_data"]))
+
+        # 5. RSI 极端值检测
+        triggered_conditions.extend(self._check_rsi_extreme(data["candles_15m"]))
+
+        # 6. EMA 偏离检测
+        triggered_conditions.extend(self._check_ema_deviation(
+            data["candles_15m"], current_price
+        ))
+
+        return triggered_conditions
+
+    def _determine_max_urgency(self, conditions: List[FastTriggerCondition]) -> str:
+        """确定最高紧急程度"""
+        urgency_order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+        max_urgency = "low"
+        for cond in conditions:
+            if urgency_order.get(cond.urgency, 0) > urgency_order.get(max_urgency, 0):
+                max_urgency = cond.urgency
+        return max_urgency
+
+    def _build_trigger_result(
+        self,
+        conditions: List[FastTriggerCondition]
+    ) -> FastTriggerResult:
+        """构建触发结果"""
+        max_urgency = self._determine_max_urgency(conditions)
+        return FastTriggerResult(
+            should_trigger=len(conditions) > 0,
+            conditions=conditions,
+            urgency=max_urgency,
+            timestamp=datetime.now().isoformat()
+        )
+
     async def check(self) -> FastTriggerResult:
         """
         执行所有硬条件检测
-        
+
         Returns:
             FastTriggerResult - 包含是否触发及触发条件详情
         """
         triggered_conditions: List[FastTriggerCondition] = []
-        
+
         try:
             async with aiohttp.ClientSession() as session:
-                # 并行获取所有需要的数据
-                tasks = [
-                    self._fetch_ticker(session),
-                    self._fetch_candles(session, "1m", 10),
-                    self._fetch_candles(session, "5m", 25),
-                    self._fetch_candles(session, "15m", 50),
-                    self._fetch_funding_rate(session),
-                    self._fetch_open_interest(session),
-                ]
-                
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                ticker = results[0] if not isinstance(results[0], Exception) else {}
-                candles_1m = results[1] if not isinstance(results[1], Exception) else []
-                candles_5m = results[2] if not isinstance(results[2], Exception) else []
-                candles_15m = results[3] if not isinstance(results[3], Exception) else []
-                funding_data = results[4] if not isinstance(results[4], Exception) else {}
-                oi_data = results[5] if not isinstance(results[5], Exception) else {}
-                
-                current_price = float(ticker.get("last", 0)) if ticker else 0
-                
-                # 1. 价格急变检测
-                price_conditions = self._check_price_spikes(
-                    candles_1m, candles_5m, candles_15m
-                )
-                triggered_conditions.extend(price_conditions)
-                
-                # 2. 成交量异常检测
-                volume_conditions = self._check_volume_spikes(candles_1m, candles_5m)
-                triggered_conditions.extend(volume_conditions)
-                
-                # 3. 资金费率检测
-                funding_conditions = self._check_funding_rate(funding_data)
-                triggered_conditions.extend(funding_conditions)
-                
-                # 4. 持仓量变化检测
-                oi_conditions = self._check_open_interest(oi_data)
-                triggered_conditions.extend(oi_conditions)
-                
-                # 5. RSI 极端值检测
-                rsi_conditions = self._check_rsi_extreme(candles_15m)
-                triggered_conditions.extend(rsi_conditions)
-                
-                # 6. EMA 偏离检测
-                ema_conditions = self._check_ema_deviation(candles_15m, current_price)
-                triggered_conditions.extend(ema_conditions)
-                
+                data = await self._fetch_all_market_data(session)
+                triggered_conditions = self._run_all_checks(data)
+
         except Exception as e:
             logger.error(f"[FastMonitor] Check failed: {e}")
             import traceback
             traceback.print_exc()
-        
-        # 确定最高紧急程度
-        urgency_order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
-        max_urgency = "low"
-        for cond in triggered_conditions:
-            if urgency_order.get(cond.urgency, 0) > urgency_order.get(max_urgency, 0):
-                max_urgency = cond.urgency
-        
-        result = FastTriggerResult(
-            should_trigger=len(triggered_conditions) > 0,
-            conditions=triggered_conditions,
-            urgency=max_urgency,
-            timestamp=datetime.now().isoformat()
-        )
+
+        result = self._build_trigger_result(triggered_conditions)
         
         if result.should_trigger:
             conditions_str = ", ".join([c.name for c in triggered_conditions])
-            logger.warning(f"[FastMonitor] 🚨 Triggered: {conditions_str} (Urgency: {max_urgency})")
+            logger.warning(f"[FastMonitor] [ALERT] Triggered: {conditions_str} (Urgency: {max_urgency})")
         else:
-            logger.debug("[FastMonitor] ✅ No triggers")
+            logger.debug("[FastMonitor] [OK] No triggers")
         
         return result
     
@@ -569,16 +633,21 @@ class FastMonitor:
         return (current - prev) / prev * 100
     
     def _calculate_rsi(self, candles: List[Dict], period: int = 14) -> float:
-        """计算 RSI"""
+        """计算 RSI - 使用共享模块"""
         if len(candles) < period + 1:
             return 50.0
-        
+
+        if USE_SHARED_INDICATORS:
+            closes = get_closes_from_candles(candles, reverse=True)
+            return calculate_rsi(closes, period)
+
+        # Fallback to local implementation
         closes = [c.get("close", 0) for c in candles]
-        closes.reverse()  # OKX 返回新到旧，反转
-        
+        closes.reverse()
+
         gains = []
         losses = []
-        
+
         for i in range(1, len(closes)):
             diff = closes[i] - closes[i-1]
             if diff > 0:
@@ -587,35 +656,40 @@ class FastMonitor:
             else:
                 gains.append(0)
                 losses.append(abs(diff))
-        
+
         if len(gains) < period:
             return 50.0
-        
+
         avg_gain = sum(gains[:period]) / period
         avg_loss = sum(losses[:period]) / period
-        
+
         if avg_loss == 0:
             return 100.0
-        
+
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
-        
+
         return round(rsi, 2)
-    
+
     def _calculate_ema(self, candles: List[Dict], period: int) -> float:
-        """计算 EMA"""
+        """计算 EMA - 使用共享模块"""
+        if USE_SHARED_INDICATORS:
+            closes = get_closes_from_candles(candles, reverse=True)
+            return calculate_ema(closes, period)
+
+        # Fallback to local implementation
         closes = [c.get("close", 0) for c in candles]
         closes.reverse()
-        
+
         if len(closes) < period:
             return closes[-1] if closes else 0.0
-        
+
         multiplier = 2 / (period + 1)
         ema = sum(closes[:period]) / period
-        
+
         for i in range(period, len(closes)):
             ema = (closes[i] - ema) * multiplier + ema
-        
+
         return ema
     
     def get_status(self) -> Dict:

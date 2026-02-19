@@ -6,10 +6,14 @@ Dashboard Router
 import logging
 from datetime import datetime, timedelta
 from collections import defaultdict
+from typing import Dict, Any, List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from ...services.storage import get_report_storage, ReportStorage
+from ...core.agents.registry import get_agent_registry
+from ...core.session_store import SessionStore
+from ...core.auth import CurrentUser, get_current_user
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -17,11 +21,17 @@ logger = logging.getLogger(__name__)
 
 def get_storage() -> ReportStorage:
     """依赖注入：获取报告存储服务"""
-    return get_report_storage()
+    try:
+        return get_report_storage()
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 @router.get("/stats")
-async def get_dashboard_stats(storage: ReportStorage = Depends(get_storage)):
+async def get_dashboard_stats(
+    storage: ReportStorage = Depends(get_storage),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     获取仪表板统计信息
     - 报告总数
@@ -29,11 +39,24 @@ async def get_dashboard_stats(storage: ReportStorage = Depends(get_storage)):
     - AI Agent 数量
     - 成功率
     """
-    all_reports = storage.get_all(limit=1000)
+    all_reports = storage.get_all(limit=1000, user_id=current_user.id)
     total_reports = len(all_reports)
 
-    # AI agents count
-    ai_agents_count = 9  # 新的 AgentRegistry 中有 9 个 Agent
+    # AI agents count (real registry)
+    try:
+        ai_agents_count = len(get_agent_registry().list_agents())
+    except Exception:
+        ai_agents_count = 0
+
+    # Active analyses count (sessions that are not completed)
+    active_analyses = 0
+    try:
+        store = SessionStore()
+        sessions = store.list_sessions(limit=2000, user_id=current_user.id)
+        active_statuses = {"created", "initializing", "running"}
+        active_analyses = sum(1 for s in sessions if str(s.get("status") or "").lower() in active_statuses)
+    except Exception:
+        active_analyses = 0
 
     # Success rate
     completed_reports = len([r for r in all_reports if r.get("status") == "completed"])
@@ -48,7 +71,7 @@ async def get_dashboard_stats(storage: ReportStorage = Depends(get_storage)):
                 "trend": "neutral"
             },
             "active_analyses": {
-                "value": 0,
+                "value": active_analyses,
                 "change": "+0",
                 "trend": "neutral"
             },
@@ -69,10 +92,11 @@ async def get_dashboard_stats(storage: ReportStorage = Depends(get_storage)):
 @router.get("/recent-reports")
 async def get_recent_reports(
     limit: int = 5,
-    storage: ReportStorage = Depends(get_storage)
+    storage: ReportStorage = Depends(get_storage),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """获取最近的报告"""
-    all_reports = storage.get_all(limit=limit * 2)
+    all_reports = storage.get_all(limit=limit * 2, user_id=current_user.id)
     sorted_reports = sorted(
         all_reports,
         key=lambda r: r.get("created_at", ""),
@@ -94,7 +118,7 @@ async def get_recent_reports(
             else:
                 minutes = max(1, time_diff.seconds // 60)
                 time_ago = f"{minutes} minute{'s' if minutes > 1 else ''} ago"
-        except:
+        except (ValueError, TypeError, AttributeError):
             time_ago = "recently"
 
         agents_used = len(report.get("steps", []))
@@ -116,7 +140,8 @@ async def get_recent_reports(
 @router.get("/trends")
 async def get_analysis_trends(
     days: int = 7,
-    storage: ReportStorage = Depends(get_storage)
+    storage: ReportStorage = Depends(get_storage),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """获取分析趋势数据"""
     # Generate labels
@@ -128,7 +153,7 @@ async def get_analysis_trends(
 
     # Count reports by day
     reports_by_day = defaultdict(int)
-    all_reports = storage.get_all(limit=1000)
+    all_reports = storage.get_all(limit=1000, user_id=current_user.id)
 
     for report in all_reports:
         try:
@@ -137,23 +162,47 @@ async def get_analysis_trends(
             if days_ago < days:
                 day_label = created_at.strftime("%a")
                 reports_by_day[day_label] += 1
-        except:
+        except (ValueError, TypeError, KeyError):
             pass
 
     reports_data = [reports_by_day.get(label, 0) for label in labels]
+
+    # Best-effort: count analysis sessions by day as "analyses started".
+    analyses_by_day = defaultdict(int)
+    try:
+        store = SessionStore()
+        sessions = store.list_sessions(limit=5000, user_id=current_user.id)
+        for s in sessions:
+            started_at = s.get("started_at") or s.get("updated_at")
+            if not started_at:
+                continue
+            try:
+                started_dt = datetime.fromisoformat(started_at)
+            except Exception:
+                continue
+            days_ago = (end_date - started_dt).days
+            if 0 <= days_ago < days:
+                analyses_by_day[started_dt.strftime("%a")] += 1
+    except Exception:
+        analyses_by_day = defaultdict(int)
+
+    analyses_data = [analyses_by_day.get(label, 0) for label in labels]
 
     return {
         "success": True,
         "labels": labels,
         "datasets": {
             "reports": reports_data,
-            "analyses": [0] * len(labels)  # 简化版不跟踪会话
+            "analyses": analyses_data
         }
     }
 
 
 @router.get("/agent-performance")
-async def get_agent_performance(storage: ReportStorage = Depends(get_storage)):
+async def get_agent_performance(
+    storage: ReportStorage = Depends(get_storage),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """获取 Agent 性能统计"""
     # 从报告中统计 Agent 使用情况
     agent_stats = defaultdict(lambda: {"count": 0, "success": 0})
@@ -169,7 +218,7 @@ async def get_agent_performance(storage: ReportStorage = Depends(get_storage)):
         "technical_analysis": ["technical_analyst", "TechnicalAnalyst", "技术分析师"],
     }
 
-    all_reports = storage.get_all(limit=1000)
+    all_reports = storage.get_all(limit=1000, user_id=current_user.id)
     for report in all_reports:
         for step in report.get("steps", []):
             agent_name = step.get("agent", step.get("agent_name", step.get("name", "unknown")))
@@ -193,16 +242,7 @@ async def get_agent_performance(storage: ReportStorage = Depends(get_storage)):
                         category_counts[category] += stats["count"]
                         break
 
-    # 确保至少有一些数据用于图表显示
     total = sum(category_counts.values())
-    if total == 0:
-        # 如果没有数据，提供示例数据
-        category_counts = {
-            "market_analysis": 35,
-            "financial_review": 28,
-            "team_evaluation": 20,
-            "risk_assessment": 17
-        }
 
     # Format agents list response
     agents = []
@@ -221,5 +261,6 @@ async def get_agent_performance(storage: ReportStorage = Depends(get_storage)):
     return {
         "success": True,
         "performance": category_counts,  # 前端期望的格式
-        "agents": agents[:10]  # Top 10
+        "agents": agents[:10],  # Top 10
+        "has_data": total > 0
     }

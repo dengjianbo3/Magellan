@@ -6,11 +6,14 @@ LLM Gateway Service - 支持多 LLM 提供商
 import os
 import io
 import asyncio
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
+import json
+import time
+from collections import defaultdict, deque
+from threading import Lock
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import List, Optional, Literal, Dict, Any, Union
-import json
+from typing import List, Optional, Literal, Dict, Any, Union, Tuple
 
 from .core.config import settings
 
@@ -72,9 +75,31 @@ app = FastAPI(
     version="5.0.0"
 )
 
+def _parse_cors_allow_origins() -> List[str]:
+    """
+    Comma-separated origins, or JSON list.
+    Examples:
+      CORS_ALLOW_ORIGINS=http://localhost:5174,http://localhost:8081
+      CORS_ALLOW_ORIGINS=["https://poc.example.com"]
+      CORS_ALLOW_ORIGINS=*
+    """
+    raw = (os.getenv("CORS_ALLOW_ORIGINS") or "http://localhost:5174,http://localhost:8081").strip()
+    if not raw:
+        return []
+    if raw in ("*", "all"):
+        return ["*"]
+    if raw.startswith("["):
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                return [str(x).strip() for x in data if str(x).strip()]
+        except Exception:
+            pass
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_parse_cors_allow_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -85,6 +110,103 @@ gemini_client = None
 kimi_client = None
 deepseek_client = None
 current_provider = settings.DEFAULT_LLM_PROVIDER
+
+# --- PoC hardening: request limits ---
+LLM_RATE_LIMIT_PER_MINUTE = max(1, int(os.getenv("LLM_RATE_LIMIT_PER_MINUTE", "60")))
+LLM_MAX_HISTORY_MESSAGES = max(1, int(os.getenv("LLM_MAX_HISTORY_MESSAGES", "120")))
+LLM_MAX_MESSAGE_CHARS = max(256, int(os.getenv("LLM_MAX_MESSAGE_CHARS", "8000")))
+LLM_MAX_TOTAL_CHARS = max(1024, int(os.getenv("LLM_MAX_TOTAL_CHARS", "60000")))
+LLM_UPLOAD_MAX_BYTES = max(1024 * 1024, int(os.getenv("LLM_UPLOAD_MAX_BYTES", str(20 * 1024 * 1024))))
+LLM_EXPOSE_PROVIDER_INFO = os.getenv("LLM_EXPOSE_PROVIDER_INFO", "false").lower() == "true"
+LLM_SPLIT_OVERSIZED_PARTS = os.getenv("LLM_SPLIT_OVERSIZED_PARTS", "true").lower() == "true"
+
+
+class SlidingWindowRateLimiter:
+    """Simple in-memory per-key rate limiter for PoC protection."""
+
+    def __init__(self, limit: int, window_seconds: int):
+        self.limit = limit
+        self.window_seconds = window_seconds
+        self._events: Dict[str, deque] = defaultdict(deque)
+        self._lock = Lock()
+
+    def check(self, key: str) -> tuple[bool, int]:
+        now = time.time()
+        with self._lock:
+            events = self._events[key]
+            cutoff = now - self.window_seconds
+            while events and events[0] <= cutoff:
+                events.popleft()
+            if len(events) >= self.limit:
+                retry_after = max(1, int(self.window_seconds - (now - events[0])))
+                return False, retry_after
+            events.append(now)
+            return True, 0
+
+
+_rate_limiter = SlidingWindowRateLimiter(limit=LLM_RATE_LIMIT_PER_MINUTE, window_seconds=60)
+
+
+def _client_key(req: Request) -> str:
+    forwarded_for = req.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return req.client.host if req.client else "unknown"
+
+
+def _enforce_rate_limit(req: Request, route_name: str):
+    key = f"{route_name}:{_client_key(req)}"
+    allowed, retry_after = _rate_limiter.check(key)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Try again in {retry_after}s.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+def _validate_generate_request(payload: GenerateRequest):
+    if len(payload.history) > LLM_MAX_HISTORY_MESSAGES:
+        raise HTTPException(status_code=400, detail=f"Too many history messages (max {LLM_MAX_HISTORY_MESSAGES})")
+
+    total_chars = 0
+    for msg in payload.history:
+        normalized_parts: List[str] = []
+        for part in msg.parts:
+            text = part or ""
+            part_len = len(text)
+            total_chars += part_len
+
+            if part_len <= LLM_MAX_MESSAGE_CHARS:
+                normalized_parts.append(text)
+                continue
+
+            if not LLM_SPLIT_OVERSIZED_PARTS:
+                raise HTTPException(status_code=400, detail=f"Message part too large (max {LLM_MAX_MESSAGE_CHARS} chars)")
+
+            # Keep message semantic while avoiding hard 400 on long system prompts.
+            for i in range(0, part_len, LLM_MAX_MESSAGE_CHARS):
+                normalized_parts.append(text[i : i + LLM_MAX_MESSAGE_CHARS])
+
+        msg.parts = normalized_parts
+
+    if total_chars > LLM_MAX_TOTAL_CHARS:
+        raise HTTPException(status_code=400, detail=f"Request content too large (max {LLM_MAX_TOTAL_CHARS} chars)")
+
+
+def _validate_chat_completion_request(payload: ChatCompletionRequest):
+    if len(payload.messages) > LLM_MAX_HISTORY_MESSAGES:
+        raise HTTPException(status_code=400, detail=f"Too many messages (max {LLM_MAX_HISTORY_MESSAGES})")
+
+    total_chars = 0
+    for msg in payload.messages:
+        content = msg.content or ""
+        if len(content) > LLM_MAX_MESSAGE_CHARS:
+            raise HTTPException(status_code=400, detail=f"Message too large (max {LLM_MAX_MESSAGE_CHARS} chars)")
+        total_chars += len(content)
+
+    if total_chars > LLM_MAX_TOTAL_CHARS:
+        raise HTTPException(status_code=400, detail=f"Request content too large (max {LLM_MAX_TOTAL_CHARS} chars)")
 
 @app.on_event("startup")
 def startup_event():
@@ -150,6 +272,64 @@ def startup_event():
 
     print(f"[LLM Gateway] Current provider: {current_provider}")
 
+def _normalize_gemini_role(role: str) -> str:
+    normalized = (role or "user").strip().lower()
+    if normalized in ("assistant", "model"):
+        return "model"
+    return "user"
+
+
+def _build_gemini_contents(request: GenerateRequest, types_module, force_plain_text: bool = False):
+    contents = []
+    for msg in request.history:
+        parts = msg.parts if msg.parts else [""]
+        contents.append(
+            types_module.Content(
+                role=_normalize_gemini_role(msg.role),
+                parts=[types_module.Part(text=part) for part in parts],
+            )
+        )
+
+    if force_plain_text:
+        contents.append(
+            types_module.Content(
+                role="user",
+                parts=[
+                    types_module.Part(
+                        text=(
+                            "Return a plain text answer only. "
+                            "Do not use tool/function calling format. "
+                            "Do not output JSON schema or function signatures."
+                        )
+                    )
+                ],
+            )
+        )
+
+    return contents
+
+
+def _extract_gemini_text_and_reason(response) -> Tuple[str, str]:
+    text = (response.text or "").strip()
+    finish_reason = ""
+
+    if hasattr(response, "candidates") and response.candidates:
+        candidate = response.candidates[0]
+        finish_reason = str(getattr(candidate, "finish_reason", "") or "")
+
+        if not text:
+            try:
+                content = getattr(candidate, "content", None)
+                parts = getattr(content, "parts", None) if content else None
+                if parts:
+                    text_parts = [getattr(part, "text", "") for part in parts if getattr(part, "text", "")]
+                    text = "".join(text_parts).strip()
+            except Exception:
+                pass
+
+    return text, finish_reason
+
+
 # --- Gemini 调用 ---
 async def call_gemini(request: GenerateRequest) -> str:
     """调用 Gemini API"""
@@ -162,20 +342,19 @@ async def call_gemini(request: GenerateRequest) -> str:
     max_retries = 5
     retry_delay = 3
 
+    force_plain_text_retry = False
+
     for attempt in range(max_retries):
         try:
             # 转换消息格式
-            contents = []
-            for msg in request.history:
-                contents.append(
-                    types.Content(
-                        role=msg.role,
-                        parts=[types.Part(text=part) for part in msg.parts]
-                    )
-                )
+            contents = _build_gemini_contents(
+                request=request,
+                types_module=types,
+                force_plain_text=force_plain_text_retry,
+            )
 
             # 构建配置
-            config_dict = {}
+            config_dict = {"response_mime_type": "text/plain"}
             if request.thinking_level:
                 config_dict["thinking_config"] = types.ThinkingConfig(
                     thinking_level=request.thinking_level
@@ -192,26 +371,19 @@ async def call_gemini(request: GenerateRequest) -> str:
                 config=config
             )
 
-            # Ensure we return a string
-            text = response.text
+            text, finish_reason = _extract_gemini_text_and_reason(response)
 
             # Check if text is None or empty
             if not text:
                 print(f"[Gemini] Response text is empty or None: '{text}'")
 
-                # Try to extract from parts
-                if hasattr(response, 'candidates') and response.candidates:
-                    try:
-                        candidate = response.candidates[0]
-                        # Check finish reason
-                        if hasattr(candidate, 'finish_reason'):
-                            print(f"[Gemini] Finish reason: {candidate.finish_reason}")
-                        if hasattr(candidate, 'content') and candidate.content:
-                            parts = candidate.content.parts
-                            text = "".join(part.text for part in parts if hasattr(part, 'text'))
-                            print(f"[Gemini] Extracted from parts: {len(text)} chars")
-                    except Exception as e:
-                        print(f"[Gemini] Failed to extract from parts: {e}")
+                if finish_reason:
+                    print(f"[Gemini] Finish reason: {finish_reason}")
+
+                if "MALFORMED_FUNCTION_CALL" in finish_reason and not force_plain_text_retry:
+                    print("[Gemini] Retrying with plain-text-only instruction...")
+                    force_plain_text_retry = True
+                    continue
 
                 # Check for safety ratings / block reason
                 if hasattr(response, 'prompt_feedback'):
@@ -219,7 +391,7 @@ async def call_gemini(request: GenerateRequest) -> str:
 
                 if not text:
                     print(f"[Gemini] WARNING: Empty response. Candidates: {response.candidates if hasattr(response, 'candidates') else 'N/A'}")
-                    text = "[Response blocked or empty]"
+                    text = "模型未返回有效文本，请稍后重试。"
 
             return str(text)
 
@@ -462,7 +634,7 @@ def convert_openai_to_gemini_messages(messages: List[ChatCompletionMessage]) -> 
                 if isinstance(args, str):
                     try:
                         args = json.loads(args)
-                    except:
+                    except json.JSONDecodeError:
                         args = {}
 
                 # Gemini 3.0: FunctionCall parts may contain signatures
@@ -807,6 +979,9 @@ async def call_kimi_with_tools(request: ChatCompletionRequest) -> Dict[str, Any]
 @app.get("/providers", response_model=ProvidersResponse, tags=["Configuration"])
 async def get_providers():
     """获取可用的 LLM 提供商列表和当前选择"""
+    if not LLM_EXPOSE_PROVIDER_INFO:
+        raise HTTPException(status_code=404, detail="Not Found")
+
     providers = [
         ProviderInfo(
             name="gemini",
@@ -833,6 +1008,8 @@ async def get_providers():
 async def set_provider(provider_name: Literal["gemini", "kimi", "deepseek"]):
     """切换当前 LLM 提供商"""
     global current_provider
+    if not LLM_EXPOSE_PROVIDER_INFO:
+        raise HTTPException(status_code=404, detail="Not Found")
 
     if provider_name == "gemini" and not gemini_client:
         raise HTTPException(status_code=400, detail="Gemini is not configured. Please set GOOGLE_API_KEY in .env")
@@ -847,7 +1024,7 @@ async def set_provider(provider_name: Literal["gemini", "kimi", "deepseek"]):
     return {"message": f"Provider switched to {provider_name}", "current_provider": current_provider}
 
 @app.post("/chat", response_model=GenerateResponse, tags=["AI Generation"])
-async def chat_handler(request: GenerateRequest):
+async def chat_handler(payload: GenerateRequest, request: Request):
     """
     处理聊天请求，根据当前提供商路由到对应的 LLM
 
@@ -855,23 +1032,25 @@ async def chat_handler(request: GenerateRequest):
     - 否则使用全局 current_provider
     """
     # 确定使用哪个提供商
-    provider = request.provider or current_provider
+    _enforce_rate_limit(request, "chat")
+    _validate_generate_request(payload)
+    provider = payload.provider or current_provider
 
     print(f"[LLM Gateway] Chat request using provider: {provider}")
 
     if provider == "gemini":
-        content = await call_gemini(request)
+        content = await call_gemini(payload)
     elif provider == "kimi":
-        content = await call_kimi(request)
+        content = await call_kimi(payload)
     elif provider == "deepseek":
-        content = await call_deepseek(request)
+        content = await call_deepseek(payload)
     else:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 
     return GenerateResponse(content=content)
 
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse, tags=["AI Generation"])
-async def chat_completions(request: ChatCompletionRequest):
+async def chat_completions(payload: ChatCompletionRequest, request: Request):
     """
     OpenAI 兼容的 Chat Completions API (支持 Tool Calling)
 
@@ -879,23 +1058,26 @@ async def chat_completions(request: ChatCompletionRequest):
     - 返回 OpenAI 格式的响应，包括 tool_calls
     - 可以通过 request.provider 指定提供商，否则使用全局 current_provider
     """
-    provider = request.provider or current_provider
+    _enforce_rate_limit(request, "chat_completions")
+    _validate_chat_completion_request(payload)
+    provider = payload.provider or current_provider
 
     print(f"[LLM Gateway] Chat completions request using provider: {provider}")
-    if request.tools:
-        print(f"[LLM Gateway] Tool calling enabled with {len(request.tools)} tools")
+    if payload.tools:
+        print(f"[LLM Gateway] Tool calling enabled with {len(payload.tools)} tools")
 
     if provider == "gemini":
-        return await call_gemini_with_tools(request)
+        return await call_gemini_with_tools(payload)
     elif provider == "deepseek":
-        return await call_deepseek_with_tools(request)
+        return await call_deepseek_with_tools(payload)
     elif provider == "kimi":
-        return await call_kimi_with_tools(request)
+        return await call_kimi_with_tools(payload)
     else:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 
 @app.post("/generate_from_file", response_model=GenerateResponse, tags=["AI Generation"])
 async def generate_from_file(
+    request: Request,
     prompt: str = Form(...),
     file: UploadFile = File(...)
 ):
@@ -911,10 +1093,16 @@ async def generate_from_file(
         raise HTTPException(status_code=503, detail="Gemini client is not available. File understanding requires Gemini.")
 
     try:
+        _enforce_rate_limit(request, "generate_from_file")
+        if len(prompt) > LLM_MAX_TOTAL_CHARS:
+            raise HTTPException(status_code=400, detail=f"Prompt too large (max {LLM_MAX_TOTAL_CHARS} chars)")
+
         import time
 
         # 1. 读取文件内容
-        file_content = await file.read()
+        file_content = await file.read(LLM_UPLOAD_MAX_BYTES + 1)
+        if len(file_content) > LLM_UPLOAD_MAX_BYTES:
+            raise HTTPException(status_code=413, detail=f"File too large (max {LLM_UPLOAD_MAX_BYTES} bytes)")
         file_io = io.BytesIO(file_content)
         file_io.name = file.filename
 
@@ -965,7 +1153,7 @@ def read_root():
 
 # --- Streaming Chat Endpoint (SSE) ---
 @app.post("/chat/stream", tags=["Streaming"])
-async def chat_stream(request: GenerateRequest):
+async def chat_stream(payload: GenerateRequest, request: Request):
     """
     流式聊天端点 - 使用 Server-Sent Events (SSE) 逐字返回响应
     
@@ -977,12 +1165,15 @@ async def chat_stream(request: GenerateRequest):
     
     if not gemini_client:
         raise HTTPException(status_code=503, detail="Gemini client not available")
+
+    _enforce_rate_limit(request, "chat_stream")
+    _validate_generate_request(payload)
     
     async def generate_stream():
         try:
             # 转换消息格式
             contents = []
-            for msg in request.history:
+            for msg in payload.history:
                 contents.append(
                     types.Content(
                         role=msg.role,
@@ -992,8 +1183,8 @@ async def chat_stream(request: GenerateRequest):
             
             # 构建配置
             config_dict = {}
-            if request.temperature is not None:
-                config_dict["temperature"] = request.temperature
+            if payload.temperature is not None:
+                config_dict["temperature"] = payload.temperature
             
             config = types.GenerateContentConfig(**config_dict) if config_dict else None
             
@@ -1040,4 +1231,3 @@ def health_check():
         "kimi_model": settings.KIMI_MODEL_NAME,
         "deepseek_model": settings.DEEPSEEK_MODEL_NAME
     }
-
