@@ -53,3 +53,44 @@ async def test_knowledge_base_tool_falls_back_to_legacy_documents(monkeypatch):
     assert result["success"] is True
     assert len(result["results"]) == 1
     assert result["documents"][0]["source"] == "legacy-source"
+
+
+@pytest.mark.asyncio
+async def test_knowledge_base_tool_skips_search_when_disabled(monkeypatch):
+    called = {"value": False}
+
+    async def _fake_search(*args, **kwargs):
+        called["value"] = True
+        return {"query": "q", "results": []}
+
+    monkeypatch.setattr(mcp_tools, "shared_search_knowledge_base", _fake_search)
+
+    tool = KnowledgeBaseTool("http://internal_knowledge_service:8009", enabled=False)
+    result = await tool.execute("q")
+
+    assert result["success"] is True
+    assert result["disabled"] is True
+    assert result["results"] == []
+    assert called["value"] is False
+
+
+@pytest.mark.asyncio
+async def test_knowledge_base_tool_forwards_category(monkeypatch):
+    recorder = {}
+
+    async def _fake_search(knowledge_service_url, **kwargs):
+        recorder["knowledge_service_url"] = knowledge_service_url
+        recorder["kwargs"] = kwargs
+        return {"query": "market", "results": []}
+
+    monkeypatch.setattr(mcp_tools, "shared_search_knowledge_base", _fake_search)
+
+    tool = KnowledgeBaseTool(
+        "http://internal_knowledge_service:8009",
+        enabled=True,
+        default_category="market",
+    )
+    await tool.execute("market")
+
+    assert recorder["knowledge_service_url"] == "http://internal_knowledge_service:8009"
+    assert recorder["kwargs"]["category"] == "market"

@@ -8,8 +8,8 @@
         <div class="flex items-center gap-3">
           <span class="material-symbols-outlined animate-pulse">cloud_off</span>
           <div>
-            <p class="font-semibold">您当前处于离线状态</p>
-            <p class="text-sm opacity-90">部分功能可能无法使用，请检查网络连接</p>
+            <p class="font-semibold">{{ t('offline.bannerTitle') }}</p>
+            <p class="text-sm opacity-90">{{ t('offline.bannerSubtitle') }}</p>
           </div>
         </div>
         <button
@@ -17,7 +17,7 @@
           class="px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors font-semibold flex items-center gap-2"
         >
           <span class="material-symbols-outlined">refresh</span>
-          重试连接
+          {{ t('offline.retry') }}
         </button>
       </div>
     </div>
@@ -27,15 +27,17 @@
 <script setup>
 import { useOnlineStatus } from '../../composables/useOnlineStatus';
 import { useToast } from '../../composables/useToast';
+import { useLanguage } from '../../composables/useLanguage';
 
 const { isOnline } = useOnlineStatus();
 const { success, error } = useToast();
+const { t } = useLanguage();
 
 const checkConnection = () => {
   if (navigator.onLine) {
-    success('网络连接已恢复');
+    success(t('offline.restored'));
   } else {
-    error('网络仍然不可用');
+    error(t('offline.stillDown'));
   }
 };
 </script>

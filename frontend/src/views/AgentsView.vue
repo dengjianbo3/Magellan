@@ -1,12 +1,12 @@
 <template>
-  <div class="space-y-8">
+  <div class="page-shell">
     <!-- Page Header -->
-    <div class="flex items-center justify-between">
+    <div class="page-header">
       <div>
-        <h1 class="text-3xl font-display font-bold text-white mb-2 tracking-tight">{{ t('agents.title') }}</h1>
-        <p class="text-text-secondary text-lg">{{ t('agents.subtitle') }}</p>
+        <h1 class="page-title page-title-gradient">{{ t('agents.title') }}</h1>
+        <p class="page-subtitle">{{ t('agents.subtitle') }}</p>
       </div>
-      <button @click="showCreateAgentInfo" class="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-dark text-white font-bold shadow-glow-sm hover:shadow-glow transition-all duration-300 group">
+      <button @click="showCreateAgentInfo" class="page-primary-btn group">
         <span class="material-symbols-outlined group-hover:rotate-90 transition-transform">add</span>
         {{ t('agents.createCustomAgent') }}
       </button>
@@ -129,7 +129,7 @@
       class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
       @click.self="showConfigModal = false"
     >
-      <div class="glass-panel rounded-2xl p-8 max-w-2xl w-full mx-4 max-h-[85vh] overflow-y-auto border border-white/10 shadow-2xl">
+      <div class="modal-shell max-w-2xl mx-4 max-h-[85vh] overflow-y-auto">
         <div class="flex items-center justify-between mb-8 pb-6 border-b border-white/10">
           <div class="flex items-center gap-4">
              <div class="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center text-primary">

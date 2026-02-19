@@ -50,8 +50,9 @@ async def search_knowledge_base(
         "top_k": limit,
         "use_reranking": use_reranking,
     }
-    if category:
-        payload["category"] = category
+    normalized_category = (category or "").strip().lower()
+    if normalized_category and normalized_category != "all":
+        payload["category"] = normalized_category
 
     resolved_token = (auth_token or get_current_access_token() or "").strip()
     headers: Dict[str, str] = {}

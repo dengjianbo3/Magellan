@@ -19,11 +19,15 @@ class MarketAnalysisAgent:
         self,
         web_search_url: str,
         internal_knowledge_url: str,
-        llm_gateway_url: str = "http://llm_gateway:8003"
+        llm_gateway_url: str = "http://llm_gateway:8003",
+        knowledge_enabled: bool = True,
+        knowledge_category: str | None = None,
     ):
         self.web_search_url = web_search_url
         self.internal_knowledge_url = internal_knowledge_url
         self.llm_gateway_url = llm_gateway_url
+        self.knowledge_enabled = bool(knowledge_enabled)
+        self.knowledge_category = self._normalize_knowledge_category(knowledge_category)
         self.llm = LLMHelper(llm_gateway_url=self.llm_gateway_url, timeout=120)
         # V4: EventBus for real-time updates (set by caller)
         self.event_bus = None
@@ -143,6 +147,9 @@ class MarketAnalysisAgent:
     
     async def _query_internal_knowledge(self, bp_market_info: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Query internal knowledge base for similar projects"""
+        if not self.knowledge_enabled:
+            return []
+
         target_market = bp_market_info.get("target_market", "")
         
         if not target_market:
@@ -155,6 +162,7 @@ class MarketAnalysisAgent:
                 self.internal_knowledge_url,
                 query=query,
                 top_k=3,
+                category=self.knowledge_category,
                 timeout=60.0,
             )
             return data.get("results", [])
@@ -162,6 +170,15 @@ class MarketAnalysisAgent:
             print(f"Warning: Internal knowledge query failed: {e}")
         
         return []
+
+    @staticmethod
+    def _normalize_knowledge_category(category: str | None) -> str | None:
+        if not isinstance(category, str):
+            return None
+        normalized = category.strip().lower()
+        if not normalized or normalized == "all":
+            return None
+        return normalized
     
     def _build_analysis_prompt(
         self,

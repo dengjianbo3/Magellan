@@ -12,6 +12,7 @@ from app.models.analysis_models import (
     EarlyStageTarget
 )
 from app.core.orchestrators.base_orchestrator import BaseOrchestrator
+from app.core.uploaded_file_locator import locate_uploaded_file
 # Phase 2: All agents now loaded from AgentRegistry
 # Legacy imports removed
 
@@ -59,19 +60,8 @@ class EarlyStageInvestmentOrchestrator(BaseOrchestrator):
             return False
 
         # 2. BP文件检查 (如果提供)
-        # Note: bp_parser_agent will handle actual file loading from /app/uploads/
         if self.target.bp_file_id:
-            import os
-            # files.py stores uploads in /app/uploads/ with file_id prefix
-            UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
-            # Find file with matching file_id prefix
-            file_exists = False
-            if os.path.exists(UPLOAD_DIR):
-                for filename in os.listdir(UPLOAD_DIR):
-                    if filename.startswith(self.target.bp_file_id):
-                        file_exists = True
-                        break
-            if not file_exists:
+            if not locate_uploaded_file(self.target.bp_file_id):
                 # Log warning but don't block - bp_parser_agent will handle error
                 import logging
                 logging.warning(f"BP文件未找到: {self.target.bp_file_id}，bp_parser将尝试加载")

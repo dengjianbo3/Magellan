@@ -86,3 +86,22 @@ async def test_search_knowledge_base_forwards_auth_token_from_context(monkeypatc
     )
 
     assert recorder["headers"] == {"Authorization": "Bearer tok-123"}
+
+
+@pytest.mark.asyncio
+async def test_search_knowledge_base_ignores_all_category(monkeypatch):
+    recorder = {}
+    payload = {"query": "q", "results": []}
+    monkeypatch.setattr(
+        knowledge_access.httpx,
+        "AsyncClient",
+        _fake_async_client_factory(payload, recorder),
+    )
+
+    await knowledge_access.search_knowledge_base(
+        "http://internal_knowledge_service:8009",
+        query="q",
+        category="all",
+    )
+
+    assert "category" not in recorder["json"]

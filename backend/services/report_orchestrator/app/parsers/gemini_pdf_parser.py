@@ -1,10 +1,10 @@
 """
 Gemini PDF Parser
-使用 Gemini 3 API 直接解析 PDF 文件
+使用 Gemini 3 API 直接解析文档文件（PDF 为主）
 
 优点:
 - 不走 Kafka，避免消息大小限制
-- 直接利用 Gemini 的多模态 PDF 理解能力
+- 直接利用 Gemini 的多模态文档理解能力（含 OCR）
 - 更准确的结构化信息提取
 """
 import os
@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 
 # Gemini 模型名称
 GEMINI_MODEL = os.getenv("GEMINI_MODEL_NAME", "gemini-3-flash-preview")
+GEMINI_API_VERSION = os.getenv("GEMINI_API_VERSION", "v1alpha")
+GEMINI_PDF_MEDIA_RESOLUTION = os.getenv("GEMINI_PDF_MEDIA_RESOLUTION", "media_resolution_medium")
+GEMINI_DOC_THINKING_LEVEL = os.getenv("GEMINI_DOC_THINKING_LEVEL", "low")
 
 
 class GeminiPDFParser:
@@ -47,11 +50,30 @@ class GeminiPDFParser:
         if self._client is None:
             try:
                 from google import genai
-                self._client = genai.Client(api_key=self.api_key)
+                # v1alpha is required for media_resolution in current Gemini SDK flow.
+                self._client = genai.Client(
+                    api_key=self.api_key,
+                    http_options={"api_version": GEMINI_API_VERSION}
+                )
                 logger.info(f"Gemini client initialized with model: {self.model}")
             except ImportError:
                 raise ImportError("google-genai package not installed. Run: pip install google-genai")
         return self._client
+
+    @staticmethod
+    def _guess_mime_type(filename: str) -> str:
+        ext = os.path.splitext((filename or "").lower())[1]
+        if ext == ".pdf":
+            return "application/pdf"
+        if ext in (".jpg", ".jpeg"):
+            return "image/jpeg"
+        if ext == ".png":
+            return "image/png"
+        if ext == ".webp":
+            return "image/webp"
+        if ext == ".txt":
+            return "text/plain"
+        return "application/pdf"
     
     async def parse_pdf(
         self, 
@@ -70,44 +92,54 @@ class GeminiPDFParser:
         Returns:
             结构化 BP 数据字典
         """
-        import base64
-        
         logger.info(f"📄 Parsing PDF with Gemini: {filename}, size: {len(file_content)} bytes")
         
         try:
             client = self._get_client()
-            
-            # Encode file content to base64
-            file_base64 = base64.standard_b64encode(file_content).decode('utf-8')
+            mime_type = self._guess_mime_type(filename)
             
             # Build the structured extraction prompt
             prompt = self._build_extraction_prompt(company_name)
             
             # Use Gemini's native PDF understanding via inline_data
             from google.genai import types
-            
-            response = client.models.generate_content(
-                model=self.model,
-                contents=[
-                    types.Content(
-                        parts=[
-                            types.Part(text=prompt),
-                            types.Part(
-                                inline_data=types.Blob(
-                                    mime_type="application/pdf",
-                                    data=file_content,  # Direct bytes
-                                ),
-                            )
-                        ]
-                    )
-                ],
-                config=types.GenerateContentConfig(
-                    thinking_config=types.ThinkingConfig(thinking_level="low"),  # Fast mode
-                )
+
+            file_part = types.Part(
+                inline_data=types.Blob(
+                    mime_type=mime_type,
+                    data=file_content,
+                ),
+                media_resolution={"level": GEMINI_PDF_MEDIA_RESOLUTION},
             )
+
+            config = types.GenerateContentConfig(
+                response_mime_type="application/json",
+                thinking_config=types.ThinkingConfig(thinking_level=GEMINI_DOC_THINKING_LEVEL),
+            )
+
+            try:
+                # Preferred path: Gemini 3 multimodal document parsing with media resolution.
+                response = client.models.generate_content(
+                    model=self.model,
+                    contents=[types.Content(parts=[types.Part(text=prompt), file_part])],
+                    config=config,
+                )
+            except TypeError:
+                # Backward compatible fallback for SDKs without media_resolution field.
+                fallback_part = types.Part(
+                    inline_data=types.Blob(
+                        mime_type=mime_type,
+                        data=file_content,
+                    ),
+                )
+                response = client.models.generate_content(
+                    model=self.model,
+                    contents=[types.Content(parts=[types.Part(text=prompt), fallback_part])],
+                    config=config,
+                )
             
             # Extract response text
-            response_text = response.text
+            response_text = (response.text or "").strip()
             logger.info(f"✅ Gemini response received: {len(response_text)} chars")
             
             # Parse JSON from response
@@ -201,6 +233,13 @@ class GeminiPDFParser:
                     return data
                 except json.JSONDecodeError:
                     pass
+
+            # Handle occasional leading/trailing markdown-like wrappers.
+            cleaned = response_text.strip().strip("`")
+            try:
+                return json.loads(cleaned)
+            except json.JSONDecodeError:
+                pass
             
             # If parsing fails, return minimal data
             logger.warning(f"Failed to parse Gemini response as JSON: {response_text[:200]}...")

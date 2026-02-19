@@ -3,6 +3,7 @@ MCP Tools for Roundtable Discussion Agents
 为圆桌讨论专家提供的 MCP 工具集
 """
 import os
+from contextvars import ContextVar, Token
 from typing import Any, Dict, List, Optional
 import httpx
 from .tool import Tool
@@ -13,6 +14,41 @@ from app.services.knowledge_access import search_knowledge_base as shared_search
 
 # 全局 MCP Client 实例 (懒加载)
 _mcp_client: Optional[MCPClient] = None
+_ALLOWED_KNOWLEDGE_CATEGORIES = {"general", "financial", "market", "legal"}
+_roundtable_knowledge_preferences: ContextVar[Dict[str, Any]] = ContextVar(
+    "roundtable_knowledge_preferences",
+    default={"enabled": True, "category": None},
+)
+
+
+def normalize_knowledge_category(category: Optional[str]) -> Optional[str]:
+    """Normalize user-facing knowledge scope into backend category filter."""
+    if not isinstance(category, str):
+        return None
+    normalized = category.strip().lower()
+    if not normalized or normalized == "all":
+        return None
+    if normalized in _ALLOWED_KNOWLEDGE_CATEGORIES:
+        return normalized
+    return None
+
+
+def set_roundtable_knowledge_preferences(
+    *,
+    enabled: Optional[bool] = None,
+    category: Optional[str] = None,
+) -> Token:
+    """Set per-request knowledge preferences for roundtable tool creation."""
+    current = _roundtable_knowledge_preferences.get()
+    return _roundtable_knowledge_preferences.set({
+        "enabled": current.get("enabled", True) if enabled is None else bool(enabled),
+        "category": current.get("category") if category is None else normalize_knowledge_category(category),
+    })
+
+
+def reset_roundtable_knowledge_preferences(token: Token) -> None:
+    """Reset per-request knowledge preferences."""
+    _roundtable_knowledge_preferences.reset(token)
 
 def get_mcp_client() -> MCPClient:
     """获取全局 MCP Client 实例"""
@@ -293,7 +329,9 @@ class KnowledgeBaseTool(Tool):
 
     def __init__(
         self,
-        knowledge_service_url: Optional[str] = None
+        knowledge_service_url: Optional[str] = None,
+        enabled: Optional[bool] = None,
+        default_category: Optional[str] = None,
     ):
         """
         Args:
@@ -304,6 +342,10 @@ class KnowledgeBaseTool(Tool):
             description="Search internal knowledge base for relevant documents and information. Suitable for querying uploaded BPs, research reports, internal documents, etc."
         )
         self.knowledge_service_url = knowledge_service_url or get_internal_knowledge_url()
+        preference = _roundtable_knowledge_preferences.get()
+        self.enabled = preference.get("enabled", True) if enabled is None else bool(enabled)
+        category_source = preference.get("category") if default_category is None else default_category
+        self.default_category = normalize_knowledge_category(category_source)
 
     async def execute(self, query: str, **kwargs) -> Dict[str, Any]:
         """
@@ -316,13 +358,24 @@ class KnowledgeBaseTool(Tool):
         Returns:
             Search results
         """
+        if not self.enabled:
+            return {
+                "success": True,
+                "summary": "Knowledge base retrieval is disabled for this discussion.",
+                "results": [],
+                "documents": [],
+                "disabled": True,
+            }
+
         top_k = kwargs.get("top_k", kwargs.get("limit", 3))
+        category = normalize_knowledge_category(kwargs.get("category", self.default_category))
 
         try:
             result = await shared_search_knowledge_base(
                 self.knowledge_service_url,
                 query=query,
                 top_k=top_k,
+                category=category,
                 timeout=30.0,
             )
             documents = result.get("results", [])
@@ -348,6 +401,7 @@ class KnowledgeBaseTool(Tool):
                 "results": documents,
                 "documents": documents,
                 "query": result.get("query", query),
+                "category": category,
             }
 
         except Exception as e:
@@ -374,6 +428,12 @@ class KnowledgeBaseTool(Tool):
                         "type": "integer",
                         "description": "Return top K most relevant results",
                         "default": 3
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Optional knowledge scope. Use 'all' for no category filter.",
+                        "enum": ["all", "general", "financial", "market", "legal"],
+                        "default": "all",
                     }
                 },
                 "required": ["query"]

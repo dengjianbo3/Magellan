@@ -48,6 +48,32 @@ class RecommendationType(str, Enum):
     FURTHER_DD = "FURTHER_DD"    # 建议深入尽调
 
 
+class KnowledgeBaseConfig(BaseModel):
+    """知识库检索配置"""
+    enabled: bool = False
+    category: str = Field("all", description="知识库类别过滤: all/general/financial/market/legal")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_fields(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        normalized = dict(data)
+        if "enabled" not in normalized and "useKnowledgeBase" in normalized:
+            normalized["enabled"] = bool(normalized["useKnowledgeBase"])
+        if "category" not in normalized and "knowledgeCategory" in normalized:
+            normalized["category"] = normalized["knowledgeCategory"]
+
+        category = normalized.get("category")
+        if not isinstance(category, str):
+            normalized["category"] = "all"
+        else:
+            cleaned = category.strip().lower()
+            normalized["category"] = cleaned if cleaned else "all"
+        return normalized
+
+
 # ============ Target Models (5个场景的目标对象) ============
 
 class EarlyStageTarget(BaseModel):
@@ -104,6 +130,7 @@ class AnalysisConfig(BaseModel):
     selected_agents: List[str] = Field(default_factory=list)
     data_sources: List[str] = Field(default_factory=list)
     language: str = Field("zh", description="报告语言")
+    knowledge: KnowledgeBaseConfig = Field(default_factory=KnowledgeBaseConfig, description="知识库检索配置")
 
     # 场景专属参数 (支持各场景的特定配置)
     scenario_params: Dict[str, Any] = Field(
@@ -127,6 +154,14 @@ class AnalysisConfig(BaseModel):
             normalized["depth"] = normalized["mode"]
         if "focus_areas" not in normalized and "focusAreas" in normalized:
             normalized["focus_areas"] = normalized["focusAreas"]
+        if "knowledge" not in normalized:
+            knowledge: Dict[str, Any] = {}
+            if "useKnowledgeBase" in normalized:
+                knowledge["enabled"] = normalized["useKnowledgeBase"]
+            if "knowledgeCategory" in normalized:
+                knowledge["category"] = normalized["knowledgeCategory"]
+            if knowledge:
+                normalized["knowledge"] = knowledge
         return normalized
 
 

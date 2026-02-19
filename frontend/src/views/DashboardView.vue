@@ -1,14 +1,14 @@
 <template>
-  <div class="space-y-8">
+  <div class="page-shell">
     <!-- Page Header -->
-    <div class="flex items-end justify-between">
+    <div class="page-header">
       <div>
-        <h1 class="text-3xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-text-secondary mb-2 tracking-tight">{{ t('dashboard.title') }}</h1>
-        <p class="text-text-secondary text-lg font-light">{{ t('dashboard.welcome') }}</p>
+        <h1 class="page-title page-title-gradient">{{ t('dashboard.title') }}</h1>
+        <p class="page-subtitle">{{ t('dashboard.welcome') }}</p>
       </div>
       <button
         @click="handleExportClick"
-        class="group flex items-center gap-2 px-6 py-2.5 rounded-lg bg-gradient-to-r from-primary to-primary-dark text-white font-bold shadow-glow-sm hover:shadow-glow hover:scale-105 transition-all duration-300"
+        class="page-primary-btn group"
       >
         <span class="material-symbols-outlined group-hover:animate-bounce">download</span>
         {{ t('dashboard.exportReport') }}

@@ -29,6 +29,15 @@ from app.services.web_search_access import search_web as shared_search_web
 from .agent_event_bus import get_event_bus
 
 
+def _normalize_knowledge_category(category: Optional[str]) -> Optional[str]:
+    if not isinstance(category, str):
+        return None
+    normalized = category.strip().lower()
+    if not normalized or normalized == "all":
+        return None
+    return normalized
+
+
 class DDStateMachine:
     """
     State machine managing the DD workflow lifecycle.
@@ -56,7 +65,9 @@ class DDStateMachine:
         selected_agents: Optional[List[str]] = None,
         data_sources: Optional[List[str]] = None,
         priority: str = "normal",
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        knowledge_enabled: bool = False,
+        knowledge_category: Optional[str] = None,
     ):
         self.context = DDSessionContext(
             session_id=session_id,
@@ -74,6 +85,8 @@ class DDStateMachine:
         self.data_sources = data_sources or []
         self.priority = priority
         self.description = description
+        self.knowledge_enabled = bool(knowledge_enabled)
+        self.knowledge_category = _normalize_knowledge_category(knowledge_category)
 
         # V4: AgentEventBus for real-time updates
         self.event_bus = get_event_bus()
@@ -192,6 +205,10 @@ class DDStateMachine:
             print(f"[DD_WORKFLOW] Starting workflow for {self.context.company_name}", flush=True)
             print(f"[DD_WORKFLOW] Selected agents: {self.selected_agents}", flush=True)
             print(f"[DD_WORKFLOW] Data sources: {self.data_sources}", flush=True)
+            print(
+                f"[DD_WORKFLOW] Knowledge: enabled={self.knowledge_enabled}, category={self.knowledge_category or 'all'}",
+                flush=True,
+            )
 
             # Step 0: Initialization
             print(f"[DD_WORKFLOW] Step 0: Init", flush=True)
@@ -574,7 +591,9 @@ class DDStateMachine:
         agent = MarketAnalysisAgent(
             web_search_url=self.WEB_SEARCH_URL,
             internal_knowledge_url=self.INTERNAL_KNOWLEDGE_URL,
-            llm_gateway_url=self.LLM_GATEWAY_URL
+            llm_gateway_url=self.LLM_GATEWAY_URL,
+            knowledge_enabled=self.knowledge_enabled,
+            knowledge_category=self.knowledge_category,
         )
 
         # V4: Pass event bus to agent

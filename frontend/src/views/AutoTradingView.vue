@@ -1,12 +1,11 @@
 <template>
-  <div class="max-w-7xl mx-auto p-6 space-y-6">
+  <div class="page-shell max-w-7xl mx-auto">
     <!-- Header -->
-    <!-- Header -->
-    <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-2">
+    <div class="page-header">
       <div>
-        <h1 class="text-2xl font-bold text-white tracking-tight">{{ t('trading.title') || 'AI 自动交易系统' }}</h1>
-        <p class="text-text-secondary text-sm mt-1">
-          {{ t('trading.subtitle') || 'AI 驱动的自动化加密货币交易' }}
+        <h1 class="page-title page-title-gradient !text-2xl md:!text-3xl">{{ t('trading.title') || 'AI Auto Trading System' }}</h1>
+        <p class="page-subtitle">
+          {{ t('trading.subtitle') || 'AI-powered automated crypto trading' }}
         </p>
       </div>
 
@@ -16,14 +15,14 @@
         <!-- 1. Next Analysis (Pulse) -->
         <div class="flex items-center h-10 gap-3 bg-white/5 rounded-lg px-4 border border-white/5 backdrop-blur-sm">
           <div class="flex items-baseline gap-2">
-            <span class="text-[10px] text-text-secondary uppercase tracking-wider font-semibold">下次分析</span>
+            <span class="text-[10px] text-text-secondary uppercase tracking-wider font-semibold">Next Analysis</span>
             <span class="text-sm font-mono font-bold text-accent-cyan">{{ countdown }}</span>
           </div>
           <div class="w-px h-4 bg-white/10"></div>
           <button
             @click="triggerAnalysis"
             class="group p-1 rounded hover:bg-primary/20 text-primary transition-all active:scale-95 flex items-center justify-center"
-            :title="'立即触发'"
+            :title="'Trigger Now'"
           >
             <span class="material-symbols-outlined text-lg group-hover:text-amber-400 transition-colors">bolt</span>
           </button>
@@ -36,7 +35,7 @@
              <span :class="['relative inline-flex rounded-full h-2.5 w-2.5', systemStatus.enabled ? 'bg-emerald-500' : 'bg-red-500']"></span>
           </span>
           <span :class="['text-xs font-bold', systemStatus.enabled ? 'text-emerald-400' : 'text-text-secondary']">
-            {{ systemStatus.enabled ? '运行中' : '已停止' }}
+            {{ systemStatus.enabled ? 'Running' : 'Stopped' }}
           </span>
         </div>
 
@@ -49,7 +48,7 @@
             class="flex items-center h-10 px-4 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-semibold shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 transition-all active:scale-95"
             >
             <span class="material-symbols-outlined mr-1.5 text-lg">play_arrow</span>
-            <span class="text-sm">启动</span>
+            <span class="text-sm">Start</span>
             </button>
             <button
             v-else
@@ -57,7 +56,7 @@
             class="flex items-center h-10 px-4 rounded-lg bg-white/10 hover:bg-red-500/20 text-white hover:text-red-400 font-semibold border border-white/10 hover:border-red-500/50 transition-all active:scale-95"
             >
             <span class="material-symbols-outlined mr-1.5 text-lg">stop</span>
-            <span class="text-sm">停止</span>
+            <span class="text-sm">Stop</span>
             </button>
 
             <!-- Separator -->
@@ -69,7 +68,7 @@
             class="hidden lg:flex items-center h-10 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium border border-white/5 hover:border-white/10 transition-all active:scale-95"
             >
             <span class="material-symbols-outlined mr-1.5 text-lg">groups</span>
-            <span class="text-xs">专家团队</span>
+            <span class="text-xs">Expert Team</span>
             </button>
 
             <!-- Pending Trades Alert -->
@@ -79,14 +78,14 @@
             class="flex items-center h-10 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold shadow-lg shadow-amber-500/20 animate-pulse transition-all active:scale-95"
             >
             <span class="material-symbols-outlined mr-1.5 text-lg">notifications_active</span>
-            <span class="text-xs">{{ pendingTrades.length }} 待办</span>
+            <span class="text-xs">{{ pendingTrades.length }} Pending</span>
             </button>
 
             <!-- Settings -->
             <button
             @click="openSettings"
-            class="h-10 w-10 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 text-text-secondary hover:text-white border border-white/5 hover:border-white/10 transition-all"
-            :title="'设置'"
+            class="icon-btn"
+            :title="'Settings'"
             >
             <span class="material-symbols-outlined text-lg">settings</span>
             </button>
@@ -102,45 +101,45 @@
       <div class="col-span-12 lg:col-span-4 sticky top-6 z-10 space-y-6">
         
         <!-- Account Overview -->
-        <div class="glass-panel rounded-xl p-6">
+        <div class="section-card">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
             <span class="material-symbols-outlined mr-2 text-primary">account_balance_wallet</span>
-            账户概览
+            Account Overview
           </h3>
 
           <div class="space-y-3">
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary text-sm">交易起始日期</span>
+              <span class="text-text-secondary text-sm">Trading Start Date</span>
               <span class="text-white">{{ tradingStartDateFormatted }}</span>
             </div>
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary text-sm">起始金额</span>
+              <span class="text-text-secondary text-sm">Starting Capital</span>
               <span class="text-white font-medium">${{ formatNumber(initialCapital) }}</span>
             </div>
             <div class="flex justify-between items-center pt-2 border-t border-white/10">
-              <span class="text-text-secondary">当前权益</span>
+              <span class="text-text-secondary">Current Equity</span>
               <span class="text-2xl font-bold text-white">${{ formatNumber(account.totalEquity) }}</span>
             </div>
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary">总盈利</span>
+              <span class="text-text-secondary">Total Profit</span>
               <span :class="totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400'" class="font-semibold">
                 {{ totalProfit >= 0 ? '+' : '' }}${{ formatNumber(totalProfit) }}
                 <span class="text-sm">({{ totalProfitPercent >= 0 ? '+' : '' }}{{ totalProfitPercent.toFixed(2) }}%)</span>
               </span>
             </div>
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary">最大回撤</span>
+              <span class="text-text-secondary">Max Drawdown</span>
               <span class="text-red-400 font-medium">-{{ drawdown.maxDrawdownPct?.toFixed(2) || 0 }}%</span>
             </div>
             <div v-if="btcBenchmark.startPrice > 0" class="pt-2 border-t border-white/10 space-y-2">
                <div class="flex justify-between items-center">
-                 <span class="text-text-secondary text-sm">BTC 同期收益</span>
+                 <span class="text-text-secondary text-sm">BTC Benchmark Return</span>
                  <span :class="btcBenchmark.returnPercent >= 0 ? 'text-emerald-400' : 'text-red-400'" class="text-sm">
                    {{ btcBenchmark.returnPercent >= 0 ? '+' : '' }}{{ btcBenchmark.returnPercent.toFixed(2) }}%
                  </span>
                </div>
                <div class="flex justify-between items-center">
-                 <span class="text-text-secondary font-medium">超额收益 (Alpha)</span>
+                 <span class="text-text-secondary font-medium">Excess Return (Alpha)</span>
                  <span :class="alpha >= 0 ? 'text-emerald-400' : 'text-red-400'" class="font-bold text-lg">
                    {{ alpha >= 0 ? '+' : '' }}{{ alpha?.toFixed(2) || 0 }}%
                  </span>
@@ -150,10 +149,10 @@
         </div>
 
         <!-- Current Position -->
-        <div class="glass-panel rounded-xl p-6">
+        <div class="section-card">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
             <span class="material-symbols-outlined mr-2 text-accent-cyan">trending_up</span>
-            当前持仓
+            Current Position
           </h3>
           <template v-if="position.hasPosition">
             <div class="space-y-3">
@@ -166,8 +165,8 @@
               <div class="grid grid-cols-2 gap-3 text-sm">
                 <div><span class="text-text-secondary block">Entry</span><span class="text-white">${{ formatNumber(position.entryPrice) }}</span></div>
                 <div><span class="text-text-secondary block">Current</span><span class="text-white">${{ formatNumber(position.currentPrice) }}</span></div>
-                <div><span class="text-text-secondary block">TP</span><span class="text-emerald-400">{{ position.takeProfitPrice > 0 ? '$' + formatNumber(position.takeProfitPrice) : '未设置' }}</span></div>
-                <div><span class="text-text-secondary block">SL</span><span class="text-red-400">{{ position.stopLossPrice > 0 ? '$' + formatNumber(position.stopLossPrice) : '未设置' }}</span></div>
+                <div><span class="text-text-secondary block">TP</span><span class="text-emerald-400">{{ position.takeProfitPrice > 0 ? '$' + formatNumber(position.takeProfitPrice) : 'Not set' }}</span></div>
+                <div><span class="text-text-secondary block">SL</span><span class="text-red-400">{{ position.stopLossPrice > 0 ? '$' + formatNumber(position.stopLossPrice) : 'Not set' }}</span></div>
               </div>
               <div class="pt-3 border-t border-white/10 flex justify-between items-center">
                  <span class="text-text-secondary">P&L</span>
@@ -199,12 +198,12 @@
       <div class="col-span-12 lg:col-span-8 space-y-6">
         
         <!-- Equity Curve Chart -->
-        <div class="glass-panel rounded-xl p-6">
+        <div class="section-card">
           <div class="flex items-center justify-between mb-4">
 
             <h3 class="text-lg font-semibold text-white flex items-center">
               <span class="material-symbols-outlined mr-2 text-primary">show_chart</span>
-              权益曲线
+              Equity Curve
             </h3>
           </div>
           <div class="h-64">
@@ -213,10 +212,10 @@
         </div>
 
         <!-- Live Discussion (Fixed Height, Internal Scroll) -->
-        <div class="glass-panel rounded-xl p-6 flex flex-col h-[700px]">
+        <div class="section-card flex flex-col h-[700px]">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center sticky top-0 bg-[#0f172a]/95 backdrop-blur z-10 py-2 border-b border-white/5">
             <span class="material-symbols-outlined mr-2 text-accent-violet">forum</span>
-            实时讨论
+            Live Discussion
             <span v-if="isAnalyzing" class="ml-2 flex items-center text-primary text-sm"><span class="animate-pulse mr-1">●</span> Live</span>
           </h3>
 
@@ -229,7 +228,7 @@
                        <span class="material-symbols-outlined text-sm group-open:rotate-180 transition-transform">expand_more</span>
                        <div class="flex items-center gap-2">
                           <span class="px-2 py-0.5 rounded bg-primary/20 text-primary text-xs font-bold">{{ msg.agentName }}</span>
-                          <span class="text-xs">思考过程 (Thinking Process)</span>
+                          <span class="text-xs">Reasoning (Thinking Process)</span>
                        </div>
                     </summary>
                     <div class="mt-2 pl-6 pt-2 border-l-2 border-white/5 text-gray-400 text-sm prose prose-sm prose-invert max-w-none leading-relaxed" v-html="renderMarkdown(msg.parsed.reasoning)"></div>
@@ -239,7 +238,7 @@
                  <div class="pl-0">
                     <div class="flex items-center justify-between mb-2">
                        <span class="text-xs font-mono text-text-secondary">{{ formatTime(msg.timestamp) }}</span>
-                       <span class="text-xs font-bold text-accent-cyan">结论 (Decision Ticket)</span>
+                       <span class="text-xs font-bold text-accent-cyan">Decision Ticket</span>
                     </div>
 
                     <!-- Signal Card (Visualized JSON) -->
@@ -314,18 +313,18 @@
     </div>
 
     <!-- Agent Performance Panel -->
-    <div class="glass-panel rounded-xl p-6">
+    <div class="section-card">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold text-white flex items-center">
           <span class="material-symbols-outlined mr-2 text-accent-cyan">leaderboard</span>
-          智能体表现 (Agent Performance)
+          Agent Performance
         </h3>
         <button
           @click="fetchAgentPerformance"
           class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-all"
         >
           <span class="material-symbols-outlined align-middle text-base mr-1">refresh</span>
-          刷新
+          Refresh
         </button>
       </div>
 
@@ -361,12 +360,12 @@
         <table class="w-full text-sm">
           <thead>
             <tr class="text-text-secondary border-b border-white/10">
-              <th class="text-left py-3 px-4">智能体</th>
-              <th class="text-right py-3 px-4">交易数</th>
-              <th class="text-right py-3 px-4">胜场</th>
-              <th class="text-right py-3 px-4">胜率</th>
-              <th class="text-right py-3 px-4">总盈亏</th>
-              <th class="text-left py-3 px-4">最新反思</th>
+              <th class="text-left py-3 px-4">Agent</th>
+              <th class="text-right py-3 px-4">Trades</th>
+              <th class="text-right py-3 px-4">Wins</th>
+              <th class="text-right py-3 px-4">Win Rate</th>
+              <th class="text-right py-3 px-4">Total PnL</th>
+              <th class="text-left py-3 px-4">Latest Lesson</th>
             </tr>
           </thead>
           <tbody>
@@ -405,11 +404,11 @@
     </div>
 
     <!-- Trade History (Full Width Bottom) -->
-    <div class="glass-panel rounded-xl p-6">
+    <div class="section-card">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold text-white flex items-center">
           <span class="material-symbols-outlined mr-2 text-primary">history</span>
-          交易历史
+          Trade History
         </h3>
         <button @click="fetchTradeHistory" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-all flex items-center">
            <span class="material-symbols-outlined text-sm mr-1">refresh</span> Refresh
@@ -417,7 +416,7 @@
       </div>
       <div class="max-h-[500px] overflow-y-auto">
          <table class="w-full text-sm">
-            <thead><tr class="text-text-secondary border-b border-white/10 sticky top-0 bg-[#0f172a] z-10"><th class="text-left py-3 px-4">时间</th><th class="text-left py-3 px-4">方向</th><th class="text-right py-3 px-4">入场价</th><th class="text-right py-3 px-4">盈亏</th></tr></thead>
+            <thead><tr class="text-text-secondary border-b border-white/10 sticky top-0 bg-[#0f172a] z-10"><th class="text-left py-3 px-4">Time</th><th class="text-left py-3 px-4">Direction</th><th class="text-right py-3 px-4">Entry Price</th><th class="text-right py-3 px-4">PnL</th></tr></thead>
             <tbody>
               <tr v-for="trade in tradeHistory" :key="trade.id" class="border-b border-white/5 hover:bg-white/5 transition-colors">
                 <td class="py-3 px-4 text-white font-mono">{{ formatDate(trade.timestamp) }}</td>
@@ -437,7 +436,7 @@
       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       @click.self="showSettings = false"
     >
-      <div class="glass-panel rounded-xl p-6 w-full max-w-md mx-4">
+      <div class="modal-shell max-w-md mx-4">
         <div class="flex items-center justify-between mb-6">
           <h3 class="text-lg font-semibold text-white flex items-center">
             <span class="material-symbols-outlined mr-2 text-primary">settings</span>
@@ -459,9 +458,9 @@
           <div class="p-4 rounded-lg bg-white/5 border border-white/10">
             <div class="flex items-center justify-between">
 	              <div>
-	                <h4 class="text-sm font-medium text-white">{{ t('trading.traderBackend') || '交易环境' }}</h4>
+	                <h4 class="text-sm font-medium text-white">{{ t('trading.traderBackend') || 'Trading Environment' }}</h4>
 	                <p class="text-xs text-text-secondary mt-1">
-	                  {{ settingsForm.useOkxTrading ? `OKX (${settingsForm.okxDemoMode ? '模拟盘' : '实盘'})` : (t('trading.localPaperTrading') || 'Local Paper Trading') }}
+	                  {{ settingsForm.useOkxTrading ? `OKX (${settingsForm.okxDemoMode ? 'Demo' : 'Live'})` : (t('trading.localPaperTrading') || 'Local Paper Trading') }}
 	                </p>
 	              </div>
               <label class="relative inline-flex items-center cursor-pointer">
@@ -476,9 +475,9 @@
 	            </div>
 	            <div v-if="settingsForm.useOkxTrading" class="mt-3 space-y-3">
               <p class="text-xs text-text-secondary">
-                当前 OKX 凭证: 
+                Current OKX Credentials: 
                 <span v-if="settingsForm.okxConfigured" class="text-emerald-400 font-mono">****{{ settingsForm.okxApiKeyLast4 }}</span>
-                <span v-else class="text-amber-400">未配置</span>
+                <span v-else class="text-amber-400">Not configured</span>
               </p>
               <div class="grid grid-cols-1 gap-2">
                 <input
@@ -506,7 +505,7 @@
 	              <div class="flex items-center justify-between">
 	                <label class="flex items-center gap-2 text-xs text-text-secondary">
 	                  <input type="checkbox" v-model="settingsForm.okxDemoMode" class="accent-primary" />
-	                  模拟盘 (x-simulated-trading)
+	                  Demo (x-simulated-trading)
 	                </label>
                 <button
                   v-if="settingsForm.okxConfigured"
@@ -514,11 +513,11 @@
                   class="text-xs text-red-400 hover:text-red-300 underline"
                   type="button"
                 >
-                  清除 OKX 凭证
+                  Clear OKX Credentials
                 </button>
 	              </div>
 	              <p v-if="!settingsForm.okxDemoMode" class="text-xs text-red-400">
-	                你正在选择 OKX 实盘模式。请确保这是你期望的行为，并使用无提现权限的 API Key。
+	                You are selecting OKX live mode. Ensure this is intentional and use an API key without withdrawal permission.
 	              </p>
 	            </div>
 	          </div>
@@ -618,15 +617,15 @@
       v-if="showDecisionModal"
       class="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
     >
-      <div class="glass-panel rounded-xl p-6 w-full max-w-lg mx-4 border border-primary/30 shadow-2xl">
+      <div class="modal-shell max-w-lg mx-4 border border-primary/30 shadow-2xl">
         <!-- Header -->
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-lg font-semibold text-white flex items-center">
             <span class="material-symbols-outlined mr-2 text-primary animate-pulse">smart_toy</span>
-            AI 投资委员会决策
+            AI Trading Committee Decision
           </h3>
           <span class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-400">
-            待确认
+            Pending Confirmation
           </span>
         </div>
 
@@ -634,7 +633,7 @@
         <div class="bg-white/5 rounded-lg p-4 mb-4">
           <div class="grid grid-cols-3 gap-4 text-center mb-4">
             <div>
-              <span class="text-text-secondary text-xs block mb-1">方向</span>
+              <span class="text-text-secondary text-xs block mb-1">Direction</span>
               <span
                 :class="[
                   'px-3 py-1 rounded-lg font-bold text-lg',
@@ -647,11 +646,11 @@
               </span>
             </div>
             <div>
-              <span class="text-text-secondary text-xs block mb-1">杠杆</span>
+              <span class="text-text-secondary text-xs block mb-1">Leverage</span>
               <span class="text-white font-bold text-lg">{{ modifiedLeverage }}x</span>
             </div>
             <div>
-              <span class="text-text-secondary text-xs block mb-1">置信度</span>
+              <span class="text-text-secondary text-xs block mb-1">Confidence</span>
               <span 
                 :class="[
                   'font-bold text-lg',
@@ -666,14 +665,14 @@
 
           <div class="grid grid-cols-2 gap-4 text-sm">
             <div class="flex justify-between">
-              <span class="text-text-secondary">止盈价</span>
+              <span class="text-text-secondary">Take Profit</span>
               <span class="text-emerald-400 font-medium">
                 ${{ formatNumber(pendingDecision.take_profit) }}
                 <span class="text-xs">(+{{ ((pendingDecision.take_profit / pendingDecision.current_price - 1) * 100).toFixed(1) }}%)</span>
               </span>
             </div>
             <div class="flex justify-between">
-              <span class="text-text-secondary">止损价</span>
+              <span class="text-text-secondary">Stop Loss</span>
               <span class="text-red-400 font-medium">
                 ${{ formatNumber(pendingDecision.stop_loss) }}
                 <span class="text-xs">({{ ((pendingDecision.stop_loss / pendingDecision.current_price - 1) * 100).toFixed(1) }}%)</span>
@@ -686,20 +685,20 @@
         <div class="bg-white/5 rounded-lg p-4 mb-4 max-h-32 overflow-y-auto">
           <div class="text-text-secondary text-xs mb-2 flex items-center">
             <span class="material-symbols-outlined text-sm mr-1">psychology</span>
-            Leader 综合意见
+            Leader Rationale
           </div>
           <p class="text-white text-sm leading-relaxed">
-            {{ pendingDecision.reasoning || '综合技术面、宏观面、市场情绪等多维度分析...' }}
+            {{ pendingDecision.reasoning || 'Combined view across technicals, macro, and sentiment analyses...' }}
           </p>
         </div>
 
         <!-- Modification Panel -->
         <div v-if="showModifyPanel" class="bg-white/5 rounded-lg p-4 mb-4 border border-primary/30">
-          <div class="text-text-secondary text-xs mb-3">修改参数</div>
+          <div class="text-text-secondary text-xs mb-3">Modify Parameters</div>
 
           <!-- Direction Toggle -->
           <div class="flex items-center gap-4 mb-3">
-            <label class="text-sm text-white w-20">方向:</label>
+            <label class="text-sm text-white w-20">Direction:</label>
             <div class="flex gap-2 flex-1">
               <button
                 @click="modifiedDirection = 'long'"
@@ -724,7 +723,7 @@
 
           <!-- Leverage Slider -->
           <div class="flex items-center gap-4 mb-3">
-            <label class="text-sm text-white w-20">杠杆:</label>
+            <label class="text-sm text-white w-20">Leverage:</label>
             <input
               type="range"
               v-model="modifiedLeverage"
@@ -737,7 +736,7 @@
 
           <!-- Amount Percent Slider -->
           <div class="flex items-center gap-4">
-            <label class="text-sm text-white w-20">仓位:</label>
+            <label class="text-sm text-white w-20">Position:</label>
             <input
               type="range"
               v-model.number="modifiedAmountPercent"
@@ -752,7 +751,7 @@
 
         <!-- Defer Reasons (shown when deferring) -->
         <div v-if="showDeferReasons" class="bg-white/5 rounded-lg p-4 mb-4 border border-red-500/30">
-          <div class="text-text-secondary text-xs mb-3">请选择搁置原因</div>
+          <div class="text-text-secondary text-xs mb-3">Select defer reason</div>
           <div class="grid grid-cols-2 gap-2">
             <label 
               v-for="reason in deferReasonOptions" 
@@ -769,10 +768,10 @@
             </label>
           </div>
           <input
-            v-if="selectedDeferReason === '其他'"
+            v-if="selectedDeferReason === 'Other'"
             v-model="customDeferReason"
             type="text"
-            placeholder="请输入原因..."
+            placeholder="Enter reason..."
             class="mt-2 w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
           />
         </div>
@@ -785,7 +784,7 @@
             class="flex-1 px-4 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <span class="material-symbols-outlined text-lg">check_circle</span>
-            确认执行
+            Confirm Execution
           </button>
           <button
             @click="toggleModifyPanel"
@@ -793,7 +792,7 @@
             class="px-4 py-3 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <span class="material-symbols-outlined text-lg">edit</span>
-            修改
+            Modify
           </button>
           <button
             @click="toggleDeferReasons"
@@ -801,7 +800,7 @@
             class="px-4 py-3 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <span class="material-symbols-outlined text-lg">close</span>
-            搁置
+            Defer
           </button>
         </div>
 
@@ -812,13 +811,13 @@
           :disabled="processingDecision"
           class="w-full mt-3 px-4 py-2 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-all disabled:opacity-50"
         >
-          确认搁置
+          Confirm Deferral
         </button>
 
         <!-- User Responsibility Notice -->
         <div class="mt-4 text-center text-xs text-text-secondary">
           <span class="material-symbols-outlined text-sm align-middle mr-1">info</span>
-          请仔细确认后再执行交易
+          Please review carefully before executing trades
         </div>
       </div>
     </div>
@@ -831,7 +830,7 @@
        <div class="p-6 border-b border-white/10 flex justify-between items-center sticky top-0 bg-[#0f172a] z-10">
          <h3 class="text-xl font-bold text-white flex items-center">
            <span class="material-symbols-outlined mr-2 text-accent-cyan">groups</span>
-           专家团队
+           Expert Team
          </h3>
          <button @click="showTeamModal = false" class="text-text-secondary hover:text-white transition-colors">
            <span class="material-symbols-outlined text-2xl">close</span>
@@ -876,7 +875,7 @@ marked.setOptions({
   gfm: true
 });
 
-const { t } = useLanguage();
+const { t, locale } = useLanguage();
 
 // Chart
 const equityChartCanvas = ref(null);
@@ -914,15 +913,15 @@ const position = ref({
 });
 
 const agents = ref([
-  { id: 'technical-analyst', name: '技术分析师', role: '技术面', icon: 'candlestick_chart', winRate: 0.65 },
-  { id: 'macro-economist', name: '宏观分析师', role: '宏观面', icon: 'public', winRate: 0.58 },
-  { id: 'sentiment-analyst', name: '情绪分析师', role: '情绪面', icon: 'psychology', winRate: 0.62 },
-  { id: 'onchain-analyst', name: '链上分析师', role: '链上数据', icon: 'link', winRate: 0.60 },
-  { id: 'risk-manager', name: '风险管理', role: '风控', icon: 'shield', winRate: 0.70 },
-  { id: 'quant-strategist', name: '量化策略', role: '量化', icon: 'analytics', winRate: 0.55 },
-  { id: 'trading-executor', name: '交易执行', role: '执行', icon: 'play_arrow', winRate: 0 },
-  { id: 'position-monitor', name: '仓位监控', role: '监控', icon: 'monitoring', winRate: 0 },
-  { id: 'trading-leader', name: '主持人', role: '协调', icon: 'emoji_events', winRate: 0.68 }
+  { id: 'technical-analyst', name: 'Technical Analyst', role: 'Technical', icon: 'candlestick_chart', winRate: 0.65 },
+  { id: 'macro-economist', name: 'Macro Analyst', role: 'Macro', icon: 'public', winRate: 0.58 },
+  { id: 'sentiment-analyst', name: 'Sentiment Analyst', role: 'Sentiment', icon: 'psychology', winRate: 0.62 },
+  { id: 'onchain-analyst', name: 'On-chain Analyst', role: 'On-chain', icon: 'link', winRate: 0.60 },
+  { id: 'risk-manager', name: 'Risk Management', role: 'Risk', icon: 'shield', winRate: 0.70 },
+  { id: 'quant-strategist', name: 'Quant Strategy', role: 'Quant', icon: 'analytics', winRate: 0.55 },
+  { id: 'trading-executor', name: 'Trade Execution', role: 'Execution', icon: 'play_arrow', winRate: 0 },
+  { id: 'position-monitor', name: 'Position Monitor', role: 'Monitoring', icon: 'monitoring', winRate: 0 },
+  { id: 'trading-leader', name: 'Host', role: 'Coordination', icon: 'emoji_events', winRate: 0.68 }
 ]);
 
 const discussionMessages = ref([]);
@@ -973,7 +972,7 @@ const showDeferReasons = ref(false);
 const selectedDeferReason = ref('');
 const customDeferReason = ref('');
 const processingDecision = ref(false);
-const deferReasonOptions = ['杠杆过高', '方向不同意', '止损太紧', '市场不确定', '其他'];
+const deferReasonOptions = ['Leverage too high', 'Direction disagreement', 'Stop-loss too tight', 'Market uncertain', 'Other'];
 const decisionHistory = ref([]);  // Store user decisions for display
 
 // Drawdown data
@@ -1116,8 +1115,8 @@ const performanceMetrics = computed(() => {
 const intervalText = computed(() => {
   // Prefer actual scheduler state over settings form
   const hours = systemStatus.value.scheduler?.interval_hours || settingsForm.value.analysisInterval || 4;
-  const locale = localStorage.getItem('language') || 'zh-CN';
-  if (locale === 'en') {
+  const lang = locale.value || localStorage.getItem('locale') || 'zh-CN';
+  if (lang.startsWith('en')) {
     return `Analysis every ${hours} hour${hours > 1 ? 's' : ''}`;
   }
   return `每 ${hours} 小时分析一次`;
@@ -1480,7 +1479,7 @@ function parseDiscussionContent(content) {
     return {
       hasJson: true,
       parsedJson: parsedJson,
-      reasoning: reasoning || '查看详细分析过程...',
+      reasoning: reasoning || 'View detailed reasoning...',
       conclusion: fullBlock
     };
   }
@@ -1570,8 +1569,8 @@ async function handleConfirmDecision() {
 
       if (!result.success) {
         discussionMessages.value.push({
-          agentName: '系统',
-          content: `❌ 确认交易失败: ${result.message || result.detail || '未知错误'}`,
+          agentName: 'System',
+          content: `❌ Trade confirmation failed: ${result.message || result.detail || 'Unknown error'}`,
           timestamp: new Date().toISOString()
         });
         // Close modal even on failure — trade is no longer actionable
@@ -1598,8 +1597,8 @@ async function handleConfirmDecision() {
     } else {
       // HITL-only: should never execute directly without a pending trade id.
       discussionMessages.value.push({
-        agentName: '系统',
-        content: '❌ 无法确认：缺少 trade_id（请等待 pending trade 创建后再确认）',
+        agentName: 'System',
+        content: '❌ Cannot confirm: missing trade_id (wait until pending trade is created)',
         timestamp: new Date().toISOString()
       });
       showDecisionModal.value = false;
@@ -1611,7 +1610,7 @@ async function handleConfirmDecision() {
     decisionHistory.value.unshift({
       decision_id: tradeId || `decision-${Date.now()}`,
       action: 'confirm',
-      display: `${finalDirection.toUpperCase()} ${finalLeverage}x${finalAmountPercent ? ` ${Math.round(finalAmountPercent * 100)}%` : ''} → ✓ 确认执行${isModified ? ' (已修改)' : ''}`
+      display: `${finalDirection.toUpperCase()} ${finalLeverage}x${finalAmountPercent ? ` ${Math.round(finalAmountPercent * 100)}%` : ''} → ✓ Confirm Execution${isModified ? ' (Modified)' : ''}`
     });
 
     // Note: modal close and data refresh handled by 'trade_confirmed' WebSocket event
@@ -1628,10 +1627,10 @@ async function handleConfirmDecision() {
     console.error('Error confirming decision:', e);
     const isExpired = String(e?.message || '').includes('(404)');
     discussionMessages.value.push({
-      agentName: '系统',
+      agentName: 'System',
       content: isExpired
-        ? '⏰ 交易已过期，请等待下一次分析信号'
-        : `❌ 确认交易出错: ${e.message || '网络错误'}`,
+        ? '⏰ Trade expired, please wait for the next signal'
+        : `❌ Error while confirming trade: ${e.message || 'Network error'}`,
       timestamp: new Date().toISOString()
     });
   } finally {
@@ -1642,7 +1641,7 @@ async function handleConfirmDecision() {
 async function handleDeferDecision() {
   processingDecision.value = true;
   try {
-    const reason = selectedDeferReason.value === '其他' ? customDeferReason.value : selectedDeferReason.value;
+    const reason = selectedDeferReason.value === 'Other' ? customDeferReason.value : selectedDeferReason.value;
     const tradeId = pendingDecision.value.trade_id;
 
     if (tradeId) {
@@ -1652,15 +1651,15 @@ async function handleDeferDecision() {
         headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           user_id: 'frontend',
-          reason: reason || '用户搁置'
+          reason: reason || 'User deferred'
         })
       });
       const result = await parseTradingJson(response, 'Reject pending trade');
 
       if (!result.success) {
         discussionMessages.value.push({
-          agentName: '系统',
-          content: `❌ 拒绝交易失败: ${result.message || result.detail || '未知错误'}`,
+          agentName: 'System',
+          content: `❌ Trade rejection failed: ${result.message || result.detail || 'Unknown error'}`,
           timestamp: new Date().toISOString()
         });
         // Close modal even on failure — trade is no longer actionable
@@ -1701,7 +1700,7 @@ async function handleDeferDecision() {
     decisionHistory.value.unshift({
       decision_id: tradeId || `decision-${Date.now()}`,
       action: 'defer',
-      display: `${pendingDecision.value.direction.toUpperCase()} ${pendingDecision.value.leverage}x → ✕ 搁置 (${reason})`
+      display: `${pendingDecision.value.direction.toUpperCase()} ${pendingDecision.value.leverage}x → ✕ Defer (${reason})`
     });
 
     // Note: modal close handled by 'trade_rejected' WebSocket event
@@ -1713,10 +1712,10 @@ async function handleDeferDecision() {
     console.error('Error deferring decision:', e);
     const isExpired = String(e?.message || '').includes('(404)');
     discussionMessages.value.push({
-      agentName: '系统',
+      agentName: 'System',
       content: isExpired
-        ? '⏰ 交易已过期，请等待下一次分析信号'
-        : `❌ 拒绝交易出错: ${e.message || '网络错误'}`,
+        ? '⏰ Trade expired, please wait for the next signal'
+        : `❌ Error while rejecting trade: ${e.message || 'Network error'}`,
       timestamp: new Date().toISOString()
     });
   } finally {
@@ -1740,14 +1739,14 @@ async function closePosition() {
     if (data.error) {
       console.error('Error closing position:', data.error);
       discussionMessages.value.push({
-        agentName: '系统',
-        content: `平仓失败: ${data.error}`,
+        agentName: 'System',
+        content: `Close position failed: ${data.error}`,
         timestamp: new Date().toISOString()
       });
     } else {
       discussionMessages.value.push({
-        agentName: '系统',
-        content: `手动平仓成功，盈亏: $${data.pnl?.toFixed(2) || '0.00'}`,
+        agentName: 'System',
+        content: `Manual close succeeded, PnL: $${data.pnl?.toFixed(2) || '0.00'}`,
         timestamp: new Date().toISOString()
       });
       await fetchPosition();
@@ -1813,12 +1812,12 @@ async function saveSettings() {
     const okxPassphrase = (settingsForm.value.okxPassphrase || '').trim();
 
     if (okxSelected && !settingsForm.value.okxConfigured && !(okxApiKey && okxSecretKey && okxPassphrase)) {
-      alert('选择 OKX 后，需要填写 API Key / Secret Key / Passphrase');
+      alert('Selecting OKX requires API Key / Secret Key / Passphrase');
       return;
     }
 
     if (okxSelected && !settingsForm.value.okxDemoMode) {
-      const ok = confirm('你正在切换到 OKX 实盘（非模拟盘）。确认继续？');
+      const ok = confirm('You are switching to OKX live mode (not demo). Continue?');
       if (!ok) return;
     }
 
@@ -1842,13 +1841,13 @@ async function saveSettings() {
     if (data.status === 'updated') {
       showSettings.value = false;
 
-      let message = '设置已更新';
+      let message = 'Settings updated';
       if (data.needs_reset) {
-        message = '设置已更新。切换交易环境需要重置系统才能生效。';
+        message = 'Settings updated. Changing trading environment requires a system reset to take effect.';
       }
 
       discussionMessages.value.push({
-        agentName: '系统',
+        agentName: 'System',
         content: message,
         parsed: parseDiscussionContent(message),
         timestamp: new Date().toISOString()
@@ -1862,7 +1861,7 @@ async function saveSettings() {
 }
 
 async function clearOkxCredentials() {
-  if (!confirm('确认清除 OKX 凭证？清除后会自动切回 PaperTrader（需要重置系统生效）。')) return;
+  if (!confirm('Clear OKX credentials? It will switch back to PaperTrader (system reset required).')) return;
   savingSettings.value = true;
   try {
     const response = await tradingFetch('/api/trading/config', {
@@ -1877,9 +1876,9 @@ async function clearOkxCredentials() {
     if (data.status === 'updated') {
       await fetchConfig();
       discussionMessages.value.push({
-        agentName: '系统',
-        content: 'OKX 凭证已清除。请重置系统以应用切换。',
-        parsed: parseDiscussionContent('OKX 凭证已清除。请重置系统以应用切换。'),
+        agentName: 'System',
+        content: 'OKX credentials cleared. Please reset the system to apply changes.',
+        parsed: parseDiscussionContent('OKX credentials cleared. Please reset the system to apply changes.'),
         timestamp: new Date().toISOString()
       });
     }
@@ -1988,8 +1987,8 @@ function handleWebSocketMessage(msg) {
     case 'system_started':
       systemStatus.value.enabled = true;
       discussionMessages.value.push({
-        agentName: '系统',
-        content: '交易系统已启动，正在进行首次分析...',
+        agentName: 'System',
+        content: 'Trading system started. Running initial analysis...',
         timestamp: new Date().toISOString()
       });
       break;
@@ -1998,8 +1997,8 @@ function handleWebSocketMessage(msg) {
       systemStatus.value.enabled = false;
       isAnalyzing.value = false;
       discussionMessages.value.push({
-        agentName: '系统',
-        content: '交易系统已停止',
+        agentName: 'System',
+        content: 'Trading system stopped',
         timestamp: new Date().toISOString()
       });
       break;
@@ -2008,8 +2007,8 @@ function handleWebSocketMessage(msg) {
       isAnalyzing.value = true;
       discussionMessages.value = [];
       discussionMessages.value.push({
-        agentName: '系统',
-        content: '开始新一轮市场分析...',
+        agentName: 'System',
+        content: 'Starting a new round of market analysis...',
         timestamp: new Date().toISOString()
       });
       break;
@@ -2017,8 +2016,8 @@ function handleWebSocketMessage(msg) {
     case 'analysis_error':
       isAnalyzing.value = false;
       discussionMessages.value.push({
-        agentName: '系统',
-        content: `分析出错: ${msg.error || '未知错误'}`,
+        agentName: 'System',
+        content: `Analysis error: ${msg.error || 'Unknown error'}`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -2079,8 +2078,8 @@ function handleWebSocketMessage(msg) {
       }
 
       discussionMessages.value.push({
-        agentName: '系统',
-        content: `🔔 信号生成: ${signal.direction?.toUpperCase()} ${signal.leverage}x - 等待确认...`,
+        agentName: 'System',
+        content: `🔔 Signal generated: ${signal.direction?.toUpperCase()} ${signal.leverage}x - awaiting confirmation...`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -2111,8 +2110,8 @@ function handleWebSocketMessage(msg) {
       fetchPendingTrades();
 
       discussionMessages.value.push({
-        agentName: '系统',
-        content: `🔔 ${msg.message || '半自动模式：请确认或拒绝此交易'}`,
+        agentName: 'System',
+        content: `🔔 ${msg.message || 'Semi-auto mode: please confirm or reject this trade'}`,
         timestamp: new Date().toISOString()
       });
 
@@ -2134,8 +2133,8 @@ function handleWebSocketMessage(msg) {
       fetchTradeHistory();
       fetchPendingTrades();
       discussionMessages.value.push({
-        agentName: '系统',
-        content: `✅ 交易已确认执行: ${msg.signal?.direction?.toUpperCase() || ''} ${msg.signal?.leverage || ''}x (确认人: ${msg.confirmed_by || 'user'})`,
+        agentName: 'System',
+        content: `✅ Trade confirmed and executed: ${msg.signal?.direction?.toUpperCase() || ''} ${msg.signal?.leverage || ''}x (confirmed by: ${msg.confirmed_by || 'user'})`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -2143,8 +2142,8 @@ function handleWebSocketMessage(msg) {
     case 'trade_confirm_failed':
       // Trade confirmation succeeded but execution failed
       discussionMessages.value.push({
-        agentName: '系统',
-        content: `❌ 交易确认后执行失败: ${msg.error || '未知错误'}`,
+        agentName: 'System',
+        content: `❌ Execution failed after confirmation: ${msg.error || 'Unknown error'}`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -2155,8 +2154,8 @@ function handleWebSocketMessage(msg) {
       resetDecisionState();
       fetchPendingTrades();
       discussionMessages.value.push({
-        agentName: '系统',
-        content: `✕ 交易已拒绝${msg.reason ? ': ' + msg.reason : ''} (操作人: ${msg.rejected_by || 'user'})`,
+        agentName: 'System',
+        content: `✕ Trade rejected${msg.reason ? ': ' + msg.reason : ''} (action by: ${msg.rejected_by || 'user'})`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -2167,10 +2166,10 @@ function handleWebSocketMessage(msg) {
       fetchAccount();
       fetchTradeHistory();
       discussionMessages.value.push({
-        agentName: '系统',
+        agentName: 'System',
         content: msg.success
-          ? `交易执行成功: ${msg.signal?.direction?.toUpperCase()} ${msg.signal?.leverage || 1}x`
-          : `交易执行失败: ${msg.trade_result?.error || '未知错误'}`,
+          ? `Trade executed successfully: ${msg.signal?.direction?.toUpperCase()} ${msg.signal?.leverage || 1}x`
+          : `Trade execution failed: ${msg.trade_result?.error || 'Unknown error'}`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -2188,8 +2187,8 @@ function handleWebSocketMessage(msg) {
       fetchPosition();
       fetchTradeHistory();
       discussionMessages.value.push({
-        agentName: '系统',
-        content: `仓位已平仓，盈亏: $${msg.pnl?.toFixed(2) || '0.00'}`,
+        agentName: 'System',
+        content: `Position closed, PnL: $${msg.pnl?.toFixed(2) || '0.00'}`,
         timestamp: new Date().toISOString()
       });
       break;

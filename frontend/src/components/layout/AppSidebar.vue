@@ -1,14 +1,16 @@
 <template>
   <aside
     :class="[
-      'flex flex-col flex-shrink-0 bg-surface/30 backdrop-blur-xl border-r border-white/5 p-4 text-text-primary transition-all duration-300 ease-in-out relative z-50',
+      'relative z-50 flex h-full flex-shrink-0 flex-col border-r border-white/10 bg-gradient-to-b from-surface/60 via-surface/35 to-surface/50 px-3 py-4 text-text-primary backdrop-blur-xl transition-all duration-300 ease-in-out md:py-5',
       collapsed ? 'w-[72px]' : 'w-64'
     ]"
   >
+    <div class="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.03] via-transparent to-transparent"></div>
+
     <!-- Logo & Collapse Button -->
-    <div :class="['flex items-center mb-8', collapsed ? 'justify-center px-2' : 'justify-between px-2']">
+    <div :class="['relative flex items-center mb-7', collapsed ? 'justify-center px-2' : 'justify-between px-2']">
       <div class="flex items-center gap-3 overflow-hidden group">
-        <!-- Megellan Logo -->
+        <!-- Magellan Logo -->
         <div class="relative">
           <div class="absolute inset-0 bg-primary/20 blur-lg rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
           <svg
@@ -28,34 +30,34 @@
 
         <!-- Brand Text -->
         <div v-show="!collapsed" class="flex flex-col whitespace-nowrap animate-fade-in">
-          <h1 class="text-lg font-display font-bold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-white to-primary-dark">Megellan</h1>
+          <h1 class="text-lg font-display font-bold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-white to-primary">Magellan</h1>
           <p class="text-text-secondary text-xs font-medium tracking-wider">{{ t('sidebar.brandSubtitle') }}</p>
         </div>
       </div>
     </div>
 
     <!-- Navigation Links -->
-    <nav class="flex flex-col gap-2 flex-grow">
+    <nav class="relative flex flex-col flex-grow gap-1.5">
       <button
         v-for="item in navItems"
         :key="item.id"
         @click="emit('navigate', item.id)"
         :class="[
-          'group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-300 overflow-hidden',
+          'group relative flex items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 transition-all duration-300',
           activeTab === item.id
-            ? 'bg-primary/10 text-primary'
-            : 'hover:bg-white/5 text-text-secondary hover:text-text-primary'
+            ? 'bg-gradient-to-r from-primary/20 to-primary/5 text-primary ring-1 ring-primary/25'
+            : 'text-text-secondary hover:bg-white/5 hover:text-text-primary'
         ]"
       >
         <!-- Active Indicator Line -->
         <div 
           v-if="activeTab === item.id" 
-          class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-primary rounded-r-full shadow-[0_0_8px_rgba(56,189,248,0.8)]"
+          class="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary shadow-[0_0_8px_rgba(56,189,248,0.8)]"
         ></div>
 
         <span
           :class="[
-            'material-symbols-outlined transition-colors',
+            'material-symbols-outlined text-[21px] transition-colors',
             activeTab === item.id ? 'text-primary drop-shadow-[0_0_5px_rgba(56,189,248,0.5)]' : 'group-hover:text-text-primary'
           ]"
         >
@@ -65,7 +67,7 @@
           v-show="!collapsed"
           :class="[
             'text-sm font-medium leading-normal whitespace-nowrap transition-colors',
-            activeTab === item.id ? 'text-text-primary font-semibold' : ''
+            activeTab === item.id ? 'font-semibold text-text-primary' : ''
           ]"
         >
           {{ item.label }}
@@ -74,12 +76,12 @@
     </nav>
 
     <!-- Bottom Actions -->
-    <div class="flex flex-col gap-4 mt-auto pt-4 border-t border-white/5">
+    <div class="relative mt-auto flex flex-col gap-3 border-t border-white/10 pt-4">
       <!-- Start New Analysis Button -->
       <button
         :class="[
-          'relative flex items-center justify-center overflow-hidden rounded-lg h-10 text-white text-sm font-bold leading-normal transition-all duration-300 group',
-          'bg-gradient-to-r from-primary to-primary-dark hover:from-primary-dark hover:to-primary shadow-glow-sm hover:shadow-glow',
+          'group relative flex h-10 items-center justify-center overflow-hidden rounded-xl text-sm font-bold leading-normal text-white transition-all duration-300',
+          'bg-gradient-to-r from-primary to-primary-dark shadow-glow-sm hover:from-primary-dark hover:to-primary hover:shadow-glow',
           collapsed ? 'w-10 mx-auto px-0' : 'w-full px-4'
         ]"
         @click="emit('start-analysis')"
@@ -92,7 +94,7 @@
       <!-- Collapse Toggle -->
       <button
         @click="toggleCollapse"
-        class="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 text-text-secondary hover:text-text-primary transition-colors"
+        class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-text-secondary transition-colors hover:bg-white/5 hover:text-text-primary"
       >
         <span
           :class="[

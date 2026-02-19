@@ -121,9 +121,36 @@
         <div class="mb-6">
           <label class="form-label">{{ t('analysisWizard.reportLanguage') }}</label>
           <select v-model="config.language" class="form-input glass-input">
-            <option value="zh">中文</option>
+            <option value="zh">{{ t('settings.language.languages.zhCN') || 'Simplified Chinese' }}</option>
             <option value="en">English</option>
           </select>
+        </div>
+
+        <div class="mb-6">
+          <label class="form-label">{{ t('analysisWizard.knowledgeBase') }}</label>
+          <label class="checkbox-label">
+            <input
+              type="checkbox"
+              v-model="config.useKnowledgeBase"
+              class="checkbox-input"
+            />
+            <span class="checkbox-box"></span>
+            <span class="checkbox-text">{{ t('analysisWizard.enableKnowledgeBase') }}</span>
+          </label>
+          <div class="mt-3">
+            <label class="form-label">{{ t('analysisWizard.knowledgeBaseScope') }}</label>
+            <select
+              v-model="config.knowledgeCategory"
+              class="form-input glass-input"
+              :disabled="!config.useKnowledgeBase"
+            >
+              <option value="all">{{ t('analysisWizard.knowledgeScopeAll') }}</option>
+              <option value="general">{{ t('analysisWizard.knowledgeScopeGeneral') }}</option>
+              <option value="financial">{{ t('analysisWizard.knowledgeScopeFinancial') }}</option>
+              <option value="market">{{ t('analysisWizard.knowledgeScopeMarket') }}</option>
+              <option value="legal">{{ t('analysisWizard.knowledgeScopeLegal') }}</option>
+            </select>
+          </div>
         </div>
 
         <!-- Additional Options -->
@@ -209,6 +236,8 @@ const config = ref({
   depth: 'quick',
   focus_areas: [],
   language: locale.value,
+  useKnowledgeBase: false,
+  knowledgeCategory: 'all',
   includeComparison: false,
   includeRisks: true,
   detailedFinancials: false
@@ -312,6 +341,10 @@ async function handleSubmit() {
       depth: config.value.depth,
       focus_areas: config.value.focus_areas,
       language: config.value.language,
+      knowledge: {
+        enabled: config.value.useKnowledgeBase,
+        category: config.value.knowledgeCategory
+      },
       scenario_params: {
         include_comparison: config.value.includeComparison,
         include_risks: config.value.includeRisks,
@@ -325,7 +358,7 @@ async function handleSubmit() {
     });
   } catch (error) {
     console.error('[UnifiedForm] Error preparing form data:', error);
-    alert(`提交失败: ${error.message}`);
+    alert(`Submission failed: ${error.message}`);
   } finally {
     isSubmitting.value = false;
   }

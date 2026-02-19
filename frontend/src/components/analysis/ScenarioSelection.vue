@@ -84,7 +84,7 @@
           v-if="scenario.status && scenario.status !== 'active'"
           class="absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-bold tracking-wide bg-amber-500/20 text-amber-300 border border-amber-500/30"
         >
-          {{ t('analysisWizard.comingSoon') || '即将推出' }}
+          {{ t('analysisWizard.comingSoon') || 'Coming Soon' }}
         </div>
       </div>
     </div>

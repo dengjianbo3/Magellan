@@ -676,6 +676,10 @@ Please synthesize all the above information and generate a structured analysis r
 
             except httpx.HTTPStatusError as e:
                 last_error = e
+                try:
+                    logger.error(f"[{self.name}] HTTP error response body: {e.response.text[:500]}")
+                except Exception:
+                    pass
                 if e.response.status_code == 429:  # Rate limit
                     logger.warning(f"[{self.name}] Rate limited, retrying... (attempt {attempt + 1}/{max_retries})")
                     if attempt < max_retries - 1:

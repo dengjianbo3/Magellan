@@ -365,7 +365,7 @@ import { getAuthHeaders } from '@/services/authHeaders';
 import { readJsonResponse } from '@/services/httpResponse';
 import { DDAnalysisService } from '../services/ddAnalysisService';
 
-const { t } = useLanguage();
+const { t, locale } = useLanguage();
 const { success, error, warning, info } = useToast();
 const props = defineProps({
   analysisConfig: {
@@ -397,19 +397,19 @@ const projectName = computed(() => props.analysisConfig?.projectName || 'Investm
 const companyName = computed(() => props.analysisConfig?.company || 'Unknown Company');
 const analysisType = computed(() => {
   const typeMap = {
-    'due-diligence': '尽职调查',
-    'market-analysis': '市场分析',
-    'financial-review': '财务审查',
-    'competitive-analysis': '竞争分析'
+    'due-diligence': 'Due Diligence',
+    'market-analysis': 'Market Analysis',
+    'financial-review': 'Financial Review',
+    'competitive-analysis': 'Competitive Analysis'
   };
-  return typeMap[props.analysisConfig?.analysisType] || '投资分析';
+  return typeMap[props.analysisConfig?.analysisType] || 'Investment Analysis';
 });
 
-const startTime = computed(() => new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
+const startTime = computed(() => new Date().toLocaleTimeString(locale.value, { hour: '2-digit', minute: '2-digit' }));
 
 const analysisStatusText = computed(() => {
   if (analysisStatus.value === 'completed') return t('agentChat.status.completed');
-  if (analysisStatus.value === 'error') return '错误';
+  if (analysisStatus.value === 'error') return 'Error';
   return t('agentChat.status.inProgress');
 });
 
@@ -434,11 +434,11 @@ const formatTime = (ms) => {
   const hours = Math.floor(minutes / 60);
 
   if (hours > 0) {
-    return `${hours}小时${minutes % 60}分钟`;
+    return `${hours}h ${minutes % 60}m`;
   } else if (minutes > 0) {
-    return `${minutes}分${seconds % 60}秒`;
+    return `${minutes}m ${seconds % 60}s`;
   } else {
-    return `${seconds}秒`;
+    return `${seconds}s`;
   }
 };
 
@@ -449,7 +449,7 @@ const elapsedTime = computed(() => {
 
 const estimatedTimeRemaining = computed(() => {
   if (completedSteps.value === 0 || overallProgress.value === 0) {
-    return '计算中...';
+    return 'Calculating...';
   }
 
   const elapsed = currentTime.value - startTimeMs.value;
@@ -540,12 +540,12 @@ const handleDDMessage = (data) => {
     // Add completion step
     analysisSteps.value.push({
       id: 999,
-      title: '分析完成',
+      title: 'Analysis Completed',
       status: 'success',
-      result: '初步分析已完成，生成了初步报告和关键问题。'
+      result: 'Preliminary analysis is complete. Initial report and key questions were generated.'
     });
 
-    success('初步分析完成！请查看并保存报告');
+    success('Preliminary analysis completed. Please review and save the report.');
     scrollToBottom();
   } else if (data.status === 'completed') {
     analysisStatus.value = 'completed';
@@ -556,12 +556,12 @@ const handleDDMessage = (data) => {
       status: step.status === 'running' ? 'success' : step.status
     }));
 
-    success('分析已全部完成！');
+    success('Analysis fully completed.');
     scrollToBottom();
   } else if (data.status === 'error') {
     analysisStatus.value = 'error';
-    errorMessage.value = data.message || '分析过程中出现错误';
-    error('分析出错: ' + (data.message || '未知错误'));
+    errorMessage.value = data.message || 'An error occurred during analysis';
+    error('Analysis error: ' + (data.message || 'Unknown error'));
     scrollToBottom();
   }
 };
@@ -597,7 +597,7 @@ const saveReport = async () => {
 
     console.log('[AgentChat] Saving report:', reportData);
 
-    info('正在保存报告...');
+    info('Saving report...');
 
     // Call backend API to save report
     const response = await fetch(`${API_BASE}/api/reports`, {
@@ -614,7 +614,7 @@ const saveReport = async () => {
 
     // Mark as saved
     reportSaved.value = true;
-    success('报告保存成功！即将返回列表页...');
+    success('Report saved successfully. Returning to the reports list...');
 
     // Navigate back to reports view after a delay
     setTimeout(() => {
@@ -622,7 +622,7 @@ const saveReport = async () => {
     }, 1500);
   } catch (err) {
     console.error('[AgentChat] Failed to save report:', err);
-    error('保存报告失败: ' + err.message);
+    error('Failed to save report: ' + err.message);
   }
 };
 
@@ -643,8 +643,8 @@ onMounted(async () => {
   ddService.onError((err) => {
     console.error('[AgentChat] WebSocket error:', err);
     analysisStatus.value = 'error';
-    errorMessage.value = '连接错误';
-    error('分析连接出错，请检查网络连接后重试');
+    errorMessage.value = 'Connection error';
+    error('Analysis connection error. Please check your network and retry.');
   });
 
   // Setup close handler
@@ -654,7 +654,7 @@ onMounted(async () => {
     // If not a normal closure and analysis not completed, show reconnecting status
     if (event.code !== 1000 && analysisStatus.value !== 'completed' && analysisStatus.value !== 'hitl_review') {
       isReconnecting.value = true;
-      warning('连接已断开，正在尝试重新连接...', 0); // Keep warning visible
+      warning('Connection lost. Attempting to reconnect...', 0); // Keep warning visible
       console.log('[AgentChat] Connection lost, attempting to reconnect...');
     }
   });
@@ -663,7 +663,7 @@ onMounted(async () => {
   ddService.onMessage((data) => {
     if (isReconnecting.value && data) {
       isReconnecting.value = false;
-      success('重新连接成功，分析继续进行');
+      success('Reconnected successfully. Analysis resumed.');
       console.log('[AgentChat] Reconnected successfully');
     }
   });
@@ -671,12 +671,12 @@ onMounted(async () => {
   // Start analysis
   try {
     await ddService.startAnalysis(props.analysisConfig);
-    info('分析已启动，AI团队正在工作中...');
+    info('Analysis started. AI team is working...');
   } catch (err) {
     console.error('[AgentChat] Failed to start analysis:', err);
     analysisStatus.value = 'error';
-    errorMessage.value = '启动分析失败: ' + err.message;
-    error('无法启动分析: ' + err.message);
+    errorMessage.value = 'Failed to start analysis: ' + err.message;
+    error('Unable to start analysis: ' + err.message);
   }
 });
 

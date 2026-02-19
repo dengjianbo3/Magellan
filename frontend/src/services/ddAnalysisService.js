@@ -114,6 +114,14 @@ export class DDAnalysisService {
           this.reconnectAttempts = 0; // Reset on successful connection
 
           // 发送初始分析请求（完整配置）
+          const knowledgeEnabled =
+            this.config.useKnowledgeBase ??
+            this.config.knowledge?.enabled ??
+            false;
+          const knowledgeCategory =
+            this.config.knowledgeCategory ||
+            this.config.knowledge?.category ||
+            'all';
           const request = {
             company_name: this.config.companyName || this.config.company || 'Unknown Company',
             user_id: 'default_user',
@@ -123,7 +131,11 @@ export class DDAnalysisService {
             selected_agents: this.config.selectedAgents || [],
             data_sources: this.config.dataSources || [],
             priority: this.config.priority || 'normal',
-            description: this.config.description || ''
+            description: this.config.description || '',
+            knowledge: {
+              enabled: Boolean(knowledgeEnabled),
+              category: knowledgeCategory
+            }
           };
 
           // V5: Add file_id if file was uploaded

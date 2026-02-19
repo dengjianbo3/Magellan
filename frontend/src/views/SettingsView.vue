@@ -1,10 +1,10 @@
 <template>
-  <div class="max-w-6xl mx-auto space-y-8">
+  <div class="page-shell max-w-6xl mx-auto">
     <!-- Page Header -->
-    <div class="flex items-end justify-between">
+    <div class="page-header">
       <div>
-        <h1 class="text-3xl font-display font-bold text-white mb-2 tracking-tight">{{ t('settings.title') }}</h1>
-        <p class="text-text-secondary text-lg">{{ t('settings.subtitle') }}</p>
+        <h1 class="page-title page-title-gradient">{{ t('settings.title') }}</h1>
+        <p class="page-subtitle">{{ t('settings.subtitle') }}</p>
       </div>
     </div>
 
@@ -207,47 +207,26 @@
           </div>
         </div>
 
-        <!-- Appearance Settings -->
-        <div v-if="activeSection === 'appearance'" class="glass-panel rounded-2xl p-8 animate-fade-in">
-          <h2 class="text-xl font-bold text-white mb-8 pb-4 border-b border-white/10">{{ t('settings.appearance.title') }}</h2>
+        <!-- Language Settings -->
+        <div v-if="activeSection === 'language'" class="glass-panel rounded-2xl p-8 animate-fade-in">
+          <h2 class="text-xl font-bold text-white mb-8 pb-4 border-b border-white/10">{{ t('settings.language.title') }}</h2>
           <div class="space-y-8">
             <div>
-              <label class="block text-sm font-bold text-text-secondary mb-4 uppercase tracking-wider">{{ t('settings.appearance.theme') }}</label>
-              <div class="grid grid-cols-3 gap-4">
-                <button class="p-4 rounded-xl border-2 border-white/5 bg-white/5 hover:border-white/20 transition-all group">
-                  <div class="w-full h-24 rounded-lg bg-gray-200 mb-4 group-hover:scale-105 transition-transform"></div>
-                  <p class="text-sm font-bold text-text-secondary group-hover:text-white">{{ t('settings.appearance.themes.light') }}</p>
-                </button>
-                <button class="p-4 rounded-xl border-2 border-primary bg-primary/10 shadow-glow-sm transition-all">
-                  <div class="w-full h-24 rounded-lg bg-[#0b0f19] border border-white/10 mb-4 relative overflow-hidden">
-                      <div class="absolute top-2 left-2 w-16 h-2 bg-white/10 rounded"></div>
-                      <div class="absolute top-6 left-2 w-8 h-16 bg-primary/20 rounded"></div>
-                  </div>
-                  <p class="text-sm font-bold text-primary">{{ t('settings.appearance.themes.dark') }}</p>
-                </button>
-                <button class="p-4 rounded-xl border-2 border-white/5 bg-white/5 hover:border-white/20 transition-all group">
-                  <div class="w-full h-24 rounded-lg bg-gradient-to-br from-gray-800 to-gray-200 mb-4 group-hover:scale-105 transition-transform"></div>
-                  <p class="text-sm font-bold text-text-secondary group-hover:text-white">{{ t('settings.appearance.themes.auto') }}</p>
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label class="block text-sm font-bold text-text-secondary mb-4 uppercase tracking-wider">{{ t('settings.appearance.language') }}</label>
-              <div class="relative">
+              <label class="block text-sm font-bold text-text-secondary mb-4 uppercase tracking-wider">{{ t('settings.language.label') }}</label>
+              <div class="relative max-w-lg">
                 <select
-                    :value="locale"
-                    @change="handleLanguageChange($event.target.value)"
-                    class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all appearance-none cursor-pointer"
+                  :value="locale"
+                  @change="handleLanguageChange($event.target.value)"
+                  class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all appearance-none cursor-pointer"
                 >
-                    <option value="zh-CN">{{ t('settings.appearance.languages.zhCN') }}</option>
-                    <option value="en">{{ t('settings.appearance.languages.en') }}</option>
+                  <option value="zh-CN">{{ t('settings.language.languages.zhCN') }}</option>
+                  <option value="en">{{ t('settings.language.languages.en') }}</option>
                 </select>
-                 <span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none">expand_more</span>
+                <span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none">expand_more</span>
               </div>
               <p class="text-xs text-text-secondary mt-2 ml-1 flex items-center gap-1">
-                  <span class="material-symbols-outlined text-sm">info</span>
-                  {{ locale === 'zh-CN' ? '语言将立即切换' : 'Language will switch immediately' }}
+                <span class="material-symbols-outlined text-sm">info</span>
+                {{ t('settings.language.switchHint') }}
               </p>
             </div>
           </div>
@@ -277,7 +256,7 @@ const showEnable2FAInfo = () => {
   info(t('settings.security.2faComingSoon') || 'Two-factor authentication setup coming soon');
 };
 
-const activeSection = ref('appearance');
+const activeSection = ref('profile');
 
 // User profile state
 const userProfile = ref({
@@ -308,7 +287,7 @@ const sections = computed(() => [
   { id: 'profile', name: t('settings.sections.profile'), icon: 'person' },
   { id: 'notifications', name: t('settings.sections.notifications'), icon: 'notifications' },
   { id: 'security', name: t('settings.sections.security'), icon: 'lock' },
-  { id: 'appearance', name: t('settings.sections.appearance'), icon: 'palette' }
+  { id: 'language', name: t('settings.sections.language'), icon: 'translate' }
 ]);
 
 // Get auth token from localStorage

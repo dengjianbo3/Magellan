@@ -13,7 +13,7 @@ from threading import Lock
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import List, Optional, Literal, Dict, Any, Union
+from typing import List, Optional, Literal, Dict, Any, Union, Tuple
 
 from .core.config import settings
 
@@ -118,6 +118,7 @@ LLM_MAX_MESSAGE_CHARS = max(256, int(os.getenv("LLM_MAX_MESSAGE_CHARS", "8000"))
 LLM_MAX_TOTAL_CHARS = max(1024, int(os.getenv("LLM_MAX_TOTAL_CHARS", "60000")))
 LLM_UPLOAD_MAX_BYTES = max(1024 * 1024, int(os.getenv("LLM_UPLOAD_MAX_BYTES", str(20 * 1024 * 1024))))
 LLM_EXPOSE_PROVIDER_INFO = os.getenv("LLM_EXPOSE_PROVIDER_INFO", "false").lower() == "true"
+LLM_SPLIT_OVERSIZED_PARTS = os.getenv("LLM_SPLIT_OVERSIZED_PARTS", "true").lower() == "true"
 
 
 class SlidingWindowRateLimiter:
@@ -170,11 +171,24 @@ def _validate_generate_request(payload: GenerateRequest):
 
     total_chars = 0
     for msg in payload.history:
+        normalized_parts: List[str] = []
         for part in msg.parts:
-            part_len = len(part or "")
-            if part_len > LLM_MAX_MESSAGE_CHARS:
-                raise HTTPException(status_code=400, detail=f"Message part too large (max {LLM_MAX_MESSAGE_CHARS} chars)")
+            text = part or ""
+            part_len = len(text)
             total_chars += part_len
+
+            if part_len <= LLM_MAX_MESSAGE_CHARS:
+                normalized_parts.append(text)
+                continue
+
+            if not LLM_SPLIT_OVERSIZED_PARTS:
+                raise HTTPException(status_code=400, detail=f"Message part too large (max {LLM_MAX_MESSAGE_CHARS} chars)")
+
+            # Keep message semantic while avoiding hard 400 on long system prompts.
+            for i in range(0, part_len, LLM_MAX_MESSAGE_CHARS):
+                normalized_parts.append(text[i : i + LLM_MAX_MESSAGE_CHARS])
+
+        msg.parts = normalized_parts
 
     if total_chars > LLM_MAX_TOTAL_CHARS:
         raise HTTPException(status_code=400, detail=f"Request content too large (max {LLM_MAX_TOTAL_CHARS} chars)")
@@ -258,6 +272,64 @@ def startup_event():
 
     print(f"[LLM Gateway] Current provider: {current_provider}")
 
+def _normalize_gemini_role(role: str) -> str:
+    normalized = (role or "user").strip().lower()
+    if normalized in ("assistant", "model"):
+        return "model"
+    return "user"
+
+
+def _build_gemini_contents(request: GenerateRequest, types_module, force_plain_text: bool = False):
+    contents = []
+    for msg in request.history:
+        parts = msg.parts if msg.parts else [""]
+        contents.append(
+            types_module.Content(
+                role=_normalize_gemini_role(msg.role),
+                parts=[types_module.Part(text=part) for part in parts],
+            )
+        )
+
+    if force_plain_text:
+        contents.append(
+            types_module.Content(
+                role="user",
+                parts=[
+                    types_module.Part(
+                        text=(
+                            "Return a plain text answer only. "
+                            "Do not use tool/function calling format. "
+                            "Do not output JSON schema or function signatures."
+                        )
+                    )
+                ],
+            )
+        )
+
+    return contents
+
+
+def _extract_gemini_text_and_reason(response) -> Tuple[str, str]:
+    text = (response.text or "").strip()
+    finish_reason = ""
+
+    if hasattr(response, "candidates") and response.candidates:
+        candidate = response.candidates[0]
+        finish_reason = str(getattr(candidate, "finish_reason", "") or "")
+
+        if not text:
+            try:
+                content = getattr(candidate, "content", None)
+                parts = getattr(content, "parts", None) if content else None
+                if parts:
+                    text_parts = [getattr(part, "text", "") for part in parts if getattr(part, "text", "")]
+                    text = "".join(text_parts).strip()
+            except Exception:
+                pass
+
+    return text, finish_reason
+
+
 # --- Gemini 调用 ---
 async def call_gemini(request: GenerateRequest) -> str:
     """调用 Gemini API"""
@@ -270,20 +342,19 @@ async def call_gemini(request: GenerateRequest) -> str:
     max_retries = 5
     retry_delay = 3
 
+    force_plain_text_retry = False
+
     for attempt in range(max_retries):
         try:
             # 转换消息格式
-            contents = []
-            for msg in request.history:
-                contents.append(
-                    types.Content(
-                        role=msg.role,
-                        parts=[types.Part(text=part) for part in msg.parts]
-                    )
-                )
+            contents = _build_gemini_contents(
+                request=request,
+                types_module=types,
+                force_plain_text=force_plain_text_retry,
+            )
 
             # 构建配置
-            config_dict = {}
+            config_dict = {"response_mime_type": "text/plain"}
             if request.thinking_level:
                 config_dict["thinking_config"] = types.ThinkingConfig(
                     thinking_level=request.thinking_level
@@ -300,26 +371,19 @@ async def call_gemini(request: GenerateRequest) -> str:
                 config=config
             )
 
-            # Ensure we return a string
-            text = response.text
+            text, finish_reason = _extract_gemini_text_and_reason(response)
 
             # Check if text is None or empty
             if not text:
                 print(f"[Gemini] Response text is empty or None: '{text}'")
 
-                # Try to extract from parts
-                if hasattr(response, 'candidates') and response.candidates:
-                    try:
-                        candidate = response.candidates[0]
-                        # Check finish reason
-                        if hasattr(candidate, 'finish_reason'):
-                            print(f"[Gemini] Finish reason: {candidate.finish_reason}")
-                        if hasattr(candidate, 'content') and candidate.content:
-                            parts = candidate.content.parts
-                            text = "".join(part.text for part in parts if hasattr(part, 'text'))
-                            print(f"[Gemini] Extracted from parts: {len(text)} chars")
-                    except Exception as e:
-                        print(f"[Gemini] Failed to extract from parts: {e}")
+                if finish_reason:
+                    print(f"[Gemini] Finish reason: {finish_reason}")
+
+                if "MALFORMED_FUNCTION_CALL" in finish_reason and not force_plain_text_retry:
+                    print("[Gemini] Retrying with plain-text-only instruction...")
+                    force_plain_text_retry = True
+                    continue
 
                 # Check for safety ratings / block reason
                 if hasattr(response, 'prompt_feedback'):
@@ -327,7 +391,7 @@ async def call_gemini(request: GenerateRequest) -> str:
 
                 if not text:
                     print(f"[Gemini] WARNING: Empty response. Candidates: {response.candidates if hasattr(response, 'candidates') else 'N/A'}")
-                    text = "[Response blocked or empty]"
+                    text = "模型未返回有效文本，请稍后重试。"
 
             return str(text)
 

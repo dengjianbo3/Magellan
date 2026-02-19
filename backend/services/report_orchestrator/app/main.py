@@ -709,10 +709,17 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
         data_sources = initial_request.get("data_sources", [])
         priority = initial_request.get("priority", "normal")
         description = initial_request.get("description")
+        knowledge_config = initial_request.get("knowledge", {})
+        if not isinstance(knowledge_config, dict):
+            knowledge_config = {}
+        knowledge_enabled_raw = knowledge_config.get("enabled", initial_request.get("use_knowledge_base"))
+        knowledge_category = knowledge_config.get("category", initial_request.get("knowledge_category"))
+        knowledge_enabled = bool(knowledge_enabled_raw) if knowledge_enabled_raw is not None else False
 
         print(f"[DEBUG] company_name={company_name}, has_bp_base64={bp_file_base64 is not None}, file_id={file_id}", flush=True)
         print(f"[DEBUG] project_name={project_name}, selected_agents={selected_agents}", flush=True)
         print(f"[DEBUG] data_sources={data_sources}, priority={priority}", flush=True)
+        print(f"[DEBUG] knowledge_enabled={knowledge_enabled}, knowledge_category={knowledge_category}", flush=True)
 
         if not company_name:
             print(f"[DEBUG] Missing company_name, closing connection", flush=True)
@@ -796,7 +803,9 @@ async def websocket_dd_analysis_endpoint(websocket: WebSocket):
                 selected_agents=selected_agents,
                 data_sources=data_sources,
                 priority=priority,
-                description=description
+                description=description,
+                knowledge_enabled=knowledge_enabled,
+                knowledge_category=knowledge_category,
             )
             print(f"[DEBUG] DDStateMachine created successfully", flush=True)
         except Exception as create_error:
@@ -1067,6 +1076,11 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
         create_deal_structurer,
         create_ma_advisor
     )
+    from .core.roundtable.mcp_tools import (
+        normalize_knowledge_category,
+        reset_roundtable_knowledge_preferences,
+        set_roundtable_knowledge_preferences,
+    )
     from .core.agent_event_bus import AgentEventBus
 
     # Agent factory mapping - maps frontend agent IDs to factory functions
@@ -1089,6 +1103,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
     }
 
     session_id = None
+    kb_preferences_token = None
 
     try:
         # Wait for initial request
@@ -1102,6 +1117,26 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
             company_name = initial_request.get("company_name", "目标公司")
             context = initial_request.get("context", {})
             language = initial_request.get("language", "en")  # Default to English for hybrid mode
+
+            knowledge_context = context.get("knowledge", {}) if isinstance(context, dict) else {}
+            if not isinstance(knowledge_context, dict):
+                knowledge_context = {}
+            knowledge_enabled_raw = knowledge_context.get("enabled")
+            if knowledge_enabled_raw is None and isinstance(context, dict):
+                knowledge_enabled_raw = context.get("use_knowledge_base")
+            knowledge_category_raw = knowledge_context.get("category")
+            if knowledge_category_raw is None and isinstance(context, dict):
+                knowledge_category_raw = context.get("knowledge_category")
+            knowledge_enabled = bool(knowledge_enabled_raw) if knowledge_enabled_raw is not None else False
+            knowledge_category = normalize_knowledge_category(knowledge_category_raw)
+            kb_preferences_token = set_roundtable_knowledge_preferences(
+                enabled=knowledge_enabled,
+                category=knowledge_category,
+            )
+            print(
+                f"[ROUNDTABLE] Knowledge config: enabled={knowledge_enabled}, category={knowledge_category or 'all'}",
+                flush=True,
+            )
 
             # Generate session ID
             session_id = f"roundtable_{company_name}_{uuid.uuid4().hex[:8]}"
@@ -1367,7 +1402,11 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                             "max_rounds": max_rounds,
                             "num_agents": num_agents,
                             "agents": [a.name for a in agents],
-                            "language": language
+                            "language": language,
+                            "knowledge": {
+                                "enabled": knowledge_enabled,
+                                "category": knowledge_category or "all",
+                            },
                         },
                         "meeting_minutes": meeting_minutes,  # 会议纪要 (Markdown)
                         "discussion_summary": {
@@ -1448,6 +1487,8 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
         except Exception as send_error:
             print(f"[ROUNDTABLE] Failed to send error message: {send_error}", flush=True)
     finally:
+        if kb_preferences_token is not None:
+            reset_roundtable_knowledge_preferences(kb_preferences_token)
         if session_id:
             removed = active_meetings.pop(session_id, None)
             if removed is not None:
@@ -1608,7 +1649,9 @@ async def websocket_conversation_endpoint(websocket: WebSocket):
                             company_name=company_name,
                             bp_file_content=bp_file_content,
                             bp_filename=bp_filename,
-                            user_id=user_id
+                            user_id=user_id,
+                            knowledge_enabled=bool(message.get("use_knowledge_base", False)),
+                            knowledge_category=message.get("knowledge_category"),
                         )
 
                         # Store session

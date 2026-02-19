@@ -1,7 +1,14 @@
 <template>
-  <div class="max-w-7xl mx-auto h-full flex flex-col">
+  <div class="page-shell h-full flex flex-col">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title page-title-gradient">{{ t('roundtable.title') }}</h1>
+        <p class="page-subtitle">{{ t('roundtable.subtitle') }}</p>
+      </div>
+    </div>
+
     <!-- Start Discussion Panel -->
-    <div v-if="!isDiscussionActive" class="glass-panel rounded-2xl p-12 flex-1 flex justify-center overflow-y-auto">
+    <div v-if="!isDiscussionActive" class="section-card md:p-10 lg:p-12 flex-1 flex justify-center overflow-y-auto">
       <div class="max-w-2xl w-full">
         <h2 class="text-2xl font-bold text-white mb-8 flex items-center gap-3">
             <span class="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
@@ -20,7 +27,7 @@
               v-model="discussionTopic"
               type="text"
               :placeholder="t('roundtable.startPanel.topicPlaceholder')"
-              class="w-full px-6 py-4 rounded-xl bg-black/30 border border-white/10 text-white placeholder-text-secondary focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all text-lg"
+              class="w-full h-12 rounded-xl border border-white/10 bg-black/30 px-4 text-white placeholder-text-secondary transition-all focus:outline-none focus:border-primary/50 focus:bg-black/50"
             />
           </div>
 
@@ -43,16 +50,16 @@
                 </button>
               </span>
               <span v-if="selectedExperts.length === 0" class="text-text-secondary text-sm italic">
-                请选择参与讨论的专家
+                Please select experts to join the discussion
               </span>
             </div>
             <!-- Dropdown multi-select -->
             <div class="relative" ref="expertDropdownRef">
               <button
                 @click="showExpertDropdown = !showExpertDropdown"
-                class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white text-left flex items-center justify-between hover:border-primary/50 transition-all"
+                class="flex h-12 w-full items-center justify-between rounded-xl border border-white/10 bg-black/30 px-4 text-left text-white transition-all hover:border-primary/50"
               >
-                <span class="text-text-secondary">点击添加或移除专家...</span>
+                <span class="text-text-secondary">Click to add or remove experts...</span>
                 <span class="material-symbols-outlined text-text-secondary transition-transform" :class="showExpertDropdown ? 'rotate-180' : ''">
                   expand_more
                 </span>
@@ -87,12 +94,12 @@
             <!-- Note about Leader -->
             <p class="text-xs text-text-secondary mt-2 flex items-center gap-1">
               <span class="material-symbols-outlined text-sm text-primary">info</span>
-              讨论主持人将自动参与，无需手动选择
+              The discussion host is included automatically and does not need manual selection.
             </p>
           </div>
 
           <!-- Discussion Settings -->
-          <div class="grid grid-cols-2 gap-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label class="block text-sm font-bold text-text-secondary mb-2 uppercase tracking-wider">
                 {{ t('roundtable.startPanel.roundsLabel') }}
@@ -100,7 +107,7 @@
               <div class="relative">
                 <select
                     v-model="maxRounds"
-                    class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all appearance-none cursor-pointer"
+                    class="control-select w-full cursor-pointer appearance-none !h-12 !rounded-xl !bg-black/30 !text-white"
                 >
                     <option :value="3">3 {{ t('roundtable.startPanel.rounds') }}</option>
                     <option :value="5">5 {{ t('roundtable.startPanel.rounds') }}</option>
@@ -108,6 +115,38 @@
                     <option :value="10">10 {{ t('roundtable.startPanel.rounds') }}</option>
                 </select>
                 <span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none">expand_more</span>
+              </div>
+            </div>
+            <div class="rounded-xl border border-white/10 bg-black/20 p-4">
+              <label class="block text-sm font-bold text-text-secondary mb-3 uppercase tracking-wider">
+                Knowledge Base
+              </label>
+              <label class="flex items-center gap-2 text-sm text-text-primary mb-3">
+                <input
+                  type="checkbox"
+                  v-model="useKnowledgeBase"
+                  class="w-4 h-4 rounded border-white/20 bg-black/30 text-primary focus:ring-primary/50"
+                />
+                <span>Enable knowledge retrieval</span>
+              </label>
+              <div>
+                <label class="block text-xs font-bold text-text-secondary mb-2 uppercase tracking-wider">
+                  Retrieval Scope
+                </label>
+                <div class="relative">
+                  <select
+                    v-model="knowledgeCategory"
+                    :disabled="!useKnowledgeBase"
+                    class="control-select w-full cursor-pointer appearance-none !bg-black/30 !text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="all">All Knowledge</option>
+                    <option value="general">General Docs</option>
+                    <option value="financial">Financial Docs</option>
+                    <option value="market">Market Docs</option>
+                    <option value="legal">Legal Docs</option>
+                  </select>
+                  <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none">expand_more</span>
+                </div>
               </div>
             </div>
           </div>
@@ -122,7 +161,7 @@
                   class="w-4 h-4 rounded border-white/20 bg-black/30 text-primary focus:ring-primary/50"
                 />
                 <span class="text-sm font-bold text-text-secondary uppercase tracking-wider">
-                  基于历史讨论继续
+                  Continue from history
                 </span>
               </label>
               <button
@@ -131,7 +170,7 @@
                 class="text-xs text-primary hover:text-primary-light flex items-center gap-1"
               >
                 <span class="material-symbols-outlined text-sm">refresh</span>
-                刷新列表
+                Refresh List
               </button>
             </div>
 
@@ -139,12 +178,12 @@
               <!-- History List -->
               <div v-if="loadingHistory" class="text-center py-4">
                 <span class="material-symbols-outlined animate-spin text-primary">progress_activity</span>
-                <p class="text-sm text-text-secondary mt-2">加载历史讨论...</p>
+                <p class="text-sm text-text-secondary mt-2">Loading discussion history...</p>
               </div>
 
               <div v-else-if="historyList.length === 0" class="text-center py-4">
                 <span class="material-symbols-outlined text-text-secondary text-3xl">history</span>
-                <p class="text-sm text-text-secondary mt-2">暂无历史讨论记录</p>
+                <p class="text-sm text-text-secondary mt-2">No history found</p>
               </div>
 
               <div v-else class="max-h-48 overflow-y-auto space-y-2 pr-2">
@@ -163,7 +202,7 @@
                     <div class="flex-1 min-w-0">
                       <h4 class="text-sm font-bold text-white truncate">{{ history.topic }}</h4>
                       <p class="text-xs text-text-secondary mt-1">
-                        {{ formatHistoryDate(history.created_at) }} · {{ history.total_turns }} 轮讨论
+                        {{ formatHistoryDate(history.created_at) }} · {{ history.total_turns }} rounds
                       </p>
                     </div>
                     <span v-if="selectedHistoryRef?.id === history.id" class="text-primary">
@@ -178,10 +217,10 @@
                 <div class="flex items-start gap-2">
                   <span class="material-symbols-outlined text-amber-400 text-lg">lightbulb</span>
                   <div class="flex-1">
-                    <p class="text-sm font-bold text-amber-400 mb-1">基于历史讨论继续</p>
+                    <p class="text-sm font-bold text-amber-400 mb-1">Continue from history</p>
                     <p class="text-xs text-text-secondary">
-                      将参考「{{ selectedHistoryRef.topic }}」的会议纪要开始新讨论。
-                      系统会提醒专家们审视上次的结论，但鼓励提出新的观点和质疑。
+                      A new discussion will start using meeting minutes from "{{ selectedHistoryRef.topic }}".
+                      Experts will review previous conclusions while being encouraged to propose new viewpoints and challenges.
                     </p>
                   </div>
                 </div>
@@ -210,11 +249,11 @@
     </div>
 
     <!-- Active Discussion View -->
-    <div v-else class="flex gap-8 flex-1 min-h-0">
+    <div v-else class="flex flex-1 min-h-0 flex-col gap-6 xl:flex-row xl:gap-8">
       <!-- Left Sidebar: Experts Panel -->
-      <div class="w-80 flex-shrink-0 flex flex-col gap-6">
+      <div class="w-full xl:w-80 xl:flex-shrink-0 flex flex-col gap-6">
         <!-- Discussion Info -->
-        <div class="glass-panel rounded-2xl p-6">
+        <div class="section-card">
           <h3 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-4">{{ t('roundtable.discussion.progress') }}</h3>
           <div class="space-y-4">
             <div>
@@ -239,7 +278,7 @@
         </div>
 
         <!-- Active Experts -->
-        <div class="glass-panel rounded-2xl p-6 flex-1 overflow-y-auto">
+        <div class="section-card flex-1 overflow-y-auto">
           <h3 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-4">{{ t('roundtable.discussion.participants') }}</h3>
           <div class="space-y-3">
             <div
@@ -277,7 +316,7 @@
             <span class="material-symbols-outlined" :class="{ 'animate-spin': isGeneratingSummary }">
               {{ isGeneratingSummary ? 'sync' : 'summarize' }}
             </span>
-            {{ isGeneratingSummary ? '生成中...' : '生成会议纪要' }}
+            {{ isGeneratingSummary ? 'Generating...' : 'Generate Minutes' }}
           </button>
           <div class="grid grid-cols-2 gap-3">
               <button
@@ -285,14 +324,14 @@
                 class="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 hover:bg-rose-500/20 transition-colors font-bold"
               >
                 <span class="material-symbols-outlined">stop</span>
-                停止
+                Stop
               </button>
               <button
                 @click="exportDiscussion"
                 class="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-text-primary hover:bg-white/10 transition-colors font-bold"
               >
                 <span class="material-symbols-outlined">download</span>
-                导出
+                Export
               </button>
           </div>
         </div>
@@ -325,7 +364,7 @@
         <div v-if="isReconnecting" class="px-6 py-3 bg-amber-500/20 border-b border-amber-500/30 flex-shrink-0 backdrop-blur-md z-10">
           <div class="flex items-center gap-3 text-amber-300 justify-center">
             <span class="material-symbols-outlined animate-spin">sync</span>
-            <span class="text-sm font-bold">连接断开，正在尝试重新连接...</span>
+            <span class="text-sm font-bold">Connection lost, attempting to reconnect...</span>
           </div>
         </div>
 
@@ -383,7 +422,7 @@
               <div class="flex-1 max-w-[600px]">
                 <div class="flex items-center gap-2 mb-2">
                   <span class="font-bold text-text-secondary text-sm">{{ message.agent }}</span>
-                  <span class="text-xs text-primary animate-pulse">思考中...</span>
+                  <span class="text-xs text-primary animate-pulse">Thinking...</span>
                 </div>
                 <!-- Terminal-like log box -->
                 <div class="rounded-xl bg-gray-900/80 border border-white/10 overflow-hidden">
@@ -392,7 +431,7 @@
                     <div class="w-2 h-2 rounded-full bg-red-500"></div>
                     <div class="w-2 h-2 rounded-full bg-yellow-500"></div>
                     <div class="w-2 h-2 rounded-full bg-green-500"></div>
-                    <span class="text-xs text-white/40 ml-2">{{ message.agent }} - 执行日志</span>
+                    <span class="text-xs text-white/40 ml-2">{{ message.agent }} - Execution Log</span>
                   </div>
                   <!-- Scrollable log content -->
                   <div class="p-3 max-h-[200px] overflow-y-auto font-mono text-xs leading-relaxed custom-scrollbar"
@@ -405,7 +444,7 @@
                     <!-- Current status indicator -->
                     <div class="flex items-center gap-2 text-primary mt-2">
                       <span class="inline-block w-2 h-2 bg-primary rounded-full animate-pulse"></span>
-                      <span>{{ message.message || '处理中...' }}</span>
+                      <span>{{ message.message || 'Processing...' }}</span>
                     </div>
                   </div>
                 </div>
@@ -425,7 +464,7 @@
                             <span class="material-symbols-outlined text-2xl">summarize</span>
                         </div>
                         <h3 class="text-xl font-bold text-white">
-                        {{ message.type === 'meeting_minutes' ? '会议纪要' : t('roundtable.summary.title') }}
+                        {{ message.type === 'meeting_minutes' ? 'Meeting Minutes' : t('roundtable.summary.title') }}
                         </h3>
                     </div>
                     <button
@@ -433,7 +472,7 @@
                         class="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors text-xs font-bold"
                     >
                         <span class="material-symbols-outlined text-sm">download</span>
-                        导出
+                        Export
                     </button>
                     </div>
                     <div class="prose prose-invert prose-sm max-w-none">
@@ -461,7 +500,7 @@
       class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
       @click.self="closeInterventionDialog"
     >
-      <div class="glass-panel rounded-2xl p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto animate-fade-in">
+      <div class="modal-shell max-w-2xl max-h-[80vh] overflow-y-auto animate-fade-in">
         <div class="flex items-center justify-between mb-6">
           <h3 class="text-xl font-bold text-white flex items-center gap-3">
             <span class="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-400">
@@ -500,7 +539,7 @@
           <textarea
             v-model="interventionContent"
             :placeholder="t('roundtable.hitl.inputPlaceholder')"
-            class="w-full h-40 px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder-text-secondary focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all resize-none"
+            class="w-full h-40 rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white placeholder-text-secondary transition-all resize-none focus:outline-none focus:border-primary/50 focus:bg-black/50"
           />
           <div class="mt-2 text-xs text-text-secondary">
             {{ t('roundtable.hitl.inputHint') }}
@@ -557,6 +596,8 @@ const startTime = ref('');
 const isConnecting = ref(false);
 const isReconnecting = ref(false); // Track reconnection attempts
 const isGeneratingSummary = ref(false); // Track summary generation
+const useKnowledgeBase = ref(false);
+const knowledgeCategory = ref('all');
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 let shouldReconnect = true; // Flag to control reconnection
@@ -602,6 +643,17 @@ const getExpertById = (id) => {
 };
 
 const selectedExperts = ref([]);
+
+const getKnowledgeCategoryLabel = (category) => {
+  const labels = {
+    all: 'All Knowledge',
+    general: 'General Docs',
+    financial: 'Financial Docs',
+    market: 'Market Docs',
+    legal: 'Legal Docs'
+  };
+  return labels[category] || labels.all;
+};
 
 // History Reference State
 const useHistoryReference = ref(false);
@@ -733,6 +785,10 @@ const startDiscussion = async () => {
     topic: discussionTopic.value,
     experts: selectedExperts.value,
     maxRounds: maxRounds.value,
+    knowledge: {
+      enabled: useKnowledgeBase.value,
+      category: knowledgeCategory.value
+    },
     // Include history reference if selected
     historyReference: useHistoryReference.value && selectedHistoryRef.value ? {
       id: selectedHistoryRef.value.id,
@@ -753,9 +809,14 @@ const startDiscussion = async () => {
   startTime.value = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 
   // Add system message
-  let systemMsg = `讨论已开始 - ${selectedExperts.value.length} 位专家参与讨论`;
+  let systemMsg = `Discussion started - ${selectedExperts.value.length} experts joined`;
+  if (discussionConfig.knowledge?.enabled) {
+    systemMsg += `\nKnowledge retrieval enabled (scope: ${getKnowledgeCategoryLabel(discussionConfig.knowledge.category)}）`;
+  } else {
+    systemMsg += '\nKnowledge retrieval disabled';
+  }
   if (discussionConfig.historyReference) {
-    systemMsg += `\n基于历史讨论「${discussionConfig.historyReference.topic}」继续`;
+    systemMsg += `\nContinuing from history "${discussionConfig.historyReference.topic}"`;
   }
   messages.value.push({
     id: Date.now(),
@@ -783,11 +844,15 @@ const connectWebSocket = () => {
       const initialMessage = {
         action: 'start_discussion',
         topic: discussionConfig?.topic || discussionTopic.value,
-        company_name: (discussionConfig?.topic || discussionTopic.value).split(' ')[0] || '目标公司',
+        company_name: (discussionConfig?.topic || discussionTopic.value).split(' ')[0] || 'Target Company',
         language: lang, // 添加语言偏好
         context: {
           max_rounds: discussionConfig?.maxRounds || maxRounds.value,
           experts: discussionConfig?.experts || selectedExperts.value,
+          knowledge: discussionConfig?.knowledge || {
+            enabled: useKnowledgeBase.value,
+            category: knowledgeCategory.value
+          },
           // Include history reference for continuation
           history_reference: discussionConfig?.historyReference || null
         }
@@ -812,7 +877,7 @@ const connectWebSocket = () => {
       messages.value.push({
         id: Date.now(),
         type: 'system',
-        content: '连接错误,请检查后端服务是否正常运行'
+        content: 'Connection error. Please verify backend services are running.'
       });
     };
 
@@ -829,7 +894,7 @@ const connectWebSocket = () => {
         messages.value.push({
           id: Date.now(),
           type: 'system',
-          content: '讨论已结束'
+          content: 'Discussion ended'
         });
       }
     };
@@ -849,7 +914,7 @@ const attemptReconnect = () => {
     messages.value.push({
       id: Date.now(),
       type: 'system',
-      content: `连接断开，正在尝试重连 (${reconnectAttempts}/${maxReconnectAttempts})...`
+      content: `Connection lost, reconnecting (${reconnectAttempts}/${maxReconnectAttempts})...`
     });
 
     setTimeout(() => {
@@ -862,7 +927,7 @@ const attemptReconnect = () => {
     messages.value.push({
       id: Date.now(),
       type: 'system',
-      content: '无法重新连接到服务器，讨论已终止'
+      content: 'Unable to reconnect to server. Discussion terminated.'
     });
   }
 };
@@ -892,14 +957,14 @@ const handleWebSocketMessage = (data) => {
       );
       if (existingIndex !== -1) {
         // Update existing thinking card
-        messages.value[existingIndex].message = event.message || `${event.agent_name}正在思考...`;
+        messages.value[existingIndex].message = event.message || `${event.agent_name}is thinking...`;
       } else {
         // Create new thinking indicator with empty logs
         messages.value.push({
           id: Date.now() + Math.random(),
           type: 'thinking',
           agent: event.agent_name,
-          message: event.message || `${event.agent_name}正在思考...`,
+          message: event.message || `${event.agent_name}is thinking...`,
           logs: []
         });
       }
@@ -984,7 +1049,7 @@ const handleWebSocketMessage = (data) => {
       messages.value.push({
         id: Date.now(),
         type: 'system',
-        content: `错误: ${event.message}`
+        content: `Error: ${event.message}`
       });
       scrollToBottom();
     }
@@ -993,7 +1058,7 @@ const handleWebSocketMessage = (data) => {
     if (data.summary) {
       const summary = data.summary;
 
-      // 如果有会议纪要，优先显示
+      // 如果有Meeting Minutes，优先显示
       if (summary.meeting_minutes) {
         messages.value.push({
           id: Date.now(),
@@ -1002,19 +1067,19 @@ const handleWebSocketMessage = (data) => {
         });
       } else {
         // 否则显示统计摘要
-        let summaryText = '## 讨论统计\n\n';
-        summaryText += `- **总轮次**: ${summary.total_turns || 0}\n`;
-        summaryText += `- **总消息数**: ${summary.total_messages || 0}\n`;
-        summaryText += `- **讨论时长**: ${(summary.total_duration_seconds || 0).toFixed(1)} 秒\n\n`;
+        let summaryText = '## Discussion Statistics\n\n';
+        summaryText += `- **Total Rounds**: ${summary.total_turns || 0}\n`;
+        summaryText += `- **Total Messages**: ${summary.total_messages || 0}\n`;
+        summaryText += `- **Discussion Duration**: ${(summary.total_duration_seconds || 0).toFixed(1)} s\n\n`;
 
         if (summary.agent_stats) {
-          summaryText += '### 专家发言统计\n\n';
+          summaryText += '### Agent Contribution Stats\n\n';
           for (const [agent, stats] of Object.entries(summary.agent_stats)) {
             summaryText += `**${agent}**:\n`;
-            summaryText += `- 总消息: ${stats.total_messages || 0}\n`;
-            summaryText += `- 广播: ${stats.broadcast || 0}\n`;
-            summaryText += `- 私聊: ${stats.private || 0}\n`;
-            summaryText += `- 提问: ${stats.questions || 0}\n\n`;
+            summaryText += `- Total Messages: ${stats.total_messages || 0}\n`;
+            summaryText += `- Broadcast: ${stats.broadcast || 0}\n`;
+            summaryText += `- Private: ${stats.private || 0}\n`;
+            summaryText += `- Questions: ${stats.questions || 0}\n\n`;
           }
         }
 
@@ -1030,7 +1095,7 @@ const handleWebSocketMessage = (data) => {
     messages.value.push({
       id: Date.now(),
       type: 'system',
-      content: `错误: ${data.message}`
+      content: `Error: ${data.message}`
     });
     scrollToBottom();
   }
@@ -1146,7 +1211,7 @@ const generateMeetingSummary = async () => {
   } catch (error) {
     console.error('Error generating meeting summary:', error);
     
-    // 移除流式消息并显示错误
+    // 移除流式消息并显示Error
     const msgIndex = messages.value.findIndex(m => m.id === streamingMessageId);
     if (msgIndex !== -1) {
       messages.value.splice(msgIndex, 1);
@@ -1155,7 +1220,7 @@ const generateMeetingSummary = async () => {
     messages.value.push({
       id: Date.now(),
       type: 'system',
-      content: '生成会议纪要失败，请重试: ' + error.message
+      content: 'Failed to generate meeting minutes, please retry: ' + error.message
     });
   } finally {
     isGeneratingSummary.value = false;
@@ -1169,7 +1234,7 @@ const exportDiscussion = () => {
       if (m.type === 'agent_message') {
         return `[${m.sender}] ${m.content}\n`;
       } else {
-        return `[总结]\n${m.content}\n`;
+        return `[Summary]\n${m.content}\n`;
       }
     })
     .join('\n');
@@ -1184,12 +1249,12 @@ const exportDiscussion = () => {
 };
 
 const exportMeetingMinutes = (content) => {
-  // 生成完整的会议纪要Markdown文件
+  // 生成完整的Meeting MinutesMarkdown文件
   const timestamp = new Date().toLocaleString('zh-CN');
-  const fullContent = `# 圆桌讨论会议纪要
+  const fullContent = `# Roundtable Discussion Minutes
 
-**讨论主题**: ${discussionTopic.value}
-**生成时间**: ${timestamp}
+**Discussion Topic**: ${discussionTopic.value}
+**Generated At**: ${timestamp}
 
 ---
 
@@ -1197,7 +1262,7 @@ ${content}
 
 ---
 
-*本会议纪要由AI圆桌讨论系统自动生成*
+*This meeting minutes document is auto-generated by the AI roundtable system*
 `;
 
   const blob = new Blob([fullContent], { type: 'text/markdown;charset=utf-8' });
@@ -1207,7 +1272,7 @@ ${content}
   // 生成友好的文件名
   const sanitizedTopic = discussionTopic.value.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '_').substring(0, 30);
   const dateStr = new Date().toISOString().split('T')[0];
-  a.download = `会议纪要_${sanitizedTopic}_${dateStr}.md`;
+  a.download = `meeting_minutes_${sanitizedTopic}_${dateStr}.md`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1247,18 +1312,18 @@ const collapseToolResults = (content) => {
     return `<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs font-mono my-1 animate-fade-in"><span class="material-symbols-outlined text-sm">bolt</span>${toolCall}</div>`;
   });
 
-  // 2. Handle Tool Results: [tool_name结果]: ...
-  const toolResultPattern = /\[(\w+)(结果|错误)\]:\s*(\{[\s\S]*?\}|[\s\S]*?)(?=\n\[|\[USE_TOOL|$)/g;
+  // 2. Handle Tool Results: [tool_nameResult]: ...
+  const toolResultPattern = /\[(\w+)(Result|Error)\]:\s*(\{[\s\S]*?\}|[\s\S]*?)(?=\n\[|\[USE_TOOL|$)/g;
 
   processed = processed.replace(toolResultPattern, (match, toolName, type, rawContent) => {
-    const isError = type === '错误';
+    const isError = type === 'Error';
     const icon = isError ? '⚠️' : '🔧';
     const titleColor = isError ? 'text-amber-400' : 'text-cyan-400';
     const borderColor = isError ? 'border-amber-500/20' : 'border-cyan-500/20';
     const bgColor = isError ? 'bg-amber-500/5' : 'bg-cyan-500/5';
     
     let formattedBody = '';
-    let summaryText = '点击查看详情';
+    let summaryText = 'Click to view details';
     let isSearchResults = toolName.toLowerCase().includes('search');
 
     try {
@@ -1280,31 +1345,31 @@ const collapseToolResults = (content) => {
           }
 
           // Strategy B: Parse Text List
-          if (parseContent.includes('来源:')) {
+          if (parseContent.includes('Source:')) {
               const numberedItems = parseContent.split(/\n\d+\.\s+/).slice(1);
               if (numberedItems.length > 0) {
                   items = numberedItems.map(item => {
                       const lines = item.split('\n');
                       const title = lines[0].trim();
-                      const urlLine = lines.find(l => l.trim().startsWith('来源:')) || '';
-                      const descLine = lines.find(l => l.trim().startsWith('内容:')) || '';
+                      const urlLine = lines.find(l => l.trim().startsWith('Source:')) || '';
+                      const descLine = lines.find(l => l.trim().startsWith('Content:')) || '';
                       return {
                           title: title,
-                          url: urlLine.replace('来源:', '').trim(),
-                          desc: descLine.replace('内容:', '').trim()
+                          url: urlLine.replace('Source:', '').trim(),
+                          desc: descLine.replace('Content:', '').trim()
                       };
                   });
               } else {
                   const blocks = parseContent.split(/\n\n+/);
                   blocks.forEach(block => {
-                      if (block.includes('来源:') && block.includes('内容:')) {
+                      if (block.includes('Source:') && block.includes('Content:')) {
                           const lines = block.split('\n').map(l => l.trim()).filter(l => l);
-                          const sourceIdx = lines.findIndex(l => l.startsWith('来源:'));
+                          const sourceIdx = lines.findIndex(l => l.startsWith('Source:'));
                           if (sourceIdx >= 0) {
-                              const title = sourceIdx > 0 ? lines[sourceIdx - 1] : '未命名结果';
-                              const url = lines[sourceIdx].replace('来源:', '').trim();
-                              const contentLine = lines.find(l => l.startsWith('内容:'));
-                              const desc = contentLine ? contentLine.replace('内容:', '').trim() : '';
+                              const title = sourceIdx > 0 ? lines[sourceIdx - 1] : 'Untitled Result';
+                              const url = lines[sourceIdx].replace('Source:', '').trim();
+                              const contentLine = lines.find(l => l.startsWith('Content:'));
+                              const desc = contentLine ? contentLine.replace('Content:', '').trim() : '';
                               items.push({ title, url, desc });
                           }
                       }
@@ -1320,7 +1385,7 @@ const collapseToolResults = (content) => {
               ).join('');
               
               formattedBody = `<div class="grid grid-cols-1 gap-3 mt-2">${cards}</div>`;
-              summaryText = `搜索结果 (${items.length} 条)`;
+              summaryText = `Search Results (${items.length} items)`;
           }
       }
 
@@ -1399,12 +1464,12 @@ const formatTime = (timestamp) => {
 
 const getMessageTypeLabel = (type) => {
   const labels = {
-    'broadcast': '公开',
-    'direct': '私聊',
-    'question': '提问',
-    'response': '回复',
-    'agreement': '同意',
-    'disagreement': '反对'
+    'broadcast': 'Public',
+    'direct': 'Private',
+    'question': 'Questions',
+    'response': 'Response',
+    'agreement': 'Agree',
+    'disagreement': 'Disagree'
   };
   return labels[type] || type;
 };
