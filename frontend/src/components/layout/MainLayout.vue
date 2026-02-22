@@ -83,7 +83,7 @@ const pageTitles = {
   dashboard: 'Dashboard',
   reports: 'Reports',
   analysis: 'Analysis',
-  roundtable: 'Roundtable Discussion',
+  roundtable: 'Brainstorm Session',
   agents: 'AI Agents',
   knowledge: 'Knowledge Base',
   settings: 'Settings'

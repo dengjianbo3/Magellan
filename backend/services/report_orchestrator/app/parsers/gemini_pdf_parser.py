@@ -15,7 +15,7 @@ from typing import Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 # Gemini 模型名称
-GEMINI_MODEL = os.getenv("GEMINI_MODEL_NAME", "gemini-3-flash-preview")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL_NAME", "gemini-3.1-pro-preview")
 GEMINI_API_VERSION = os.getenv("GEMINI_API_VERSION", "v1alpha")
 GEMINI_PDF_MEDIA_RESOLUTION = os.getenv("GEMINI_PDF_MEDIA_RESOLUTION", "media_resolution_medium")
 GEMINI_DOC_THINKING_LEVEL = os.getenv("GEMINI_DOC_THINKING_LEVEL", "low")

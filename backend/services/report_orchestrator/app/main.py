@@ -236,6 +236,121 @@ async def call_llm_gateway(client: httpx.AsyncClient, history: List[Dict[str, An
     except Exception as e:
         return f'["Error: Could not connect to LLM Gateway: {e}"]'
 
+
+def _fallback_roundtable_title(topic: str, language: str) -> str:
+    topic = (topic or "").strip()
+    if not topic:
+        return "头脑风暴纪要" if language == "zh" else "Brainstorm Minutes"
+
+    if language == "zh":
+        max_len = 22
+        return topic if len(topic) <= max_len else (topic[:max_len] + "...")
+
+    words = topic.split()
+    if len(words) <= 10:
+        return topic
+    return " ".join(words[:10]) + "..."
+
+
+def _clean_llm_title_candidate(raw_text: str) -> str:
+    text = (raw_text or "").strip()
+    if not text:
+        return ""
+
+    if text.startswith("[") and text.endswith("]"):
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list) and parsed:
+                text = str(parsed[0]).strip()
+        except Exception:
+            pass
+
+    text = text.replace("```", "").strip()
+    if "\n" in text:
+        text = text.splitlines()[0].strip()
+
+    for prefix in ("title:", "标题：", "标题:"):
+        if text.lower().startswith(prefix.lower()):
+            text = text[len(prefix):].strip()
+
+    text = text.lstrip("#*- ").strip().strip('"').strip("'")
+    text = " ".join(text.split())
+    return text
+
+
+def _prepend_original_topic_to_minutes(meeting_minutes: str, topic: str, language: str) -> str:
+    minutes = (meeting_minutes or "").strip()
+    source_topic = (topic or "").strip()
+    if not source_topic:
+        return minutes
+
+    if language == "zh":
+        header = "## 原始讨论课题"
+        body = (
+            f"{header}\n\n{source_topic}\n\n"
+            "---\n\n"
+        )
+    else:
+        header = "## Original Discussion Topic"
+        body = (
+            f"{header}\n\n{source_topic}\n\n"
+            "---\n\n"
+        )
+
+    if minutes.startswith(header):
+        return minutes
+    return body + minutes
+
+
+async def _generate_roundtable_report_title(topic: str, meeting_minutes: str, language: str) -> str:
+    fallback = _fallback_roundtable_title(topic, language)
+    minutes_preview = (meeting_minutes or "").strip()[:1800]
+
+    if language == "zh":
+        prompt = f"""请为这次头脑风暴生成一个简洁专业的报告标题。
+
+要求：
+1. 12-22个中文字符，尽量避免超过22个字符
+2. 不要换行，不要引号，不要 Markdown，不要序号
+3. 不要照搬原始课题的超长句子，要提炼“核心主题”
+4. 只输出标题文本
+
+原始课题：
+{topic}
+
+会议纪要摘要：
+{minutes_preview}
+"""
+    else:
+        prompt = f"""Create a concise and professional report title for this brainstorm session.
+
+Requirements:
+1. 5-10 words
+2. Single line only, no quotes, no markdown, no numbering
+3. Summarize the core theme instead of copying the long raw topic
+4. Return title text only
+
+Original topic:
+{topic}
+
+Meeting minutes excerpt:
+{minutes_preview}
+"""
+
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            candidate = await call_llm_gateway(client, [{"role": "user", "parts": [prompt]}])
+        cleaned = _clean_llm_title_candidate(candidate)
+        if not cleaned:
+            return fallback
+        if language == "zh" and len(cleaned) > 30:
+            return fallback
+        return cleaned
+    except Exception as e:
+        logger.warning(f"[ROUNDTABLE] Failed to summarize report title, using fallback: {e}")
+        return fallback
+
+
 class WebSocketMessage(BaseModel):
     """Standard message format for WebSocket communication."""
     session_id: str
@@ -1155,9 +1270,10 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
 
             # Calculate timeout dynamically:
             # - Each round needs time for all agents to think and respond
-            # - Minimum 10 minutes (600 seconds) per round
+            # - Keep at least 1 hour total for long brainstorm sessions
             seconds_per_round = 600  # 10 minutes per round
-            max_duration = max_rounds * seconds_per_round
+            minimum_meeting_duration_seconds = 3600  # 1 hour
+            max_duration = max(max_rounds * seconds_per_round, minimum_meeting_duration_seconds)
 
             # Create a placeholder meeting first (we'll set agents later)
             # This allows us to pass the meeting reference to Leader for the end_meeting tool
@@ -1386,13 +1502,25 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                 if meeting_minutes:
                     from datetime import datetime
                     report_id = f"roundtable_{session_id}"
+                    report_title = await _generate_roundtable_report_title(
+                        topic=topic,
+                        meeting_minutes=meeting_minutes,
+                        language=language,
+                    )
+                    enriched_minutes = _prepend_original_topic_to_minutes(
+                        meeting_minutes=meeting_minutes,
+                        topic=topic,
+                        language=language,
+                    )
                     roundtable_report = {
                         "id": report_id,
                         "user_id": current_user.id,
                         "type": "roundtable",  # 圆桌会议类型
-                        "topic": topic,  # 讨论主题 (用于历史列表显示)
-                        "title": topic,  # 兼容性字段
-                        "project_name": topic,
+                        "topic": topic,  # 用户原始输入课题
+                        "original_topic": topic,
+                        "display_title": report_title,
+                        "title": report_title,  # 兼容性字段
+                        "project_name": report_title,
                         "company_name": company_name,
                         "scenario": "roundtable-discussion",
                         "created_at": datetime.now().isoformat(),
@@ -1408,7 +1536,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                                 "category": knowledge_category or "all",
                             },
                         },
-                        "meeting_minutes": meeting_minutes,  # 会议纪要 (Markdown)
+                        "meeting_minutes": enriched_minutes,  # 会议纪要 (Markdown)
                         "discussion_summary": {
                             "total_turns": result.get("total_turns", 0),
                             "total_messages": result.get("total_messages", 0),

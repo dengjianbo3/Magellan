@@ -129,7 +129,8 @@ async def inject_human_input(
     Request body:
     {
         "session_id": "roundtable_xxx_12345678",
-        "content": "用户补充的信息内容"
+        "content": "用户补充的信息内容",
+        "anchor_message_id": "可选，选择一个历史消息作为分叉点"
     }
 
     Returns:
@@ -139,10 +140,11 @@ async def inject_human_input(
     }
     """
     session_id = request.get("session_id")
-    content = request.get("content")
+    content = request.get("content", "")
+    anchor_message_id = request.get("anchor_message_id", "")
 
-    if not session_id or not content:
-        raise HTTPException(status_code=400, detail="Missing session_id or content")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Missing session_id")
 
     # Find the active meeting
     meeting = _active_meetings.get(session_id)
@@ -158,11 +160,14 @@ async def inject_human_input(
 
     # Inject the human input
     try:
-        await meeting.inject_human_input(content)
+        await meeting.inject_human_input(content, anchor_message_id=anchor_message_id)
         logger.info(f"Successfully injected human input for session: {session_id}")
+        has_content = bool((content or "").strip())
         return {
             "status": "success",
-            "message": "用户输入已注入到讨论中",
+            "message": "用户输入已注入到讨论中" if has_content else "已继续讨论（无补充）",
+            "has_content": has_content,
+            "anchor_message_id": anchor_message_id or None,
             "session_id": session_id
         }
     except Exception as e:
@@ -170,6 +175,47 @@ async def inject_human_input(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to inject human input: {str(e)}")
+
+
+@router.post("/pause_for_human_input", tags=["Roundtable"])
+async def pause_for_human_input(
+    request: dict,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    主动打断当前会议，让会议进入“等待用户输入”状态。
+
+    Request body:
+    {
+        "session_id": "roundtable_xxx_12345678"
+    }
+    """
+    session_id = request.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Missing session_id")
+
+    meeting = _active_meetings.get(session_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail=f"No active meeting found for session_id: {session_id}")
+
+    owner_user_id = getattr(meeting, "_owner_user_id", None)
+    if owner_user_id and str(owner_user_id) != str(current_user.id):
+        raise HTTPException(status_code=404, detail=f"No active meeting found for session_id: {session_id}")
+
+    try:
+        paused_now = await meeting.pause_for_human_intervention(reason="manual_interrupt")
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "waiting_for_human": True,
+            "already_waiting": not paused_now,
+            "message": "会议已暂停，等待用户补充信息" if paused_now else "会议已在等待用户输入",
+        }
+    except Exception as e:
+        logger.error(f"Error pausing meeting for human input: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to pause meeting: {str(e)}")
 
 
 @router.post("/generate_summary", tags=["Roundtable"])

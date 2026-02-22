@@ -33,6 +33,8 @@ class GenerateRequest(BaseModel):
     thinking_level: Optional[Literal["low", "high"]] = None
     # Temperature 参数 - 控制输出随机性
     temperature: Optional[float] = None
+    # Gemini 内置 Search Grounding 开关（None 表示使用服务端默认配置）
+    use_google_search: Optional[bool] = None
     # 指定 LLM 提供商 (可选，默认使用系统配置)
     provider: Optional[Literal["gemini", "kimi", "deepseek"]] = None
 
@@ -208,6 +210,20 @@ def _validate_chat_completion_request(payload: ChatCompletionRequest):
     if total_chars > LLM_MAX_TOTAL_CHARS:
         raise HTTPException(status_code=400, detail=f"Request content too large (max {LLM_MAX_TOTAL_CHARS} chars)")
 
+
+def _should_enable_gemini_google_search(request_flag: Optional[bool]) -> bool:
+    if request_flag is not None:
+        return request_flag
+    return bool(settings.GEMINI_ENABLE_GOOGLE_SEARCH)
+
+
+def _attach_google_search_tool(config_dict: Dict[str, Any]) -> None:
+    tools = list(config_dict.get("tools") or [])
+    has_google_search = any(isinstance(tool, dict) and "google_search" in tool for tool in tools)
+    if not has_google_search:
+        tools.append({"google_search": {}})
+    config_dict["tools"] = tools
+
 @app.on_event("startup")
 def startup_event():
     global gemini_client, kimi_client, deepseek_client, current_provider
@@ -362,6 +378,8 @@ async def call_gemini(request: GenerateRequest) -> str:
             if request.temperature is not None:
                 config_dict["temperature"] = request.temperature
                 print(f"[Gemini] Using temperature: {request.temperature}")
+            if _should_enable_gemini_google_search(request.use_google_search):
+                _attach_google_search_tool(config_dict)
 
             config = types.GenerateContentConfig(**config_dict) if config_dict else None
 
@@ -1185,6 +1203,8 @@ async def chat_stream(payload: GenerateRequest, request: Request):
             config_dict = {}
             if payload.temperature is not None:
                 config_dict["temperature"] = payload.temperature
+            if _should_enable_gemini_google_search(payload.use_google_search):
+                _attach_google_search_tool(config_dict)
             
             config = types.GenerateContentConfig(**config_dict) if config_dict else None
             
@@ -1227,6 +1247,7 @@ def health_check():
         "gemini_available": gemini_client is not None,
         "kimi_available": kimi_client is not None,
         "deepseek_available": deepseek_client is not None,
+        "gemini_google_search_enabled": settings.GEMINI_ENABLE_GOOGLE_SEARCH,
         "gemini_model": settings.GEMINI_MODEL_NAME,
         "kimi_model": settings.KIMI_MODEL_NAME,
         "deepseek_model": settings.DEEPSEEK_MODEL_NAME

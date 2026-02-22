@@ -117,7 +117,7 @@ export default {
     dashboard: '仪表盘',
     reports: '报告',
     analysis: '分析',
-    roundtable: '圆桌讨论',
+    roundtable: '头脑风暴',
     trading: '自动交易',
     agents: 'AI 智能体',
     knowledge: '知识库',
@@ -496,7 +496,7 @@ export default {
 
       // Roundtable specific
       meetingMinutes: '会议纪要',
-      roundtableDiscussion: '圆桌讨论',
+      roundtableDiscussion: '头脑风暴',
       participatingExperts: '参与专家',
       discussionHistory: '讨论历史记录',
       clickToExpand: '点击展开查看完整讨论过程',
@@ -983,13 +983,13 @@ export default {
     unknownError: '未知错误',
   },
 
-  // Roundtable Discussion
+  // Brainstorm Session
   roundtable: {
-    title: '圆桌讨论',
+    title: '头脑风暴',
     subtitle: '多位投资专家针对同一问题进行深度讨论分析',
 
     startPanel: {
-      title: '启动新的圆桌讨论',
+      title: '启动新的头脑风暴',
       topicLabel: '讨论主题',
       topicPlaceholder: '例如: 特斯拉 2024 Q4 的投资价值分析',
       expertsLabel: '参与专家',
@@ -1040,12 +1040,12 @@ export default {
         completed: '已完成'
       },
       startedAt: '开始于',
-      connecting: '正在连接到圆桌讨论...'
+      connecting: '正在连接到头脑风暴...'
     },
 
     summary: {
       title: '讨论总结',
-      completed: '圆桌讨论已完成'
+      completed: '头脑风暴已完成'
     },
 
     // Human-in-the-Loop (HITL)
@@ -1058,7 +1058,14 @@ export default {
       inputHint: '提示：您的补充会被发送给所有专家，Leader会根据这个信息调整讨论方向',
       submit: '发送补充',
       submitting: '发送中...',
+      pausing: '正在暂停当前分析流程...',
       cancel: '取消',
+      continueWithoutInput: '无补充，继续分析',
+      pausedForInput: '已暂停当前分析流程，等待您的操作。',
+      continuedWithoutInput: '已继续分析（无补充信息）。',
+      historyBranched: '已从所选节点重新开始，后续历史作废',
+      anchorUnavailable: '该消息不支持作为打断锚点，请选择一条专家发言',
+      pauseError: '暂停讨论失败',
       interventionSent: '补充信息已发送，Leader将根据您的信息重新规划讨论',
       interventionError: '发送补充信息失败'
     }
@@ -1124,15 +1131,15 @@ export default {
     maxPositionPercent: '最大仓位（占余额百分比）',
 
     // Agent Performance
-    agentPerformance: 'Agent 表现',
-    noAgentData: '暂无 Agent 表现数据',
+    agentPerformance: '智能体表现',
+    noAgentData: '暂无智能体表现数据',
     teamSummary: '团队汇总',
     totalTrades: '总交易数',
     wins: '盈利次数',
     totalPnlLabel: '总盈亏',
     avgPnl: '平均盈亏',
     latestLesson: '最新经验',
-    agent: 'Agent',
+    agent: '智能体',
 
     // Settings Modal
     loadingConfig: '加载配置中...',
@@ -1164,7 +1171,99 @@ export default {
     peakEquity: '峰值权益',
     recovery: '恢复进度',
     tradesAnalyzed: '分析交易数',
-    notSet: '未设置'
+    notSet: '未设置',
+
+    // UI labels
+    pending: '待确认',
+    live: '实时',
+    tradingStartDate: '交易开始日期',
+    currentEquity: '当前权益',
+    totalProfit: '总收益',
+    btcBenchmarkReturn: 'BTC 基准收益',
+    excessReturn: '超额收益（Alpha）',
+    entryPrice: '开仓价',
+    confidence: '置信度',
+    confidenceShort: '置信',
+    directionLong: '做多',
+    directionShort: '做空',
+    directionHold: '观望',
+    reasoningProcess: '推理过程',
+    decisionTicket: '决策票据',
+    committeeDecision: 'AI 交易委员会决策',
+    pendingConfirmation: '待确认',
+    leaderRationale: '主持人理由',
+    defaultRationale: '综合了技术面、宏观与情绪等分析结果。',
+    modifyParameters: '调整参数',
+    positionSize: '仓位',
+    selectDeferReason: '选择暂缓原因',
+    deferReasonLeverage: '杠杆过高',
+    deferReasonDirection: '方向不一致',
+    deferReasonStopLoss: '止损设置需调整',
+    deferReasonUncertain: '信号不够确定',
+    enterReason: '请输入原因...',
+    confirmExecution: '确认执行',
+    modify: '修改',
+    defer: '暂缓',
+    confirmDeferral: '确认暂缓',
+    reviewNotice: '执行交易前请仔细复核',
+    win: '胜率',
+    currentOkxCredentials: '当前 OKX 凭证',
+    notConfigured: '未配置',
+    okxApiKey: 'OKX API Key',
+    okxSecretKey: 'OKX Secret Key',
+    okxPassphrase: 'OKX Passphrase',
+    okxDemoModeLabel: '模拟盘（x-simulated-trading）',
+    clearOkxCredentials: '清除 OKX 凭证',
+    okxLiveWarning: '你正在选择 OKX 实盘模式，请确保这是有意操作，并使用无提币权限的 API Key。',
+    okxDemoLabel: '模拟',
+    okxLiveLabel: '实盘',
+    other: '其他',
+    system: '系统',
+    user: '用户',
+    leader: '主持人',
+
+    // Prompts / dialogs
+    authRequired: '认证已失效，请重新登录。',
+    okxSelectRequiresKeys: '选择 OKX 需要填写 API Key / Secret Key / Passphrase',
+    okxSwitchLiveConfirm: '你将切换到 OKX 实盘模式（非模拟盘），是否继续？',
+    clearOkxConfirm: '确认清除 OKX 凭证？这会切换回本地模拟交易（需重置系统生效）。',
+    resetConfirm: '确认重置交易系统吗？这会平掉所有仓位并清空历史。',
+    resetFailed: '重置失败',
+    resetFailedGeneric: '重置系统失败',
+
+    // Status / system messages
+    settingsUpdated: '设置已更新',
+    settingsUpdatedNeedsReset: '设置已更新。交易环境变更需要重置系统后生效。',
+    okxCleared: 'OKX 凭证已清除，请重置系统使配置生效。',
+    systemResetSuccess: '交易系统已重置，交易器类型',
+    systemStarted: '交易系统已启动，正在进行初始分析...',
+    systemStopped: '交易系统已停止',
+    analysisStartedRound: '开始新一轮市场分析...',
+    analysisErrorLabel: '分析错误',
+    marketAnalysisComplete: '市场分析已完成。',
+    signalGenerated: '已生成交易信号',
+    awaitingConfirmation: '等待确认中',
+    semiAutoConfirmReject: '半自动模式：请确认或拒绝本次交易',
+    tradeConfirmedExecuted: '交易已确认并执行',
+    confirmedBy: '确认人',
+    executionFailedAfterConfirm: '确认后执行失败',
+    tradeRejected: '交易已拒绝',
+    actionBy: '操作人',
+    tradeExecutedSuccessfully: '交易执行成功',
+    tradeExecutionFailed: '交易执行失败',
+    positionClosed: '仓位已平',
+    closePositionFailed: '平仓失败',
+    manualCloseSucceeded: '手动平仓成功',
+    tradeConfirmationFailed: '交易确认失败',
+    tradeRejectionFailed: '交易拒绝失败',
+    cannotConfirmMissingTradeId: '无法确认：缺少 trade_id（请等待待确认交易生成）',
+    tradeExpiredWaitNext: '交易已过期，请等待下一次信号',
+    errorConfirmingTrade: '确认交易时发生错误',
+    errorRejectingTrade: '拒绝交易时发生错误',
+    networkError: '网络错误',
+    userDeferred: '用户暂缓',
+    unknownError: '未知错误',
+    viewDetailedReasoning: '查看详细推理...'
   },
 
   // Early Stage Investment

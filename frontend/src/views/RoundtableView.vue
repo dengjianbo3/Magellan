@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell h-full flex flex-col">
+  <div class="page-shell h-[calc(100vh-12rem)] min-h-0 overflow-hidden flex flex-col md:h-[calc(100vh-13rem)]">
     <div class="page-header">
       <div>
         <h1 class="page-title page-title-gradient">{{ t('roundtable.title') }}</h1>
@@ -23,11 +23,11 @@
             <label class="block text-sm font-bold text-text-secondary mb-2 uppercase tracking-wider">
               {{ t('roundtable.startPanel.topicLabel') }} <span class="text-rose-500">*</span>
             </label>
-            <input
+            <textarea
               v-model="discussionTopic"
-              type="text"
               :placeholder="t('roundtable.startPanel.topicPlaceholder')"
-              class="w-full h-12 rounded-xl border border-white/10 bg-black/30 px-4 text-white placeholder-text-secondary transition-all focus:outline-none focus:border-primary/50 focus:bg-black/50"
+              rows="4"
+              class="w-full min-h-[120px] rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white placeholder-text-secondary transition-all resize-y focus:outline-none focus:border-primary/50 focus:bg-black/50"
             />
           </div>
 
@@ -200,7 +200,7 @@
                 >
                   <div class="flex items-start justify-between gap-2">
                     <div class="flex-1 min-w-0">
-                      <h4 class="text-sm font-bold text-white truncate">{{ history.topic }}</h4>
+                      <h4 class="text-sm font-bold text-white truncate">{{ history.display_title || history.topic }}</h4>
                       <p class="text-xs text-text-secondary mt-1">
                         {{ formatHistoryDate(history.created_at) }} · {{ history.total_turns }} rounds
                       </p>
@@ -249,9 +249,9 @@
     </div>
 
     <!-- Active Discussion View -->
-    <div v-else class="flex flex-1 min-h-0 flex-col gap-6 xl:flex-row xl:gap-8">
+    <div v-else class="flex flex-1 min-h-0 overflow-hidden flex-col gap-6 xl:flex-row xl:gap-8">
       <!-- Left Sidebar: Experts Panel -->
-      <div class="w-full xl:w-80 xl:flex-shrink-0 flex flex-col gap-6">
+      <div class="w-full xl:w-80 xl:flex-shrink-0 min-h-0 flex flex-col gap-6">
         <!-- Discussion Info -->
         <div class="section-card">
           <h3 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-4">{{ t('roundtable.discussion.progress') }}</h3>
@@ -338,7 +338,7 @@
       </div>
 
       <!-- Main Discussion Area -->
-      <div class="flex-1 glass-panel rounded-2xl overflow-hidden flex flex-col relative">
+      <div class="flex-1 min-h-0 glass-panel rounded-2xl overflow-hidden flex flex-col relative">
         <!-- Discussion Header -->
         <div class="px-8 py-5 border-b border-white/10 bg-white/5 backdrop-blur-md flex-shrink-0">
           <div class="flex items-center justify-between">
@@ -369,7 +369,7 @@
         </div>
 
         <!-- Messages Container -->
-        <div ref="messagesContainer" class="flex-1 overflow-y-auto p-8 space-y-6 scroll-smooth">
+        <div ref="messagesContainer" class="flex-1 min-h-0 overflow-y-auto p-8 space-y-6 scroll-smooth">
           <div v-for="message in messages" :key="message.id" class="animate-fade-in">
             <!-- System Message -->
             <div v-if="message.type === 'system'" class="flex justify-center py-2">
@@ -384,7 +384,7 @@
               <div class="w-12 h-12 rounded-xl bg-black/30 border border-white/10 flex items-center justify-center flex-shrink-0 shadow-lg self-start mt-1">
                 <span class="material-symbols-outlined text-primary text-2xl">{{ getExpertIcon(message.sender) }}</span>
               </div>
-              <div class="flex-1 max-w-4xl">
+              <div class="flex-1 min-w-0 max-w-4xl">
                 <div class="flex items-baseline gap-3 mb-2">
                   <span class="font-bold text-white text-base">{{ message.sender }}</span>
                   <span class="text-xs text-text-secondary font-mono">{{ formatTime(message.timestamp) }}</span>
@@ -395,16 +395,16 @@
                     {{ getMessageTypeLabel(message.message_type) }}
                   </span>
                 </div>
-                <div class="glass-card p-5 rounded-2xl rounded-tl-none border border-white/10 bg-white/5 text-text-primary leading-relaxed shadow-md relative">
-                  <div class="prose prose-invert prose-sm max-w-none" v-html="formatMeetingMinutes(message.content)"></div>
+                <div class="glass-card p-5 rounded-2xl rounded-tl-none border border-white/10 bg-white/5 text-text-primary leading-relaxed shadow-md relative overflow-hidden">
+                  <div class="prose prose-invert prose-sm max-w-none meeting-markdown" v-html="formatMeetingMinutes(message.content)"></div>
 
                   <!-- Decorative corner -->
                   <div class="absolute -top-[1px] -left-[1px] w-4 h-4 border-t border-l border-white/20 rounded-tl-none pointer-events-none"></div>
                 </div>
 
-                <!-- HITL: Interrupt Button (show for all agent messages, even after meeting ends) -->
+                <!-- HITL: Interrupt Button -->
                 <button
-                  v-if="message.sender !== 'Human' && sessionId"
+                  v-if="message.sender !== 'Human' && sessionId && discussionStatus === 'running'"
                   @click="openInterventionDialog(messages.indexOf(message))"
                   class="mt-3 px-4 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all flex items-center gap-2 text-sm font-medium opacity-0 group-hover:opacity-100"
                 >
@@ -464,7 +464,7 @@
                             <span class="material-symbols-outlined text-2xl">summarize</span>
                         </div>
                         <h3 class="text-xl font-bold text-white">
-                        {{ message.type === 'meeting_minutes' ? 'Meeting Minutes' : t('roundtable.summary.title') }}
+                        {{ message.type === 'meeting_minutes' ? t('reports.detail.meetingMinutes') : t('roundtable.summary.title') }}
                         </h3>
                     </div>
                     <button
@@ -475,7 +475,7 @@
                         Export
                     </button>
                     </div>
-                    <div class="prose prose-invert prose-sm max-w-none">
+                    <div class="prose prose-invert prose-sm max-w-none meeting-markdown">
                         <div v-html="formatMeetingMinutes(message.content)"></div>
                     </div>
                 </div>
@@ -534,7 +534,7 @@
         <!-- User Input Area -->
         <div class="mb-6">
           <label class="block text-sm font-bold text-text-secondary mb-2">
-            {{ t('roundtable.hitl.inputLabel') }} <span class="text-rose-500">*</span>
+            {{ t('roundtable.hitl.inputLabel') }}
           </label>
           <textarea
             v-model="interventionContent"
@@ -544,16 +544,19 @@
           <div class="mt-2 text-xs text-text-secondary">
             {{ t('roundtable.hitl.inputHint') }}
           </div>
+          <div v-if="isPausingForIntervention" class="mt-3 text-xs text-amber-300">
+            {{ t('roundtable.hitl.pausing') }}
+          </div>
         </div>
 
         <!-- Action Buttons -->
         <div class="flex gap-3">
           <button
             @click="submitIntervention"
-            :disabled="!interventionContent.trim() || isSubmittingIntervention"
+            :disabled="!interventionContent.trim() || isSubmittingIntervention || isPausingForIntervention"
             :class="[
               'flex-1 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2',
-              interventionContent.trim() && !isSubmittingIntervention
+              interventionContent.trim() && !isSubmittingIntervention && !isPausingForIntervention
                 ? 'bg-primary hover:bg-primary-light text-background-dark'
                 : 'bg-white/10 text-text-secondary cursor-not-allowed'
             ]"
@@ -563,8 +566,15 @@
             {{ isSubmittingIntervention ? t('roundtable.hitl.submitting') : t('roundtable.hitl.submit') }}
           </button>
           <button
+            @click="continueWithoutIntervention"
+            :disabled="isSubmittingIntervention || isPausingForIntervention"
+            class="px-5 py-3 rounded-xl border border-amber-400/40 text-amber-200 hover:bg-amber-400/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {{ t('roundtable.hitl.continueWithoutInput') }}
+          </button>
+          <button
             @click="closeInterventionDialog"
-            :disabled="isSubmittingIntervention"
+            :disabled="isSubmittingIntervention || isPausingForIntervention"
             class="px-6 py-3 rounded-xl border border-white/10 text-text-primary hover:bg-white/5 transition-all"
           >
             {{ t('roundtable.hitl.cancel') }}
@@ -577,6 +587,8 @@
 
 <script setup>
 import { ref, computed, nextTick, onUnmounted, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
 import { useLanguage } from '../composables/useLanguage';
 import { getRoundtableAgents } from '../config/agents';
 import { API_BASE, apiUrl, wsUrl } from '@/config/api';
@@ -585,6 +597,8 @@ import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
 import { readJsonResponse } from '@/services/httpResponse';
 
 const { t, locale } = useLanguage();
+const router = useRouter();
+const authStore = useAuthStore();
 
 // Discussion state
 const isDiscussionActive = ref(false);
@@ -602,13 +616,18 @@ let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 let shouldReconnect = true; // Flag to control reconnection
 let discussionConfig = null; // Store config for reconnection
+let tokenRefreshPromise = null;
+let authRedirecting = false;
+const authExpired = ref(false);
 
 // Human-in-the-Loop (HITL) state
 const sessionId = ref(''); // Session ID for HITL API calls
 const showInterventionDialog = ref(false); // Whether to show intervention dialog
 const interventionContent = ref(''); // User's intervention content
 const selectedMessageIndex = ref(null); // Index of message being responded to
+const selectedAnchorMessageId = ref(''); // Backend message id for branching
 const isSubmittingIntervention = ref(false); // Submitting state
+const isPausingForIntervention = ref(false); // Requesting backend pause state
 
 // Dropdown state for expert selection
 const showExpertDropdown = ref(false);
@@ -746,6 +765,107 @@ const messagesContainer = ref(null);
 // WebSocket
 let ws = null;
 
+const getJwtExp = (token) => {
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof payload.exp === 'number' ? payload.exp : null;
+  } catch (_) {
+    return null;
+  }
+};
+
+const isAccessTokenExpired = (token, skewSeconds = 30) => {
+  const exp = getJwtExp(token);
+  if (!exp) return false;
+  const now = Math.floor(Date.now() / 1000);
+  return exp <= now + skewSeconds;
+};
+
+const refreshTokenOnce = async () => {
+  if (!tokenRefreshPromise) {
+    tokenRefreshPromise = authStore.refreshAccessToken().finally(() => {
+      tokenRefreshPromise = null;
+    });
+  }
+  return tokenRefreshPromise;
+};
+
+const handleAuthExpired = async (reason = 'Authentication required') => {
+  if (authExpired.value) return;
+  authExpired.value = true;
+  shouldReconnect = false;
+  reconnectAttempts = 0;
+  isConnecting.value = false;
+  isReconnecting.value = false;
+  showInterventionDialog.value = false;
+  interventionContent.value = '';
+  selectedMessageIndex.value = null;
+  isDiscussionActive.value = false;
+  discussionStatus.value = 'idle';
+
+  if (ws) {
+    try {
+      ws.close(1000, 'Auth expired');
+    } catch (_) {
+      // ignore close errors
+    }
+    ws = null;
+  }
+
+  messages.value.push({
+    id: Date.now(),
+    type: 'system',
+    content: reason || 'Session expired. Please sign in again.'
+  });
+
+  if (authRedirecting) return;
+  authRedirecting = true;
+  try {
+    await authStore.logout();
+  } catch (_) {
+    authStore.clearTokens?.();
+  }
+
+  router.push({
+    name: 'Login',
+    query: { redirect: '/roundtable', reason: 'expired' }
+  }).catch(() => {
+    // Ignore duplicated/aborted navigation failures.
+  }).finally(() => {
+    authRedirecting = false;
+  });
+};
+
+const isAuthCloseEvent = (event) => {
+  const reason = String(event?.reason || '').toLowerCase();
+  const authCodes = new Set([1008, 4401, 4403]);
+  return authCodes.has(event?.code) ||
+    reason.includes('auth') ||
+    reason.includes('token') ||
+    reason.includes('unauthorized');
+};
+
+const ensureAuthenticated = async () => {
+  if (authExpired.value) return false;
+  const token = localStorage.getItem('access_token');
+  if (!token) {
+    await handleAuthExpired('Authentication required. Please sign in again.');
+    return false;
+  }
+
+  if (isAccessTokenExpired(token)) {
+    const refreshed = await refreshTokenOnce();
+    if (!refreshed) {
+      await handleAuthExpired('Session expired. Please sign in again.');
+      return false;
+    }
+  }
+  return true;
+};
+
 // Computed
 const canStartDiscussion = computed(() => {
   return discussionTopic.value.trim().length > 0 && selectedExperts.value.length >= 2;
@@ -779,6 +899,7 @@ const toggleExpert = (expertId) => {
 
 const startDiscussion = async () => {
   if (!canStartDiscussion.value) return;
+  if (!(await ensureAuthenticated())) return;
 
   // Store config for potential reconnection (including history reference)
   discussionConfig = {
@@ -825,10 +946,13 @@ const startDiscussion = async () => {
   });
 
   // Connect to WebSocket
-  connectWebSocket();
+  await connectWebSocket();
 };
 
-const connectWebSocket = () => {
+const connectWebSocket = async () => {
+  if (authExpired.value || !shouldReconnect) return;
+  if (!(await ensureAuthenticated())) return;
+
   try {
     // Connect to backend roundtable WebSocket
     ws = new WebSocket(appendTokenToUrl(wsUrl('/ws/roundtable')));
@@ -837,7 +961,6 @@ const connectWebSocket = () => {
       console.log('[Roundtable] WebSocket connected');
       isConnecting.value = false;
       isReconnecting.value = false;
-      reconnectAttempts = 0;
 
       // Send initial message to start discussion
       const lang = locale.value.startsWith('zh') ? 'zh' : 'en'; // 转换为后端期望的格式
@@ -885,6 +1008,11 @@ const connectWebSocket = () => {
       console.log('[Roundtable] WebSocket closed:', event.code, event.reason);
       isConnecting.value = false;
 
+      if (isAuthCloseEvent(event)) {
+        handleAuthExpired(event.reason || 'Authentication required').catch(() => {});
+        return;
+      }
+
       // Auto-reconnect logic (unless explicitly closed by user or discussion completed)
       if (shouldReconnect && event.code !== 1000 && discussionStatus.value === 'running') {
         isReconnecting.value = true;
@@ -905,6 +1033,8 @@ const connectWebSocket = () => {
 };
 
 const attemptReconnect = () => {
+  if (authExpired.value || !shouldReconnect) return;
+
   if (reconnectAttempts < maxReconnectAttempts) {
     reconnectAttempts++;
     const delay = 2000 * reconnectAttempts; // Exponential backoff
@@ -917,8 +1047,9 @@ const attemptReconnect = () => {
       content: `Connection lost, reconnecting (${reconnectAttempts}/${maxReconnectAttempts})...`
     });
 
-    setTimeout(() => {
-      connectWebSocket();
+    setTimeout(async () => {
+      if (!shouldReconnect || authExpired.value) return;
+      await connectWebSocket();
     }, delay);
   } else {
     console.error('[Roundtable] Max reconnection attempts reached');
@@ -932,10 +1063,44 @@ const attemptReconnect = () => {
   }
 };
 
+const updateRoundProgressFromEvent = (event) => {
+  if (!event) return;
+  const phase = event?.data?.phase;
+  const isMeetingRoundEvent = phase === 'leader' || phase === 'expert';
+
+  const eventMaxTurns = Number(event?.data?.max_turns);
+  if (Number.isFinite(eventMaxTurns) && eventMaxTurns > 0) {
+    maxRounds.value = Math.max(maxRounds.value, eventMaxTurns);
+  }
+
+  const eventRound = Number(event?.data?.current_turn);
+  if (Number.isFinite(eventRound) && eventRound > 0) {
+    const normalizedRound = Math.min(maxRounds.value, Math.floor(eventRound));
+    currentRound.value = Math.max(currentRound.value, normalizedRound);
+    return;
+  }
+
+  const progress = Number(event?.progress);
+  if (isMeetingRoundEvent && Number.isFinite(progress) && progress >= 0) {
+    const normalizedRound = Math.min(maxRounds.value, Math.max(0, Math.ceil(progress * maxRounds.value)));
+    currentRound.value = Math.max(currentRound.value, normalizedRound);
+  }
+
+  if (
+    event.event_type === 'thinking' &&
+    event.agent_name === 'Leader' &&
+    phase === 'leader' &&
+    discussionStatus.value === 'running'
+  ) {
+    currentRound.value = Math.max(currentRound.value, 1);
+  }
+};
+
 const handleWebSocketMessage = (data) => {
   console.log('Received message:', data);
 
   if (data.type === 'agents_ready') {
+    reconnectAttempts = 0;
     // Extract session_id for HITL API calls
     if (data.session_id) {
       sessionId.value = data.session_id;
@@ -949,6 +1114,7 @@ const handleWebSocketMessage = (data) => {
     scrollToBottom();
   } else if (data.type === 'agent_event') {
     const event = data.event;
+    updateRoundProgressFromEvent(event);
 
     if (event.event_type === 'thinking') {
       // Check if thinking card already exists for this agent
@@ -1027,7 +1193,8 @@ const handleWebSocketMessage = (data) => {
         sender: event.agent_name,
         content: event.message,
         message_type: event.data?.message_type || 'broadcast',
-        timestamp: event.timestamp || new Date().toISOString()
+        timestamp: event.timestamp || new Date().toISOString(),
+        messageId: event.data?.message_id || null
       });
       scrollToBottom();
     } else if (event.event_type === 'started') {
@@ -1057,6 +1224,10 @@ const handleWebSocketMessage = (data) => {
     discussionStatus.value = 'completed';
     if (data.summary) {
       const summary = data.summary;
+      const totalTurns = Number(summary.total_turns);
+      if (Number.isFinite(totalTurns) && totalTurns >= 0) {
+        currentRound.value = Math.max(currentRound.value, Math.min(maxRounds.value, totalTurns));
+      }
 
       // 如果有Meeting Minutes，优先显示
       if (summary.meeting_minutes) {
@@ -1243,7 +1414,7 @@ const exportDiscussion = () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `roundtable_${discussionTopic.value}_${new Date().getTime()}.txt`;
+  a.download = `brainstorm_${discussionTopic.value}_${new Date().getTime()}.txt`;
   a.click();
   URL.revokeObjectURL(url);
 };
@@ -1251,7 +1422,7 @@ const exportDiscussion = () => {
 const exportMeetingMinutes = (content) => {
   // 生成完整的Meeting MinutesMarkdown文件
   const timestamp = new Date().toLocaleString('zh-CN');
-  const fullContent = `# Roundtable Discussion Minutes
+  const fullContent = `# Brainstorm Session Minutes
 
 **Discussion Topic**: ${discussionTopic.value}
 **Generated At**: ${timestamp}
@@ -1262,7 +1433,7 @@ ${content}
 
 ---
 
-*This meeting minutes document is auto-generated by the AI roundtable system*
+*This meeting minutes document is auto-generated by the AI brainstorming system*
 `;
 
   const blob = new Blob([fullContent], { type: 'text/markdown;charset=utf-8' });
@@ -1480,19 +1651,85 @@ const getMessageTypeLabel = (type) => {
  * Open the intervention dialog
  */
 const openInterventionDialog = (messageIndex) => {
+  const selected = messages.value?.[messageIndex];
+  if (!selected || !selected.messageId) {
+    messages.value.push({
+      id: Date.now() + Math.random(),
+      type: 'system',
+      content: t('roundtable.hitl.anchorUnavailable')
+    });
+    scrollToBottom();
+    return;
+  }
   selectedMessageIndex.value = messageIndex;
+  selectedAnchorMessageId.value = selected.messageId;
   interventionContent.value = '';
   showInterventionDialog.value = true;
+  pauseDiscussionForIntervention();
 };
 
 /**
  * Close the intervention dialog
  */
 const closeInterventionDialog = () => {
-  if (!isSubmittingIntervention.value) {
+  if (!isSubmittingIntervention.value && !isPausingForIntervention.value) {
     showInterventionDialog.value = false;
     selectedMessageIndex.value = null;
+    selectedAnchorMessageId.value = '';
     interventionContent.value = '';
+  }
+};
+
+const branchMessagesFromSelectedAnchor = () => {
+  const idx = selectedMessageIndex.value;
+  if (!Number.isInteger(idx) || idx < 0) {
+    return 0;
+  }
+  const keepCount = idx + 1;
+  const removedCount = Math.max(0, messages.value.length - keepCount);
+  if (removedCount > 0) {
+    messages.value = messages.value.slice(0, keepCount);
+  }
+  return removedCount;
+};
+
+/**
+ * Ask backend to pause meeting for human intervention.
+ */
+const pauseDiscussionForIntervention = async () => {
+  if (!sessionId.value) {
+    return;
+  }
+  isPausingForIntervention.value = true;
+  try {
+    const response = await fetch(`${API_BASE}/api/roundtable/pause_for_human_input`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({
+        session_id: sessionId.value
+      })
+    });
+    const result = await readJsonResponse(response, 'Pause roundtable for human intervention');
+    console.log('[HITL] Pause request accepted:', result);
+    messages.value.push({
+      id: Date.now() + Math.random(),
+      type: 'system',
+      content: t('roundtable.hitl.pausedForInput')
+    });
+    scrollToBottom();
+  } catch (error) {
+    console.error('[HITL] Error pausing discussion:', error);
+    messages.value.push({
+      id: Date.now() + Math.random(),
+      type: 'system',
+      content: `${t('roundtable.hitl.pauseError')}: ${error.message}`
+    });
+    scrollToBottom();
+  } finally {
+    isPausingForIntervention.value = false;
   }
 };
 
@@ -1515,11 +1752,13 @@ const submitIntervention = async () => {
       },
       body: JSON.stringify({
         session_id: sessionId.value,
-        content: interventionContent.value.trim()
+        content: interventionContent.value.trim(),
+        anchor_message_id: selectedAnchorMessageId.value || undefined
       })
     });
     const result = await readJsonResponse(response, 'Submit human intervention');
     console.log('[HITL] Intervention submitted successfully:', result);
+    const removedCount = branchMessagesFromSelectedAnchor();
 
     // Add user's intervention message to the messages list for UI feedback
     messages.value.push({
@@ -1528,7 +1767,8 @@ const submitIntervention = async () => {
       sender: 'Human',
       content: interventionContent.value.trim(),
       message_type: 'human_intervention',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      messageId: null
     });
 
     // Force scroll for user's own message
@@ -1537,13 +1777,16 @@ const submitIntervention = async () => {
     // Close dialog and reset state
     showInterventionDialog.value = false;
     selectedMessageIndex.value = null;
+    selectedAnchorMessageId.value = '';
     interventionContent.value = '';
 
     // Add system message to indicate intervention was received
     messages.value.push({
       id: Date.now() + 1,
       type: 'system',
-      content: t('roundtable.hitl.interventionSent')
+      content: removedCount > 0
+        ? `${t('roundtable.hitl.historyBranched')} (${removedCount})`
+        : t('roundtable.hitl.interventionSent')
     });
 
   } catch (error) {
@@ -1559,6 +1802,53 @@ const submitIntervention = async () => {
   }
 };
 
+/**
+ * Continue discussion without adding any human input.
+ */
+const continueWithoutIntervention = async () => {
+  isSubmittingIntervention.value = true;
+  try {
+    const response = await fetch(`${API_BASE}/api/roundtable/inject_human_input`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({
+        session_id: sessionId.value,
+        content: '',
+        anchor_message_id: selectedAnchorMessageId.value || undefined
+      })
+    });
+    await readJsonResponse(response, 'Continue discussion without intervention');
+    const removedCount = branchMessagesFromSelectedAnchor();
+
+    showInterventionDialog.value = false;
+    selectedMessageIndex.value = null;
+    selectedAnchorMessageId.value = '';
+    interventionContent.value = '';
+
+    messages.value.push({
+      id: Date.now() + Math.random(),
+      type: 'system',
+      content: removedCount > 0
+        ? `${t('roundtable.hitl.historyBranched')} (${removedCount})`
+        : t('roundtable.hitl.continuedWithoutInput')
+    });
+    scrollToBottom();
+  } catch (error) {
+    console.error('[HITL] Error continuing without intervention:', error);
+    messages.value.push({
+      id: Date.now() + Math.random(),
+      type: 'system',
+      content: `${t('roundtable.hitl.interventionError')}: ${error.message}`
+    });
+    scrollToBottom();
+  } finally {
+    isSubmittingIntervention.value = false;
+  }
+};
+
 // Cleanup
 onUnmounted(() => {
   if (ws) {
@@ -1566,3 +1856,36 @@ onUnmounted(() => {
   }
 });
 </script>
+
+<style scoped>
+.meeting-markdown {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.meeting-markdown :deep(pre) {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.meeting-markdown :deep(code) {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.meeting-markdown :deep(table) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.meeting-markdown :deep(a) {
+  word-break: break-all;
+}
+
+.meeting-markdown :deep(img) {
+  max-width: 100%;
+  height: auto;
+}
+</style>

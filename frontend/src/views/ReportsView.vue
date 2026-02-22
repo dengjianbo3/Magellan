@@ -158,7 +158,7 @@
         {{ t('reports.detail.backToList') }}
       </button>
       <div class="flex-1 md:text-right">
-        <h1 class="page-title page-title-gradient md:!text-3xl">{{ selectedReport.project_name }}</h1>
+        <h1 class="page-title page-title-gradient md:!text-3xl">{{ selectedReport.display_title || selectedReport.project_name || selectedReport.topic || selectedReport.company_name }}</h1>
         <div class="mt-2 flex flex-wrap items-center gap-2 md:justify-end md:gap-3">
            <span class="px-2 py-0.5 rounded bg-white/10 text-xs font-bold text-text-primary">{{ selectedReport.company_name }}</span>
            <span class="text-text-secondary text-sm">•</span>
@@ -659,7 +659,7 @@
             <template v-if="selectedReport.type === 'roundtable'">
               <div class="pb-3 border-b border-white/5">
                 <span class="text-text-secondary block text-xs mb-1">{{ t('reports.detail.discussionTopic') }}</span>
-                <p class="text-white">{{ selectedReport.topic || selectedReport.project_name }}</p>
+                <p class="text-white break-words">{{ selectedReport.original_topic || selectedReport.topic || selectedReport.project_name }}</p>
               </div>
               <div class="pb-3 border-b border-white/5">
                 <span class="text-text-secondary block text-xs mb-1">{{ t('reports.detail.discussionDuration') }}</span>
@@ -1001,15 +1001,15 @@ const reports = computed(() => reportsData.value.map(report => {
   if (report.type === 'roundtable') {
     const turns = report.discussion_summary?.total_turns || report.total_turns || 0;
     description = locale.value.startsWith('zh')
-      ? `圆桌讨论会议 - ${turns} 轮对话`
-      : `Roundtable discussion - ${turns} turns`;
+      ? `头脑风暴会议 - ${turns} 轮对话`
+      : `Brainstorm session - ${turns} turns`;
   } else {
     description = `${report.analysis_type || ''} analysis for ${report.company_name || ''}`;
   }
 
   return {
     id: report.id,
-    title: report.project_name || report.topic || `${report.company_name} Analysis`,
+    title: report.display_title || report.project_name || report.title || report.topic || `${report.company_name} Analysis`,
     description: description,
     date: formattedDate,
     status: statusMap[report.status] || 'completed',

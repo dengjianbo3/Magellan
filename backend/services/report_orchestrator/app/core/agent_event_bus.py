@@ -121,13 +121,20 @@ class AgentEventBus:
             progress=0.0
         ))
 
-    async def publish_thinking(self, agent_name: str, message: str, progress: Optional[float] = None):
+    async def publish_thinking(
+        self,
+        agent_name: str,
+        message: str,
+        progress: Optional[float] = None,
+        data: Optional[Dict[str, Any]] = None,
+    ):
         """快捷方法：发布Agent思考事件"""
         await self.publish(AgentEvent(
             agent_name=agent_name,
             event_type=AgentEventType.THINKING,
             message=message,
-            progress=progress
+            progress=progress,
+            data=data,
         ))
 
     async def publish_searching(self, agent_name: str, query: str, progress: Optional[float] = None):

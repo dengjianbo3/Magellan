@@ -70,6 +70,8 @@ class Meeting:
         # Human-in-the-Loop 状态
         self.waiting_for_human = False  # 是否正在等待用户输入
         self.human_intervention_event = None  # 用于等待用户输入的异步事件
+        self.last_human_intervention_content = ""  # 当前暂停周期内的用户输入
+        self.interruption_epoch = 0  # 每次外部打断递增，用于丢弃过期输出
 
         # 设置消息监听器（用于实时推送）
         self.message_bus.add_listener(self._on_message)
@@ -121,6 +123,8 @@ class Meeting:
         try:
             # 主循环
             while self.is_running and self.current_turn < self.max_turns:
+                await self._wait_for_human_if_needed()
+
                 # 检查是否超时
                 if time.time() - self.start_time > self.max_duration_seconds:
                     print("[Meeting] Timeout reached")
@@ -222,6 +226,7 @@ class Meeting:
         has_new_messages = False
 
         for agent_name, agent in agents.items():
+            await self._wait_for_human_if_needed()
             pending = self.message_bus.peek_messages(agent_name)
 
             if not pending:
@@ -232,11 +237,20 @@ class Meeting:
                 await self.agent_event_bus.publish_thinking(
                     agent_name=agent_name,
                     message=f"{agent_name}正在思考...",
-                    progress=self.current_turn / self.max_turns
+                    progress=self.current_turn / self.max_turns,
+                    data={
+                        "current_turn": self.current_turn + 1,
+                        "max_turns": self.max_turns,
+                        "phase": "expert",
+                    },
                 )
 
             # 让Agent思考并生成响应
+            epoch_before = self.interruption_epoch
             new_messages = await agent.think_and_act()
+            if epoch_before != self.interruption_epoch:
+                print(f"[Meeting] Discarding stale output from {agent_name} due to human interruption")
+                continue
 
             if new_messages:
                 has_new_messages = True
@@ -250,6 +264,7 @@ class Meeting:
         if not leader_agent:
             return False
 
+        await self._wait_for_human_if_needed()
         has_new_messages = False
         pending = self.message_bus.peek_messages("Leader")
 
@@ -262,11 +277,20 @@ class Meeting:
             await self.agent_event_bus.publish_thinking(
                 agent_name="Leader",
                 message="Leader正在主持讨论...",
-                progress=self.current_turn / self.max_turns
+                progress=self.current_turn / self.max_turns,
+                data={
+                    "current_turn": self.current_turn + 1,
+                    "max_turns": self.max_turns,
+                    "phase": "leader",
+                },
             )
 
         # 让Leader思考并生成响应
+        epoch_before = self.interruption_epoch
         new_messages = await leader_agent.think_and_act()
+        if epoch_before != self.interruption_epoch:
+            print("[Meeting] Discarding stale output from Leader due to human interruption")
+            return False
 
         if new_messages:
             has_new_messages = True
@@ -404,7 +428,8 @@ class Meeting:
             if self.agent_event_bus:
                 await self.agent_event_bus.publish_thinking(
                     agent_name="Leader",
-                    message="正在生成会议纪要..."
+                    message="正在生成会议纪要...",
+                    data={"phase": "summary"}
                 )
 
             messages = await leader.think_and_act()
@@ -491,6 +516,50 @@ class Meeting:
         self.is_running = False
         print("[Meeting] Discussion stopped")
 
+    async def _enter_waiting_for_human(self, reason: str = "manual_interrupt") -> bool:
+        """
+        进入“等待用户输入”状态。
+
+        Returns:
+            是否刚刚新建了等待状态
+        """
+        if self.waiting_for_human and self.human_intervention_event is not None:
+            return False
+
+        self.waiting_for_human = True
+        self.human_intervention_event = asyncio.Event()
+        self.last_human_intervention_content = ""
+        self.interruption_epoch += 1
+        print(f"[Meeting] Paused and waiting for human input. reason={reason}")
+
+        if self.agent_event_bus:
+            await self.agent_event_bus.publish_thinking(
+                agent_name="Meeting Orchestrator",
+                message="⏸️ 会议已暂停，等待用户补充信息...",
+                progress=self.current_turn / self.max_turns if self.max_turns > 0 else 0.0,
+                data={
+                    "phase": "paused",
+                    "reason": reason,
+                    "current_turn": self.current_turn + 1,
+                    "max_turns": self.max_turns,
+                },
+            )
+        return True
+
+    async def _wait_for_human_if_needed(self):
+        """如果当前处于暂停状态，则阻塞等待用户继续。"""
+        if not self.waiting_for_human or self.human_intervention_event is None:
+            return
+
+        await self.human_intervention_event.wait()
+        self.waiting_for_human = False
+        self.human_intervention_event = None
+        print("[Meeting] Human intervention resolved, resuming...")
+
+    async def pause_for_human_intervention(self, reason: str = "manual_interrupt") -> bool:
+        """由外部触发的主动打断暂停。"""
+        return await self._enter_waiting_for_human(reason=reason)
+
     async def request_human_intervention(self) -> str:
         """
         请求人工介入，暂停会议并等待用户输入
@@ -499,46 +568,97 @@ class Meeting:
             用户输入的内容
         """
         print("[Meeting] Requesting human intervention...")
-        self.waiting_for_human = True
-        self.human_intervention_event = asyncio.Event()
+        await self._enter_waiting_for_human(reason="agent_request")
+        await self._wait_for_human_if_needed()
+        return self.last_human_intervention_content
 
-        # 推送事件到前端，通知需要用户输入
-        if self.agent_event_bus:
-            await self.agent_event_bus.publish_thinking(
-                agent_name="Meeting Orchestrator",
-                message="⏸️ 会议已暂停，等待用户补充信息...",
-                progress=self.current_turn / self.max_turns
-            )
+    def _truncate_conversation_after(self, anchor_message_id: str) -> Dict[str, Any]:
+        """
+        从指定锚点开始分叉：保留锚点及之前消息，作废之后历史。
 
-        # 等待用户输入（通过inject_human_input方法触发）
-        await self.human_intervention_event.wait()
+        Returns:
+            {
+                "applied": bool,
+                "anchor_found": bool,
+                "removed_count": int
+            }
+        """
+        if not anchor_message_id:
+            return {"applied": False, "anchor_found": False, "removed_count": 0}
 
-        self.waiting_for_human = False
-        print("[Meeting] Human intervention received, resuming...")
+        history = self.message_bus.message_history
+        anchor_index = -1
+        for idx, msg in enumerate(history):
+            if getattr(msg, "message_id", None) == anchor_message_id:
+                anchor_index = idx
+                break
 
-        # 返回用户输入（从最新的Human消息中获取）
-        human_messages = [msg for msg in self.message_bus.message_history if msg.sender == "Human"]
-        if human_messages:
-            return human_messages[-1].content
-        return ""
+        if anchor_index < 0:
+            return {"applied": False, "anchor_found": False, "removed_count": 0}
 
-    async def inject_human_input(self, content: str):
+        kept_history = history[:anchor_index + 1]
+        removed_history = history[anchor_index + 1:]
+        removed_count = len(removed_history)
+        if removed_count <= 0:
+            return {"applied": False, "anchor_found": True, "removed_count": 0}
+
+        kept_message_ids = {
+            msg.message_id for msg in kept_history if getattr(msg, "message_id", None)
+        }
+        kept_object_ids = {id(msg) for msg in kept_history}
+
+        self.message_bus.message_history = kept_history
+
+        for agent_name, queue in self.message_bus.agent_queues.items():
+            self.message_bus.agent_queues[agent_name] = [
+                msg for msg in queue
+                if id(msg) in kept_object_ids or getattr(msg, "message_id", None) in kept_message_ids
+            ]
+
+        for agent in self.agents.values():
+            if not hasattr(agent, "message_history"):
+                continue
+            agent.message_history = [
+                msg for msg in agent.message_history
+                if id(msg) in kept_object_ids or getattr(msg, "message_id", None) in kept_message_ids
+            ]
+
+        print(f"[Meeting] Branched discussion at anchor={anchor_message_id}, removed {removed_count} messages")
+        return {"applied": True, "anchor_found": True, "removed_count": removed_count}
+
+    async def inject_human_input(self, content: str, anchor_message_id: str = ""):
         """
         注入用户输入到讨论中（支持主动打断）
 
         Args:
             content: 用户补充的内容
+            anchor_message_id: 作为分叉点的消息ID（可选）
         """
-        print(f"[Meeting] Injecting human input: {content[:100]}...")
+        normalized_content = (content or "").strip()
+        self.last_human_intervention_content = normalized_content
+        print(f"[Meeting] Injecting human input: {normalized_content[:100]}...")
+        branch_info = self._truncate_conversation_after((anchor_message_id or "").strip())
 
-        # 创建Human消息并广播给所有Agent（特别是Leader）
-        from .message import Message, MessageType
-        human_message = Message(
-            sender="Human",
-            recipient="ALL",  # 广播给所有人
-            content=f"""## 👤 用户补充信息
+        if self.agent_event_bus and branch_info["anchor_found"] and branch_info["removed_count"] > 0:
+            await self.agent_event_bus.publish_result(
+                agent_name="Meeting Orchestrator",
+                message=f"已从指定节点重新开始，后续 {branch_info['removed_count']} 条历史已作废。",
+                data={
+                    "message_type": "history_branch",
+                    "anchor_message_id": anchor_message_id,
+                    "removed_count": branch_info["removed_count"],
+                }
+            )
 
-{content}
+        if normalized_content:
+            # 创建Human消息并广播给所有Agent（特别是Leader）
+            from .message import Message, MessageType
+            human_message = Message(
+                sender="Human",
+                recipient="ALL",  # 广播给所有人
+                content=f"""## 👤 用户补充信息
+
+{normalized_content}
 
 **重要**: 用户主动打断了讨论并补充了上述信息。
 
@@ -552,21 +672,32 @@ class Meeting:
 1. 如果这个信息与你的专业领域相关，请优先分析和回应
 2. 如果发现用户信息与之前的分析有冲突，请指出并重新评估
 3. 将这个新信息纳入到你的专业判断中""",
-            message_type=MessageType.STATEMENT
-        )
-
-        # 发送到MessageBus（这样Leader和其他Agent在下次think_and_act时会看到）
-        await self.message_bus.send(human_message)
-
-        # 推送到前端
-        if self.agent_event_bus:
-            await self.agent_event_bus.publish_result(
-                agent_name="Human",
-                message=content,
-                data={"message_type": "human_intervention"}
+                # Human intervention is intentionally broadcast to all participants.
+                message_type=MessageType.BROADCAST
             )
 
-        print(f"[Meeting] Human input injected successfully into message bus")
+            # 发送到MessageBus（这样Leader和其他Agent在下次think_and_act时会看到）
+            await self.message_bus.send(human_message)
+
+            # 推送到前端
+            if self.agent_event_bus:
+                await self.agent_event_bus.publish_result(
+                    agent_name="Human",
+                    message=normalized_content,
+                    data={"message_type": "human_intervention"}
+                )
+        else:
+            if self.agent_event_bus:
+                await self.agent_event_bus.publish_result(
+                    agent_name="Meeting Orchestrator",
+                    message="用户选择无补充，继续分析。",
+                    data={"message_type": "human_intervention_skip"}
+                )
+
+        if self.waiting_for_human and self.human_intervention_event is not None and not self.human_intervention_event.is_set():
+            self.human_intervention_event.set()
+
+        print("[Meeting] Human input handling completed")
 
     def get_conversation_history(self) -> List[Dict[str, Any]]:
         """

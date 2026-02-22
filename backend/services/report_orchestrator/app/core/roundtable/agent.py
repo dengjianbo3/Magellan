@@ -1,12 +1,18 @@
 """
 Agent: The fundamental actor in the multi-agent system
 """
+import os
 from typing import List, Dict, Any, Optional
 from .message import Message, MessageType
 from .tool import Tool
 from .message_bus import MessageBus
 import httpx
 import json
+from ..config_timeouts import HTTP_CLIENT_TIMEOUT
+
+AGENT_MAX_SYSTEM_PROMPT_CHARS = max(1024, int(os.getenv("AGENT_MAX_SYSTEM_PROMPT_CHARS", "6000")))
+AGENT_MAX_HISTORY_MESSAGE_CHARS = max(512, int(os.getenv("AGENT_MAX_HISTORY_MESSAGE_CHARS", "2000")))
+AGENT_MAX_PROMPT_TOTAL_CHARS = max(4096, int(os.getenv("AGENT_MAX_PROMPT_TOTAL_CHARS", "50000")))
 
 
 class Agent:
@@ -144,28 +150,53 @@ class Agent:
             List of messages in OpenAI format
         """
         messages = []
+        total_chars = 0
 
         # System prompt (defines role)
+        system_prompt = self._truncate_text(
+            self._get_system_prompt(),
+            AGENT_MAX_SYSTEM_PROMPT_CHARS,
+        )
         messages.append({
             "role": "system",
-            "content": self._get_system_prompt()
+            "content": system_prompt
         })
+        total_chars += len(system_prompt)
 
-        # Conversation history - keep more context to avoid losing key info
-        for msg in self.message_history[-20:]:  # Keep last 20 messages
-            # Determine role based on message sender
-            if msg.sender == self.name:
-                role = "assistant"
-            else:
-                role = "user"
-
-            content = f"[{msg.sender} → {msg.recipient}] {msg.content}"
-            messages.append({
+        # Conversation history:
+        # keep the most recent context while preventing payload oversize (400 in llm_gateway).
+        history_candidates: List[Dict[str, str]] = []
+        for msg in self.message_history[-30:]:
+            role = "assistant" if msg.sender == self.name else "user"
+            content = self._truncate_text(
+                f"[{msg.sender} → {msg.recipient}] {msg.content}",
+                AGENT_MAX_HISTORY_MESSAGE_CHARS,
+            )
+            history_candidates.append({
                 "role": role,
                 "content": content
             })
 
+        selected_reversed: List[Dict[str, str]] = []
+        for item in reversed(history_candidates):
+            item_len = len(item["content"])
+            if total_chars + item_len > AGENT_MAX_PROMPT_TOTAL_CHARS:
+                continue
+            selected_reversed.append(item)
+            total_chars += item_len
+
+        messages.extend(reversed(selected_reversed))
         return messages
+
+    @staticmethod
+    def _truncate_text(text: str, max_chars: int) -> str:
+        if text is None:
+            return ""
+        if len(text) <= max_chars:
+            return text
+        suffix = "\n...[truncated]"
+        keep = max(0, max_chars - len(suffix))
+        return text[:keep] + suffix
 
     def _get_system_prompt(self) -> str:
         """
@@ -353,7 +384,7 @@ After tool execution, you will receive results to continue the discussion.
 
         for attempt in range(max_retries):
             try:
-                async with httpx.AsyncClient(timeout=180.0) as client:
+                async with httpx.AsyncClient(timeout=HTTP_CLIENT_TIMEOUT) as client:
                     response = await client.post(url, json=request_data)
                     response.raise_for_status()
                     result = response.json()
@@ -362,11 +393,32 @@ After tool execution, you will receive results to continue the discussion.
 
             except httpx.ReadTimeout as e:
                 last_exception = e
-                print(f"[Agent:{self.name}] LLM timeout on attempt {attempt + 1}/{max_retries}")
+                print(
+                    f"[Agent:{self.name}] LLM timeout on attempt "
+                    f"{attempt + 1}/{max_retries} (timeout={HTTP_CLIENT_TIMEOUT}s)"
+                )
                 if attempt < max_retries - 1:
                     wait_time = 2 ** (attempt + 1)
                     print(f"[Agent:{self.name}] Retrying in {wait_time} seconds...")
                     await asyncio.sleep(wait_time)
+                continue
+
+            except httpx.HTTPStatusError as e:
+                last_exception = e
+                response_preview = ""
+                try:
+                    response_preview = (e.response.text or "")[:500]
+                except Exception:
+                    response_preview = ""
+                print(
+                    f"[Agent:{self.name}] LLM HTTP error on attempt {attempt + 1}/{max_retries}: "
+                    f"status={e.response.status_code} detail={response_preview}"
+                )
+                # 4xx is usually not retryable for the same payload.
+                if 400 <= e.response.status_code < 500:
+                    break
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2)
                 continue
 
             except Exception as e:

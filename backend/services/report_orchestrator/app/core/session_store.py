@@ -360,7 +360,9 @@ class SessionStore:
                     # Return only essential info for list display
                     roundtable_reports.append({
                         'id': report_id,
+                        'display_title': report_data.get('display_title') or report_data.get('project_name') or report_data.get('title') or report_data.get('topic', 'Unknown'),
                         'topic': report_data.get('topic', report_data.get('title', 'Unknown')),
+                        'original_topic': report_data.get('original_topic', report_data.get('topic', '')),
                         'company_name': report_data.get('company_name', ''),
                         'created_at': report_data.get('created_at', ''),
                         'meeting_minutes': report_data.get('meeting_minutes', '')[:500] + '...' if len(report_data.get('meeting_minutes', '')) > 500 else report_data.get('meeting_minutes', ''),

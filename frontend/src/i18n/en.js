@@ -21,7 +21,9 @@ export default {
     close: 'Close',
     settings: 'Settings',
     logout: 'Logout',
-    optional: 'Optional'
+    optional: 'Optional',
+    refresh: 'Refresh',
+    triggerNow: 'Trigger Now'
   },
 
   offline: {
@@ -97,7 +99,7 @@ export default {
     dashboard: 'Dashboard',
     reports: 'Reports',
     analysis: 'Analysis',
-    roundtable: 'Roundtable',
+    roundtable: 'Brainstorm',
     trading: 'Auto Trading',
     agents: 'AI Agents',
     knowledge: 'Knowledge Base',
@@ -476,7 +478,7 @@ export default {
 
       // Roundtable specific
       meetingMinutes: 'Meeting Minutes',
-      roundtableDiscussion: 'Roundtable Discussion',
+      roundtableDiscussion: 'Brainstorm Session',
       participatingExperts: 'Participating Experts',
       discussionHistory: 'Discussion History',
       clickToExpand: 'Click to expand full discussion',
@@ -946,13 +948,13 @@ export default {
     unknownError: 'Unknown error',
   },
 
-  // Roundtable Discussion
+  // Brainstorm Session
   roundtable: {
-    title: 'Roundtable Discussion',
-    subtitle: 'Multiple investment experts discuss and analyze topics from different perspectives',
+    title: 'Brainstorm Session',
+    subtitle: 'Multiple investment experts brainstorm and analyze topics from different perspectives',
 
     startPanel: {
-      title: 'Start New Roundtable Discussion',
+      title: 'Start New Brainstorm Session',
       topicLabel: 'Discussion Topic',
       topicPlaceholder: 'e.g., Tesla Q4 2024 Investment Value Analysis',
       expertsLabel: 'Participating Experts',
@@ -1003,12 +1005,12 @@ export default {
         completed: 'Completed'
       },
       startedAt: 'Started at',
-      connecting: 'Connecting to roundtable discussion...'
+      connecting: 'Connecting to brainstorming session...'
     },
 
     summary: {
       title: 'Discussion Summary',
-      completed: 'Roundtable discussion completed'
+      completed: 'Brainstorm session completed'
     },
 
     // Human-in-the-Loop (HITL)
@@ -1021,7 +1023,14 @@ export default {
       inputHint: 'Tip: Your input will be shared with all experts. The Leader will adjust the discussion accordingly.',
       submit: 'Send Input',
       submitting: 'Sending...',
+      pausing: 'Pausing current analysis...',
       cancel: 'Cancel',
+      continueWithoutInput: 'Continue Without Input',
+      pausedForInput: 'Current analysis is paused, waiting for your action.',
+      continuedWithoutInput: 'Analysis resumed without additional input.',
+      historyBranched: 'Restarted from selected point; later history was discarded',
+      anchorUnavailable: 'This message cannot be used as an interruption anchor. Please select an expert message.',
+      pauseError: 'Failed to pause discussion',
       interventionSent: 'Your input has been sent. The Leader will re-plan the discussion.',
       interventionError: 'Failed to send input'
     }
@@ -1117,7 +1126,100 @@ export default {
     resetting: 'Resetting...',
     saving: 'Saving...',
     closing: 'Closing...',
-    holding: 'Holding'
+    holding: 'Holding',
+
+    // UI labels
+    pending: 'Pending',
+    live: 'Live',
+    tradingStartDate: 'Trading Start Date',
+    currentEquity: 'Current Equity',
+    totalProfit: 'Total Profit',
+    btcBenchmarkReturn: 'BTC Benchmark Return',
+    excessReturn: 'Excess Return (Alpha)',
+    entryPrice: 'Entry Price',
+    confidence: 'Confidence',
+    confidenceShort: 'Conf',
+    directionLong: 'LONG',
+    directionShort: 'SHORT',
+    directionHold: 'HOLD',
+    reasoningProcess: 'Reasoning (Thinking Process)',
+    decisionTicket: 'Decision Ticket',
+    committeeDecision: 'AI Trading Committee Decision',
+    pendingConfirmation: 'Pending Confirmation',
+    leaderRationale: 'Leader Rationale',
+    defaultRationale: 'Combined view across technicals, macro, and sentiment analyses...',
+    modifyParameters: 'Modify Parameters',
+    positionSize: 'Position',
+    selectDeferReason: 'Select defer reason',
+    deferReasonLeverage: 'Leverage too high',
+    deferReasonDirection: 'Direction mismatch',
+    deferReasonStopLoss: 'Stop-loss needs adjustment',
+    deferReasonUncertain: 'Signal not certain enough',
+    enterReason: 'Enter reason...',
+    confirmExecution: 'Confirm Execution',
+    modify: 'Modify',
+    defer: 'Defer',
+    confirmDeferral: 'Confirm Deferral',
+    reviewNotice: 'Please review carefully before executing trades',
+    win: 'Win',
+    currentOkxCredentials: 'Current OKX Credentials',
+    notConfigured: 'Not configured',
+    okxApiKey: 'OKX API Key',
+    okxSecretKey: 'OKX Secret Key',
+    okxPassphrase: 'OKX Passphrase',
+    okxDemoModeLabel: 'Demo (x-simulated-trading)',
+    clearOkxCredentials: 'Clear OKX Credentials',
+    okxLiveWarning: 'You are selecting OKX live mode. Ensure this is intentional and use an API key without withdrawal permission.',
+    okxDemoLabel: 'Demo',
+    okxLiveLabel: 'Live',
+    other: 'Other',
+    system: 'System',
+    user: 'user',
+    leader: 'Leader',
+    notSet: 'Not set',
+
+    // Prompts / dialogs
+    authRequired: 'Authentication required. Please sign in again.',
+    okxSelectRequiresKeys: 'Selecting OKX requires API Key / Secret Key / Passphrase',
+    okxSwitchLiveConfirm: 'You are switching to OKX live mode (not demo). Continue?',
+    clearOkxConfirm: 'Clear OKX credentials? It will switch back to PaperTrader (system reset required).',
+    resetConfirm: 'Are you sure you want to reset the trading system? This will close all positions and clear all history.',
+    resetFailed: 'Reset failed',
+    resetFailedGeneric: 'Failed to reset system',
+
+    // Status / system messages
+    settingsUpdated: 'Settings updated',
+    settingsUpdatedNeedsReset: 'Settings updated. Changing trading environment requires a system reset to take effect.',
+    okxCleared: 'OKX credentials cleared. Please reset the system to apply changes.',
+    systemResetSuccess: 'Trading system has been reset. Trader type',
+    systemStarted: 'Trading system started. Running initial analysis...',
+    systemStopped: 'Trading system stopped',
+    analysisStartedRound: 'Starting a new round of market analysis...',
+    analysisErrorLabel: 'Analysis error',
+    marketAnalysisComplete: 'Market analysis complete.',
+    signalGenerated: 'Signal generated',
+    awaitingConfirmation: 'awaiting confirmation...',
+    semiAutoConfirmReject: 'Semi-auto mode: please confirm or reject this trade',
+    tradeConfirmedExecuted: 'Trade confirmed and executed',
+    confirmedBy: 'confirmed by',
+    executionFailedAfterConfirm: 'Execution failed after confirmation',
+    tradeRejected: 'Trade rejected',
+    actionBy: 'action by',
+    tradeExecutedSuccessfully: 'Trade executed successfully',
+    tradeExecutionFailed: 'Trade execution failed',
+    positionClosed: 'Position closed',
+    closePositionFailed: 'Close position failed',
+    manualCloseSucceeded: 'Manual close succeeded',
+    tradeConfirmationFailed: 'Trade confirmation failed',
+    tradeRejectionFailed: 'Trade rejection failed',
+    cannotConfirmMissingTradeId: 'Cannot confirm: missing trade_id (wait until pending trade is created)',
+    tradeExpiredWaitNext: 'Trade expired, please wait for the next signal',
+    errorConfirmingTrade: 'Error while confirming trade',
+    errorRejectingTrade: 'Error while rejecting trade',
+    networkError: 'Network error',
+    userDeferred: 'User deferred',
+    unknownError: 'Unknown error',
+    viewDetailedReasoning: 'View detailed reasoning...'
   },
 
   // Early Stage Investment

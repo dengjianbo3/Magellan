@@ -3,9 +3,9 @@
     <!-- Header -->
     <div class="page-header">
       <div>
-        <h1 class="page-title page-title-gradient !text-2xl md:!text-3xl">{{ t('trading.title') || 'AI Auto Trading System' }}</h1>
+        <h1 class="page-title page-title-gradient !text-2xl md:!text-3xl">{{ t('trading.title') }}</h1>
         <p class="page-subtitle">
-          {{ t('trading.subtitle') || 'AI-powered automated crypto trading' }}
+          {{ t('trading.subtitle') }}
         </p>
       </div>
 
@@ -15,14 +15,14 @@
         <!-- 1. Next Analysis (Pulse) -->
         <div class="flex items-center h-10 gap-3 bg-white/5 rounded-lg px-4 border border-white/5 backdrop-blur-sm">
           <div class="flex items-baseline gap-2">
-            <span class="text-[10px] text-text-secondary uppercase tracking-wider font-semibold">Next Analysis</span>
+            <span class="text-[10px] text-text-secondary uppercase tracking-wider font-semibold">{{ t('trading.nextAnalysis') }}</span>
             <span class="text-sm font-mono font-bold text-accent-cyan">{{ countdown }}</span>
           </div>
           <div class="w-px h-4 bg-white/10"></div>
           <button
             @click="triggerAnalysis"
             class="group p-1 rounded hover:bg-primary/20 text-primary transition-all active:scale-95 flex items-center justify-center"
-            :title="'Trigger Now'"
+            :title="t('trading.triggerNow')"
           >
             <span class="material-symbols-outlined text-lg group-hover:text-amber-400 transition-colors">bolt</span>
           </button>
@@ -35,7 +35,7 @@
              <span :class="['relative inline-flex rounded-full h-2.5 w-2.5', systemStatus.enabled ? 'bg-emerald-500' : 'bg-red-500']"></span>
           </span>
           <span :class="['text-xs font-bold', systemStatus.enabled ? 'text-emerald-400' : 'text-text-secondary']">
-            {{ systemStatus.enabled ? 'Running' : 'Stopped' }}
+            {{ systemStatus.enabled ? t('trading.running') : t('trading.stopped') }}
           </span>
         </div>
 
@@ -48,7 +48,7 @@
             class="flex items-center h-10 px-4 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-semibold shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 transition-all active:scale-95"
             >
             <span class="material-symbols-outlined mr-1.5 text-lg">play_arrow</span>
-            <span class="text-sm">Start</span>
+            <span class="text-sm">{{ t('trading.start') }}</span>
             </button>
             <button
             v-else
@@ -56,7 +56,7 @@
             class="flex items-center h-10 px-4 rounded-lg bg-white/10 hover:bg-red-500/20 text-white hover:text-red-400 font-semibold border border-white/10 hover:border-red-500/50 transition-all active:scale-95"
             >
             <span class="material-symbols-outlined mr-1.5 text-lg">stop</span>
-            <span class="text-sm">Stop</span>
+            <span class="text-sm">{{ t('trading.stop') }}</span>
             </button>
 
             <!-- Separator -->
@@ -68,7 +68,7 @@
             class="hidden lg:flex items-center h-10 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium border border-white/5 hover:border-white/10 transition-all active:scale-95"
             >
             <span class="material-symbols-outlined mr-1.5 text-lg">groups</span>
-            <span class="text-xs">Expert Team</span>
+            <span class="text-xs">{{ t('trading.agentTeam') }}</span>
             </button>
 
             <!-- Pending Trades Alert -->
@@ -78,14 +78,14 @@
             class="flex items-center h-10 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold shadow-lg shadow-amber-500/20 animate-pulse transition-all active:scale-95"
             >
             <span class="material-symbols-outlined mr-1.5 text-lg">notifications_active</span>
-            <span class="text-xs">{{ pendingTrades.length }} Pending</span>
+            <span class="text-xs">{{ pendingTrades.length }} {{ t('trading.pending') }}</span>
             </button>
 
             <!-- Settings -->
             <button
             @click="openSettings"
             class="icon-btn"
-            :title="'Settings'"
+            :title="t('trading.settings')"
             >
             <span class="material-symbols-outlined text-lg">settings</span>
             </button>
@@ -104,42 +104,42 @@
         <div class="section-card">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
             <span class="material-symbols-outlined mr-2 text-primary">account_balance_wallet</span>
-            Account Overview
+            {{ t('trading.account') }}
           </h3>
 
           <div class="space-y-3">
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary text-sm">Trading Start Date</span>
+              <span class="text-text-secondary text-sm">{{ t('trading.tradingStartDate') }}</span>
               <span class="text-white">{{ tradingStartDateFormatted }}</span>
             </div>
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary text-sm">Starting Capital</span>
+              <span class="text-text-secondary text-sm">{{ t('trading.startingCapital') }}</span>
               <span class="text-white font-medium">${{ formatNumber(initialCapital) }}</span>
             </div>
             <div class="flex justify-between items-center pt-2 border-t border-white/10">
-              <span class="text-text-secondary">Current Equity</span>
+              <span class="text-text-secondary">{{ t('trading.currentEquity') }}</span>
               <span class="text-2xl font-bold text-white">${{ formatNumber(account.totalEquity) }}</span>
             </div>
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary">Total Profit</span>
+              <span class="text-text-secondary">{{ t('trading.totalProfit') }}</span>
               <span :class="totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400'" class="font-semibold">
                 {{ totalProfit >= 0 ? '+' : '' }}${{ formatNumber(totalProfit) }}
                 <span class="text-sm">({{ totalProfitPercent >= 0 ? '+' : '' }}{{ totalProfitPercent.toFixed(2) }}%)</span>
               </span>
             </div>
             <div class="flex justify-between items-center">
-              <span class="text-text-secondary">Max Drawdown</span>
+              <span class="text-text-secondary">{{ t('trading.maxDrawdown') }}</span>
               <span class="text-red-400 font-medium">-{{ drawdown.maxDrawdownPct?.toFixed(2) || 0 }}%</span>
             </div>
             <div v-if="btcBenchmark.startPrice > 0" class="pt-2 border-t border-white/10 space-y-2">
                <div class="flex justify-between items-center">
-                 <span class="text-text-secondary text-sm">BTC Benchmark Return</span>
+                 <span class="text-text-secondary text-sm">{{ t('trading.btcBenchmarkReturn') }}</span>
                  <span :class="btcBenchmark.returnPercent >= 0 ? 'text-emerald-400' : 'text-red-400'" class="text-sm">
                    {{ btcBenchmark.returnPercent >= 0 ? '+' : '' }}{{ btcBenchmark.returnPercent.toFixed(2) }}%
                  </span>
                </div>
                <div class="flex justify-between items-center">
-                 <span class="text-text-secondary font-medium">Excess Return (Alpha)</span>
+                 <span class="text-text-secondary font-medium">{{ t('trading.excessReturn') }}</span>
                  <span :class="alpha >= 0 ? 'text-emerald-400' : 'text-red-400'" class="font-bold text-lg">
                    {{ alpha >= 0 ? '+' : '' }}{{ alpha?.toFixed(2) || 0 }}%
                  </span>
@@ -152,24 +152,24 @@
         <div class="section-card">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center">
             <span class="material-symbols-outlined mr-2 text-accent-cyan">trending_up</span>
-            Current Position
+            {{ t('trading.position') }}
           </h3>
           <template v-if="position.hasPosition">
             <div class="space-y-3">
               <div class="flex items-center justify-between">
                 <span :class="['px-3 py-1 rounded-lg font-medium', position.direction === 'long' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400']">
-                  {{ position.direction === 'long' ? 'LONG' : 'SHORT' }} {{ position.leverage }}x
+                  {{ formatDirection(position.direction) }} {{ position.leverage }}x
                 </span>
                 <span class="text-white font-medium">{{ position.symbol }}</span>
               </div>
               <div class="grid grid-cols-2 gap-3 text-sm">
-                <div><span class="text-text-secondary block">Entry</span><span class="text-white">${{ formatNumber(position.entryPrice) }}</span></div>
-                <div><span class="text-text-secondary block">Current</span><span class="text-white">${{ formatNumber(position.currentPrice) }}</span></div>
-                <div><span class="text-text-secondary block">TP</span><span class="text-emerald-400">{{ position.takeProfitPrice > 0 ? '$' + formatNumber(position.takeProfitPrice) : 'Not set' }}</span></div>
-                <div><span class="text-text-secondary block">SL</span><span class="text-red-400">{{ position.stopLossPrice > 0 ? '$' + formatNumber(position.stopLossPrice) : 'Not set' }}</span></div>
+                <div><span class="text-text-secondary block">{{ t('trading.entry') }}</span><span class="text-white">${{ formatNumber(position.entryPrice) }}</span></div>
+                <div><span class="text-text-secondary block">{{ t('trading.current') }}</span><span class="text-white">${{ formatNumber(position.currentPrice) }}</span></div>
+                <div><span class="text-text-secondary block">TP</span><span class="text-emerald-400">{{ position.takeProfitPrice > 0 ? '$' + formatNumber(position.takeProfitPrice) : t('trading.notSet') }}</span></div>
+                <div><span class="text-text-secondary block">SL</span><span class="text-red-400">{{ position.stopLossPrice > 0 ? '$' + formatNumber(position.stopLossPrice) : t('trading.notSet') }}</span></div>
               </div>
               <div class="pt-3 border-t border-white/10 flex justify-between items-center">
-                 <span class="text-text-secondary">P&L</span>
+                 <span class="text-text-secondary">{{ t('trading.pnl') }}</span>
                  <span :class="['text-xl font-bold', position.unrealizedPnl >= 0 ? 'text-emerald-400' : 'text-red-400']">
                    {{ position.unrealizedPnl >= 0 ? '+' : '' }}${{ formatNumber(position.unrealizedPnl) }}
                    <span class="text-sm">({{ calculatePnlPercent(position.unrealizedPnl).toFixed(2) }}%)</span>
@@ -178,7 +178,7 @@
               <div class="pt-3 border-t border-white/10">
                 <button @click="closePosition" :disabled="closingPosition" class="w-full px-4 py-2 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white font-medium hover:shadow-lg transition-all disabled:opacity-50">
                   <span class="material-symbols-outlined mr-1 align-middle text-lg">close</span>
-                  {{ closingPosition ? 'Closing...' : 'Close Position' }}
+                  {{ closingPosition ? t('trading.closing') : t('trading.closePosition') }}
                 </button>
               </div>
             </div>
@@ -186,7 +186,7 @@
           <template v-else>
             <div class="text-center py-8 text-text-secondary">
               <span class="material-symbols-outlined text-4xl mb-2 opacity-50">do_not_disturb</span>
-              <p>No open position</p>
+              <p>{{ t('trading.noPosition') }}</p>
             </div>
           </template>
         </div>
@@ -203,7 +203,7 @@
 
             <h3 class="text-lg font-semibold text-white flex items-center">
               <span class="material-symbols-outlined mr-2 text-primary">show_chart</span>
-              Equity Curve
+              {{ t('trading.equityCurve') }}
             </h3>
           </div>
           <div class="h-64">
@@ -215,8 +215,8 @@
         <div class="section-card flex flex-col h-[700px]">
           <h3 class="text-lg font-semibold text-white mb-4 flex items-center sticky top-0 bg-[#0f172a]/95 backdrop-blur z-10 py-2 border-b border-white/5">
             <span class="material-symbols-outlined mr-2 text-accent-violet">forum</span>
-            Live Discussion
-            <span v-if="isAnalyzing" class="ml-2 flex items-center text-primary text-sm"><span class="animate-pulse mr-1">●</span> Live</span>
+            {{ t('trading.discussion') }}
+            <span v-if="isAnalyzing" class="ml-2 flex items-center text-primary text-sm"><span class="animate-pulse mr-1">●</span> {{ t('trading.live') }}</span>
           </h3>
 
           <div class="flex-1 overflow-y-auto space-y-4 pr-2" ref="discussionContainer">
@@ -228,7 +228,7 @@
                        <span class="material-symbols-outlined text-sm group-open:rotate-180 transition-transform">expand_more</span>
                        <div class="flex items-center gap-2">
                           <span class="px-2 py-0.5 rounded bg-primary/20 text-primary text-xs font-bold">{{ msg.agentName }}</span>
-                          <span class="text-xs">Reasoning (Thinking Process)</span>
+                          <span class="text-xs">{{ t('trading.reasoningProcess') }}</span>
                        </div>
                     </summary>
                     <div class="mt-2 pl-6 pt-2 border-l-2 border-white/5 text-gray-400 text-sm prose prose-sm prose-invert max-w-none leading-relaxed" v-html="renderMarkdown(msg.parsed.reasoning)"></div>
@@ -238,7 +238,7 @@
                  <div class="pl-0">
                     <div class="flex items-center justify-between mb-2">
                        <span class="text-xs font-mono text-text-secondary">{{ formatTime(msg.timestamp) }}</span>
-                       <span class="text-xs font-bold text-accent-cyan">Decision Ticket</span>
+                       <span class="text-xs font-bold text-accent-cyan">{{ t('trading.decisionTicket') }}</span>
                     </div>
 
                     <!-- Signal Card (Visualized JSON) -->
@@ -253,7 +253,7 @@
                                 <span :class="['px-2 py-0.5 rounded text-xs font-black uppercase tracking-wider', 
                                    (msg.parsed.parsedJson.direction || '').toLowerCase() === 'long' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20' : 
                                    (msg.parsed.parsedJson.direction || '').toLowerCase() === 'short' ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-gray-500/20 text-gray-400 border border-gray-500/20']">
-                                   {{ (msg.parsed.parsedJson.direction || 'HOLD').toUpperCase() }}
+                                   {{ formatDirection(msg.parsed.parsedJson.direction || 'hold') }}
                                 </span>
                                 <span v-if="msg.parsed.parsedJson.leverage" class="text-white font-bold text-sm font-mono opacity-80">
                                    {{ msg.parsed.parsedJson.leverage }}x
@@ -263,7 +263,7 @@
                              <!-- Right: Compact Metrics -->
                              <div class="flex items-center gap-3 text-xs font-mono bg-black/20 rounded px-2 py-1">
                                  <div class="flex items-center gap-1.5 border-r border-white/10 pr-3">
-                                     <span class="text-text-secondary text-[10px] uppercase">Conf</span>
+                                     <span class="text-text-secondary text-[10px] uppercase">{{ t('trading.confidenceShort') }}</span>
                                      <span :class="['font-bold', (msg.parsed.parsedJson.confidence || 0) >= 70 ? 'text-emerald-400' : 'text-yellow-400']">
                                         {{ msg.parsed.parsedJson.confidence }}%
                                      </span>
@@ -303,7 +303,7 @@
             </div>
             <div v-if="discussionMessages.length === 0" class="flex flex-col items-center justify-center py-20 text-text-secondary">
               <span class="material-symbols-outlined text-4xl mb-2 opacity-50">chat_bubble</span>
-              <p>Waiting for analysis...</p>
+              <p>{{ t('trading.noMessages') }}</p>
             </div>
           </div>
         </div>
@@ -317,38 +317,38 @@
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold text-white flex items-center">
           <span class="material-symbols-outlined mr-2 text-accent-cyan">leaderboard</span>
-          Agent Performance
+          {{ t('trading.agentPerformance') }}
         </h3>
         <button
           @click="fetchAgentPerformance"
           class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-all"
         >
           <span class="material-symbols-outlined align-middle text-base mr-1">refresh</span>
-          Refresh
+          {{ t('common.refresh') }}
         </button>
       </div>
 
       <div v-if="agentPerformance.team_summary" class="mb-6 p-4 rounded-lg bg-white/5 border border-white/10">
-        <h4 class="text-sm font-medium text-white mb-3">{{ t('trading.teamSummary') || 'Team Summary' }}</h4>
+        <h4 class="text-sm font-medium text-white mb-3">{{ t('trading.teamSummary') }}</h4>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
-            <span class="text-text-secondary block">{{ t('trading.totalTrades') || 'Total Trades' }}</span>
+            <span class="text-text-secondary block">{{ t('trading.totalTrades') }}</span>
             <span class="text-white font-medium">{{ agentPerformance.team_summary.total_trades || 0 }}</span>
           </div>
           <div>
-            <span class="text-text-secondary block">{{ t('trading.winRate') || 'Win Rate' }}</span>
+            <span class="text-text-secondary block">{{ t('trading.winRate') }}</span>
             <span :class="(agentPerformance.team_summary.win_rate || 0) >= 0.5 ? 'text-emerald-400' : 'text-red-400'" class="font-medium">
               {{ ((agentPerformance.team_summary.win_rate || 0) * 100).toFixed(1) }}%
             </span>
           </div>
           <div>
-            <span class="text-text-secondary block">{{ t('trading.totalPnlLabel') || 'Total PnL' }}</span>
+            <span class="text-text-secondary block">{{ t('trading.totalPnlLabel') }}</span>
             <span :class="(agentPerformance.team_summary.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'" class="font-medium">
               {{ (agentPerformance.team_summary.total_pnl || 0) >= 0 ? '+' : '' }}${{ formatNumber(agentPerformance.team_summary.total_pnl || 0) }}
             </span>
           </div>
           <div>
-            <span class="text-text-secondary block">{{ t('trading.avgPnl') || 'Avg PnL' }}</span>
+            <span class="text-text-secondary block">{{ t('trading.avgPnl') }}</span>
             <span :class="(agentPerformance.team_summary.avg_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'" class="font-medium">
               {{ (agentPerformance.team_summary.avg_pnl || 0) >= 0 ? '+' : '' }}${{ formatNumber(agentPerformance.team_summary.avg_pnl || 0) }}
             </span>
@@ -360,12 +360,12 @@
         <table class="w-full text-sm">
           <thead>
             <tr class="text-text-secondary border-b border-white/10">
-              <th class="text-left py-3 px-4">Agent</th>
-              <th class="text-right py-3 px-4">Trades</th>
-              <th class="text-right py-3 px-4">Wins</th>
-              <th class="text-right py-3 px-4">Win Rate</th>
-              <th class="text-right py-3 px-4">Total PnL</th>
-              <th class="text-left py-3 px-4">Latest Lesson</th>
+              <th class="text-left py-3 px-4">{{ t('trading.agent') }}</th>
+              <th class="text-right py-3 px-4">{{ t('trading.totalTrades') }}</th>
+              <th class="text-right py-3 px-4">{{ t('trading.wins') }}</th>
+              <th class="text-right py-3 px-4">{{ t('trading.winRate') }}</th>
+              <th class="text-right py-3 px-4">{{ t('trading.totalPnlLabel') }}</th>
+              <th class="text-left py-3 px-4">{{ t('trading.latestLesson') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -398,7 +398,7 @@
         </table>
 
         <div v-if="!agentPerformance.agents || Object.keys(agentPerformance.agents).length === 0" class="text-center py-8 text-text-secondary">
-          {{ t('trading.noAgentData') || 'No agent performance data yet' }}
+          {{ t('trading.noAgentData') }}
         </div>
       </div>
     </div>
@@ -408,23 +408,23 @@
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold text-white flex items-center">
           <span class="material-symbols-outlined mr-2 text-primary">history</span>
-          Trade History
+          {{ t('trading.history') }}
         </h3>
         <button @click="fetchTradeHistory" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-all flex items-center">
-           <span class="material-symbols-outlined text-sm mr-1">refresh</span> Refresh
+           <span class="material-symbols-outlined text-sm mr-1">refresh</span> {{ t('common.refresh') }}
         </button>
       </div>
       <div class="max-h-[500px] overflow-y-auto">
          <table class="w-full text-sm">
-            <thead><tr class="text-text-secondary border-b border-white/10 sticky top-0 bg-[#0f172a] z-10"><th class="text-left py-3 px-4">Time</th><th class="text-left py-3 px-4">Direction</th><th class="text-right py-3 px-4">Entry Price</th><th class="text-right py-3 px-4">PnL</th></tr></thead>
+            <thead><tr class="text-text-secondary border-b border-white/10 sticky top-0 bg-[#0f172a] z-10"><th class="text-left py-3 px-4">{{ t('trading.time') }}</th><th class="text-left py-3 px-4">{{ t('trading.direction') }}</th><th class="text-right py-3 px-4">{{ t('trading.entryPrice') }}</th><th class="text-right py-3 px-4">{{ t('trading.pnl') }}</th></tr></thead>
             <tbody>
               <tr v-for="trade in tradeHistory" :key="trade.id" class="border-b border-white/5 hover:bg-white/5 transition-colors">
                 <td class="py-3 px-4 text-white font-mono">{{ formatDate(trade.timestamp) }}</td>
-                <td class="py-3 px-4"><span :class="['px-2 py-1 rounded text-xs font-bold', trade.direction === 'long' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400']">{{ trade.direction.toUpperCase() }}</span></td>
+                <td class="py-3 px-4"><span :class="['px-2 py-1 rounded text-xs font-bold', trade.direction === 'long' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400']">{{ formatDirection(trade.direction) }}</span></td>
                 <td class="py-3 px-4 text-right text-white font-mono">${{ formatNumber(trade.entryPrice) }}</td>
                 <td class="py-3 px-4 text-right"><span :class="['font-bold', (trade.pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400']">{{ (trade.pnl || 0) >= 0 ? '+' : '' }}${{ formatNumber(trade.pnl || 0) }}</span></td>
               </tr>
-              <tr v-if="tradeHistory.length === 0"><td colspan="4" class="text-center py-8 text-text-secondary">No trades yet</td></tr>
+              <tr v-if="tradeHistory.length === 0"><td colspan="4" class="text-center py-8 text-text-secondary">{{ t('trading.noTrades') }}</td></tr>
             </tbody>
          </table>
       </div>
@@ -440,7 +440,7 @@
         <div class="flex items-center justify-between mb-6">
           <h3 class="text-lg font-semibold text-white flex items-center">
             <span class="material-symbols-outlined mr-2 text-primary">settings</span>
-            {{ t('trading.settings') || 'Trading Settings' }}
+            {{ t('trading.settings') }}
           </h3>
           <button @click="showSettings = false" class="text-text-secondary hover:text-white">
             <span class="material-symbols-outlined">close</span>
@@ -450,7 +450,7 @@
         <!-- Loading indicator -->
         <div v-if="loadingConfig" class="text-center py-8">
           <span class="material-symbols-outlined animate-spin text-primary text-3xl">refresh</span>
-          <p class="text-text-secondary mt-2">{{ t('trading.loadingConfig') || 'Loading configuration...' }}</p>
+          <p class="text-text-secondary mt-2">{{ t('trading.loadingConfig') }}</p>
         </div>
 
         <div v-else class="space-y-4">
@@ -458,9 +458,9 @@
           <div class="p-4 rounded-lg bg-white/5 border border-white/10">
             <div class="flex items-center justify-between">
 	              <div>
-	                <h4 class="text-sm font-medium text-white">{{ t('trading.traderBackend') || 'Trading Environment' }}</h4>
+	                <h4 class="text-sm font-medium text-white">{{ t('trading.traderBackend') }}</h4>
 	                <p class="text-xs text-text-secondary mt-1">
-	                  {{ settingsForm.useOkxTrading ? `OKX (${settingsForm.okxDemoMode ? 'Demo' : 'Live'})` : (t('trading.localPaperTrading') || 'Local Paper Trading') }}
+	                  {{ settingsForm.useOkxTrading ? `OKX (${settingsForm.okxDemoMode ? t('trading.okxDemoLabel') : t('trading.okxLiveLabel')})` : t('trading.localPaperTrading') }}
 	                </p>
 	              </div>
               <label class="relative inline-flex items-center cursor-pointer">
@@ -470,42 +470,42 @@
                   class="sr-only peer"
                 >
                 <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-	                <span class="ml-2 text-sm text-white">OKX</span>
+		                <span class="ml-2 text-sm text-white">OKX</span>
 	              </label>
 	            </div>
 	            <div v-if="settingsForm.useOkxTrading" class="mt-3 space-y-3">
               <p class="text-xs text-text-secondary">
-                Current OKX Credentials: 
+	                {{ t('trading.currentOkxCredentials') }}:
                 <span v-if="settingsForm.okxConfigured" class="text-emerald-400 font-mono">****{{ settingsForm.okxApiKeyLast4 }}</span>
-                <span v-else class="text-amber-400">Not configured</span>
+	                <span v-else class="text-amber-400">{{ t('trading.notConfigured') }}</span>
               </p>
               <div class="grid grid-cols-1 gap-2">
                 <input
                   v-model="settingsForm.okxApiKey"
                   type="text"
                   autocomplete="off"
-                  placeholder="OKX API Key"
+	                  :placeholder="t('trading.okxApiKey')"
                   class="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-primary"
                 />
                 <input
                   v-model="settingsForm.okxSecretKey"
                   type="password"
                   autocomplete="off"
-                  placeholder="OKX Secret Key"
+	                  :placeholder="t('trading.okxSecretKey')"
                   class="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-primary"
                 />
                 <input
                   v-model="settingsForm.okxPassphrase"
                   type="password"
                   autocomplete="off"
-                  placeholder="OKX Passphrase"
+	                  :placeholder="t('trading.okxPassphrase')"
                   class="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:border-primary"
                 />
               </div>
 	              <div class="flex items-center justify-between">
 	                <label class="flex items-center gap-2 text-xs text-text-secondary">
 	                  <input type="checkbox" v-model="settingsForm.okxDemoMode" class="accent-primary" />
-	                  Demo (x-simulated-trading)
+		                  {{ t('trading.okxDemoModeLabel') }}
 	                </label>
                 <button
                   v-if="settingsForm.okxConfigured"
@@ -513,11 +513,11 @@
                   class="text-xs text-red-400 hover:text-red-300 underline"
                   type="button"
                 >
-                  Clear OKX Credentials
+	                  {{ t('trading.clearOkxCredentials') }}
                 </button>
 	              </div>
 	              <p v-if="!settingsForm.okxDemoMode" class="text-xs text-red-400">
-	                You are selecting OKX live mode. Ensure this is intentional and use an API key without withdrawal permission.
+		                {{ t('trading.okxLiveWarning') }}
 	              </p>
 	            </div>
 	          </div>
@@ -525,32 +525,32 @@
           <!-- Analysis Interval -->
           <div>
             <label class="block text-sm text-text-secondary mb-2">
-              {{ t('trading.analysisInterval') || 'Analysis Interval (hours)' }}
+              {{ t('trading.analysisInterval') }}
             </label>
             <select
               v-model="settingsForm.analysisInterval"
               class="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:border-primary"
             >
-              <option value="1">{{ t('trading.hour1') || '1 hour' }}</option>
-              <option value="2">{{ t('trading.hour2') || '2 hours' }}</option>
-              <option value="4">{{ t('trading.hour4') || '4 hours' }}</option>
-              <option value="6">{{ t('trading.hour6') || '6 hours' }}</option>
-              <option value="12">{{ t('trading.hour12') || '12 hours' }}</option>
-              <option value="24">{{ t('trading.hour24') || '24 hours' }}</option>
+              <option value="1">{{ t('trading.hour1') }}</option>
+              <option value="2">{{ t('trading.hour2') }}</option>
+              <option value="4">{{ t('trading.hour4') }}</option>
+              <option value="6">{{ t('trading.hour6') }}</option>
+              <option value="12">{{ t('trading.hour12') }}</option>
+              <option value="24">{{ t('trading.hour24') }}</option>
             </select>
           </div>
 
           <!-- Max Leverage -->
           <div>
             <label class="block text-sm text-text-secondary mb-2">
-              {{ t('trading.maxLeverage') || 'Max Leverage' }}
+              {{ t('trading.maxLeverage') }}
             </label>
             <select
               v-model="settingsForm.maxLeverage"
               class="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:border-primary"
             >
               <option v-for="lev in 20" :key="lev" :value="lev">
-                {{ lev }}x{{ lev === 1 ? ' ' + (t('trading.noLeverage') || '(No Leverage)') : '' }}
+                {{ lev }}x{{ lev === 1 ? ' ' + t('trading.noLeverage') : '' }}
               </option>
             </select>
           </div>
@@ -558,7 +558,7 @@
           <!-- Max Position Percent -->
           <div>
             <label class="block text-sm text-text-secondary mb-2">
-              {{ t('trading.maxPositionPercent') || 'Max Position (% of Balance)' }}
+              {{ t('trading.maxPositionPercent') }}
             </label>
             <select
               v-model="settingsForm.maxPositionPercent"
@@ -577,9 +577,9 @@
         <div class="mt-6 pt-4 border-t border-white/10">
           <div class="flex items-center justify-between">
             <div>
-              <h4 class="text-sm font-medium text-white">{{ t('trading.resetSystem') || 'Reset System' }}</h4>
+              <h4 class="text-sm font-medium text-white">{{ t('trading.resetSystem') }}</h4>
               <p class="text-xs text-text-secondary mt-1">
-                {{ t('trading.resetDescription') || 'Stop trading, close positions, clear history and memories' }}
+                {{ t('trading.resetDescription') }}
               </p>
             </div>
             <button
@@ -589,7 +589,7 @@
             >
               <span v-if="resettingSystem" class="material-symbols-outlined animate-spin text-sm">refresh</span>
               <span class="material-symbols-outlined text-sm" v-else>restart_alt</span>
-              {{ resettingSystem ? (t('trading.resetting') || 'Resetting...') : (t('trading.reset') || 'Reset') }}
+              {{ resettingSystem ? t('trading.resetting') : t('trading.reset') }}
             </button>
           </div>
         </div>
@@ -599,14 +599,14 @@
             @click="showSettings = false"
             class="flex-1 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all"
           >
-            {{ t('common.cancel') || 'Cancel' }}
+            {{ t('common.cancel') }}
           </button>
           <button
             @click="saveSettings"
             :disabled="savingSettings"
             class="flex-1 px-4 py-2 rounded-lg bg-gradient-to-r from-primary to-accent-cyan text-white font-medium hover:shadow-lg transition-all disabled:opacity-50"
           >
-            {{ savingSettings ? (t('trading.saving') || 'Saving...') : (t('common.save') || 'Save') }}
+            {{ savingSettings ? t('trading.saving') : t('common.save') }}
           </button>
         </div>
       </div>
@@ -622,10 +622,10 @@
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-lg font-semibold text-white flex items-center">
             <span class="material-symbols-outlined mr-2 text-primary animate-pulse">smart_toy</span>
-            AI Trading Committee Decision
+	            {{ t('trading.committeeDecision') }}
           </h3>
           <span class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-400">
-            Pending Confirmation
+	            {{ t('trading.pendingConfirmation') }}
           </span>
         </div>
 
@@ -633,7 +633,7 @@
         <div class="bg-white/5 rounded-lg p-4 mb-4">
           <div class="grid grid-cols-3 gap-4 text-center mb-4">
             <div>
-              <span class="text-text-secondary text-xs block mb-1">Direction</span>
+	              <span class="text-text-secondary text-xs block mb-1">{{ t('trading.direction') }}</span>
               <span
                 :class="[
                   'px-3 py-1 rounded-lg font-bold text-lg',
@@ -642,15 +642,15 @@
                     : 'bg-red-500/20 text-red-400'
                 ]"
               >
-                {{ (showModifyPanel ? modifiedDirection : pendingDecision.direction) === 'long' ? 'LONG ↑' : 'SHORT ↓' }}
+                {{ formatDirectionWithArrow(showModifyPanel ? modifiedDirection : pendingDecision.direction) }}
               </span>
             </div>
             <div>
-              <span class="text-text-secondary text-xs block mb-1">Leverage</span>
+	              <span class="text-text-secondary text-xs block mb-1">{{ t('trading.leverage') }}</span>
               <span class="text-white font-bold text-lg">{{ modifiedLeverage }}x</span>
             </div>
             <div>
-              <span class="text-text-secondary text-xs block mb-1">Confidence</span>
+	              <span class="text-text-secondary text-xs block mb-1">{{ t('trading.confidence') }}</span>
               <span 
                 :class="[
                   'font-bold text-lg',
@@ -665,14 +665,14 @@
 
           <div class="grid grid-cols-2 gap-4 text-sm">
             <div class="flex justify-between">
-              <span class="text-text-secondary">Take Profit</span>
+	              <span class="text-text-secondary">{{ t('trading.takeProfit') }}</span>
               <span class="text-emerald-400 font-medium">
                 ${{ formatNumber(pendingDecision.take_profit) }}
                 <span class="text-xs">(+{{ ((pendingDecision.take_profit / pendingDecision.current_price - 1) * 100).toFixed(1) }}%)</span>
               </span>
             </div>
             <div class="flex justify-between">
-              <span class="text-text-secondary">Stop Loss</span>
+	              <span class="text-text-secondary">{{ t('trading.stopLoss') }}</span>
               <span class="text-red-400 font-medium">
                 ${{ formatNumber(pendingDecision.stop_loss) }}
                 <span class="text-xs">({{ ((pendingDecision.stop_loss / pendingDecision.current_price - 1) * 100).toFixed(1) }}%)</span>
@@ -685,20 +685,20 @@
         <div class="bg-white/5 rounded-lg p-4 mb-4 max-h-32 overflow-y-auto">
           <div class="text-text-secondary text-xs mb-2 flex items-center">
             <span class="material-symbols-outlined text-sm mr-1">psychology</span>
-            Leader Rationale
+	            {{ t('trading.leaderRationale') }}
           </div>
           <p class="text-white text-sm leading-relaxed">
-            {{ pendingDecision.reasoning || 'Combined view across technicals, macro, and sentiment analyses...' }}
+	            {{ pendingDecision.reasoning || t('trading.defaultRationale') }}
           </p>
         </div>
 
         <!-- Modification Panel -->
         <div v-if="showModifyPanel" class="bg-white/5 rounded-lg p-4 mb-4 border border-primary/30">
-          <div class="text-text-secondary text-xs mb-3">Modify Parameters</div>
+	          <div class="text-text-secondary text-xs mb-3">{{ t('trading.modifyParameters') }}</div>
 
           <!-- Direction Toggle -->
           <div class="flex items-center gap-4 mb-3">
-            <label class="text-sm text-white w-20">Direction:</label>
+	            <label class="text-sm text-white w-20">{{ t('trading.direction') }}:</label>
             <div class="flex gap-2 flex-1">
               <button
                 @click="modifiedDirection = 'long'"
@@ -708,7 +708,7 @@
                     ? 'bg-emerald-500/30 text-emerald-400 border border-emerald-500/50'
                     : 'bg-white/5 text-text-secondary hover:bg-white/10'
                 ]"
-              >LONG ↑</button>
+              >{{ formatDirectionWithArrow('long') }}</button>
               <button
                 @click="modifiedDirection = 'short'"
                 :class="[
@@ -717,13 +717,13 @@
                     ? 'bg-red-500/30 text-red-400 border border-red-500/50'
                     : 'bg-white/5 text-text-secondary hover:bg-white/10'
                 ]"
-              >SHORT ↓</button>
+              >{{ formatDirectionWithArrow('short') }}</button>
             </div>
           </div>
 
           <!-- Leverage Slider -->
           <div class="flex items-center gap-4 mb-3">
-            <label class="text-sm text-white w-20">Leverage:</label>
+	            <label class="text-sm text-white w-20">{{ t('trading.leverage') }}:</label>
             <input
               type="range"
               v-model="modifiedLeverage"
@@ -736,7 +736,7 @@
 
           <!-- Amount Percent Slider -->
           <div class="flex items-center gap-4">
-            <label class="text-sm text-white w-20">Position:</label>
+	            <label class="text-sm text-white w-20">{{ t('trading.positionSize') }}:</label>
             <input
               type="range"
               v-model.number="modifiedAmountPercent"
@@ -751,7 +751,7 @@
 
         <!-- Defer Reasons (shown when deferring) -->
         <div v-if="showDeferReasons" class="bg-white/5 rounded-lg p-4 mb-4 border border-red-500/30">
-          <div class="text-text-secondary text-xs mb-3">Select defer reason</div>
+	          <div class="text-text-secondary text-xs mb-3">{{ t('trading.selectDeferReason') }}</div>
           <div class="grid grid-cols-2 gap-2">
             <label 
               v-for="reason in deferReasonOptions" 
@@ -768,10 +768,10 @@
             </label>
           </div>
           <input
-            v-if="selectedDeferReason === 'Other'"
+	            v-if="selectedDeferReason === t('trading.other')"
             v-model="customDeferReason"
             type="text"
-            placeholder="Enter reason..."
+	            :placeholder="t('trading.enterReason')"
             class="mt-2 w-full px-3 py-2 rounded bg-white/10 border border-white/20 text-white text-sm"
           />
         </div>
@@ -784,7 +784,7 @@
             class="flex-1 px-4 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <span class="material-symbols-outlined text-lg">check_circle</span>
-            Confirm Execution
+	            {{ t('trading.confirmExecution') }}
           </button>
           <button
             @click="toggleModifyPanel"
@@ -792,7 +792,7 @@
             class="px-4 py-3 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <span class="material-symbols-outlined text-lg">edit</span>
-            Modify
+	            {{ t('trading.modify') }}
           </button>
           <button
             @click="toggleDeferReasons"
@@ -800,7 +800,7 @@
             class="px-4 py-3 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <span class="material-symbols-outlined text-lg">close</span>
-            Defer
+	            {{ t('trading.defer') }}
           </button>
         </div>
 
@@ -811,13 +811,13 @@
           :disabled="processingDecision"
           class="w-full mt-3 px-4 py-2 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-all disabled:opacity-50"
         >
-          Confirm Deferral
+	          {{ t('trading.confirmDeferral') }}
         </button>
 
         <!-- User Responsibility Notice -->
         <div class="mt-4 text-center text-xs text-text-secondary">
           <span class="material-symbols-outlined text-sm align-middle mr-1">info</span>
-          Please review carefully before executing trades
+	          {{ t('trading.reviewNotice') }}
         </div>
       </div>
     </div>
@@ -830,7 +830,7 @@
        <div class="p-6 border-b border-white/10 flex justify-between items-center sticky top-0 bg-[#0f172a] z-10">
          <h3 class="text-xl font-bold text-white flex items-center">
            <span class="material-symbols-outlined mr-2 text-accent-cyan">groups</span>
-           Expert Team
+	           {{ t('trading.agentTeam') }}
          </h3>
          <button @click="showTeamModal = false" class="text-text-secondary hover:text-white transition-colors">
            <span class="material-symbols-outlined text-2xl">close</span>
@@ -848,7 +848,7 @@
                     <h4 class="text-white font-bold">{{ agent.name }}</h4>
                     <p class="text-xs text-text-secondary mt-1">{{ agent.role }}</p>
                     <div class="flex items-center gap-3 mt-3 text-xs">
-                       <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Win: {{ (agent.winRate * 100).toFixed(0) }}%</span>
+	                       <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{{ t('trading.win') }}: {{ (agent.winRate * 100).toFixed(0) }}%</span>
                        <span class="text-text-secondary">{{ t('trading.totalTrades') }}: {{ agent.totalTrades }}</span>
                     </div>
                   </div>
@@ -861,11 +861,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useLanguage } from '@/composables/useLanguage.js';
 import { apiUrl, wsUrl as buildWsUrl } from '@/config/api';
 import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
 import { readJsonResponse } from '@/services/httpResponse';
+import { useRouter } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
 import Chart from 'chart.js/auto';
 import { marked } from 'marked';
 
@@ -876,6 +878,8 @@ marked.setOptions({
 });
 
 const { t, locale } = useLanguage();
+const router = useRouter();
+const authStore = useAuthStore();
 
 // Chart
 const equityChartCanvas = ref(null);
@@ -912,17 +916,35 @@ const position = ref({
   unrealizedPnlPercent: 0
 });
 
-const agents = ref([
-  { id: 'technical-analyst', name: 'Technical Analyst', role: 'Technical', icon: 'candlestick_chart', winRate: 0.65 },
-  { id: 'macro-economist', name: 'Macro Analyst', role: 'Macro', icon: 'public', winRate: 0.58 },
-  { id: 'sentiment-analyst', name: 'Sentiment Analyst', role: 'Sentiment', icon: 'psychology', winRate: 0.62 },
-  { id: 'onchain-analyst', name: 'On-chain Analyst', role: 'On-chain', icon: 'link', winRate: 0.60 },
-  { id: 'risk-manager', name: 'Risk Management', role: 'Risk', icon: 'shield', winRate: 0.70 },
-  { id: 'quant-strategist', name: 'Quant Strategy', role: 'Quant', icon: 'analytics', winRate: 0.55 },
-  { id: 'trading-executor', name: 'Trade Execution', role: 'Execution', icon: 'play_arrow', winRate: 0 },
-  { id: 'position-monitor', name: 'Position Monitor', role: 'Monitoring', icon: 'monitoring', winRate: 0 },
-  { id: 'trading-leader', name: 'Host', role: 'Coordination', icon: 'emoji_events', winRate: 0.68 }
-]);
+const buildDefaultAgents = (lang) => {
+  const zh = String(lang || '').startsWith('zh');
+  if (zh) {
+    return [
+      { id: 'technical-analyst', name: '技术分析师', role: '技术面', icon: 'candlestick_chart', winRate: 0.65 },
+      { id: 'macro-economist', name: '宏观分析师', role: '宏观', icon: 'public', winRate: 0.58 },
+      { id: 'sentiment-analyst', name: '情绪分析师', role: '情绪', icon: 'psychology', winRate: 0.62 },
+      { id: 'onchain-analyst', name: '链上分析师', role: '链上', icon: 'link', winRate: 0.60 },
+      { id: 'risk-manager', name: '风险管理师', role: '风险', icon: 'shield', winRate: 0.70 },
+      { id: 'quant-strategist', name: '量化策略师', role: '量化', icon: 'analytics', winRate: 0.55 },
+      { id: 'trading-executor', name: '交易执行师', role: '执行', icon: 'play_arrow', winRate: 0 },
+      { id: 'position-monitor', name: '仓位监控师', role: '监控', icon: 'monitoring', winRate: 0 },
+      { id: 'trading-leader', name: '主持人', role: '协调', icon: 'emoji_events', winRate: 0.68 }
+    ];
+  }
+  return [
+    { id: 'technical-analyst', name: 'Technical Analyst', role: 'Technical', icon: 'candlestick_chart', winRate: 0.65 },
+    { id: 'macro-economist', name: 'Macro Analyst', role: 'Macro', icon: 'public', winRate: 0.58 },
+    { id: 'sentiment-analyst', name: 'Sentiment Analyst', role: 'Sentiment', icon: 'psychology', winRate: 0.62 },
+    { id: 'onchain-analyst', name: 'On-chain Analyst', role: 'On-chain', icon: 'link', winRate: 0.60 },
+    { id: 'risk-manager', name: 'Risk Management', role: 'Risk', icon: 'shield', winRate: 0.70 },
+    { id: 'quant-strategist', name: 'Quant Strategy', role: 'Quant', icon: 'analytics', winRate: 0.55 },
+    { id: 'trading-executor', name: 'Trade Execution', role: 'Execution', icon: 'play_arrow', winRate: 0 },
+    { id: 'position-monitor', name: 'Position Monitor', role: 'Monitoring', icon: 'monitoring', winRate: 0 },
+    { id: 'trading-leader', name: 'Host', role: 'Coordination', icon: 'emoji_events', winRate: 0.68 }
+  ];
+};
+
+const agents = ref(buildDefaultAgents(locale.value));
 
 const discussionMessages = ref([]);
 const tradeHistory = ref([]);
@@ -972,8 +994,18 @@ const showDeferReasons = ref(false);
 const selectedDeferReason = ref('');
 const customDeferReason = ref('');
 const processingDecision = ref(false);
-const deferReasonOptions = ['Leverage too high', 'Direction disagreement', 'Stop-loss too tight', 'Market uncertain', 'Other'];
+const deferReasonOptions = computed(() => ([
+  t('trading.deferReasonLeverage'),
+  t('trading.deferReasonDirection'),
+  t('trading.deferReasonStopLoss'),
+  t('trading.deferReasonUncertain'),
+  t('trading.other')
+]));
 const decisionHistory = ref([]);  // Store user decisions for display
+
+watch(locale, (newLocale) => {
+  agents.value = buildDefaultAgents(newLocale);
+});
 
 // Drawdown data
 const drawdownStartDate = ref('');
@@ -1030,6 +1062,9 @@ const systemHealth = ref({
 // WebSocket
 let ws = null;
 let countdownInterval = null;
+let tokenRefreshPromise = null;
+let authRedirecting = false;
+const authExpired = ref(false);
 
 // Computed
 // Initial capital from backend API (via account.initialBalance)
@@ -1050,7 +1085,8 @@ const tradingStartDate = computed(() => {
 // Format trading start date for display
 const tradingStartDateFormatted = computed(() => {
   if (!tradingStartDate.value) return '--';
-  return tradingStartDate.value.toLocaleDateString('zh-CN', {
+  const dateLocale = String(locale.value || '').startsWith('en') ? 'en-US' : 'zh-CN';
+  return tradingStartDate.value.toLocaleDateString(dateLocale, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
@@ -1150,12 +1186,37 @@ function renderMarkdown(content) {
 
 function formatDate(timestamp) {
   if (!timestamp) return '';
-  return new Date(timestamp).toLocaleString();
+  const dateLocale = String(locale.value || '').startsWith('en') ? 'en-US' : 'zh-CN';
+  return new Date(timestamp).toLocaleString(dateLocale);
 }
 
 function formatTime(timestamp) {
   if (!timestamp) return '';
-  return new Date(timestamp).toLocaleTimeString();
+  const dateLocale = String(locale.value || '').startsWith('en') ? 'en-US' : 'zh-CN';
+  return new Date(timestamp).toLocaleTimeString(dateLocale);
+}
+
+function normalizeDirection(direction) {
+  const raw = String(direction || '').trim().toLowerCase();
+  if (raw === 'buy') return 'long';
+  if (raw === 'sell') return 'short';
+  return raw;
+}
+
+function formatDirection(direction) {
+  const normalized = normalizeDirection(direction);
+  if (normalized === 'long') return t('trading.directionLong');
+  if (normalized === 'short') return t('trading.directionShort');
+  if (normalized === 'hold' || normalized === 'neutral' || normalized === 'flat') return t('trading.directionHold');
+  const raw = String(direction || '').trim();
+  return raw || t('trading.directionHold');
+}
+
+function formatDirectionWithArrow(direction) {
+  const normalized = normalizeDirection(direction);
+  if (normalized === 'long') return `${t('trading.directionLong')} ↑`;
+  if (normalized === 'short') return `${t('trading.directionShort')} ↓`;
+  return formatDirection(direction);
 }
 
 function withAuthHeaders(headers = {}) {
@@ -1165,11 +1226,84 @@ function withAuthHeaders(headers = {}) {
   };
 }
 
-function tradingFetch(path, options = {}) {
-  return fetch(appendTokenToUrl(apiUrl(path)), {
+function clearRealtimeTimers() {
+  if (dataRefreshInterval) {
+    clearInterval(dataRefreshInterval);
+    dataRefreshInterval = null;
+  }
+  if (equityInterval) {
+    clearInterval(equityInterval);
+    equityInterval = null;
+  }
+  if (performanceInterval) {
+    clearInterval(performanceInterval);
+    performanceInterval = null;
+  }
+}
+
+async function refreshTokenOnce() {
+  if (!tokenRefreshPromise) {
+    tokenRefreshPromise = authStore.refreshAccessToken().finally(() => {
+      tokenRefreshPromise = null;
+    });
+  }
+  return tokenRefreshPromise;
+}
+
+async function handleAuthExpired() {
+  if (authExpired.value) return;
+  authExpired.value = true;
+  clearRealtimeTimers();
+
+  if (ws) {
+    ws.close();
+    ws = null;
+  }
+
+  if (!authRedirecting) {
+    authRedirecting = true;
+    try {
+      await authStore.logout();
+    } catch (_) {
+      authStore.clearTokens?.();
+      authStore.user = null;
+    }
+    router.push({
+      name: 'Login',
+      query: { redirect: '/trading', reason: 'expired' }
+    }).catch(() => {
+      // Ignore duplicated/aborted navigation failures.
+    }).finally(() => {
+      authRedirecting = false;
+    });
+  }
+}
+
+async function tradingFetch(path, options = {}) {
+  if (authExpired.value) {
+    throw new Error(t('trading.authRequired'));
+  }
+
+  const request = () => fetch(appendTokenToUrl(apiUrl(path)), {
     ...options,
     headers: withAuthHeaders(options.headers)
   });
+
+  let response = await request();
+  if (response.status !== 401) {
+    return response;
+  }
+
+  const refreshed = await refreshTokenOnce();
+  if (refreshed) {
+    response = await request();
+    if (response.status !== 401) {
+      return response;
+    }
+  }
+
+  await handleAuthExpired();
+  throw new Error(t('trading.authRequired'));
 }
 
 async function parseTradingJson(response, label) {
@@ -1479,7 +1613,7 @@ function parseDiscussionContent(content) {
     return {
       hasJson: true,
       parsedJson: parsedJson,
-      reasoning: reasoning || 'View detailed reasoning...',
+      reasoning: reasoning || t('trading.viewDetailedReasoning'),
       conclusion: fullBlock
     };
   }
@@ -1569,8 +1703,8 @@ async function handleConfirmDecision() {
 
       if (!result.success) {
         discussionMessages.value.push({
-          agentName: 'System',
-          content: `❌ Trade confirmation failed: ${result.message || result.detail || 'Unknown error'}`,
+          agentName: t('trading.system'),
+          content: `❌ ${t('trading.tradeConfirmationFailed')}: ${result.message || result.detail || t('trading.unknownError')}`,
           timestamp: new Date().toISOString()
         });
         // Close modal even on failure — trade is no longer actionable
@@ -1597,8 +1731,8 @@ async function handleConfirmDecision() {
     } else {
       // HITL-only: should never execute directly without a pending trade id.
       discussionMessages.value.push({
-        agentName: 'System',
-        content: '❌ Cannot confirm: missing trade_id (wait until pending trade is created)',
+        agentName: t('trading.system'),
+        content: `❌ ${t('trading.cannotConfirmMissingTradeId')}`,
         timestamp: new Date().toISOString()
       });
       showDecisionModal.value = false;
@@ -1610,7 +1744,7 @@ async function handleConfirmDecision() {
     decisionHistory.value.unshift({
       decision_id: tradeId || `decision-${Date.now()}`,
       action: 'confirm',
-      display: `${finalDirection.toUpperCase()} ${finalLeverage}x${finalAmountPercent ? ` ${Math.round(finalAmountPercent * 100)}%` : ''} → ✓ Confirm Execution${isModified ? ' (Modified)' : ''}`
+      display: `${formatDirection(finalDirection)} ${finalLeverage}x${finalAmountPercent ? ` ${Math.round(finalAmountPercent * 100)}%` : ''} → ✓ ${t('trading.confirmExecution')}${isModified ? ` (${t('trading.modify')})` : ''}`
     });
 
     // Note: modal close and data refresh handled by 'trade_confirmed' WebSocket event
@@ -1627,10 +1761,10 @@ async function handleConfirmDecision() {
     console.error('Error confirming decision:', e);
     const isExpired = String(e?.message || '').includes('(404)');
     discussionMessages.value.push({
-      agentName: 'System',
+      agentName: t('trading.system'),
       content: isExpired
-        ? '⏰ Trade expired, please wait for the next signal'
-        : `❌ Error while confirming trade: ${e.message || 'Network error'}`,
+        ? `⏰ ${t('trading.tradeExpiredWaitNext')}`
+        : `❌ ${t('trading.errorConfirmingTrade')}: ${e.message || t('trading.networkError')}`,
       timestamp: new Date().toISOString()
     });
   } finally {
@@ -1641,7 +1775,7 @@ async function handleConfirmDecision() {
 async function handleDeferDecision() {
   processingDecision.value = true;
   try {
-    const reason = selectedDeferReason.value === 'Other' ? customDeferReason.value : selectedDeferReason.value;
+    const reason = selectedDeferReason.value === t('trading.other') ? customDeferReason.value : selectedDeferReason.value;
     const tradeId = pendingDecision.value.trade_id;
 
     if (tradeId) {
@@ -1649,17 +1783,17 @@ async function handleDeferDecision() {
       const response = await tradingFetch(`/api/trading/pending/${tradeId}/reject`, {
         method: 'POST',
         headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          user_id: 'frontend',
-          reason: reason || 'User deferred'
-        })
+          body: JSON.stringify({
+            user_id: 'frontend',
+            reason: reason || t('trading.userDeferred')
+          })
       });
       const result = await parseTradingJson(response, 'Reject pending trade');
 
       if (!result.success) {
         discussionMessages.value.push({
-          agentName: 'System',
-          content: `❌ Trade rejection failed: ${result.message || result.detail || 'Unknown error'}`,
+          agentName: t('trading.system'),
+          content: `❌ ${t('trading.tradeRejectionFailed')}: ${result.message || result.detail || t('trading.unknownError')}`,
           timestamp: new Date().toISOString()
         });
         // Close modal even on failure — trade is no longer actionable
@@ -1700,7 +1834,7 @@ async function handleDeferDecision() {
     decisionHistory.value.unshift({
       decision_id: tradeId || `decision-${Date.now()}`,
       action: 'defer',
-      display: `${pendingDecision.value.direction.toUpperCase()} ${pendingDecision.value.leverage}x → ✕ Defer (${reason})`
+      display: `${formatDirection(pendingDecision.value.direction)} ${pendingDecision.value.leverage}x → ✕ ${t('trading.defer')}${reason ? ` (${reason})` : ''}`
     });
 
     // Note: modal close handled by 'trade_rejected' WebSocket event
@@ -1712,10 +1846,10 @@ async function handleDeferDecision() {
     console.error('Error deferring decision:', e);
     const isExpired = String(e?.message || '').includes('(404)');
     discussionMessages.value.push({
-      agentName: 'System',
+      agentName: t('trading.system'),
       content: isExpired
-        ? '⏰ Trade expired, please wait for the next signal'
-        : `❌ Error while rejecting trade: ${e.message || 'Network error'}`,
+        ? `⏰ ${t('trading.tradeExpiredWaitNext')}`
+        : `❌ ${t('trading.errorRejectingTrade')}: ${e.message || t('trading.networkError')}`,
       timestamp: new Date().toISOString()
     });
   } finally {
@@ -1739,14 +1873,14 @@ async function closePosition() {
     if (data.error) {
       console.error('Error closing position:', data.error);
       discussionMessages.value.push({
-        agentName: 'System',
-        content: `Close position failed: ${data.error}`,
+        agentName: t('trading.system'),
+        content: `${t('trading.closePositionFailed')}: ${data.error}`,
         timestamp: new Date().toISOString()
       });
     } else {
       discussionMessages.value.push({
-        agentName: 'System',
-        content: `Manual close succeeded, PnL: $${data.pnl?.toFixed(2) || '0.00'}`,
+        agentName: t('trading.system'),
+        content: `${t('trading.manualCloseSucceeded')}, ${t('trading.pnl')}: $${data.pnl?.toFixed(2) || '0.00'}`,
         timestamp: new Date().toISOString()
       });
       await fetchPosition();
@@ -1812,12 +1946,12 @@ async function saveSettings() {
     const okxPassphrase = (settingsForm.value.okxPassphrase || '').trim();
 
     if (okxSelected && !settingsForm.value.okxConfigured && !(okxApiKey && okxSecretKey && okxPassphrase)) {
-      alert('Selecting OKX requires API Key / Secret Key / Passphrase');
+      alert(t('trading.okxSelectRequiresKeys'));
       return;
     }
 
     if (okxSelected && !settingsForm.value.okxDemoMode) {
-      const ok = confirm('You are switching to OKX live mode (not demo). Continue?');
+      const ok = confirm(t('trading.okxSwitchLiveConfirm'));
       if (!ok) return;
     }
 
@@ -1841,13 +1975,13 @@ async function saveSettings() {
     if (data.status === 'updated') {
       showSettings.value = false;
 
-      let message = 'Settings updated';
+      let message = t('trading.settingsUpdated');
       if (data.needs_reset) {
-        message = 'Settings updated. Changing trading environment requires a system reset to take effect.';
+        message = t('trading.settingsUpdatedNeedsReset');
       }
 
       discussionMessages.value.push({
-        agentName: 'System',
+        agentName: t('trading.system'),
         content: message,
         parsed: parseDiscussionContent(message),
         timestamp: new Date().toISOString()
@@ -1861,7 +1995,7 @@ async function saveSettings() {
 }
 
 async function clearOkxCredentials() {
-  if (!confirm('Clear OKX credentials? It will switch back to PaperTrader (system reset required).')) return;
+  if (!confirm(t('trading.clearOkxConfirm'))) return;
   savingSettings.value = true;
   try {
     const response = await tradingFetch('/api/trading/config', {
@@ -1876,9 +2010,9 @@ async function clearOkxCredentials() {
     if (data.status === 'updated') {
       await fetchConfig();
       discussionMessages.value.push({
-        agentName: 'System',
-        content: 'OKX credentials cleared. Please reset the system to apply changes.',
-        parsed: parseDiscussionContent('OKX credentials cleared. Please reset the system to apply changes.'),
+        agentName: t('trading.system'),
+        content: t('trading.okxCleared'),
+        parsed: parseDiscussionContent(t('trading.okxCleared')),
         timestamp: new Date().toISOString()
       });
     }
@@ -1890,7 +2024,7 @@ async function clearOkxCredentials() {
 }
 
 async function resetSystem() {
-  if (!confirm('Are you sure you want to reset the trading system? This will close all positions and clear all history.')) {
+  if (!confirm(t('trading.resetConfirm'))) {
     return;
   }
 
@@ -1922,19 +2056,19 @@ async function resetSystem() {
       showSettings.value = false;
 
       discussionMessages.value.push({
-        agentName: 'System',
-        content: `Trading system has been reset. Trader type: ${data.trader_type}`,
+        agentName: t('trading.system'),
+        content: `${t('trading.systemResetSuccess')}: ${data.trader_type}`,
         timestamp: new Date().toISOString()
       });
 
       // Refresh status
       await fetchStatus();
     } else if (data.error) {
-      alert('Reset failed: ' + data.error);
+      alert(`${t('trading.resetFailed')}: ${data.error}`);
     }
   } catch (e) {
     console.error('Error resetting system:', e);
-    alert('Failed to reset system');
+    alert(t('trading.resetFailedGeneric'));
   } finally {
     resettingSystem.value = false;
   }
@@ -1944,7 +2078,7 @@ let isComponentMounted = false;
 let reconnectTimeout = null;
 
 function connectWebSocket() {
-  if (!isComponentMounted) return;
+  if (!isComponentMounted || authExpired.value) return;
 
   const sessionId = 'trading-' + Date.now();
   const socketUrl = appendTokenToUrl(buildWsUrl(`/api/trading/ws/${sessionId}`));
@@ -1968,7 +2102,7 @@ function connectWebSocket() {
   ws.onclose = () => {
     console.log('Trading WebSocket disconnected');
     // Reconnect after delay only if component is still mounted
-    if (isComponentMounted) {
+    if (isComponentMounted && !authExpired.value) {
       reconnectTimeout = setTimeout(connectWebSocket, 3000);
     }
   };
@@ -1987,8 +2121,8 @@ function handleWebSocketMessage(msg) {
     case 'system_started':
       systemStatus.value.enabled = true;
       discussionMessages.value.push({
-        agentName: 'System',
-        content: 'Trading system started. Running initial analysis...',
+        agentName: t('trading.system'),
+        content: t('trading.systemStarted'),
         timestamp: new Date().toISOString()
       });
       break;
@@ -1997,8 +2131,8 @@ function handleWebSocketMessage(msg) {
       systemStatus.value.enabled = false;
       isAnalyzing.value = false;
       discussionMessages.value.push({
-        agentName: 'System',
-        content: 'Trading system stopped',
+        agentName: t('trading.system'),
+        content: t('trading.systemStopped'),
         timestamp: new Date().toISOString()
       });
       break;
@@ -2007,8 +2141,8 @@ function handleWebSocketMessage(msg) {
       isAnalyzing.value = true;
       discussionMessages.value = [];
       discussionMessages.value.push({
-        agentName: 'System',
-        content: 'Starting a new round of market analysis...',
+        agentName: t('trading.system'),
+        content: t('trading.analysisStartedRound'),
         timestamp: new Date().toISOString()
       });
       break;
@@ -2016,8 +2150,8 @@ function handleWebSocketMessage(msg) {
     case 'analysis_error':
       isAnalyzing.value = false;
       discussionMessages.value.push({
-        agentName: 'System',
-        content: `Analysis error: ${msg.error || 'Unknown error'}`,
+        agentName: t('trading.system'),
+        content: `${t('trading.analysisErrorLabel')}: ${msg.error || t('trading.unknownError')}`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -2043,7 +2177,7 @@ function handleWebSocketMessage(msg) {
 
       // Synthesize Leader Message content for Discussion Panel
       // We wrap the signal in valid JSON markdown so it renders as a Ticket
-      const signalReasoning = signal.reasoning || msg.reasoning || 'Market analysis complete.';
+      const signalReasoning = signal.reasoning || msg.reasoning || t('trading.marketAnalysisComplete');
 
       // Construct the display payload
       const displayPayload = {
@@ -2059,7 +2193,7 @@ function handleWebSocketMessage(msg) {
       const leaderContent = `${signalReasoning}\n\n\`\`\`json\n${JSON.stringify(displayPayload, null, 2)}\n\`\`\``;
 
       discussionMessages.value.push({
-         agentName: 'Leader',
+         agentName: t('trading.leader'),
          content: leaderContent,
          parsed: parseDiscussionContent(leaderContent),
          timestamp: new Date().toISOString()
@@ -2078,8 +2212,8 @@ function handleWebSocketMessage(msg) {
       }
 
       discussionMessages.value.push({
-        agentName: 'System',
-        content: `🔔 Signal generated: ${signal.direction?.toUpperCase()} ${signal.leverage}x - awaiting confirmation...`,
+        agentName: t('trading.system'),
+        content: `🔔 ${t('trading.signalGenerated')}: ${formatDirection(signal.direction)} ${signal.leverage}x - ${t('trading.awaitingConfirmation')}`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -2110,8 +2244,8 @@ function handleWebSocketMessage(msg) {
       fetchPendingTrades();
 
       discussionMessages.value.push({
-        agentName: 'System',
-        content: `🔔 ${msg.message || 'Semi-auto mode: please confirm or reject this trade'}`,
+        agentName: t('trading.system'),
+        content: `🔔 ${msg.message || t('trading.semiAutoConfirmReject')}`,
         timestamp: new Date().toISOString()
       });
 
@@ -2133,8 +2267,8 @@ function handleWebSocketMessage(msg) {
       fetchTradeHistory();
       fetchPendingTrades();
       discussionMessages.value.push({
-        agentName: 'System',
-        content: `✅ Trade confirmed and executed: ${msg.signal?.direction?.toUpperCase() || ''} ${msg.signal?.leverage || ''}x (confirmed by: ${msg.confirmed_by || 'user'})`,
+        agentName: t('trading.system'),
+        content: `✅ ${t('trading.tradeConfirmedExecuted')}: ${formatDirection(msg.signal?.direction)} ${msg.signal?.leverage || ''}x (${t('trading.confirmedBy')}: ${msg.confirmed_by || t('trading.user')})`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -2142,8 +2276,8 @@ function handleWebSocketMessage(msg) {
     case 'trade_confirm_failed':
       // Trade confirmation succeeded but execution failed
       discussionMessages.value.push({
-        agentName: 'System',
-        content: `❌ Execution failed after confirmation: ${msg.error || 'Unknown error'}`,
+        agentName: t('trading.system'),
+        content: `❌ ${t('trading.executionFailedAfterConfirm')}: ${msg.error || t('trading.unknownError')}`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -2154,8 +2288,8 @@ function handleWebSocketMessage(msg) {
       resetDecisionState();
       fetchPendingTrades();
       discussionMessages.value.push({
-        agentName: 'System',
-        content: `✕ Trade rejected${msg.reason ? ': ' + msg.reason : ''} (action by: ${msg.rejected_by || 'user'})`,
+        agentName: t('trading.system'),
+        content: `✕ ${t('trading.tradeRejected')}${msg.reason ? ': ' + msg.reason : ''} (${t('trading.actionBy')}: ${msg.rejected_by || t('trading.user')})`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -2166,10 +2300,10 @@ function handleWebSocketMessage(msg) {
       fetchAccount();
       fetchTradeHistory();
       discussionMessages.value.push({
-        agentName: 'System',
+        agentName: t('trading.system'),
         content: msg.success
-          ? `Trade executed successfully: ${msg.signal?.direction?.toUpperCase()} ${msg.signal?.leverage || 1}x`
-          : `Trade execution failed: ${msg.trade_result?.error || 'Unknown error'}`,
+          ? `${t('trading.tradeExecutedSuccessfully')}: ${formatDirection(msg.signal?.direction)} ${msg.signal?.leverage || 1}x`
+          : `${t('trading.tradeExecutionFailed')}: ${msg.trade_result?.error || t('trading.unknownError')}`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -2187,8 +2321,8 @@ function handleWebSocketMessage(msg) {
       fetchPosition();
       fetchTradeHistory();
       discussionMessages.value.push({
-        agentName: 'System',
-        content: `Position closed, PnL: $${msg.pnl?.toFixed(2) || '0.00'}`,
+        agentName: t('trading.system'),
+        content: `${t('trading.positionClosed')}, ${t('trading.pnl')}: $${msg.pnl?.toFixed(2) || '0.00'}`,
         timestamp: new Date().toISOString()
       });
       break;
@@ -2323,6 +2457,7 @@ let dataRefreshInterval = null;
 
 // Consolidated data refresh function
 async function refreshAllData() {
+  if (authExpired.value) return;
   await Promise.all([
     fetchStatus(),
     fetchAccount(),

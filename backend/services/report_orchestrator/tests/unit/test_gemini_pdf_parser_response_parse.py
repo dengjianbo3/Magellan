@@ -2,7 +2,7 @@ from app.parsers.gemini_pdf_parser import GeminiPDFParser
 
 
 def _parser():
-    return GeminiPDFParser(api_key="unit-test-key", model="gemini-3-flash-preview")
+    return GeminiPDFParser(api_key="unit-test-key", model="gemini-3.1-pro-preview")
 
 
 def test_parse_response_accepts_plain_json():

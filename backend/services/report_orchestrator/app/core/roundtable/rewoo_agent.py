@@ -16,6 +16,7 @@ import asyncio
 import json
 import re
 import logging
+import os
 from typing import List, Dict, Any
 from .agent import Agent
 import httpx
@@ -33,6 +34,11 @@ from ..config_timeouts import (
 
 # 配置日志
 logger = logging.getLogger(__name__)
+
+MAX_REWOO_QUERY_CHARS = int(os.getenv("REWOO_MAX_QUERY_CHARS", "12000"))
+MAX_REWOO_CONTEXT_MESSAGES = int(os.getenv("REWOO_MAX_CONTEXT_MESSAGES", "8"))
+MAX_REWOO_CONTEXT_MESSAGE_CHARS = int(os.getenv("REWOO_MAX_CONTEXT_MESSAGE_CHARS", "2000"))
+MAX_LLM_PAYLOAD_PREVIEW_CHARS = int(os.getenv("REWOO_MAX_LLM_PAYLOAD_PREVIEW_CHARS", "2000"))
 
 
 class ReWOOAgent(Agent):
@@ -85,17 +91,33 @@ class ReWOOAgent(Agent):
         for msg in new_messages:
             query_parts.append(f"[{msg.sender}]: {msg.content}")
 
-        query = "\n\n".join(query_parts)
+        raw_query = "\n\n".join(query_parts)
+        query = self._truncate_text(raw_query, MAX_REWOO_QUERY_CHARS)
+        query_was_truncated = len(query) < len(raw_query)
+        if query_was_truncated:
+            logger.warning(
+                "[%s] Query too long (%s chars), truncated to %s chars",
+                self.name,
+                len(raw_query),
+                len(query),
+            )
 
         # Build context from all conversation history
+        recent_history = self.message_history[-MAX_REWOO_CONTEXT_MESSAGES:]
+        compacted_history = [self._compact_message_dict(msg.to_dict()) for msg in recent_history]
         context = {
-            "conversation_history": [msg.to_dict() for msg in self.message_history[-10:]],
+            "conversation_history": compacted_history,
             "available_agents": list(self.message_bus.registered_agents) if self.message_bus else []
         }
 
         # 4. Run ReWOO analysis
         print(f"[{self.name}] Running ReWOO analysis...")
         try:
+            if query_was_truncated and self.event_bus:
+                await self.event_bus.publish_log(
+                    agent_name=self.name,
+                    log_text=f"[Prompt] 输入过长，已截断为 {len(query)} 字符以避免超时"
+                )
             result = await self.analyze_with_rewoo(query, context)
 
             # 5. Create response message
@@ -117,10 +139,23 @@ class ReWOOAgent(Agent):
                 return []
 
         except Exception as e:
-            print(f"[{self.name}] ReWOO analysis failed: {e}")
+            error_text = self._format_exception(e)
+            print(f"[{self.name}] ReWOO analysis failed: {error_text}")
+            logger.exception("[%s] ReWOO analysis failed", self.name)
+            if self.event_bus:
+                await self.event_bus.publish_error(
+                    agent_name=self.name,
+                    error_message=f"分析失败: {error_text}"
+                )
             import traceback
             traceback.print_exc()
-            return []
+            failure_msg = Message(
+                sender=self.name,
+                recipient="ALL",
+                content=f"分析失败: {error_text}"
+            )
+            self.message_history.append(failure_msg)
+            return [failure_msg]
 
     async def analyze_with_rewoo(
         self,
@@ -229,7 +264,14 @@ class ReWOOAgent(Agent):
             return plan
 
         except Exception as e:
-            print(f"[{self.name}] Planning failed: {e}")
+            error_text = self._format_exception(e)
+            print(f"[{self.name}] Planning failed: {error_text}")
+            logger.exception("[%s] Planning phase failed", self.name)
+            if self.event_bus:
+                await self.event_bus.publish_log(
+                    agent_name=self.name,
+                    log_text=f"[Plan] 规划失败: {error_text}"
+                )
             return []
 
     async def _execute_phase(
@@ -407,8 +449,15 @@ class ReWOOAgent(Agent):
             return result
 
         except Exception as e:
-            print(f"[{self.name}] Solving failed: {e}")
-            return f"分析失败: {str(e)}"
+            error_text = self._format_exception(e)
+            print(f"[{self.name}] Solving failed: {error_text}")
+            logger.exception("[%s] Solving phase failed", self.name)
+            if self.event_bus:
+                await self.event_bus.publish_error(
+                    agent_name=self.name,
+                    error_message=f"分析失败: {error_text}"
+                )
+            return f"分析失败: {error_text}"
 
     def _create_planning_prompt(self) -> str:
         """创建规划阶段的Prompt (强化JSON输出)"""
@@ -646,14 +695,20 @@ Please synthesize all the above information and generate a structured analysis r
                             "parts": [msg.get("content", "")]
                         })
 
-                    # Debug: Print what we're sending
-                    print(f"[ReWOO:{self.name}] Sending to LLM Gateway: {json.dumps({'history': history}, indent=2)}")
+                    payload = {"history": history}
+                    payload_json = json.dumps(payload, ensure_ascii=False)
+                    payload_preview = self._truncate_text(payload_json, MAX_LLM_PAYLOAD_PREVIEW_CHARS)
+                    logger.info(
+                        "[ReWOO:%s] Sending to LLM Gateway (history=%s, payload_chars=%s)",
+                        self.name,
+                        len(history),
+                        len(payload_json)
+                    )
+                    logger.debug("[ReWOO:%s] Payload preview: %s", self.name, payload_preview)
 
                     response = await client.post(
                         f"{self.llm_gateway_url}/chat",
-                        json={
-                            "history": history
-                        }
+                        json=payload
                     )
                     response.raise_for_status()
                     result = response.json()
@@ -668,14 +723,21 @@ Please synthesize all the above information and generate a structured analysis r
                     return content
 
             except httpx.TimeoutException as e:
-                last_error = e
-                logger.warning(f"[{self.name}] LLM timeout on attempt {attempt + 1}/{max_retries}")
+                timeout_message = f"LLM 请求超时（{HTTP_CLIENT_TIMEOUT}s）"
+                last_error = TimeoutError(timeout_message)
+                logger.warning(
+                    "[%s] LLM timeout on attempt %s/%s (%ss)",
+                    self.name,
+                    attempt + 1,
+                    max_retries,
+                    HTTP_CLIENT_TIMEOUT
+                )
                 if attempt < max_retries - 1:
                     await asyncio.sleep(2 ** attempt)  # 指数退避: 1s, 2s, 4s
                 continue
 
             except httpx.HTTPStatusError as e:
-                last_error = e
+                last_error = RuntimeError(self._format_exception(e))
                 try:
                     logger.error(f"[{self.name}] HTTP error response body: {e.response.text[:500]}")
                 except Exception:
@@ -695,15 +757,22 @@ Please synthesize all the above information and generate a structured analysis r
                     raise  # 客户端错误不重试
 
             except Exception as e:
-                last_error = e
-                logger.error(f"[{self.name}] LLM call failed on attempt {attempt + 1}/{max_retries}: {e}")
+                last_error = RuntimeError(self._format_exception(e))
+                logger.error(
+                    "[%s] LLM call failed on attempt %s/%s: %s",
+                    self.name,
+                    attempt + 1,
+                    max_retries,
+                    self._format_exception(e)
+                )
                 if attempt < max_retries - 1:
                     await asyncio.sleep(2)
                 continue
 
         # 所有重试都失败
         logger.error(f"[{self.name}] All {max_retries} LLM call attempts failed")
-        raise last_error if last_error else Exception("LLM call failed")
+        error_text = self._format_exception(last_error) if last_error else "未知错误"
+        raise RuntimeError(f"LLM 调用失败（重试{max_retries}次）: {error_text}") from last_error
 
     async def _fallback_direct_analysis(
         self,
@@ -728,3 +797,45 @@ Please synthesize all the above information and generate a structured analysis r
         ]
 
         return await self._call_llm(messages, temperature=self.temperature)
+
+    def _compact_message_dict(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Keep message structure but cap large content fields to protect prompt size."""
+        compact = dict(message)
+        content = compact.get("content", "")
+        if isinstance(content, str):
+            compact["content"] = self._truncate_text(content, MAX_REWOO_CONTEXT_MESSAGE_CHARS)
+        return compact
+
+    @staticmethod
+    def _truncate_text(text: str, limit: int) -> str:
+        if not isinstance(text, str):
+            text = str(text)
+        if len(text) <= limit:
+            return text
+        return f"{text[:limit]}\n...[TRUNCATED {len(text) - limit} chars]"
+
+    @staticmethod
+    def _format_exception(error: Exception) -> str:
+        """Generate readable, non-empty error text for UI/logging."""
+        if error is None:
+            return "未知错误"
+
+        if isinstance(error, httpx.TimeoutException):
+            return "LLM 请求超时"
+
+        if isinstance(error, httpx.HTTPStatusError):
+            status_code = getattr(error.response, "status_code", "unknown")
+            response_preview = ""
+            try:
+                response_preview = (error.response.text or "").strip()
+            except Exception:
+                response_preview = ""
+            if response_preview:
+                response_preview = response_preview[:240]
+                return f"LLM 网关 HTTP {status_code}: {response_preview}"
+            return f"LLM 网关 HTTP {status_code}"
+
+        message = str(error).strip()
+        if message:
+            return message
+        return error.__class__.__name__

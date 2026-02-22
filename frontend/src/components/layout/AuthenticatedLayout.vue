@@ -170,7 +170,7 @@ const pageTitles = {
   Dashboard: 'Dashboard',
   ReportsView: 'Reports',
   AnalysisWizard: 'Analysis',
-  Roundtable: 'Roundtable Discussion',
+  Roundtable: 'Brainstorm Session',
   AutoTrading: 'Auto Trading',
   Agents: 'AI Agents',
   Knowledge: 'Knowledge Base',
@@ -181,7 +181,7 @@ const pageSubtitles = {
   Dashboard: 'Overview and key operational metrics',
   ReportsView: 'Generated analyses and exported documents',
   AnalysisWizard: 'Configure and run scenario-based analysis',
-  Roundtable: 'Multi-agent expert discussion workspace',
+  Roundtable: 'Multi-agent expert brainstorming workspace',
   AutoTrading: 'Automated strategy monitoring and execution',
   Agents: 'AI agent capabilities and status',
   Knowledge: 'Uploaded documents and retrieval controls',
@@ -203,8 +203,19 @@ const currentTab = computed(() => {
   return routeToTab[route.name] || 'dashboard';
 });
 
-const currentPageTitle = computed(() => pageTitles[route.name] || 'Dashboard');
-const currentPageSubtitle = computed(() => pageSubtitles[route.name] || '');
+const currentPageTitle = computed(() => {
+  if (route.name === 'Roundtable') {
+    return t('roundtable.title') || pageTitles[route.name] || 'Dashboard';
+  }
+  return pageTitles[route.name] || 'Dashboard';
+});
+
+const currentPageSubtitle = computed(() => {
+  if (route.name === 'Roundtable') {
+    return t('roundtable.subtitle') || pageSubtitles[route.name] || '';
+  }
+  return pageSubtitles[route.name] || '';
+});
 
 const displayName = computed(() => authStore.userName || 'User');
 const displayRole = computed(() => {
