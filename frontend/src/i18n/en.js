@@ -94,7 +94,7 @@ export default {
 
   // Sidebar
   sidebar: {
-    dashboard: 'Dashboard',
+    chat: 'Expert Chat',
     reports: 'Reports',
     analysis: 'Analysis',
     roundtable: 'Roundtable',
@@ -105,6 +105,91 @@ export default {
     collapse: 'Collapse',
     startNewAnalysis: 'Start New Analysis',
     brandSubtitle: 'AI INVESTMENT'
+  },
+
+  // Expert Chat Hub
+  chatHub: {
+    title: 'Expert Chat Hub',
+    subtitle: 'Default to Leader chat, use @mentions to call specialists directly',
+    you: 'You',
+    sessionHistory: 'Session History',
+    newSession: 'New Session',
+    emptyHistory: 'No chat sessions yet',
+    sessionUntitled: 'Untitled Session',
+    sessionPreviewNone: 'No messages yet',
+    collapseHistory: 'Collapse history',
+    expandHistory: 'Expand history',
+    renameSession: 'Rename session',
+    deleteSession: 'Delete session',
+    renameSessionPrompt: 'Enter a new session name',
+    deleteSessionConfirm: 'Delete session "{title}"?',
+    collabConfig: 'Collaboration Settings',
+    connect: 'Connect',
+    connecting: 'Connecting...',
+    connected: 'Connected',
+    disconnected: 'Disconnected',
+    inputPlaceholder: 'Type your message. Use @market-analyst, @risk-assessor, @leader...',
+    attachImage: 'Upload image',
+    imageOnlyMessage: '[Image message]',
+    send: 'Send',
+    sending: 'Sending...',
+    participants: 'Participants',
+    quickMentions: 'Quick Mentions',
+    knowledge: {
+      title: 'Knowledge Retrieval',
+      enabled: 'Enable knowledge retrieval',
+      scope: 'Knowledge scope',
+      all: 'All Knowledge',
+      general: 'General Docs',
+      financial: 'Financial Docs',
+      market: 'Market Docs',
+      legal: 'Legal Docs'
+    },
+    emptyState: {
+      title: 'What can I help you with?',
+      subtitle: 'Ask directly, use @ to route to specialists, or upload images for multimodal discussion.'
+    },
+    showAllSessions: 'Show all sessions',
+    showLessSessions: 'Show fewer sessions',
+    starters: {
+      label: 'Quick Start',
+      prompt1: 'Give me a 72-hour market risk radar across macro, liquidity, and sentiment.',
+      prompt2: 'Evaluate this company from valuation, catalysts, and key risks.',
+      prompt3: 'Propose a conservative position sizing and hedging plan for current markets.',
+      prompt4: 'Draft a due diligence interview checklist prioritized by impact.',
+      prompt5: 'Create an executable investment action plan for this week.'
+    },
+    composer: {
+      specialists: 'Specialists',
+      suggestions: 'Suggestions',
+      hint: 'Enter to send, Shift + Enter for newline'
+    },
+    overview: {
+      activeSession: 'Active session',
+      totalSessions: 'Total sessions',
+      experts: 'Experts',
+      knowledge: 'Knowledge retrieval',
+      knowledgeOn: 'Enabled',
+      knowledgeOff: 'Disabled'
+    },
+    route: {
+      direct: 'Direct routing',
+      leader: 'Leader routing'
+    },
+    system: {
+      connected: 'Connected to expert chat',
+      disconnected: 'Disconnected from expert chat',
+      reconnecting: 'Reconnecting to expert chat...',
+      sessionPending: 'Initializing session...',
+      thinking: '{name} is thinking...',
+      tooManyImages: 'You can upload up to 3 images per message.',
+      invalidImageType: 'Only PNG/JPG/WEBP/GIF images are supported.',
+      imageTooLarge: 'Image is too large (max 4MB each).',
+      imageReadFailed: 'Failed to read image file.',
+      leaderDelegated: 'Leader delegated to specialists',
+      leaderDelegationDone: 'Leader received specialist outputs',
+      unsupported: 'Unsupported message type'
+    }
   },
 
   // Dashboard

@@ -114,7 +114,7 @@ export default {
 
   // Sidebar
   sidebar: {
-    dashboard: '仪表盘',
+    chat: '专家群聊',
     reports: '报告',
     analysis: '分析',
     roundtable: '圆桌讨论',
@@ -125,6 +125,91 @@ export default {
     collapse: '收起',
     startNewAnalysis: '开始新分析',
     brandSubtitle: 'AI 投资分析'
+  },
+
+  // Expert Chat Hub
+  chatHub: {
+    title: '专家群聊中枢',
+    subtitle: '默认由 Leader 对话，使用 @ 可直连专家',
+    you: '你',
+    sessionHistory: '历史会话',
+    newSession: '新建会话',
+    emptyHistory: '暂无历史会话',
+    sessionUntitled: '未命名会话',
+    sessionPreviewNone: '暂无消息',
+    collapseHistory: '收起历史会话',
+    expandHistory: '展开历史会话',
+    renameSession: '重命名会话',
+    deleteSession: '删除会话',
+    renameSessionPrompt: '请输入新的会话名称',
+    deleteSessionConfirm: '确认删除会话「{title}」吗？',
+    collabConfig: '协作配置',
+    connect: '连接',
+    connecting: '连接中...',
+    connected: '已连接',
+    disconnected: '未连接',
+    inputPlaceholder: '输入消息，支持 @market-analyst、@risk-assessor、@leader ...',
+    attachImage: '上传图片',
+    imageOnlyMessage: '[图片消息]',
+    send: '发送',
+    sending: '发送中...',
+    participants: '参与专家',
+    quickMentions: '快速 @',
+    knowledge: {
+      title: '知识检索',
+      enabled: '启用知识检索',
+      scope: '检索范围',
+      all: '全部知识',
+      general: '通用资料',
+      financial: '财务资料',
+      market: '市场资料',
+      legal: '法律资料'
+    },
+    emptyState: {
+      title: '需要我为你做些什么？',
+      subtitle: '直接提问，或使用 @ 指定专家。你也可以上传图片进行多模态讨论。'
+    },
+    showAllSessions: '查看全部会话',
+    showLessSessions: '收起会话列表',
+    starters: {
+      label: '快速开始',
+      prompt1: '给我一份未来72小时的市场风险雷达（宏观、流动性、情绪）。',
+      prompt2: '请从估值、催化剂、风险三方面快速评估这家公司。',
+      prompt3: '基于当前市场，给我一个稳健型仓位与对冲建议。',
+      prompt4: '帮我做一个尽调访谈问题清单，按优先级排序。',
+      prompt5: '请给出一版可执行的本周投资行动计划。'
+    },
+    composer: {
+      specialists: '专家',
+      suggestions: '建议',
+      hint: '回车发送，Shift + 回车换行'
+    },
+    overview: {
+      activeSession: '当前会话',
+      totalSessions: '会话总数',
+      experts: '在线专家',
+      knowledge: '知识检索',
+      knowledgeOn: '已开启',
+      knowledgeOff: '已关闭'
+    },
+    route: {
+      direct: '直连专家',
+      leader: 'Leader 路由'
+    },
+    system: {
+      connected: '已连接专家群聊',
+      disconnected: '已断开专家群聊',
+      reconnecting: '正在重连专家群聊...',
+      sessionPending: '会话初始化中...',
+      thinking: '{name} 正在思考...',
+      tooManyImages: '每条消息最多上传 3 张图片。',
+      invalidImageType: '仅支持 PNG/JPG/WEBP/GIF 图片。',
+      imageTooLarge: '图片过大（单张最大 4MB）。',
+      imageReadFailed: '读取图片失败。',
+      leaderDelegated: 'Leader 已委派专家协作',
+      leaderDelegationDone: 'Leader 已收到专家输出',
+      unsupported: '不支持的消息类型'
+    }
   },
 
   // Dashboard

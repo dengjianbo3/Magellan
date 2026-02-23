@@ -13,7 +13,6 @@ api_router = APIRouter()
 # 导入并注册子路由
 from .health import router as health_router
 from .reports import router as reports_router
-from .dashboard import router as dashboard_router
 from .knowledge import router as knowledge_router
 from .roundtable import router as roundtable_router
 from .files import router as files_router
@@ -24,7 +23,6 @@ from .dd_workflow import router as dd_workflow_router, set_session_funcs
 # 注册路由
 api_router.include_router(health_router)
 api_router.include_router(reports_router, prefix="/api/reports", tags=["Reports"])
-api_router.include_router(dashboard_router, prefix="/api/dashboard", tags=["Dashboard"])
 api_router.include_router(knowledge_router, prefix="/api/knowledge", tags=["Knowledge Base"])
 api_router.include_router(roundtable_router, prefix="/api/roundtable", tags=["Roundtable"])
 api_router.include_router(files_router, prefix="/api", tags=["File Upload"])
@@ -36,7 +34,6 @@ __all__ = [
     "api_router",
     "health_router",
     "reports_router",
-    "dashboard_router",
     "knowledge_router",
     "roundtable_router",
     "files_router",

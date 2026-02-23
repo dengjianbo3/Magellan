@@ -12,7 +12,6 @@
       <AppSidebar
         :active-tab="currentTab"
         @navigate="handleNavigate"
-        @start-analysis="handleStartAnalysis"
       />
     </div>
 
@@ -35,7 +34,6 @@
           <AppSidebar
             :active-tab="currentTab"
             @navigate="handleNavigate"
-            @start-analysis="handleStartAnalysis"
           />
         </div>
       </div>
@@ -140,8 +138,11 @@
       </header>
 
       <!-- Content Area -->
-      <div class="flex-1 overflow-auto px-4 pb-8 pt-5 scroll-smooth md:px-8 md:pb-10 md:pt-6">
-        <div class="mx-auto w-full max-w-[1520px]">
+      <div
+        class="flex-1 overflow-auto scroll-smooth"
+        :class="isChatHubPage ? 'px-4 pb-2 pt-4 md:px-8 md:pb-3 md:pt-4' : 'px-4 pb-8 pt-5 md:px-8 md:pb-10 md:pt-6'"
+      >
+        <div class="mx-auto w-full max-w-[1520px]" :class="isChatHubPage ? 'h-full' : ''">
           <router-view />
         </div>
       </div>
@@ -167,7 +168,7 @@ const userMenuRef = ref(null);
 
 // Page titles mapping
 const pageTitles = {
-  Dashboard: 'Dashboard',
+  ChatHub: 'Expert Chat Hub',
   ReportsView: 'Reports',
   AnalysisWizard: 'Analysis',
   Roundtable: 'Roundtable Discussion',
@@ -178,7 +179,7 @@ const pageTitles = {
 };
 
 const pageSubtitles = {
-  Dashboard: 'Overview and key operational metrics',
+  ChatHub: 'Talk with the leader agent and specialists in one workspace',
   ReportsView: 'Generated analyses and exported documents',
   AnalysisWizard: 'Configure and run scenario-based analysis',
   Roundtable: 'Multi-agent expert discussion workspace',
@@ -191,7 +192,7 @@ const pageSubtitles = {
 // Computed properties
 const currentTab = computed(() => {
   const routeToTab = {
-    Dashboard: 'dashboard',
+    ChatHub: 'chat',
     ReportsView: 'reports',
     AnalysisWizard: 'analysis',
     Roundtable: 'roundtable',
@@ -200,11 +201,24 @@ const currentTab = computed(() => {
     Knowledge: 'knowledge',
     Settings: 'settings'
   };
-  return routeToTab[route.name] || 'dashboard';
+  return routeToTab[route.name] || 'chat';
 });
 
-const currentPageTitle = computed(() => pageTitles[route.name] || 'Dashboard');
-const currentPageSubtitle = computed(() => pageSubtitles[route.name] || '');
+const currentPageTitle = computed(() => {
+  if (route.name === 'ChatHub') {
+    return t('chatHub.title') || 'Expert Chat Hub';
+  }
+  return pageTitles[route.name] || 'Expert Chat Hub';
+});
+
+const currentPageSubtitle = computed(() => {
+  if (route.name === 'ChatHub') {
+    return t('chatHub.subtitle') || '';
+  }
+  return pageSubtitles[route.name] || '';
+});
+
+const isChatHubPage = computed(() => route.name === 'ChatHub');
 
 const displayName = computed(() => authStore.userName || 'User');
 const displayRole = computed(() => {
@@ -246,7 +260,7 @@ const handleClickOutside = (event) => {
 const handleNavigate = (tabId) => {
   mobileSidebarOpen.value = false;
   const tabToRoute = {
-    dashboard: 'Dashboard',
+    chat: 'ChatHub',
     reports: 'ReportsView',
     analysis: 'AnalysisWizard',
     roundtable: 'Roundtable',
@@ -255,12 +269,7 @@ const handleNavigate = (tabId) => {
     knowledge: 'Knowledge',
     settings: 'Settings'
   };
-  router.push({ name: tabToRoute[tabId] || 'Dashboard' });
-};
-
-const handleStartAnalysis = () => {
-  mobileSidebarOpen.value = false;
-  router.push({ name: 'AnalysisWizard' });
+  router.push({ name: tabToRoute[tabId] || 'ChatHub' });
 };
 
 const goToSettings = () => {
