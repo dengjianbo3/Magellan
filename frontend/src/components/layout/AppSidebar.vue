@@ -77,20 +77,6 @@
 
     <!-- Bottom Actions -->
     <div class="relative mt-auto flex flex-col gap-3 border-t border-white/10 pt-4">
-      <!-- Start New Analysis Button -->
-      <button
-        :class="[
-          'group relative flex h-10 items-center justify-center overflow-hidden rounded-xl text-sm font-bold leading-normal text-white transition-all duration-300',
-          'bg-gradient-to-r from-primary to-primary-dark shadow-glow-sm hover:from-primary-dark hover:to-primary hover:shadow-glow',
-          collapsed ? 'w-10 mx-auto px-0' : 'w-full px-4'
-        ]"
-        @click="emit('start-analysis')"
-      >
-        <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 skew-y-12"></div>
-        <span v-show="!collapsed" class="relative z-10 truncate tracking-wide">{{ t('sidebar.startNewAnalysis') }}</span>
-        <span v-show="collapsed" class="relative z-10 material-symbols-outlined text-lg">add</span>
-      </button>
-
       <!-- Collapse Toggle -->
       <button
         @click="toggleCollapse"
@@ -119,17 +105,17 @@ const { t } = useLanguage();
 defineProps({
   activeTab: {
     type: String,
-    default: 'dashboard'
+    default: 'chat'
   }
 });
 
-const emit = defineEmits(['navigate', 'start-analysis']);
+const emit = defineEmits(['navigate']);
 
 const collapsed = ref(false);
 
 // 使用 computed 让 navItems 响应语言变化
 const navItems = computed(() => [
-  { id: 'dashboard', icon: 'dashboard', label: t('sidebar.dashboard') },
+  { id: 'chat', icon: 'chat', label: t('sidebar.chat') },
   { id: 'reports', icon: 'article', label: t('sidebar.reports') },
   { id: 'analysis', icon: 'analytics', label: t('sidebar.analysis') },
   { id: 'roundtable', icon: 'group', label: t('sidebar.roundtable') },

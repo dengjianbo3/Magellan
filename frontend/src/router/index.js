@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth';
 import AuthenticatedLayout from '@/components/layout/AuthenticatedLayout.vue';
 
 // Import views
-import DashboardView from '@/views/DashboardView.vue';
+import ChatHubView from '@/views/ChatHubView.vue';
 import AnalysisWizardView from '@/views/AnalysisWizardView.vue';
 import ReportsView from '@/views/ReportsView.vue';
 import RoundtableView from '@/views/RoundtableView.vue';
@@ -39,8 +39,8 @@ const routes = [
     children: [
       {
         path: '',
-        name: 'Dashboard',
-        component: DashboardView
+        name: 'ChatHub',
+        component: ChatHubView
       },
       {
         path: 'analysis',
@@ -122,7 +122,7 @@ router.beforeEach(async (to, from, next) => {
 
   // If route is for guests only and user is authenticated
   if (guestOnly && isAuthenticated) {
-    return next({ name: 'Dashboard' });
+    return next({ name: 'ChatHub' });
   }
 
   next();

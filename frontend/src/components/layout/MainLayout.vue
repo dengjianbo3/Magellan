@@ -65,7 +65,7 @@ import AppSidebar from './AppSidebar.vue';
 const props = defineProps({
   activeTab: {
     type: String,
-    default: 'dashboard'
+    default: 'chat'
   },
   userName: {
     type: String,
@@ -80,7 +80,7 @@ const props = defineProps({
 const emit = defineEmits(['navigate', 'start-analysis']);
 
 const pageTitles = {
-  dashboard: 'Dashboard',
+  chat: 'Expert Chat Hub',
   reports: 'Reports',
   analysis: 'Analysis',
   roundtable: 'Brainstorm Session',
@@ -89,7 +89,7 @@ const pageTitles = {
   settings: 'Settings'
 };
 
-const currentPageTitle = computed(() => pageTitles[props.activeTab] || 'Dashboard');
+const currentPageTitle = computed(() => pageTitles[props.activeTab] || 'Expert Chat Hub');
 
 const userInitials = computed(() => {
   return props.userName
