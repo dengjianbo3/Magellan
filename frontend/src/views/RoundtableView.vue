@@ -1,12 +1,5 @@
 <template>
-  <div class="page-shell h-full flex flex-col">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title page-title-gradient">{{ t('roundtable.title') }}</h1>
-        <p class="page-subtitle">{{ t('roundtable.subtitle') }}</p>
-      </div>
-    </div>
-
+  <div class="page-shell h-[calc(100vh-12rem)] min-h-0 overflow-hidden flex flex-col md:h-[calc(100vh-13rem)]">
     <!-- Start Discussion Panel -->
     <div v-if="!isDiscussionActive" class="section-card md:p-10 lg:p-12 flex-1 flex justify-center overflow-y-auto">
       <div class="max-w-2xl w-full">
@@ -395,8 +388,12 @@
                     {{ getMessageTypeLabel(message.message_type) }}
                   </span>
                 </div>
-                <div class="glass-card p-5 rounded-2xl rounded-tl-none border border-white/10 bg-white/5 text-text-primary leading-relaxed shadow-md relative">
-                  <div class="prose prose-invert prose-sm max-w-none" v-html="formatMeetingMinutes(message.content)"></div>
+                <div class="glass-card p-5 rounded-2xl rounded-tl-none border border-white/10 bg-white/5 text-text-primary leading-relaxed shadow-md relative overflow-hidden">
+                  <div
+                    class="meeting-markdown max-w-none break-words"
+                    :class="{ 'report-mode': isReportLike(message.content) }"
+                    v-html="formatMeetingMinutes(message.content)"
+                  ></div>
 
                   <!-- Decorative corner -->
                   <div class="absolute -top-[1px] -left-[1px] w-4 h-4 border-t border-l border-white/20 rounded-tl-none pointer-events-none"></div>
@@ -475,9 +472,11 @@
                         Export
                     </button>
                     </div>
-                    <div class="prose prose-invert prose-sm max-w-none">
-                        <div v-html="formatMeetingMinutes(message.content)"></div>
-                    </div>
+                    <div
+                      class="meeting-markdown max-w-none break-words"
+                      :class="{ 'report-mode': isReportLike(message.content) }"
+                      v-html="formatMeetingMinutes(message.content)"
+                    ></div>
                 </div>
               </div>
             </div>
@@ -602,6 +601,8 @@ let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 let shouldReconnect = true; // Flag to control reconnection
 let discussionConfig = null; // Store config for reconnection
+const markdownRenderCache = new Map();
+const reportDetectCache = new Map();
 
 // Human-in-the-Loop (HITL) state
 const sessionId = ref(''); // Session ID for HITL API calls
@@ -1279,25 +1280,220 @@ ${content}
   URL.revokeObjectURL(url);
 };
 
-const formatMeetingMinutes = (content) => {
-  // Convert markdown to HTML using marked library
-  try {
-    // Configure marked for safer rendering
-    marked.setOptions({
-      breaks: true,      // Convert \n to <br>
-      gfm: true,         // GitHub Flavored Markdown
-      headerIds: false,  // Don't add IDs to headers
-      mangle: false      // Don't escape email addresses
+function looksLikeTabularLine(line) {
+  return String(line || '').includes('\t');
+}
+
+function markdownEscapeTableCell(value) {
+  return String(value || '').replaceAll('|', '\\|').trim();
+}
+
+function convertTabSeparatedBlocksToMarkdown(text) {
+  const lines = String(text || '').split('\n');
+  const out = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    if (!looksLikeTabularLine(lines[index])) {
+      out.push(lines[index]);
+      index += 1;
+      continue;
+    }
+
+    const block = [];
+    while (index < lines.length && looksLikeTabularLine(lines[index])) {
+      block.push(lines[index]);
+      index += 1;
+    }
+
+    const rows = block
+      .map((line) => line.split(/\t+/).map((cell) => markdownEscapeTableCell(cell)))
+      .filter((cells) => cells.length >= 2 && cells.some((cell) => cell.length > 0));
+
+    if (rows.length < 2) {
+      out.push(...block);
+      continue;
+    }
+
+    const width = rows.reduce((max, row) => Math.max(max, row.length), 2);
+    const normalized = rows.map((row) => {
+      const next = row.slice(0, width);
+      while (next.length < width) next.push('');
+      return next;
     });
 
-    // First, extract and collapse tool results
-    let processedContent = collapseToolResults(content);
+    const header = normalized[0];
+    const divider = Array.from({ length: width }, () => '---');
+    out.push(`| ${header.join(' | ')} |`);
+    out.push(`| ${divider.join(' | ')} |`);
+    normalized.slice(1).forEach((row) => {
+      out.push(`| ${row.join(' | ')} |`);
+    });
+  }
 
-    return marked.parse(processedContent);
+  return out.join('\n');
+}
+
+function convertNumberedSectionsToHeadings(text) {
+  return String(text || '').replace(/(^|\n)(\d+)\.\s+([^\n#].+)/g, (_, lead, idx, title) => `${lead}## ${idx}. ${title.trim()}`);
+}
+
+function normalizeIndentedListLines(text) {
+  const lines = String(text || '').split('\n');
+  let inFence = false;
+
+  return lines
+    .map((line) => {
+      const trimmed = line.trim();
+      if (/^```/.test(trimmed)) {
+        inFence = !inFence;
+        return line;
+      }
+      if (inFence) return line;
+
+      let match = line.match(/^\s{2,}([*-])\s+(.+)$/);
+      if (match) return `${match[1]} ${match[2].trim()}`;
+
+      match = line.match(/^\s{2,}(\d+\.)\s+(.+)$/);
+      if (match) return `${match[1]} ${match[2].trim()}`;
+
+      match = line.match(/^\s{2,}[•·]\s+(.+)$/);
+      if (match) return `- ${match[1].trim()}`;
+
+      return line;
+    })
+    .join('\n');
+}
+
+function stripStandaloneHorizontalRules(text) {
+  const lines = String(text || '').split('\n');
+  const output = [];
+  let inFence = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^```/.test(trimmed)) {
+      inFence = !inFence;
+      output.push(line);
+      continue;
+    }
+
+    if (!inFence && /^[-*_]{3,}$/.test(trimmed)) {
+      if (output.length && output[output.length - 1].trim() !== '') {
+        output.push('');
+      }
+      continue;
+    }
+
+    output.push(line);
+  }
+
+  return output.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function convertRiskLinesToCallout(text) {
+  const lines = String(text || '').split('\n');
+  return lines
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return line;
+      if (/^⚠️/.test(trimmed)) return `> ${trimmed}`;
+      if (/^(风险提示|Risk Warning)\s*[:：]?\s*$/i.test(trimmed)) return `> **${trimmed}**`;
+      return line;
+    })
+    .join('\n');
+}
+
+function convertKeyValueLinesToList(text) {
+  const lines = String(text || '').split('\n');
+  const converted = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      converted.push(line);
+      continue;
+    }
+
+    if (/^(\s*[-*]|\s*\d+\.)\s+/.test(trimmed) || /^#{1,6}\s+/.test(trimmed) || /^\|/.test(trimmed) || /^>/.test(trimmed)) {
+      converted.push(line);
+      continue;
+    }
+
+    const kvMatch = trimmed.match(/^([A-Za-z0-9\u4e00-\u9fa5()/_\-\s]{2,28})[:：]\s*(.+)$/);
+    if (!kvMatch) {
+      converted.push(line);
+      continue;
+    }
+
+    const key = kvMatch[1].trim();
+    const value = kvMatch[2].trim();
+    if (!value) {
+      converted.push(line);
+      continue;
+    }
+    converted.push(`- **${key}**: ${value}`);
+  }
+
+  return converted.join('\n');
+}
+
+function preprocessReportMarkdown(content) {
+  let text = String(content || '').replace(/\r\n/g, '\n');
+  text = convertTabSeparatedBlocksToMarkdown(text);
+  text = normalizeIndentedListLines(text);
+  text = stripStandaloneHorizontalRules(text);
+  text = convertNumberedSectionsToHeadings(text);
+  text = convertRiskLinesToCallout(text);
+  text = convertKeyValueLinesToList(text);
+  return text;
+}
+
+const isReportLike = (content) => {
+  const text = String(content || '');
+  if (!text) return false;
+  const cached = reportDetectCache.get(text);
+  if (typeof cached === 'boolean') return cached;
+
+  let score = 0;
+  if (/(^|\n)\d+\.\s+.+/m.test(text)) score += 2;
+  if ((text.match(/[:：]/g) || []).length >= 8) score += 1;
+  if (/\t/.test(text)) score += 1;
+  if (/(交易建议|关键价位|综合信号|置信度|风险提示|评分|预判|建议|Trend|Risk|Signal)/i.test(text)) score += 1;
+
+  const result = score >= 3;
+  reportDetectCache.set(text, result);
+  if (reportDetectCache.size > 300) reportDetectCache.clear();
+  return result;
+};
+
+const formatMeetingMinutes = (content) => {
+  try {
+    marked.setOptions({
+      breaks: true,
+      gfm: true,
+      headerIds: false,
+      mangle: false
+    });
+
+    const raw = String(content || '');
+    const cacheKey = raw;
+    const cached = markdownRenderCache.get(cacheKey);
+    if (cached) return cached;
+
+    // Keep tool output folding, then apply report-friendly markdown formatting.
+    let processedContent = collapseToolResults(raw);
+    if (isReportLike(raw)) {
+      processedContent = preprocessReportMarkdown(processedContent);
+    }
+
+    const html = marked.parse(processedContent);
+    markdownRenderCache.set(cacheKey, html);
+    if (markdownRenderCache.size > 300) markdownRenderCache.clear();
+    return html;
   } catch (error) {
     console.error('Markdown parsing error:', error);
-    // Fallback to simple formatting
-    return content
+    return String(content || '')
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\n/g, '<br/>');
   }
@@ -1566,3 +1762,117 @@ onUnmounted(() => {
   }
 });
 </script>
+<style scoped>
+.meeting-markdown {
+  font-size: 0.925rem;
+  line-height: 1.75;
+  color: rgba(235, 240, 255, 0.94);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.meeting-markdown :deep(h1),
+.meeting-markdown :deep(h2),
+.meeting-markdown :deep(h3) {
+  margin-top: 0.9rem;
+  margin-bottom: 0.45rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #f8fbff;
+}
+
+.meeting-markdown.report-mode :deep(h2) {
+  border-left: 3px solid rgba(94, 163, 255, 0.72);
+  padding-left: 0.55rem;
+}
+
+.meeting-markdown :deep(p) {
+  margin: 0.45rem 0;
+}
+
+.meeting-markdown :deep(ul),
+.meeting-markdown :deep(ol) {
+  margin: 0.45rem 0 0.6rem;
+  padding-left: 1.1rem;
+}
+
+.meeting-markdown :deep(li) {
+  margin: 0.22rem 0;
+}
+
+.meeting-markdown :deep(strong) {
+  color: #ffffff;
+}
+
+.meeting-markdown :deep(blockquote) {
+  margin: 0.65rem 0;
+  border-left: 3px solid rgba(255, 195, 75, 0.72);
+  background: rgba(255, 195, 75, 0.1);
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.7rem;
+  color: rgba(255, 233, 186, 0.95);
+}
+
+.meeting-markdown :deep(hr) {
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  margin: 0.8rem 0;
+}
+
+.meeting-markdown :deep(pre) {
+  margin: 0.6rem 0;
+  border-radius: 0.75rem;
+  background: rgba(0, 0, 0, 0.34);
+  padding: 0.7rem 0.8rem;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.meeting-markdown :deep(code) {
+  border-radius: 0.35rem;
+  background: rgba(0, 0, 0, 0.28);
+  padding: 0.1rem 0.35rem;
+  font-size: 0.84em;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.meeting-markdown :deep(table) {
+  width: 100%;
+  margin: 0.65rem 0;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.meeting-markdown :deep(th),
+.meeting-markdown :deep(td) {
+  padding: 0.42rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.meeting-markdown :deep(thead th) {
+  background: rgba(94, 163, 255, 0.18);
+  color: #f6faff;
+  font-weight: 600;
+}
+
+.meeting-markdown :deep(tr:last-child td) {
+  border-bottom: 0;
+}
+
+.meeting-markdown :deep(a) {
+  word-break: break-all;
+}
+
+.meeting-markdown :deep(img) {
+  max-width: 100%;
+  height: auto;
+}
+</style>
