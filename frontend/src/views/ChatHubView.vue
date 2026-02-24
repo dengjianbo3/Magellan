@@ -174,7 +174,8 @@
 
                 <div
                   v-if="msg.role === 'assistant'"
-                  class="prose prose-invert prose-sm max-w-none break-words [&_code]:break-all [&_pre]:overflow-x-auto"
+                  class="analysis-markdown max-w-none break-words"
+                  :class="{ 'report-mode': isReportLike(msg.content) }"
                   v-html="renderMarkdown(msg.content)"
                 ></div>
                 <p v-else class="whitespace-pre-wrap break-words text-sm leading-relaxed">
@@ -205,10 +206,57 @@
             </div>
           </template>
 
+          <div v-if="turnInFlight" class="mx-auto w-full max-w-2xl rounded-2xl bg-white/8 px-4 py-3 backdrop-blur-sm">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-2 text-sm text-primary-light">
+                <span class="material-symbols-outlined animate-spin text-base">progress_activity</span>
+                <span class="font-semibold">{{ waitStageLabel }}</span>
+              </div>
+              <div class="rounded-full bg-black/25 px-2.5 py-1 text-xs text-text-secondary">
+                {{ waitElapsedLabel }}
+              </div>
+            </div>
+            <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <p class="text-text-secondary">{{ waitMilestoneSummary }}</p>
+              <p class="text-primary/90">{{ waitRemainingLabel }}</p>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-1.5">
+              <span
+                v-for="item in waitMilestones"
+                :key="item.key"
+                class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]"
+                :class="item.status === 'done'
+                  ? 'bg-emerald-500/18 text-emerald-200'
+                  : item.status === 'active'
+                    ? 'bg-primary/22 text-primary-light'
+                    : 'bg-white/8 text-text-secondary'"
+              >
+                <span class="h-1.5 w-1.5 rounded-full" :class="item.status === 'pending' ? 'bg-white/30' : 'bg-current'"></span>
+                {{ item.label }}
+              </span>
+            </div>
+            <p class="mt-2 text-xs text-text-secondary">{{ activeWaitHint }}</p>
+            <p v-if="currentThinkingAgentName" class="mt-1 text-xs text-primary/90">
+              {{ languageTag().startsWith('zh') ? `当前：${currentThinkingAgentName}` : `Current: ${currentThinkingAgentName}` }}
+            </p>
+            <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div class="h-full w-1/3 animate-pulse rounded-full bg-primary/55"></div>
+            </div>
+          </div>
+
           <div v-for="agent in thinkingAgentNames" :key="agent.id" class="flex justify-start">
-            <div class="rounded-2xl bg-primary/12 px-4 py-2 text-sm text-primary flex items-center gap-2">
-              <span class="material-symbols-outlined animate-spin text-base">progress_activity</span>
-              {{ t('chatHub.system.thinking', { name: agent.name }) }}
+            <div class="w-full max-w-[88%] rounded-3xl bg-white/8 px-4 py-3">
+              <div class="flex items-center gap-2 text-sm text-primary-light">
+                <span class="material-symbols-outlined animate-spin text-base">progress_activity</span>
+                <span class="font-semibold">{{ agent.name }}</span>
+              </div>
+              <p class="mt-1 text-xs text-text-secondary">
+                {{ languageTag().startsWith('zh') ? '正在调用工具、检索信息并组织回答…' : 'Calling tools, retrieving evidence, and composing response…' }}
+              </p>
+              <div class="mt-2 space-y-1.5">
+                <div class="h-2 w-11/12 rounded-full bg-white/10"></div>
+                <div class="h-2 w-8/12 rounded-full bg-white/10"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -258,19 +306,6 @@
                 <span class="material-symbols-outlined text-sm">library_books</span>
                 {{ knowledgeChipLabel }}
                 <span class="material-symbols-outlined text-sm">close</span>
-              </button>
-            </div>
-
-            <div v-if="!inputMessage.trim() && selectedAttachments.length === 0" class="mb-2 flex flex-wrap items-center gap-2">
-              <span class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">{{ t('chatHub.composer.suggestions') }}</span>
-              <button
-                v-for="prompt in composerStarterPrompts"
-                :key="`composer_${prompt}`"
-                type="button"
-                class="rounded-full bg-white/8 px-3 py-1 text-xs text-text-secondary transition-colors hover:bg-white/15 hover:text-text-primary"
-                @click="applyStarterPrompt(prompt)"
-              >
-                {{ prompt }}
               </button>
             </div>
 
@@ -409,7 +444,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { marked } from 'marked';
 import { useI18n } from '@/i18n';
 import { wsUrl } from '@/config/api';
-import { appendTokenToUrl } from '@/services/authHeaders';
+import { appendTokenToUrl, getAccessToken } from '@/services/authHeaders';
+import { useAuthStore } from '@/stores/auth';
 
 marked.setOptions({
   gfm: true,
@@ -418,11 +454,14 @@ marked.setOptions({
 });
 
 const { t, locale } = useI18n();
+const authStore = useAuthStore();
 
 const SESSION_STORAGE_KEY = 'magellan_expert_chat_sessions_v1';
 const LAST_SESSION_KEY = 'magellan_expert_chat_last_session_v1';
 const HISTORY_COLLAPSE_KEY = 'magellan_expert_chat_history_collapsed_v1';
+const WAIT_METRICS_KEY = 'magellan_expert_chat_wait_metrics_v1';
 const MAX_SESSION_MESSAGES = 120;
+const WAIT_METRICS_SAMPLE_SIZE = 12;
 
 const sessions = ref([]);
 const activeSessionId = ref('');
@@ -459,6 +498,30 @@ let reconnectTimer = null;
 let reconnectAttempts = 0;
 let isUnmounted = false;
 let suppressReconnectOnce = false;
+let authRefreshInFlight = false;
+let waitTicker = null;
+let waitHintTicker = null;
+let finishTurnTimer = null;
+
+const turnInFlight = ref(false);
+const turnStartedAt = ref(0);
+const waitElapsedSec = ref(0);
+const waitHintIndex = ref(0);
+const turnStage = ref('idle');
+const delegationActive = ref(false);
+const delegationEverStarted = ref(false);
+const turnGotAssistantMessage = ref(false);
+const turnCurrentThinkingAgentId = ref('');
+const turnRoutingMode = ref('');
+const waitDurationStats = ref({ direct: [], delegated: [] });
+const markdownRenderCache = new Map();
+const reportDetectCache = new Map();
+
+function sessionExpiredMessage() {
+  return String(locale.value || '').startsWith('zh')
+    ? '登录已过期，请重新登录。'
+    : 'Session expired. Please log in again.';
+}
 
 const knowledgeOptions = computed(() => [
   { value: 'all', label: t('chatHub.knowledge.all') },
@@ -490,6 +553,104 @@ const thinkingAgentNames = computed(() => {
   return thinkingAgentIds.value
     .map((id) => agents.value.find((agent) => agent.id === id))
     .filter(Boolean);
+});
+
+const currentThinkingAgentName = computed(() => {
+  if (!turnCurrentThinkingAgentId.value) return '';
+  const target = agents.value.find((agent) => agent.id === turnCurrentThinkingAgentId.value);
+  return target?.name || turnCurrentThinkingAgentId.value;
+});
+
+const waitHints = computed(() => {
+  const zh = languageTag().startsWith('zh');
+  if (zh) {
+    return [
+      '正在并行检索工具结果与外部信息',
+      '正在交叉验证关键信号与风险点',
+      '正在整理可执行结论与下一步建议',
+    ];
+  }
+  return [
+    'Running parallel tool retrieval and source checks',
+    'Cross-validating key signals and risk factors',
+    'Composing actionable conclusions and next steps',
+  ];
+});
+
+const activeWaitHint = computed(() => {
+  const hints = waitHints.value;
+  if (!hints.length) return '';
+  return hints[waitHintIndex.value % hints.length];
+});
+
+const waitStageLabel = computed(() => {
+  const zh = languageTag().startsWith('zh');
+  if (!turnInFlight.value) return '';
+  if (turnStage.value === 'routing') return zh ? 'Leader 正在拆解问题' : 'Leader is routing the request';
+  if (turnStage.value === 'delegating') return zh ? '正在委派专家并行分析' : 'Delegating specialists in parallel';
+  if (turnStage.value === 'collecting') return zh ? '专家意见回收中' : 'Collecting specialist outputs';
+  if (turnStage.value === 'summarizing') return zh ? '正在汇总形成最终答复' : 'Producing final synthesis';
+  if (turnStage.value === 'responding') return zh ? '专家正在输出答复' : 'Agent is producing a response';
+  return zh ? '正在分析中' : 'Analyzing';
+});
+
+const waitElapsedLabel = computed(() => {
+  const sec = Math.max(0, Number(waitElapsedSec.value || 0));
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}m ${s}s`;
+});
+
+const waitStagePlan = computed(() => {
+  const useDelegationFlow = isDelegationFlow();
+  if (useDelegationFlow) return ['routing', 'delegating', 'collecting', 'summarizing', 'responding'];
+  return ['routing', 'responding'];
+});
+
+const waitMilestones = computed(() => {
+  const zh = languageTag().startsWith('zh');
+  const labels = {
+    routing: zh ? '拆解问题' : 'Routing',
+    delegating: zh ? '委派专家' : 'Delegating',
+    collecting: zh ? '回收观点' : 'Collecting',
+    summarizing: zh ? '汇总结论' : 'Synthesizing',
+    responding: zh ? '输出回复' : 'Responding',
+  };
+  const order = waitStagePlan.value;
+  const activeIndex = Math.max(0, order.indexOf(turnStage.value));
+  return order.map((key, idx) => ({
+    key,
+    label: labels[key] || key,
+    status: idx < activeIndex ? 'done' : idx === activeIndex ? 'active' : 'pending',
+  }));
+});
+
+const waitMilestoneSummary = computed(() => {
+  const zh = languageTag().startsWith('zh');
+  const total = waitMilestones.value.length || 1;
+  const done = waitMilestones.value.filter((item) => item.status === 'done').length;
+  const active = waitMilestones.value.some((item) => item.status === 'active') ? 1 : 0;
+  const step = Math.min(total, Math.max(1, done + active));
+  return zh ? `里程碑 ${step}/${total}` : `Milestone ${step}/${total}`;
+});
+
+const waitRemainingLabel = computed(() => {
+  const zh = languageTag().startsWith('zh');
+  const elapsed = Math.max(0, Number(waitElapsedSec.value || 0));
+  const flow = currentFlowKey();
+  const history = flow === 'delegated' ? waitDurationStats.value.delegated : waitDurationStats.value.direct;
+  const fallback = flow === 'delegated' ? 70 : 25;
+  const avg = Math.round(averageDuration(history));
+  const smoothed = avg > 0
+    ? Math.round(((avg * history.length) + (fallback * 2)) / (history.length + 2))
+    : fallback;
+  const total = Math.max(12, Math.min(3600, smoothed));
+  const remain = Math.max(0, total - elapsed);
+  if (remain <= 0) {
+    return zh ? '接近完成，正在输出最后结果' : 'Almost done, finalizing output';
+  }
+  return zh ? `预计剩余 ${remain}s` : `Estimated ${remain}s left`;
 });
 
 const canSend = computed(() => (Boolean(inputMessage.value.trim()) || selectedAttachments.value.length > 0) && connected.value);
@@ -525,7 +686,6 @@ const starterPrompts = computed(() => [
   t('chatHub.starters.prompt4'),
   t('chatHub.starters.prompt5'),
 ]);
-const composerStarterPrompts = computed(() => starterPrompts.value.slice(0, 3));
 
 function languageTag() {
   return String(locale.value || 'zh-CN').startsWith('zh') ? 'zh-CN' : 'en-US';
@@ -545,6 +705,52 @@ function safeClone(value) {
   } catch {
     return [];
   }
+}
+
+function normalizeWaitDurations(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item) && item >= 1 && item <= 3600)
+    .slice(-WAIT_METRICS_SAMPLE_SIZE);
+}
+
+function loadWaitDurationStats() {
+  try {
+    const raw = localStorage.getItem(WAIT_METRICS_KEY);
+    if (!raw) return { direct: [], delegated: [] };
+    const parsed = JSON.parse(raw);
+    return {
+      direct: normalizeWaitDurations(parsed?.direct),
+      delegated: normalizeWaitDurations(parsed?.delegated),
+    };
+  } catch {
+    return { direct: [], delegated: [] };
+  }
+}
+
+function persistWaitDurationStats() {
+  try {
+    localStorage.setItem(WAIT_METRICS_KEY, JSON.stringify(waitDurationStats.value));
+  } catch {
+    // ignore localStorage quota errors in PoC mode
+  }
+}
+
+function isDelegationFlow() {
+  return delegationEverStarted.value
+    || delegationActive.value
+    || ['delegating', 'collecting', 'summarizing'].includes(turnStage.value)
+    || turnRoutingMode.value === 'leader';
+}
+
+function currentFlowKey() {
+  return isDelegationFlow() ? 'delegated' : 'direct';
+}
+
+function averageDuration(list) {
+  if (!Array.isArray(list) || list.length === 0) return 0;
+  return list.reduce((sum, item) => sum + item, 0) / list.length;
 }
 
 function isConnectionSystemMessage(msg) {
@@ -836,8 +1042,11 @@ function addAssistantMessage(agentId, agentName, content) {
     content,
     timestamp: nowIso(),
   });
+  turnGotAssistantMessage.value = true;
+  turnStage.value = 'responding';
   updateActiveSessionStore();
   scrollToBottom();
+  maybeFinishTurn(false);
 }
 
 function setThinking(agentId, isThinking) {
@@ -846,22 +1055,22 @@ function setThinking(agentId, isThinking) {
     if (!thinkingAgentIds.value.includes(agentId)) {
       thinkingAgentIds.value = [...thinkingAgentIds.value, agentId];
     }
+    turnCurrentThinkingAgentId.value = agentId;
+    turnStage.value = delegationActive.value ? 'collecting' : 'responding';
     scrollToBottom();
     return;
   }
   thinkingAgentIds.value = thinkingAgentIds.value.filter((id) => id !== agentId);
+  if (turnCurrentThinkingAgentId.value === agentId) {
+    turnCurrentThinkingAgentId.value = '';
+  }
   scrollToBottom();
+  maybeFinishTurn(false);
 }
 
 function clearThinking() {
   thinkingAgentIds.value = [];
-}
-
-function routeDescription(mode, targets) {
-  const ids = Array.isArray(targets) ? targets : [];
-  const names = ids.map((id) => agents.value.find((agent) => agent.id === id)?.name || id);
-  if (mode === 'direct') return `${t('chatHub.route.direct')}: ${names.join(', ')}`;
-  return `${t('chatHub.route.leader')}: ${names.join(', ')}`;
+  turnCurrentThinkingAgentId.value = '';
 }
 
 function parseIncoming(event) {
@@ -869,6 +1078,133 @@ function parseIncoming(event) {
     return JSON.parse(event.data);
   } catch {
     return null;
+  }
+}
+
+function clearWaitTimers() {
+  if (waitTicker) {
+    clearInterval(waitTicker);
+    waitTicker = null;
+  }
+  if (waitHintTicker) {
+    clearInterval(waitHintTicker);
+    waitHintTicker = null;
+  }
+  if (finishTurnTimer) {
+    clearTimeout(finishTurnTimer);
+    finishTurnTimer = null;
+  }
+}
+
+function startTurnWaiting() {
+  clearWaitTimers();
+  turnInFlight.value = true;
+  turnStartedAt.value = Date.now();
+  waitElapsedSec.value = 0;
+  waitHintIndex.value = 0;
+  turnStage.value = 'routing';
+  delegationActive.value = false;
+  delegationEverStarted.value = false;
+  turnGotAssistantMessage.value = false;
+  turnCurrentThinkingAgentId.value = '';
+  turnRoutingMode.value = '';
+
+  waitTicker = window.setInterval(() => {
+    waitElapsedSec.value = Math.floor((Date.now() - turnStartedAt.value) / 1000);
+  }, 1000);
+
+  waitHintTicker = window.setInterval(() => {
+    waitHintIndex.value += 1;
+  }, 2800);
+}
+
+function stopTurnWaiting() {
+  clearWaitTimers();
+  turnInFlight.value = false;
+  waitElapsedSec.value = 0;
+  turnStage.value = 'idle';
+  delegationActive.value = false;
+  delegationEverStarted.value = false;
+  turnGotAssistantMessage.value = false;
+  turnCurrentThinkingAgentId.value = '';
+  turnRoutingMode.value = '';
+}
+
+function recordCompletedTurnDuration() {
+  if (!turnStartedAt.value) return;
+  if (!turnGotAssistantMessage.value) return;
+  const elapsed = Math.max(1, Math.round((Date.now() - turnStartedAt.value) / 1000));
+  const key = currentFlowKey();
+  const next = {
+    direct: normalizeWaitDurations(waitDurationStats.value.direct),
+    delegated: normalizeWaitDurations(waitDurationStats.value.delegated),
+  };
+  next[key] = normalizeWaitDurations([...(next[key] || []), elapsed]);
+  waitDurationStats.value = next;
+  persistWaitDurationStats();
+}
+
+function maybeFinishTurn(force = false) {
+  if (force) {
+    stopTurnWaiting();
+    return;
+  }
+  if (!turnInFlight.value) return;
+  if (delegationActive.value) return;
+  if (thinkingAgentIds.value.length > 0) return;
+  if (!turnGotAssistantMessage.value) return;
+
+  if (finishTurnTimer) clearTimeout(finishTurnTimer);
+  finishTurnTimer = window.setTimeout(() => {
+    finishTurnTimer = null;
+    if (!delegationActive.value && thinkingAgentIds.value.length === 0 && turnGotAssistantMessage.value) {
+      recordCompletedTurnDuration();
+      stopTurnWaiting();
+    }
+  }, 420);
+}
+
+function parseJwtPayload(token) {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length < 2) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const normalized = base64 + '='.repeat((4 - (base64.length % 4 || 4)) % 4);
+    return JSON.parse(atob(normalized));
+  } catch {
+    return null;
+  }
+}
+
+function isAccessTokenExpired(token, skewSeconds = 30) {
+  const payload = parseJwtPayload(token);
+  if (!payload || typeof payload.exp !== 'number') return true;
+  const nowSec = Math.floor(Date.now() / 1000);
+  return payload.exp <= nowSec + skewSeconds;
+}
+
+async function ensureValidAccessToken() {
+  const token = getAccessToken();
+  if (token && !isAccessTokenExpired(token)) return true;
+
+  if (authRefreshInFlight) {
+    // Wait for the ongoing refresh result.
+    for (let i = 0; i < 20; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const latest = getAccessToken();
+      if (latest && !isAccessTokenExpired(latest)) return true;
+    }
+    return false;
+  }
+
+  authRefreshInFlight = true;
+  try {
+    const refreshed = await authStore.refreshAccessToken();
+    return Boolean(refreshed);
+  } catch {
+    return false;
+  } finally {
+    authRefreshInFlight = false;
   }
 }
 
@@ -910,15 +1246,20 @@ function handleServerMessage(event) {
       break;
 
     case 'route_decided':
-      addSystemMessage(routeDescription(data.mode, data.targets));
+      turnRoutingMode.value = data.mode || '';
+      turnStage.value = 'routing';
       break;
 
     case 'delegation_started':
-      addSystemMessage(`${t('chatHub.system.leaderDelegated')}: ${(data.targets || []).join(', ')}`);
+      delegationActive.value = true;
+      delegationEverStarted.value = true;
+      turnStage.value = 'delegating';
       break;
 
     case 'delegation_finished':
-      addSystemMessage(t('chatHub.system.leaderDelegationDone'));
+      delegationActive.value = false;
+      turnStage.value = 'summarizing';
+      maybeFinishTurn(false);
       break;
 
     case 'agent_thinking':
@@ -932,6 +1273,7 @@ function handleServerMessage(event) {
 
     case 'error':
       addSystemMessage(data.message || 'Unknown error', 'error');
+      stopTurnWaiting();
       break;
 
     case 'pong':
@@ -952,7 +1294,7 @@ function scheduleReconnect() {
   }, delay);
 }
 
-function connectWebSocket() {
+async function connectWebSocket() {
   if (connecting.value) return;
 
   if (reconnectTimer) {
@@ -962,6 +1304,15 @@ function connectWebSocket() {
 
   connecting.value = true;
   clearThinking();
+  stopTurnWaiting();
+
+  const tokenOk = await ensureValidAccessToken();
+  if (!tokenOk) {
+    connecting.value = false;
+    connected.value = false;
+    addSystemMessage(sessionExpiredMessage(), 'error');
+    return;
+  }
 
   try {
     socket = new WebSocket(appendTokenToUrl(wsUrl('/ws/expert-chat')));
@@ -983,15 +1334,29 @@ function connectWebSocket() {
 
   socket.onerror = () => {
     addSystemMessage(t('connection.error'), 'error');
+    stopTurnWaiting();
   };
 
-  socket.onclose = () => {
+  socket.onclose = async (event) => {
     connecting.value = false;
     connected.value = false;
     clearThinking();
+    stopTurnWaiting();
 
     if (suppressReconnectOnce) {
       suppressReconnectOnce = false;
+      return;
+    }
+
+    // 1008 is policy violation, backend uses it for auth failure.
+    if (event?.code === 1008) {
+      const refreshed = await ensureValidAccessToken();
+      if (refreshed) {
+        socket = null;
+        connectWebSocket();
+        return;
+      }
+      addSystemMessage(sessionExpiredMessage(), 'error');
       return;
     }
 
@@ -1024,6 +1389,7 @@ function closeWebSocket(manual = false) {
   connected.value = false;
   connecting.value = false;
   clearThinking();
+  stopTurnWaiting();
 }
 
 function reconnectCurrentSession() {
@@ -1051,7 +1417,7 @@ function sendMessage() {
       name: att.name,
       mimeType: att.mimeType,
       size: att.size,
-      previewUrl: att.previewUrl,
+      previewUrl: att.dataBase64 ? `data:${att.mimeType || 'image/png'};base64,${att.dataBase64}` : att.previewUrl,
     }))
   );
 
@@ -1071,6 +1437,8 @@ function sendMessage() {
       },
     })
   );
+
+  startTurnWaiting();
 
   clearSelectedAttachments();
 }
@@ -1319,12 +1687,208 @@ async function handleTextareaPaste(event) {
   }
 }
 
+function looksLikeTabularLine(line) {
+  return String(line || '').includes('\t');
+}
+
+function markdownEscapeTableCell(value) {
+  return String(value || '').replaceAll('|', '\\|').trim();
+}
+
+function convertTabSeparatedBlocksToMarkdown(text) {
+  const lines = String(text || '').split('\n');
+  const out = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    if (!looksLikeTabularLine(lines[index])) {
+      out.push(lines[index]);
+      index += 1;
+      continue;
+    }
+
+    const block = [];
+    while (index < lines.length && looksLikeTabularLine(lines[index])) {
+      block.push(lines[index]);
+      index += 1;
+    }
+
+    const rows = block
+      .map((line) => line.split(/\t+/).map((cell) => markdownEscapeTableCell(cell)))
+      .filter((cells) => cells.length >= 2 && cells.some((cell) => cell.length > 0));
+
+    if (rows.length < 2) {
+      out.push(...block);
+      continue;
+    }
+
+    const width = rows.reduce((max, row) => Math.max(max, row.length), 2);
+    const normalized = rows.map((row) => {
+      const next = row.slice(0, width);
+      while (next.length < width) next.push('');
+      return next;
+    });
+
+    const header = normalized[0];
+    const divider = Array.from({ length: width }, () => '---');
+    out.push(`| ${header.join(' | ')} |`);
+    out.push(`| ${divider.join(' | ')} |`);
+    normalized.slice(1).forEach((row) => {
+      out.push(`| ${row.join(' | ')} |`);
+    });
+  }
+
+  return out.join('\n');
+}
+
+function convertNumberedSectionsToHeadings(text) {
+  return String(text || '').replace(/(^|\n)(\d+)\.\s+([^\n#].+)/g, (_, lead, idx, title) => `${lead}## ${idx}. ${title.trim()}`);
+}
+
+function normalizeIndentedListLines(text) {
+  const lines = String(text || '').split('\n');
+  let inFence = false;
+
+  return lines
+    .map((line) => {
+      const trimmed = line.trim();
+      if (/^```/.test(trimmed)) {
+        inFence = !inFence;
+        return line;
+      }
+      if (inFence) return line;
+
+      let match = line.match(/^\s{2,}([*-])\s+(.+)$/);
+      if (match) return `${match[1]} ${match[2].trim()}`;
+
+      match = line.match(/^\s{2,}(\d+\.)\s+(.+)$/);
+      if (match) return `${match[1]} ${match[2].trim()}`;
+
+      match = line.match(/^\s{2,}[•·]\s+(.+)$/);
+      if (match) return `- ${match[1].trim()}`;
+
+      return line;
+    })
+    .join('\n');
+}
+
+function stripStandaloneHorizontalRules(text) {
+  const lines = String(text || '').split('\n');
+  const output = [];
+  let inFence = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^```/.test(trimmed)) {
+      inFence = !inFence;
+      output.push(line);
+      continue;
+    }
+
+    if (!inFence && /^[-*_]{3,}$/.test(trimmed)) {
+      if (output.length && output[output.length - 1].trim() !== '') {
+        output.push('');
+      }
+      continue;
+    }
+
+    output.push(line);
+  }
+
+  return output.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function convertRiskLinesToCallout(text) {
+  const lines = String(text || '').split('\n');
+  return lines
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return line;
+      if (/^⚠️/.test(trimmed)) return `> ${trimmed}`;
+      if (/^(风险提示|Risk Warning)\s*[:：]?\s*$/i.test(trimmed)) return `> **${trimmed}**`;
+      return line;
+    })
+    .join('\n');
+}
+
+function convertKeyValueLinesToList(text) {
+  const lines = String(text || '').split('\n');
+  const converted = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      converted.push(line);
+      continue;
+    }
+
+    if (/^(\s*[-*]|\s*\d+\.)\s+/.test(trimmed) || /^#{1,6}\s+/.test(trimmed) || /^\|/.test(trimmed) || /^>/.test(trimmed)) {
+      converted.push(line);
+      continue;
+    }
+
+    const kvMatch = trimmed.match(/^([A-Za-z0-9\u4e00-\u9fa5()/_\-\s]{2,28})[:：]\s*(.+)$/);
+    if (!kvMatch) {
+      converted.push(line);
+      continue;
+    }
+
+    const key = kvMatch[1].trim();
+    const value = kvMatch[2].trim();
+    if (!value) {
+      converted.push(line);
+      continue;
+    }
+    converted.push(`- **${key}**: ${value}`);
+  }
+
+  return converted.join('\n');
+}
+
+function preprocessReportMarkdown(content) {
+  let text = String(content || '').replace(/\r\n/g, '\n');
+  text = convertTabSeparatedBlocksToMarkdown(text);
+  text = normalizeIndentedListLines(text);
+  text = stripStandaloneHorizontalRules(text);
+  text = convertNumberedSectionsToHeadings(text);
+  text = convertRiskLinesToCallout(text);
+  text = convertKeyValueLinesToList(text);
+  return text;
+}
+
+function isReportLike(content) {
+  const text = String(content || '');
+  if (!text) return false;
+  const cached = reportDetectCache.get(text);
+  if (typeof cached === 'boolean') return cached;
+
+  let score = 0;
+  if (/(^|\n)\d+\.\s+.+/m.test(text)) score += 2;
+  if ((text.match(/[:：]/g) || []).length >= 8) score += 1;
+  if (/\t/.test(text)) score += 1;
+  if (/(交易建议|关键价位|综合信号|置信度|风险提示|评分|预判|建议|Trend|Risk|Signal)/i.test(text)) score += 1;
+
+  const result = score >= 3;
+  reportDetectCache.set(text, result);
+  if (reportDetectCache.size > 300) reportDetectCache.clear();
+  return result;
+}
+
 function renderMarkdown(content) {
   if (!content) return '';
+  const raw = String(content);
+  const cacheKey = raw;
+  const cached = markdownRenderCache.get(cacheKey);
+  if (cached) return cached;
+
   try {
-    return marked.parse(String(content));
+    const source = isReportLike(raw) ? preprocessReportMarkdown(raw) : raw;
+    const html = marked.parse(source);
+    markdownRenderCache.set(cacheKey, html);
+    if (markdownRenderCache.size > 300) markdownRenderCache.clear();
+    return html;
   } catch {
-    return String(content)
+    return raw
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;');
@@ -1376,6 +1940,8 @@ watch(
 );
 
 onMounted(() => {
+  waitDurationStats.value = loadWaitDurationStats();
+
   const storedCollapseState = localStorage.getItem(HISTORY_COLLAPSE_KEY);
   if (storedCollapseState === '1') {
     historyCollapsed.value = true;
@@ -1407,6 +1973,7 @@ onUnmounted(() => {
   isUnmounted = true;
   updateActiveSessionStore();
   closeWebSocket(true);
+  clearWaitTimers();
   clearSelectedAttachments();
   document.removeEventListener('click', handleGlobalClick);
 });
@@ -1415,3 +1982,101 @@ watch(historyCollapsed, (next) => {
   localStorage.setItem(HISTORY_COLLAPSE_KEY, next ? '1' : '0');
 });
 </script>
+
+<style scoped>
+.analysis-markdown {
+  font-size: 0.925rem;
+  line-height: 1.75;
+  color: rgba(235, 240, 255, 0.94);
+}
+
+.analysis-markdown :deep(h1),
+.analysis-markdown :deep(h2),
+.analysis-markdown :deep(h3) {
+  margin-top: 0.9rem;
+  margin-bottom: 0.45rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #f8fbff;
+}
+
+.analysis-markdown.report-mode :deep(h2) {
+  border-left: 3px solid rgba(94, 163, 255, 0.72);
+  padding-left: 0.55rem;
+}
+
+.analysis-markdown :deep(p) {
+  margin: 0.45rem 0;
+}
+
+.analysis-markdown :deep(ul),
+.analysis-markdown :deep(ol) {
+  margin: 0.45rem 0 0.6rem;
+  padding-left: 1.1rem;
+}
+
+.analysis-markdown :deep(li) {
+  margin: 0.22rem 0;
+}
+
+.analysis-markdown :deep(strong) {
+  color: #ffffff;
+}
+
+.analysis-markdown :deep(blockquote) {
+  margin: 0.65rem 0;
+  border-left: 3px solid rgba(255, 195, 75, 0.72);
+  background: rgba(255, 195, 75, 0.1);
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.7rem;
+  color: rgba(255, 233, 186, 0.95);
+}
+
+.analysis-markdown :deep(hr) {
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  margin: 0.8rem 0;
+}
+
+.analysis-markdown :deep(code) {
+  border-radius: 0.35rem;
+  background: rgba(0, 0, 0, 0.28);
+  padding: 0.1rem 0.35rem;
+  font-size: 0.84em;
+  word-break: break-word;
+}
+
+.analysis-markdown :deep(pre) {
+  margin: 0.6rem 0;
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  background: rgba(0, 0, 0, 0.34);
+  padding: 0.7rem 0.8rem;
+}
+
+.analysis-markdown :deep(table) {
+  width: 100%;
+  margin: 0.65rem 0;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.analysis-markdown :deep(th),
+.analysis-markdown :deep(td) {
+  padding: 0.42rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.analysis-markdown :deep(thead th) {
+  background: rgba(94, 163, 255, 0.18);
+  color: #f6faff;
+  font-weight: 600;
+}
+
+.analysis-markdown :deep(tr:last-child td) {
+  border-bottom: 0;
+}
+</style>

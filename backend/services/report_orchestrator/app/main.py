@@ -79,6 +79,9 @@ EXPERT_CHAT_MAX_ATTACHMENT_BYTES = int(os.getenv("EXPERT_CHAT_MAX_ATTACHMENT_BYT
 EXPERT_CHAT_LEADER_FOLLOWUP_AFTER_DELEGATION = os.getenv(
     "EXPERT_CHAT_LEADER_FOLLOWUP_AFTER_DELEGATION", "false"
 ).lower() == "true"
+EXPERT_CHAT_AGENT_TURN_TIMEOUT_SECONDS = int(
+    os.getenv("EXPERT_CHAT_AGENT_TURN_TIMEOUT_SECONDS", "600")
+)
 
 # In-memory chat sessions (PoC scope)
 active_chat_sessions: Dict[str, Dict[str, Any]] = {}
@@ -432,6 +435,88 @@ EXPERT_CHAT_AGENT_PROFILES: Dict[str, Dict[str, Any]] = {
         "role_en": "Sentiment Analysis",
         "aliases": ["sentiment-analyst", "sentiment", "情绪分析师", "情绪", "sa"],
     },
+    "team-evaluator": {
+        "name_zh": "团队评估师",
+        "name_en": "Team Evaluator",
+        "role_zh": "团队尽调",
+        "role_en": "Team Evaluation",
+        "aliases": ["team-evaluator", "team", "团队评估师", "团队", "te"],
+    },
+    "tech-specialist": {
+        "name_zh": "技术专家",
+        "name_en": "Tech Specialist",
+        "role_zh": "技术与产品架构",
+        "role_en": "Technology & Product Architecture",
+        "aliases": ["tech-specialist", "product-tech", "技术专家", "技术架构", "ts"],
+    },
+    "legal-advisor": {
+        "name_zh": "法律顾问",
+        "name_en": "Legal Advisor",
+        "role_zh": "法律合规",
+        "role_en": "Legal Compliance",
+        "aliases": ["legal-advisor", "legal", "法律顾问", "法务", "la"],
+    },
+    "esg-analyst": {
+        "name_zh": "ESG分析师",
+        "name_en": "ESG Analyst",
+        "role_zh": "ESG评估",
+        "role_en": "ESG Analysis",
+        "aliases": ["esg-analyst", "esg", "ESG分析师", "可持续", "ea"],
+    },
+    "quant-strategist": {
+        "name_zh": "量化策略师",
+        "name_en": "Quant Strategist",
+        "role_zh": "量化分析",
+        "role_en": "Quantitative Analysis",
+        "aliases": ["quant-strategist", "quant", "量化策略师", "量化", "qs"],
+    },
+    "deal-structurer": {
+        "name_zh": "交易结构师",
+        "name_en": "Deal Structurer",
+        "role_zh": "交易结构与条款",
+        "role_en": "Deal Structure & Terms",
+        "aliases": ["deal-structurer", "deal", "交易结构师", "条款设计", "ds"],
+    },
+    "ma-advisor": {
+        "name_zh": "并购顾问",
+        "name_en": "M&A Advisor",
+        "role_zh": "并购分析",
+        "role_en": "M&A Analysis",
+        "aliases": ["ma-advisor", "m&a", "并购顾问", "并购", "maa"],
+    },
+    "onchain-analyst": {
+        "name_zh": "链上分析师",
+        "name_en": "Onchain Analyst",
+        "role_zh": "链上数据分析",
+        "role_en": "On-chain Analysis",
+        "aliases": ["onchain-analyst", "onchain", "链上分析师", "链上", "oa"],
+    },
+    "contrarian-analyst": {
+        "name_zh": "逆向分析师",
+        "name_en": "Contrarian Analyst",
+        "role_zh": "逆向与反共识分析",
+        "role_en": "Contrarian Analysis",
+        "aliases": ["contrarian-analyst", "contrarian", "逆向分析师", "反共识", "ca"],
+    },
+}
+
+EXPERT_CHAT_AGENT_REGISTRY_IDS: Dict[str, str] = {
+    "leader": "leader",
+    "team-evaluator": "team_evaluator",
+    "market-analyst": "market_analyst",
+    "financial-expert": "financial_expert",
+    "risk-assessor": "risk_assessor",
+    "tech-specialist": "tech_specialist",
+    "legal-advisor": "legal_advisor",
+    "technical-analyst": "technical_analyst",
+    "macro-economist": "macro_economist",
+    "esg-analyst": "esg_analyst",
+    "sentiment-analyst": "sentiment_analyst",
+    "quant-strategist": "quant_strategist",
+    "deal-structurer": "deal_structurer",
+    "ma-advisor": "ma_advisor",
+    "onchain-analyst": "onchain_analyst",
+    "contrarian-analyst": "contrarian_analyst",
 }
 
 EXPERT_SPECIALIST_IDS = [k for k in EXPERT_CHAT_AGENT_PROFILES.keys() if k != "leader"]
@@ -444,6 +529,108 @@ for _agent_id, _profile in EXPERT_CHAT_AGENT_PROFILES.items():
 
 def _is_zh(language: str) -> bool:
     return str(language or "").lower().startswith("zh")
+
+
+def _expert_chat_registry_language(language: str) -> str:
+    return "zh" if _is_zh(language) else "en"
+
+
+def _normalize_expert_chat_knowledge_category(category: str) -> str:
+    try:
+        from .core.roundtable.mcp_tools import normalize_knowledge_category
+
+        normalized = normalize_knowledge_category(category)
+        return normalized or "all"
+    except Exception:
+        raw = str(category or "").strip().lower()
+        if raw in {"general", "financial", "market", "legal"}:
+            return raw
+        return "all"
+
+
+def _build_expert_chat_pool_signature(
+    language: str,
+    knowledge_enabled: bool,
+    knowledge_category: str,
+) -> str:
+    return "|".join(
+        [
+            _expert_chat_registry_language(language),
+            "1" if knowledge_enabled else "0",
+            _normalize_expert_chat_knowledge_category(knowledge_category),
+        ]
+    )
+
+
+def _create_expert_chat_agent_pool(
+    language: str,
+    knowledge_enabled: bool,
+    knowledge_category: str,
+) -> Dict[str, Any]:
+    from .core.agent_registry import get_registry
+    from .core.roundtable.mcp_tools import (
+        reset_roundtable_knowledge_preferences,
+        set_roundtable_knowledge_preferences,
+    )
+
+    registry = get_registry()
+    registry_language = _expert_chat_registry_language(language)
+    normalized_category = _normalize_expert_chat_knowledge_category(knowledge_category)
+    category_for_tool = None if normalized_category == "all" else normalized_category
+
+    token = set_roundtable_knowledge_preferences(
+        enabled=knowledge_enabled,
+        category=category_for_tool,
+    )
+
+    pool: Dict[str, Any] = {}
+    try:
+        for chat_agent_id, registry_agent_id in EXPERT_CHAT_AGENT_REGISTRY_IDS.items():
+            try:
+                create_kwargs: Dict[str, Any] = {"language": registry_language}
+                if registry_agent_id != "leader":
+                    create_kwargs["quick_mode"] = False
+                pool[chat_agent_id] = registry.create_agent(
+                    registry_agent_id,
+                    **create_kwargs,
+                )
+            except Exception as create_error:
+                logger.exception(
+                    "[ExpertChat] Failed to create agent '%s' from registry id '%s': %s",
+                    chat_agent_id,
+                    registry_agent_id,
+                    create_error,
+                )
+    finally:
+        reset_roundtable_knowledge_preferences(token)
+
+    return pool
+
+
+def _ensure_expert_chat_agent_pool(
+    session_state: Dict[str, Any],
+    language: str,
+    knowledge_enabled: bool,
+    knowledge_category: str,
+) -> Dict[str, Any]:
+    signature = _build_expert_chat_pool_signature(
+        language=language,
+        knowledge_enabled=knowledge_enabled,
+        knowledge_category=knowledge_category,
+    )
+
+    existing = session_state.get("agents")
+    if isinstance(existing, dict) and session_state.get("agent_pool_signature") == signature:
+        return existing
+
+    pool = _create_expert_chat_agent_pool(
+        language=language,
+        knowledge_enabled=knowledge_enabled,
+        knowledge_category=knowledge_category,
+    )
+    session_state["agents"] = pool
+    session_state["agent_pool_signature"] = signature
+    return pool
 
 
 def _display_agent_name(agent_id: str, language: str) -> str:
@@ -587,6 +774,132 @@ def _flatten_messages_for_file_prompt(messages: List[Dict[str, Any]]) -> str:
             continue
         lines.append(f"{role}: {content[:3000]}")
     return "\n\n".join(lines)[:12000]
+
+
+async def _build_attachment_context(
+    user_message: str,
+    attachments: List[Dict[str, Any]],
+    language: str,
+) -> str:
+    if not attachments:
+        return ""
+
+    zh = _is_zh(language)
+    try:
+        prompt = (
+            (
+                "请基于上传图片提取与用户问题相关的关键信息，聚焦事实、数字、时间和风险提示。"
+                "只输出精炼结论，不要重复用户原话。\n\n"
+                f"用户问题: {user_message}"
+            )
+            if zh
+            else (
+                "Extract key image-grounded facts relevant to the user request. "
+                "Focus on concrete facts, numbers, time references, and risk cues. "
+                "Return concise findings only.\n\n"
+                f"User request: {user_message}"
+            )
+        )
+        return await _llm_chat_completion(
+            [
+                {"role": "system", "content": "You are an image analysis assistant."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            attachments=attachments,
+        )
+    except Exception as e:
+        logger.warning(f"[ExpertChat] Failed to build attachment context: {e}")
+        return ""
+
+
+def _build_agent_task_prompt(
+    user_message: str,
+    history: List[Dict[str, Any]],
+    language: str,
+    knowledge_enabled: bool,
+    knowledge_category: str,
+    attachment_summary: str,
+    attachment_context: str,
+    delegated_by_leader: bool = False,
+    specialist_outputs: Optional[List[Dict[str, str]]] = None,
+) -> str:
+    history_text = _format_history_window(history, limit=12)
+    normalized_category = _normalize_expert_chat_knowledge_category(knowledge_category)
+
+    specialist_outputs_text = ""
+    if specialist_outputs:
+        specialist_outputs_text = "\n\n".join(
+            f"[{item.get('agent_name')}]\n{item.get('content')}"
+            for item in specialist_outputs
+            if item.get("content")
+        )
+
+    if _is_zh(language):
+        prompt = (
+            f"最近对话历史:\n{history_text}\n\n"
+            f"用户当前问题:\n{user_message}\n\n"
+            f"知识检索开关: {'开启' if knowledge_enabled else '关闭'}\n"
+            f"知识范围: {normalized_category}\n"
+            f"附件摘要: {attachment_summary}\n"
+            f"是否为Leader委派: {'是' if delegated_by_leader else '否'}\n"
+        )
+        if attachment_context:
+            prompt += f"\n图片分析上下文:\n{attachment_context}\n"
+        if specialist_outputs_text:
+            prompt += f"\n专家阶段输出:\n{specialist_outputs_text}\n"
+        prompt += (
+            "\n请直接给出专业、可执行、基于证据的回答。"
+            "如果信息不足，请明确缺口并给出下一步需要补充的数据。"
+        )
+        return prompt
+
+    prompt = (
+        f"Recent conversation:\n{history_text}\n\n"
+        f"Current user request:\n{user_message}\n\n"
+        f"Knowledge retrieval enabled: {knowledge_enabled}\n"
+        f"Knowledge scope: {normalized_category}\n"
+        f"Attachment summary: {attachment_summary}\n"
+        f"Delegated by Leader: {delegated_by_leader}\n"
+    )
+    if attachment_context:
+        prompt += f"\nImage-grounded context:\n{attachment_context}\n"
+    if specialist_outputs_text:
+        prompt += f"\nSpecialist outputs:\n{specialist_outputs_text}\n"
+    prompt += (
+        "\nProvide a professional, evidence-based, and actionable response. "
+        "If information is insufficient, clearly state what is missing and the next data needed."
+    )
+    return prompt
+
+
+async def _run_expert_chat_agent_once(agent: Any, prompt: str) -> str:
+    from .core.roundtable.message import Message, MessageType
+    from .core.roundtable.message_bus import MessageBus
+
+    bus = MessageBus()
+    bus.register_agent(agent.name)
+    agent.message_bus = bus
+
+    await bus.send(
+        Message(
+            sender="User",
+            recipient=agent.name,
+            content=prompt,
+            message_type=MessageType.DIRECT,
+        )
+    )
+
+    outputs = await asyncio.wait_for(
+        agent.think_and_act(),
+        timeout=EXPERT_CHAT_AGENT_TURN_TIMEOUT_SECONDS,
+    )
+    text_parts = [
+        str(item.content).strip()
+        for item in (outputs or [])
+        if getattr(item, "content", None)
+    ]
+    return "\n\n".join([part for part in text_parts if part]).strip()
 
 
 def _sanitize_resume_history(raw_history: Any) -> List[Dict[str, Any]]:
@@ -797,48 +1110,29 @@ async def _ask_specialist(
     knowledge_enabled: bool,
     knowledge_category: str,
     attachments: Optional[List[Dict[str, Any]]] = None,
+    attachment_context: str = "",
+    session_agents: Optional[Dict[str, Any]] = None,
     delegated_by_leader: bool = False,
 ) -> str:
-    agent_name = _display_agent_name(agent_id, language)
-    role_text = EXPERT_CHAT_AGENT_PROFILES.get(agent_id, {}).get(
-        "role_zh" if _is_zh(language) else "role_en", "Specialist"
-    )
-    history_text = _format_history_window(history, limit=12)
-    zh = _is_zh(language)
-    system_prompt = (
-        f"你是{agent_name}，职责是{role_text}。输出要专业、可执行、简洁。"
-        if zh
-        else f"You are {agent_name}, responsible for {role_text}. Be professional, actionable, and concise."
-    )
     attachment_note = _attachments_summary(attachments or [], language)
-    user_prompt = (
-        (
-            f"上下文历史:\n{history_text}\n\n"
-            f"知识检索: {'开启' if knowledge_enabled else '关闭'}; 范围: {knowledge_category or 'all'}\n"
-            f"附件信息: {attachment_note}\n"
-            f"{'这是Leader委派任务。' if delegated_by_leader else '这是用户直接提问。'}\n\n"
-            f"用户问题:\n{user_message}\n\n"
-            "请按结构输出：\n1) 结论\n2) 关键依据\n3) 风险与不确定性\n4) 下一步建议"
-        )
-        if zh
-        else (
-            f"Context history:\n{history_text}\n\n"
-            f"Knowledge retrieval: {'enabled' if knowledge_enabled else 'disabled'}; scope: {knowledge_category or 'all'}\n"
-            f"Attachment info: {attachment_note}\n"
-            f"{'This is delegated by Leader.' if delegated_by_leader else 'This is a direct user request.'}\n\n"
-            f"User question:\n{user_message}\n\n"
-            "Please structure your answer as:\n1) Conclusion\n2) Evidence\n3) Risks/Uncertainty\n4) Next steps"
-        )
+    specialist_agent = (session_agents or {}).get(agent_id)
+    if specialist_agent is None:
+        raise RuntimeError(f"ExpertChat specialist agent not initialized: {agent_id}")
+
+    prompt = _build_agent_task_prompt(
+        user_message=user_message,
+        history=history,
+        language=language,
+        knowledge_enabled=knowledge_enabled,
+        knowledge_category=knowledge_category,
+        attachment_summary=attachment_note,
+        attachment_context=attachment_context,
+        delegated_by_leader=delegated_by_leader,
     )
-    answer = await _llm_chat_completion(
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.8,
-        attachments=attachments,
-    )
-    return answer or ("暂时无法生成回复，请稍后重试。" if zh else "Unable to answer now. Please retry.")
+    answer = await _run_expert_chat_agent_once(specialist_agent, prompt)
+    if not answer:
+        raise RuntimeError(f"ExpertChat specialist agent returned empty output: {agent_id}")
+    return answer
 
 
 async def _leader_direct_reply(
@@ -848,39 +1142,28 @@ async def _leader_direct_reply(
     knowledge_enabled: bool,
     knowledge_category: str,
     attachments: Optional[List[Dict[str, Any]]] = None,
+    attachment_context: str = "",
+    session_agents: Optional[Dict[str, Any]] = None,
 ) -> str:
-    history_text = _format_history_window(history, limit=12)
-    zh = _is_zh(language)
-    system_prompt = (
-        "你是Leader（主理专家），在专家群聊中直接回答用户。必要时明确指出还需哪些专家协助。"
-        if zh
-        else "You are Leader in an expert group chat. Answer the user directly and mention when specialist help is needed."
-    )
     attachment_note = _attachments_summary(attachments or [], language)
-    user_prompt = (
-        (
-            f"历史上下文:\n{history_text}\n\n"
-            f"知识检索: {'开启' if knowledge_enabled else '关闭'}; 范围: {knowledge_category or 'all'}\n\n"
-            f"附件信息: {attachment_note}\n\n"
-            f"用户问题:\n{user_message}"
-        )
-        if zh
-        else (
-            f"History context:\n{history_text}\n\n"
-            f"Knowledge retrieval: {'enabled' if knowledge_enabled else 'disabled'}; scope: {knowledge_category or 'all'}\n\n"
-            f"Attachment info: {attachment_note}\n\n"
-            f"User question:\n{user_message}"
-        )
+    leader_agent = (session_agents or {}).get("leader")
+    if leader_agent is None:
+        raise RuntimeError("ExpertChat leader agent not initialized")
+
+    prompt = _build_agent_task_prompt(
+        user_message=user_message,
+        history=history,
+        language=language,
+        knowledge_enabled=knowledge_enabled,
+        knowledge_category=knowledge_category,
+        attachment_summary=attachment_note,
+        attachment_context=attachment_context,
+        delegated_by_leader=False,
     )
-    answer = await _llm_chat_completion(
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.9,
-        attachments=attachments,
-    )
-    return answer or ("我暂时无法回答这个问题，请稍后重试。" if zh else "I cannot answer this right now. Please retry.")
+    answer = await _run_expert_chat_agent_once(leader_agent, prompt)
+    if not answer:
+        raise RuntimeError("ExpertChat leader agent returned empty output")
+    return answer
 
 
 async def _leader_summarize_with_specialists(
@@ -889,45 +1172,29 @@ async def _leader_summarize_with_specialists(
     history: List[Dict[str, Any]],
     language: str,
     attachments: Optional[List[Dict[str, Any]]] = None,
+    attachment_context: str = "",
+    session_agents: Optional[Dict[str, Any]] = None,
 ) -> str:
-    zh = _is_zh(language)
-    history_text = _format_history_window(history, limit=10)
-    outputs_text = "\n\n".join(
-        f"[{item.get('agent_name')}]\n{item.get('content')}"
-        for item in specialist_outputs
-    )
-    system_prompt = (
-        "你是Leader，请综合专家意见给出最终回复。要求明确结论、行动建议、以及风险提示。"
-        if zh
-        else "You are Leader. Synthesize specialist opinions into a final answer with clear conclusion, actions, and risks."
-    )
     attachment_note = _attachments_summary(attachments or [], language)
-    user_prompt = (
-        (
-            f"用户问题:\n{user_message}\n\n"
-            f"附件信息:\n{attachment_note}\n\n"
-            f"近期上下文:\n{history_text}\n\n"
-            f"专家输出:\n{outputs_text}\n\n"
-            "请整合为一个统一答复，不要重复堆叠。"
-        )
-        if zh
-        else (
-            f"User question:\n{user_message}\n\n"
-            f"Attachment info:\n{attachment_note}\n\n"
-            f"Recent context:\n{history_text}\n\n"
-            f"Specialist outputs:\n{outputs_text}\n\n"
-            "Please provide one unified response without redundancy."
-        )
+    leader_agent = (session_agents or {}).get("leader")
+    if leader_agent is None:
+        raise RuntimeError("ExpertChat leader agent not initialized for summarize")
+
+    prompt = _build_agent_task_prompt(
+        user_message=user_message,
+        history=history,
+        language=language,
+        knowledge_enabled=True,
+        knowledge_category="all",
+        attachment_summary=attachment_note,
+        attachment_context=attachment_context,
+        delegated_by_leader=False,
+        specialist_outputs=specialist_outputs,
     )
-    answer = await _llm_chat_completion(
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.8,
-        attachments=attachments,
-    )
-    return answer or ("综合回复生成失败，请稍后重试。" if zh else "Failed to generate synthesized answer.")
+    answer = await _run_expert_chat_agent_once(leader_agent, prompt)
+    if not answer:
+        raise RuntimeError("ExpertChat leader summarize returned empty output")
+    return answer
 
 # --- WebSocket Workflow ---
 @app.websocket("/ws/start_analysis")
@@ -2206,7 +2473,17 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
         "user_id": str(current_user.id),
         "messages": [],
         "language": language,
+        "knowledge_enabled": knowledge_enabled,
+        "knowledge_category": knowledge_category,
+        "agents": {},
+        "agent_pool_signature": "",
     }
+    _ensure_expert_chat_agent_pool(
+        active_chat_sessions[session_id],
+        language=language,
+        knowledge_enabled=knowledge_enabled,
+        knowledge_category=knowledge_category,
+    )
 
     try:
         await websocket.send_json(
@@ -2255,6 +2532,10 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                             "user_id": str(current_user.id),
                             "messages": resume_history,
                             "language": language,
+                            "knowledge_enabled": knowledge_enabled,
+                            "knowledge_category": knowledge_category,
+                            "agents": {},
+                            "agent_pool_signature": "",
                         }
                 elif requested_session_id and requested_session_id == session_id and resume_history:
                     if not active_chat_sessions[session_id]["messages"]:
@@ -2262,9 +2543,25 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
 
                 active_chat_sessions.setdefault(
                     session_id,
-                    {"user_id": str(current_user.id), "messages": [], "language": language},
+                    {
+                        "user_id": str(current_user.id),
+                        "messages": [],
+                        "language": language,
+                        "knowledge_enabled": knowledge_enabled,
+                        "knowledge_category": knowledge_category,
+                        "agents": {},
+                        "agent_pool_signature": "",
+                    },
                 )
                 active_chat_sessions[session_id]["language"] = language
+                active_chat_sessions[session_id]["knowledge_enabled"] = knowledge_enabled
+                active_chat_sessions[session_id]["knowledge_category"] = knowledge_category
+                _ensure_expert_chat_agent_pool(
+                    active_chat_sessions[session_id],
+                    language=language,
+                    knowledge_enabled=knowledge_enabled,
+                    knowledge_category=knowledge_category,
+                )
                 await websocket.send_json(
                     {
                         "type": "session_ready",
@@ -2303,9 +2600,29 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
             if isinstance(kb, dict):
                 knowledge_enabled = bool(kb.get("enabled", knowledge_enabled))
                 knowledge_category = str(kb.get("category", knowledge_category) or "all")
-            active_chat_sessions[session_id]["language"] = language
+            session_state = active_chat_sessions.setdefault(
+                session_id,
+                {
+                    "user_id": str(current_user.id),
+                    "messages": [],
+                    "language": language,
+                    "knowledge_enabled": knowledge_enabled,
+                    "knowledge_category": knowledge_category,
+                    "agents": {},
+                    "agent_pool_signature": "",
+                },
+            )
+            session_state["language"] = language
+            session_state["knowledge_enabled"] = knowledge_enabled
+            session_state["knowledge_category"] = knowledge_category
+            session_agents = _ensure_expert_chat_agent_pool(
+                session_state,
+                language=language,
+                knowledge_enabled=knowledge_enabled,
+                knowledge_category=knowledge_category,
+            )
 
-            history = active_chat_sessions[session_id]["messages"]
+            history = session_state["messages"]
             history.append(
                 {
                     "speaker": "User",
@@ -2317,6 +2634,12 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                         for att in attachments
                     ],
                 }
+            )
+
+            attachment_context = await _build_attachment_context(
+                user_message=effective_content,
+                attachments=attachments,
+                language=language,
             )
 
             mentions = _extract_mentions(effective_content)
@@ -2357,6 +2680,8 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 knowledge_enabled=knowledge_enabled,
                                 knowledge_category=knowledge_category,
                                 attachments=attachments,
+                                attachment_context=attachment_context,
+                                session_agents=session_agents,
                             )
                         else:
                             response_text = await _ask_specialist(
@@ -2367,6 +2692,8 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 knowledge_enabled=knowledge_enabled,
                                 knowledge_category=knowledge_category,
                                 attachments=attachments,
+                                attachment_context=attachment_context,
+                                session_agents=session_agents,
                                 delegated_by_leader=False,
                             )
 
@@ -2444,6 +2771,8 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 knowledge_enabled=knowledge_enabled,
                                 knowledge_category=knowledge_category,
                                 attachments=attachments,
+                                attachment_context=attachment_context,
+                                session_agents=session_agents,
                                 delegated_by_leader=True,
                             )
                             specialist_outputs.append(
@@ -2503,15 +2832,19 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 history=history,
                                 language=language,
                                 attachments=attachments,
+                                attachment_context=attachment_context,
+                                session_agents=session_agents,
                             )
                         else:
-                            leader_response = plan.get("leader_reply") or await _leader_direct_reply(
+                            leader_response = await _leader_direct_reply(
                                 user_message=effective_content,
                                 history=history,
                                 language=language,
                                 knowledge_enabled=knowledge_enabled,
                                 knowledge_category=knowledge_category,
                                 attachments=attachments,
+                                attachment_context=attachment_context,
+                                session_agents=session_agents,
                             )
 
                         history.append(
