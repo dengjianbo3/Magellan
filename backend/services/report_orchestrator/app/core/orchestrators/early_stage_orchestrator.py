@@ -3,7 +3,7 @@ EarlyStageInvestmentOrchestrator - 早期投资场景协调器
 继承BaseOrchestrator,实现早期投资(Angel/Seed/Series A)的分析逻辑
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable, Awaitable
 from fastapi import WebSocket
 
 from app.models.analysis_models import (
@@ -31,13 +31,15 @@ class EarlyStageInvestmentOrchestrator(BaseOrchestrator):
         self,
         session_id: str,
         request: AnalysisRequest,
-        websocket: Optional[WebSocket] = None
+        websocket: Optional[WebSocket] = None,
+        event_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
     ):
         super().__init__(
             scenario=InvestmentScenario.EARLY_STAGE,
             session_id=session_id,
             request=request,
-            websocket=websocket
+            websocket=websocket,
+            event_callback=event_callback,
         )
 
         # 解析early-stage specific target

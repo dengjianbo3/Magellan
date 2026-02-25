@@ -13,7 +13,7 @@ import uuid
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable, Awaitable
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -27,6 +27,15 @@ from ...core.auth import CurrentUser, get_current_user
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+_analysis_runtime_starter: Optional[Callable[[str, AnalysisRequest, str], Awaitable[None]]] = None
+
+
+def set_analysis_runtime_starter(starter: Optional[Callable[[str, AnalysisRequest, str], Awaitable[None]]]):
+    """
+    Inject runtime starter from main.py to decouple REST start from WS lifecycle.
+    """
+    global _analysis_runtime_starter
+    _analysis_runtime_starter = starter
 
 
 def _safe_session_store() -> Optional[SessionStore]:
@@ -124,6 +133,14 @@ async def start_analysis_v2(
                     store.close()
                 except Exception:
                     pass
+
+        # Start background runtime immediately so analysis is not tied to WS connection.
+        if _analysis_runtime_starter:
+            try:
+                await _analysis_runtime_starter(session_id, request, str(current_user.id))
+            except Exception as runtime_error:
+                logger.error(f"[V2 API] Failed to start background runtime: {runtime_error}")
+                raise HTTPException(status_code=500, detail=f"启动分析后台任务失败: {runtime_error}")
 
         return {
             "success": True,

@@ -437,22 +437,22 @@ class TechnicalAnalysisTools:
 
         try:
             if "RSI" in indicators and data_len >= 14:
-                results['rsi'] = self._calculate_rsi(close)
+                results['RSI'] = self._calculate_rsi(close)
 
             if "MACD" in indicators and data_len >= 26:
-                results['macd'] = self._calculate_macd(close)
+                results['MACD'] = self._calculate_macd(close)
 
             if "BB" in indicators and data_len >= 20:
-                results['bb'] = self._calculate_bollinger_bands(close)
+                results['BB'] = self._calculate_bollinger_bands(close)
 
             if "EMA" in indicators and data_len >= 7:
-                results['ema'] = self._calculate_ema(close)
+                results['EMA'] = self._calculate_ema(close)
 
             if "KDJ" in indicators and data_len >= 9:
-                results['kdj'] = self._calculate_kdj(high, low, close)
+                results['KDJ'] = self._calculate_kdj(high, low, close)
 
             if "ADX" in indicators and data_len >= 28:  # ADX needs at least 14*2 data points
-                results['adx'] = self._calculate_adx(high, low, close)
+                results['ADX'] = self._calculate_adx(high, low, close)
 
         except Exception as e:
             print(f"[TechnicalTools] Error calculating indicators: {e}")

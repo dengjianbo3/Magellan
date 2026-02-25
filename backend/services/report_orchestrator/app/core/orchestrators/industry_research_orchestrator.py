@@ -5,7 +5,7 @@ Industry Research Orchestrator (行业研究协调器)
 关注点: 行业趋势、竞争格局、投资机会、风险因素
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Callable, Awaitable
 
 from .base_orchestrator import BaseOrchestrator
 from ...models.analysis_models import (
@@ -33,12 +33,19 @@ class IndustryResearchOrchestrator(BaseOrchestrator):
     - 投资机会 (20%)
     """
 
-    def __init__(self, session_id: str, request: Any, websocket: Any = None):
+    def __init__(
+        self,
+        session_id: str,
+        request: Any,
+        websocket: Any = None,
+        event_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+    ):
         super().__init__(
             scenario=InvestmentScenario.INDUSTRY_RESEARCH,
             session_id=session_id,
             request=request,
-            websocket=websocket
+            websocket=websocket,
+            event_callback=event_callback,
         )
         self.scenario_name = "行业研究"
 

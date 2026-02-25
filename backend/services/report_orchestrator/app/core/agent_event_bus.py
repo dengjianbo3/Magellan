@@ -54,6 +54,15 @@ class AgentEventBus:
         self.subscribers: List[WebSocket] = []
         self.event_history: List[AgentEvent] = []  # 事件历史（用于断线重连）
         self.max_history = 100  # 最多保留100条历史事件
+        self.local_handlers: List[Any] = []  # 非WebSocket本地处理器（持久化/监控）
+
+    def add_local_handler(self, handler: Any):
+        if handler not in self.local_handlers:
+            self.local_handlers.append(handler)
+
+    def remove_local_handler(self, handler: Any):
+        if handler in self.local_handlers:
+            self.local_handlers.remove(handler)
 
     async def subscribe(self, websocket: WebSocket):
         """
@@ -111,6 +120,13 @@ class AgentEventBus:
         for ws in disconnected:
             if ws in self.subscribers:
                 self.subscribers.remove(ws)
+
+        # 通知本地处理器（不影响主流程）
+        for handler in list(self.local_handlers):
+            try:
+                await handler(event)
+            except Exception as e:
+                print(f"[AgentEventBus] Local handler error: {e}")
 
     async def publish_started(self, agent_name: str, message: str):
         """快捷方法：发布Agent开始事件"""

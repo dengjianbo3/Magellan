@@ -4,7 +4,7 @@ BaseOrchestrator - 所有场景Orchestrator的基类
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable, Awaitable
 from datetime import datetime
 from fastapi import WebSocket
 
@@ -34,12 +34,14 @@ class BaseOrchestrator(ABC):
         scenario: InvestmentScenario,
         session_id: str,
         request: AnalysisRequest,
-        websocket: Optional[WebSocket] = None
+        websocket: Optional[WebSocket] = None,
+        event_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
     ):
         self.scenario = scenario
         self.session_id = session_id
         self.request = request
         self.websocket = websocket
+        self.event_callback = event_callback
 
         # 决策模式 (子类可覆盖)
         self.decision_mode = DecisionMode.HYBRID
@@ -589,148 +591,156 @@ class BaseOrchestrator(ABC):
 
     # ============ WebSocket消息发送 ============
 
-    async def _send_status(self, status: str, message: str):
+    async def _emit_event(self, payload: Dict[str, Any]):
+        """
+        Emit orchestrator event to optional callback and websocket.
+        Event callback is used by background runtime manager for fan-out/replay.
+        """
+        if self.event_callback:
+            try:
+                await self.event_callback(payload)
+            except Exception as e:
+                print(f"[BaseOrchestrator] event_callback emit failed: {e}")
+
         if self.websocket:
-            await self.websocket.send_json({
-                "type": "status_update",
-                "session_id": self.session_id,
-                "timestamp": datetime.now().isoformat(),
-                "data": {
-                    "status": status,
-                    "message": message
-                }
-            })
+            try:
+                await self.websocket.send_json(payload)
+            except Exception as e:
+                # WebSocket may be disconnected while background task continues.
+                print(f"[BaseOrchestrator] websocket emit failed (ignored): {e}")
+
+    async def _send_status(self, status: str, message: str):
+        await self._emit_event({
+            "type": "status_update",
+            "session_id": self.session_id,
+            "timestamp": datetime.now().isoformat(),
+            "data": {
+                "status": status,
+                "message": message
+            }
+        })
 
     async def _send_workflow_start(self):
-        if self.websocket:
-            await self.websocket.send_json({
-                "type": "workflow_start",
-                "session_id": self.session_id,
-                "timestamp": datetime.now().isoformat(),
-                "data": {
-                    "orchestrator": self.__class__.__name__,
-                    "scenario": self.scenario.value,
-                    "depth": self.request.config.depth.value,
-                    "total_steps": len(self.workflow),
-                    "steps": [
-                        {"id": s.id, "name": s.name, "agent": s.agent}
-                        for s in self.workflow
-                    ]
-                }
-            })
+        await self._emit_event({
+            "type": "workflow_start",
+            "session_id": self.session_id,
+            "timestamp": datetime.now().isoformat(),
+            "data": {
+                "orchestrator": self.__class__.__name__,
+                "scenario": self.scenario.value,
+                "depth": self.request.config.depth.value,
+                "total_steps": len(self.workflow),
+                "steps": [
+                    {"id": s.id, "name": s.name, "agent": s.agent}
+                    for s in self.workflow
+                ]
+            }
+        })
 
     async def _send_step_start(self, step: WorkflowStep):
-        if self.websocket:
-            await self.websocket.send_json({
-                "type": "step_start",
-                "session_id": self.session_id,
-                "timestamp": datetime.now().isoformat(),
-                "data": {
-                    "step_id": step.id,
-                    "step_name": step.name,
-                    "step_number": self.current_step_index + 1,
-                    "total_steps": len(self.workflow),
-                    "agent": step.agent
-                }
-            })
+        await self._emit_event({
+            "type": "step_start",
+            "session_id": self.session_id,
+            "timestamp": datetime.now().isoformat(),
+            "data": {
+                "step_id": step.id,
+                "step_name": step.name,
+                "step_number": self.current_step_index + 1,
+                "total_steps": len(self.workflow),
+                "agent": step.agent
+            }
+        })
 
     async def _send_step_complete(self, step: WorkflowStep):
-        if self.websocket:
-            await self.websocket.send_json({
-                "type": "step_complete",
-                "session_id": self.session_id,
-                "timestamp": datetime.now().isoformat(),
-                "data": {
-                    "step_id": step.id,
-                    "status": "success",
-                    "result": step.result if step.result else {},
-                    "duration": self._calculate_step_duration(step)
-                }
-            })
+        await self._emit_event({
+            "type": "step_complete",
+            "session_id": self.session_id,
+            "timestamp": datetime.now().isoformat(),
+            "data": {
+                "step_id": step.id,
+                "status": "success",
+                "result": step.result if step.result else {},
+                "duration": self._calculate_step_duration(step)
+            }
+        })
 
     async def _send_step_error(self, step: WorkflowStep, error: str):
-        if self.websocket:
-            await self.websocket.send_json({
-                "type": "step_error",
-                "session_id": self.session_id,
-                "timestamp": datetime.now().isoformat(),
-                "data": {
-                    "step_id": step.id,
-                    "error": error
-                }
-            })
+        await self._emit_event({
+            "type": "step_error",
+            "session_id": self.session_id,
+            "timestamp": datetime.now().isoformat(),
+            "data": {
+                "step_id": step.id,
+                "error": error
+            }
+        })
 
     async def _send_agent_event(self, step: WorkflowStep, event_type: str, message: str):
-        if self.websocket:
-            await self.websocket.send_json({
-                "type": "agent_event",
-                "session_id": self.session_id,
-                "timestamp": datetime.now().isoformat(),
-                "data": {
-                    "step_id": step.id,
-                    "agent": step.agent,
-                    "event_type": event_type,
-                    "message": message
-                }
-            })
+        await self._emit_event({
+            "type": "agent_event",
+            "session_id": self.session_id,
+            "timestamp": datetime.now().isoformat(),
+            "data": {
+                "step_id": step.id,
+                "agent": step.agent,
+                "event_type": event_type,
+                "message": message
+            }
+        })
 
     async def _send_quick_judgment_complete(self, result):
-        if self.websocket:
-            # 如果是 Pydantic model,转换为字典
-            if hasattr(result, 'model_dump'):
-                result_dict = result.model_dump()
-            elif hasattr(result, 'dict'):
-                result_dict = result.dict()
-            else:
-                result_dict = result
+        # 如果是 Pydantic model,转换为字典
+        if hasattr(result, 'model_dump'):
+            result_dict = result.model_dump()
+        elif hasattr(result, 'dict'):
+            result_dict = result.dict()
+        else:
+            result_dict = result
 
-            # 处理枚举类型
-            if 'recommendation' in result_dict and hasattr(result_dict['recommendation'], 'value'):
-                result_dict['recommendation'] = result_dict['recommendation'].value
+        # 处理枚举类型
+        if 'recommendation' in result_dict and hasattr(result_dict['recommendation'], 'value'):
+            result_dict['recommendation'] = result_dict['recommendation'].value
 
-            await self.websocket.send_json({
-                "type": "quick_judgment_complete",
-                "session_id": self.session_id,
-                "timestamp": datetime.now().isoformat(),
-                "data": result_dict
-            })
+        await self._emit_event({
+            "type": "quick_judgment_complete",
+            "session_id": self.session_id,
+            "timestamp": datetime.now().isoformat(),
+            "data": result_dict
+        })
 
     async def _send_complete(self, report: Dict[str, Any]):
-        if self.websocket:
-            await self.websocket.send_json({
-                "type": "analysis_complete",
-                "session_id": self.session_id,
-                "timestamp": datetime.now().isoformat(),
-                "data": {
-                    "status": "success",
-                    "report_summary": {
-                        "recommendation": report.get("recommendation"),
-                        "confidence": report.get("confidence")
-                    }
+        await self._emit_event({
+            "type": "analysis_complete",
+            "session_id": self.session_id,
+            "timestamp": datetime.now().isoformat(),
+            "data": {
+                "status": "success",
+                "report_summary": {
+                    "recommendation": report.get("recommendation"),
+                    "confidence": report.get("confidence")
                 }
-            })
+            }
+        })
 
     async def _send_error(self, error: str):
-        if self.websocket:
-            await self.websocket.send_json({
-                "type": "error",
-                "session_id": self.session_id,
-                "timestamp": datetime.now().isoformat(),
-                "data": {
-                    "error": error
-                }
-            })
+        await self._emit_event({
+            "type": "error",
+            "session_id": self.session_id,
+            "timestamp": datetime.now().isoformat(),
+            "data": {
+                "error": error
+            }
+        })
 
     async def _send_workflow_adjusted(self):
-        if self.websocket:
-            await self.websocket.send_json({
-                "type": "workflow_adjusted",
-                "session_id": self.session_id,
-                "timestamp": datetime.now().isoformat(),
-                "data": {
-                    "message": "Workflow已调整"
-                }
-            })
+        await self._emit_event({
+            "type": "workflow_adjusted",
+            "session_id": self.session_id,
+            "timestamp": datetime.now().isoformat(),
+            "data": {
+                "message": "Workflow已调整"
+            }
+        })
 
     # ============ 辅助方法 ============
 

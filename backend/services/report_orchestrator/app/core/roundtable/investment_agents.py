@@ -3019,7 +3019,16 @@ Parameters:
                         timeframe=timeframe,
                         market_type=market_type
                     )
-                    return result.dict()
+                    payload = result.dict()
+                    return {
+                        "success": True,
+                        "summary": (
+                            f"Full technical analysis completed for {symbol} ({timeframe}). "
+                            f"Current price: {payload.get('current_price')}, "
+                            f"score: {payload.get('technical_score')}, signal: {payload.get('overall_signal')}"
+                        ),
+                        "result": payload
+                    }
 
                 elif action == "get_ohlcv":
                     df = await self.tools.get_ohlcv(
@@ -3027,7 +3036,7 @@ Parameters:
                         timeframe=timeframe,
                         market_type=market_type
                     )
-                    return {
+                    payload = {
                         "symbol": symbol,
                         "timeframe": timeframe,
                         "data_points": len(df),
@@ -3040,30 +3049,68 @@ Parameters:
                             "volume": df['volume'].iloc[-1]
                         }
                     }
+                    return {
+                        "success": True,
+                        "summary": f"Fetched {len(df)} OHLCV candles for {symbol} ({timeframe})",
+                        "result": payload
+                    }
 
                 elif action == "indicators":
                     df = await self.tools.get_ohlcv(symbol, timeframe, 100, market_type)
                     indicators = kwargs.get("indicators", ["RSI", "MACD", "BB", "EMA", "KDJ", "ADX"])
                     results = self.tools.calculate_all_indicators(df, indicators)
                     # Convert Pydantic models to dicts
-                    return {k: v.dict() if hasattr(v, 'dict') else v for k, v in results.items()}
+                    payload = {k: v.dict() if hasattr(v, 'dict') else v for k, v in results.items()}
+                    return {
+                        "success": True,
+                        "summary": f"Calculated indicators for {symbol} ({timeframe}): {', '.join(indicators)}",
+                        "result": payload
+                    }
 
                 elif action == "levels":
                     df = await self.tools.get_ohlcv(symbol, timeframe, 100, market_type)
                     method = kwargs.get("method", "fibonacci")
                     result = self.tools.calculate_support_resistance(df, method)
-                    return result.dict()
+                    payload = result.dict()
+                    return {
+                        "success": True,
+                        "summary": (
+                            f"Calculated support/resistance ({method}) for {symbol}. "
+                            f"Nearest support: {payload.get('nearest_support')}, "
+                            f"nearest resistance: {payload.get('nearest_resistance')}"
+                        ),
+                        "result": payload
+                    }
 
                 elif action == "patterns":
                     df = await self.tools.get_ohlcv(symbol, timeframe, 100, market_type)
                     result = self.tools.detect_candlestick_patterns(df)
-                    return result.dict()
+                    payload = result.dict()
+                    patterns_found = payload.get("patterns_found", [])
+                    return {
+                        "success": True,
+                        "summary": (
+                            f"Detected {len(patterns_found)} candlestick patterns for {symbol}. "
+                            f"Dominant pattern: {payload.get('dominant_pattern') or 'none'}"
+                        ),
+                        "result": payload
+                    }
 
                 else:
-                    return {"error": f"Unknown action: {action}"}
+                    return {
+                        "success": False,
+                        "error": f"Unknown action: {action}",
+                        "summary": f"Unknown action: {action}"
+                    }
 
             except Exception as e:
-                return {"error": str(e), "action": action, "symbol": symbol}
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "summary": f"Technical analysis action failed: {action} ({symbol})",
+                    "action": action,
+                    "symbol": symbol
+                }
 
     # 注册技术分析工具
     ta_mcp_tool = TechnicalAnalysisMCPTool(ta_tools)

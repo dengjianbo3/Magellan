@@ -5,7 +5,7 @@ Alternative Investment Orchestrator (另类投资协调器)
 关注点: 技术基础、社区、代币经济学、风险
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Callable, Awaitable
 
 from .base_orchestrator import BaseOrchestrator
 from ...models.analysis_models import (
@@ -33,12 +33,19 @@ class AlternativeInvestmentOrchestrator(BaseOrchestrator):
     - 团队背景 (20%)
     """
 
-    def __init__(self, session_id: str, request: Any, websocket: Any = None):
+    def __init__(
+        self,
+        session_id: str,
+        request: Any,
+        websocket: Any = None,
+        event_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+    ):
         super().__init__(
             scenario=InvestmentScenario.ALTERNATIVE,
             session_id=session_id,
             request=request,
-            websocket=websocket
+            websocket=websocket,
+            event_callback=event_callback,
         )
         self.scenario_name = "另类投资"
 

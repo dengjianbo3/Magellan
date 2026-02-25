@@ -33,9 +33,14 @@ from .core.auth import CurrentUser, get_current_user, resolve_user_from_token
 from .api.routers import health_router, reports_router
 from .api.routers.agents import router as agents_router
 from .api.routers.knowledge import router as knowledge_router, set_vector_store, set_rag_service
-from .api.routers.roundtable import router as roundtable_router, set_active_meetings, set_llm_gateway_url
+from .api.routers.roundtable import (
+    router as roundtable_router,
+    set_active_meetings,
+    set_llm_gateway_url,
+    set_roundtable_sessions,
+)
 from .api.routers.files import router as files_router
-from .api.routers.analysis import router as analysis_router
+from .api.routers.analysis import router as analysis_router, set_analysis_runtime_starter
 from .api.routers.export import router as export_router, set_get_report_func
 from .api.routers.dd_workflow import router as dd_workflow_router, set_session_funcs
 from .api.routers.monitoring import router as monitoring_router
@@ -170,9 +175,11 @@ app.add_middleware(CachingMiddleware)
 
 # Global storage for active meeting instances (for Human-in-the-Loop support)
 active_meetings: Dict[str, Any] = {}
+roundtable_sessions: Dict[str, Dict[str, Any]] = {}
 
 # Phase 4: Initialize Roundtable Router dependencies
 set_active_meetings(active_meetings)
+set_roundtable_sessions(roundtable_sessions)
 set_llm_gateway_url(LLM_GATEWAY_URL)
 print("[main.py] ✅ Roundtable Router initialized")
 
@@ -2037,7 +2044,21 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
     }
 
     session_id = None
+    runtime_state: Optional[Dict[str, Any]] = None
     kb_preferences_token = None
+
+    # Best-effort cleanup for old completed/error sessions to avoid unbounded memory growth.
+    now_ts = time.time()
+    for sid, state in list(roundtable_sessions.items()):
+        try:
+            status = str(state.get("status") or "")
+            updated_at = state.get("updated_at") or state.get("created_at")
+            updated_ts = datetime.fromisoformat(updated_at).timestamp() if updated_at else now_ts
+            ttl_seconds = 3600 if status in {"completed", "error"} else 6 * 3600
+            if now_ts - updated_ts > ttl_seconds:
+                roundtable_sessions.pop(sid, None)
+        except Exception:
+            continue
 
     try:
         # Wait for initial request
@@ -2046,7 +2067,85 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
 
         action = initial_request.get("action")
 
-        if action == "start_discussion":
+        if action == "resume_discussion":
+            session_id = str(initial_request.get("session_id") or "").strip()
+            runtime_state = roundtable_sessions.get(session_id)
+            if not session_id or not runtime_state:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "未找到可恢复的讨论会话，请重新发起讨论。"
+                })
+                return
+
+            if str(runtime_state.get("user_id") or "") != str(current_user.id):
+                await websocket.close(code=1008, reason="Session ownership mismatch")
+                return
+
+            meeting = runtime_state.get("meeting")
+            event_bus = runtime_state.get("event_bus")
+            if not meeting or not event_bus:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "会话运行时不可用，请重新发起讨论。"
+                })
+                return
+
+            await event_bus.subscribe(websocket)
+
+            # Replay persisted event history first (full stream), fallback to in-memory event bus.
+            replay_payloads: List[Dict[str, Any]] = []
+            if session_store:
+                try:
+                    persisted_events = session_store.get_session_events(
+                        session_id,
+                        after_seq=0,
+                        limit=5000,
+                    )
+                    for item in persisted_events:
+                        if isinstance(item, dict) and item.get("type") == "agent_event" and isinstance(item.get("event"), dict):
+                            replay_payloads.append(item.get("event"))
+                except Exception as replay_err:
+                    logger.warning(f"[ROUNDTABLE] Failed to replay persisted events for {session_id}: {replay_err}")
+
+            if not replay_payloads:
+                replay_payloads = [evt.dict() for evt in event_bus.get_history()]
+
+            for evt in replay_payloads:
+                try:
+                    await websocket.send_json({
+                        "type": "agent_event",
+                        "event": evt,
+                    })
+                except Exception:
+                    break
+
+            await websocket.send_json({
+                "type": "agents_ready",
+                "session_id": session_id,
+                "agents": runtime_state.get("agents", []),
+                "message": "已恢复讨论会话",
+            })
+
+            if runtime_state.get("status") in {"completed", "error"}:
+                if runtime_state.get("status") == "completed":
+                    await websocket.send_json({
+                        "type": "discussion_complete",
+                        "session_id": session_id,
+                        "report_id": runtime_state.get("report_id"),
+                        "summary": runtime_state.get("summary", {}),
+                    })
+                else:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": runtime_state.get("error") or "讨论已异常结束",
+                    })
+
+            while True:
+                msg = await websocket.receive_json()
+                if isinstance(msg, dict) and msg.get("type") == "ping":
+                    await websocket.send_json({"type": "pong", "timestamp": datetime.now().isoformat()})
+
+        elif action == "start_discussion":
             topic = initial_request.get("topic", "投资价值分析")
             company_name = initial_request.get("company_name", "目标公司")
             context = initial_request.get("context", {})
@@ -2078,7 +2177,28 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
 
             # Create agent event bus for real-time updates
             event_bus = AgentEventBus()
+            event_bus.max_history = max(event_bus.max_history, 5000)
             await event_bus.subscribe(websocket)
+
+            async def _persist_roundtable_event(event):
+                if runtime_state is not None:
+                    runtime_state["updated_at"] = datetime.now().isoformat()
+                if not session_store:
+                    return
+                try:
+                    session_store.append_session_event(
+                        session_id,
+                        {
+                            "type": "agent_event",
+                            "event": event.dict(),
+                        },
+                        ttl_days=30,
+                        max_events=5000,
+                    )
+                except Exception as persist_err:
+                    logger.warning(f"[ROUNDTABLE] Failed to persist event for {session_id}: {persist_err}")
+
+            event_bus.add_local_handler(_persist_roundtable_event)
 
             # Get selected experts from context (sent by frontend)
             selected_experts = context.get('experts', [])
@@ -2193,6 +2313,27 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
             # Store meeting in global dict for Human-in-the-Loop support
             active_meetings[session_id] = meeting
             meeting._owner_user_id = current_user.id
+            runtime_state = {
+                "session_id": session_id,
+                "user_id": str(current_user.id),
+                "topic": topic,
+                "company_name": company_name,
+                "status": "running",
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "max_rounds": max_rounds,
+                "agents": [agent.name for agent in agents],
+                "knowledge": {
+                    "enabled": knowledge_enabled,
+                    "category": knowledge_category or "all",
+                },
+                "meeting": meeting,
+                "event_bus": event_bus,
+                "summary": None,
+                "report_id": None,
+                "error": None,
+            }
+            roundtable_sessions[session_id] = runtime_state
             print(f"[ROUNDTABLE] Meeting stored with session_id: {session_id}", flush=True)
 
             # Link the meeting state to the meeting object
@@ -2315,11 +2456,14 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                 result = await meeting.run(initial_message=initial_message)
 
                 print(f"[ROUNDTABLE] Discussion completed", flush=True)
+                if runtime_state is not None:
+                    runtime_state["status"] = "completed"
+                    runtime_state["updated_at"] = datetime.now().isoformat()
+                    runtime_state["summary"] = result
 
                 # Save meeting minutes as a report
                 meeting_minutes = result.get("meeting_minutes", "")
                 if meeting_minutes:
-                    from datetime import datetime
                     report_id = f"roundtable_{session_id}"
                     report_title = await _generate_roundtable_report_title(
                         topic=topic,
@@ -2378,6 +2522,8 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
 
                     # Add report_id to result for frontend
                     result["report_id"] = report_id
+                    if runtime_state is not None:
+                        runtime_state["report_id"] = report_id
 
                 # Send completion summary (check WebSocket state first)
                 try:
@@ -2396,6 +2542,10 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                 print(f"[ROUNDTABLE] Meeting error: {meeting_error}", flush=True)
                 import traceback
                 traceback.print_exc()
+                if runtime_state is not None:
+                    runtime_state["status"] = "error"
+                    runtime_state["error"] = str(meeting_error)
+                    runtime_state["updated_at"] = datetime.now().isoformat()
 
                 # Check if WebSocket is still open before sending error
                 try:
@@ -2411,6 +2561,10 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
             finally:
                 # Unsubscribe event bus
                 await event_bus.unsubscribe(websocket)
+                if runtime_state is not None and runtime_state.get("status") in {"completed", "error"}:
+                    removed = active_meetings.pop(session_id, None)
+                    if removed is not None:
+                        print(f"[ROUNDTABLE] Cleaned up active meeting: {session_id}", flush=True)
 
         else:
             await websocket.send_json({
@@ -2424,6 +2578,10 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
         print(f"[ROUNDTABLE] Error: {e}", flush=True)
         import traceback
         traceback.print_exc()
+        if runtime_state is not None:
+            runtime_state["status"] = "error"
+            runtime_state["error"] = str(e)
+            runtime_state["updated_at"] = datetime.now().isoformat()
 
         try:
             if websocket.client_state == 1:  # OPEN
@@ -2436,10 +2594,15 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
     finally:
         if kb_preferences_token is not None:
             reset_roundtable_knowledge_preferences(kb_preferences_token)
-        if session_id:
-            removed = active_meetings.pop(session_id, None)
-            if removed is not None:
-                print(f"[ROUNDTABLE] Cleaned up active meeting: {session_id}", flush=True)
+        if runtime_state is not None:
+            try:
+                event_bus = runtime_state.get("event_bus")
+                if event_bus:
+                    await event_bus.unsubscribe(websocket)
+            except Exception:
+                pass
+            if runtime_state.get("status") in {"completed", "error"} and session_id:
+                active_meetings.pop(session_id, None)
 
 
 # ============================================================================
@@ -3232,16 +3395,245 @@ from .core.orchestrators.industry_research_orchestrator import IndustryResearchO
 
 # POST /api/v2/analysis/start - MOVED TO api/routers/analysis.py
 
+ANALYSIS_RUNTIME_MAX_EVENTS = int(os.getenv("ANALYSIS_RUNTIME_MAX_EVENTS", "5000"))
+analysis_runtime_sessions: Dict[str, Dict[str, Any]] = {}
+
+
+def _analysis_runtime_active(runtime: Optional[Dict[str, Any]]) -> bool:
+    if not runtime:
+        return False
+    task = runtime.get("task")
+    return bool(task and not task.done())
+
+
+def _analysis_store_event(session_id: str, event: Dict[str, Any]):
+    if not session_store:
+        return
+    try:
+        session_store.append_session_event(session_id, event, ttl_days=30, max_events=ANALYSIS_RUNTIME_MAX_EVENTS)
+    except Exception as store_err:
+        logger.warning(f"[V2 Runtime] Failed to persist event for {session_id}: {store_err}")
+
+
+async def _analysis_emit_event(runtime: Dict[str, Any], event: Dict[str, Any]):
+    session_id = runtime["session_id"]
+    runtime["updated_at"] = datetime.now().isoformat()
+    runtime["last_event_seq"] = int(runtime.get("last_event_seq", 0)) + 1
+    payload = {
+        **event,
+        "session_id": session_id,
+        "seq": runtime["last_event_seq"],
+        "timestamp": event.get("timestamp") or datetime.now().isoformat(),
+    }
+
+    runtime.setdefault("events", []).append(payload)
+    if len(runtime["events"]) > ANALYSIS_RUNTIME_MAX_EVENTS:
+        runtime["events"] = runtime["events"][-ANALYSIS_RUNTIME_MAX_EVENTS:]
+
+    _analysis_store_event(session_id, payload)
+
+    stale = []
+    for ws in runtime.get("subscribers", []):
+        try:
+            await ws.send_json(payload)
+        except Exception:
+            stale.append(ws)
+    if stale:
+        runtime["subscribers"] = [ws for ws in runtime.get("subscribers", []) if ws not in stale]
+
+
+def _create_analysis_orchestrator(
+    session_id: str,
+    request: AnalysisRequest,
+    event_callback,
+):
+    common_kwargs = {
+        "session_id": session_id,
+        "request": request,
+        "websocket": None,
+        "event_callback": event_callback,
+    }
+    if request.scenario == InvestmentScenario.EARLY_STAGE:
+        return EarlyStageInvestmentOrchestrator(**common_kwargs)
+    if request.scenario == InvestmentScenario.GROWTH:
+        return GrowthInvestmentOrchestrator(**common_kwargs)
+    if request.scenario == InvestmentScenario.PUBLIC_MARKET:
+        return PublicMarketInvestmentOrchestrator(**common_kwargs)
+    if request.scenario == InvestmentScenario.ALTERNATIVE:
+        return AlternativeInvestmentOrchestrator(**common_kwargs)
+    if request.scenario == InvestmentScenario.INDUSTRY_RESEARCH:
+        return IndustryResearchOrchestrator(**common_kwargs)
+    raise ValueError(f"场景 {request.scenario.value} 暂未实现")
+
+
+async def _run_analysis_runtime(session_id: str):
+    runtime = analysis_runtime_sessions.get(session_id)
+    if not runtime:
+        return
+
+    request: AnalysisRequest = runtime["request"]
+    user_id = runtime["user_id"]
+    runtime["status"] = "running"
+    runtime["updated_at"] = datetime.now().isoformat()
+
+    async def event_callback(event: Dict[str, Any]):
+        await _analysis_emit_event(runtime, event)
+
+    try:
+        orchestrator = _create_analysis_orchestrator(
+            session_id=session_id,
+            request=request,
+            event_callback=event_callback,
+        )
+        result = await orchestrator.orchestrate()
+        runtime["result"] = result
+        runtime["status"] = "completed"
+        runtime["updated_at"] = datetime.now().isoformat()
+        logger.info(f"[V2 Runtime] Completed session={session_id}")
+    except Exception as e:
+        runtime["status"] = "error"
+        runtime["error"] = str(e)
+        runtime["updated_at"] = datetime.now().isoformat()
+        logger.error(f"[V2 Runtime] Failed session={session_id}: {e}")
+        await _analysis_emit_event(
+            runtime,
+            {
+                "type": "error",
+                "data": {"error": str(e)},
+            },
+        )
+        if session_store:
+            try:
+                session = session_store.get_session(session_id, user_id=user_id) or {}
+                session["status"] = "error"
+                session["error"] = str(e)
+                session["updated_at"] = datetime.now().isoformat()
+                session_store.save_session(session_id, session, ttl_days=30)
+            except Exception:
+                pass
+
+
+async def _start_analysis_runtime(session_id: str, request: AnalysisRequest, user_id: str):
+    now_ts = time.time()
+    for sid, rt in list(analysis_runtime_sessions.items()):
+        try:
+            status = str(rt.get("status") or "")
+            updated_at = rt.get("updated_at") or rt.get("created_at")
+            updated_ts = datetime.fromisoformat(updated_at).timestamp() if updated_at else now_ts
+            ttl_seconds = 3600 if status in {"completed", "error"} else 6 * 3600
+            if now_ts - updated_ts > ttl_seconds:
+                analysis_runtime_sessions.pop(sid, None)
+        except Exception:
+            continue
+
+    existing = analysis_runtime_sessions.get(session_id)
+    if existing and _analysis_runtime_active(existing):
+        return
+
+    runtime = existing or {
+        "session_id": session_id,
+        "user_id": str(user_id),
+        "request": request,
+        "status": "created",
+        "error": None,
+        "events": [],
+        "last_event_seq": 0,
+        "subscribers": [],
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+        "result": None,
+        "task": None,
+    }
+    runtime["user_id"] = str(user_id)
+    runtime["request"] = request
+    runtime["error"] = None
+    runtime["status"] = "created"
+    runtime["updated_at"] = datetime.now().isoformat()
+    analysis_runtime_sessions[session_id] = runtime
+
+    runtime["task"] = asyncio.create_task(_run_analysis_runtime(session_id))
+    logger.info(f"[V2 Runtime] Started background analysis session={session_id}")
+
+
+async def _load_analysis_request_from_store(session_id: str, user_id: str) -> Optional[AnalysisRequest]:
+    if not session_store:
+        return None
+    try:
+        session = session_store.get_session(session_id, user_id=user_id)
+        if not session:
+            return None
+        req_payload = session.get("request")
+        if not isinstance(req_payload, dict):
+            return None
+        request = AnalysisRequest(**req_payload)
+        request = request.model_copy(update={"user_id": user_id})
+        return request
+    except Exception as e:
+        logger.warning(f"[V2 Runtime] Failed to load request from store for {session_id}: {e}")
+        return None
+
+
+async def _load_analysis_session_from_store(session_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+    if not session_store:
+        return None
+    try:
+        session = session_store.get_session(session_id, user_id=user_id)
+        return session if isinstance(session, dict) else None
+    except Exception as e:
+        logger.warning(f"[V2 Runtime] Failed to load session snapshot for {session_id}: {e}")
+        return None
+
+
+async def _analysis_subscribe_websocket(
+    runtime: Dict[str, Any],
+    websocket: WebSocket,
+    after_seq: int = 0,
+):
+    if websocket not in runtime["subscribers"]:
+        runtime["subscribers"].append(websocket)
+
+    await websocket.send_json({
+        "type": "session_snapshot",
+        "session_id": runtime["session_id"],
+        "timestamp": datetime.now().isoformat(),
+        "data": {
+            "status": runtime.get("status", "unknown"),
+            "updated_at": runtime.get("updated_at"),
+            "error": runtime.get("error"),
+        },
+    })
+
+    # Replay from in-memory runtime first (fast path).
+    replay_events = [
+        evt for evt in runtime.get("events", [])
+        if int(evt.get("seq", 0)) > int(after_seq)
+    ]
+
+    # If no in-memory replay is available, fallback to Redis event stream.
+    if not replay_events and session_store:
+        try:
+            replay_events = session_store.get_session_events(
+                runtime["session_id"],
+                after_seq=int(after_seq),
+                limit=ANALYSIS_RUNTIME_MAX_EVENTS,
+            )
+        except Exception:
+            replay_events = []
+
+    for event in replay_events:
+        await websocket.send_json(event)
+
+
+set_analysis_runtime_starter(_start_analysis_runtime)
+
+
 @app.websocket("/ws/v2/analysis/{session_id}")
 async def websocket_analysis_v2(websocket: WebSocket, session_id: str):
     """
-    V2: 统一分析WebSocket端点
-
-    支持所有5个场景的实时分析进度推送
-    Stage 2: 添加心跳机制支持
+    V2: 统一分析WebSocket端点（订阅模式）
+    - 分析任务在后台持续运行，不绑定单个WebSocket生命周期
+    - WebSocket仅用于订阅实时事件、断线重连和事件回放
     """
-    import asyncio
-
     await websocket.accept()
     token = (websocket.query_params.get("token") or "").strip()
     try:
@@ -3262,122 +3654,111 @@ async def websocket_analysis_v2(websocket: WebSocket, session_id: str):
             logger.warning(f"[V2 WS] Session ownership check skipped due to store error: {store_err}")
 
     logger.info(f"[V2 WS] Client connected: session={session_id}")
-
-    # Stage 2: 心跳处理和消息路由
-    analysis_request = None
-    analysis_started = asyncio.Event()
-    heartbeat_active = True
-
-    async def message_router():
-        """统一处理所有接收的消息,避免竞争条件"""
-        nonlocal analysis_request, heartbeat_active
-        try:
-            while heartbeat_active:
-                try:
-                    message = await websocket.receive_json()
-
-                    if isinstance(message, dict):
-                        msg_type = message.get('type')
-
-                        if msg_type == 'ping':
-                            # 立即响应心跳
-                            logger.debug(f"[V2 WS] ❤️ Heartbeat ping received from session={session_id}")
-                            await websocket.send_json({
-                                "type": "pong",
-                                "timestamp": datetime.now().isoformat()
-                            })
-                        else:
-                            # 这是实际的分析请求
-                            if analysis_request is None:
-                                analysis_request = message
-                                logger.info(f"[V2 WS] Received analysis request: {message}")
-                                analysis_started.set()
-                            else:
-                                # 分析已经开始,这可能是HITL响应或其他消息
-                                # 暂时忽略,因为orchestrator会通过自己的receive处理
-                                logger.debug(f"[V2 WS] Received additional message during analysis: {msg_type}")
-
-                except WebSocketDisconnect:
-                    logger.info(f"[V2 WS] Message router: client disconnected session={session_id}")
-                    heartbeat_active = False
-                    break
-                except Exception as e:
-                    logger.error(f"[V2 WS] Message router error: {e}")
-                    break
-        except Exception as e:
-            logger.error(f"[V2 WS] Message router fatal error: {e}")
+    runtime = analysis_runtime_sessions.get(session_id)
+    requested_after_seq = 0
+    initial_payload = None
 
     try:
-        # Stage 2: 启动消息路由任务
-        router_task = asyncio.create_task(message_router())
+        try:
+            initial_payload = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+        except asyncio.TimeoutError:
+            initial_payload = None
 
-        # 等待接收分析请求 (通过message_router)
-        await asyncio.wait_for(analysis_started.wait(), timeout=30.0)
+        if isinstance(initial_payload, dict):
+            msg_type = initial_payload.get("type")
+            if msg_type == "ping":
+                await websocket.send_json({
+                    "type": "pong",
+                    "timestamp": datetime.now().isoformat(),
+                })
+                initial_payload = None
+            elif msg_type == "subscribe":
+                requested_after_seq = int(initial_payload.get("cursor") or 0)
 
-        if analysis_request is None:
-            raise Exception("Failed to receive analysis request")
+        if runtime and str(runtime.get("user_id")) != str(current_user.id):
+            await websocket.close(code=1008, reason="Session ownership mismatch")
+            return
 
-        # 解析请求
-        request = AnalysisRequest(**analysis_request)
-        request = request.model_copy(update={"user_id": current_user.id})
+        if not runtime:
+            session_snapshot = await _load_analysis_session_from_store(session_id, str(current_user.id))
+            session_status = str((session_snapshot or {}).get("status") or "").lower()
 
-        # 根据scenario创建对应的Orchestrator
-        orchestrator = None
+            # Completed/errored sessions should be replayed, not restarted.
+            if session_snapshot and session_status in {"completed", "error"}:
+                req_payload = session_snapshot.get("request")
+                request_obj: Optional[AnalysisRequest] = None
+                if isinstance(req_payload, dict):
+                    try:
+                        request_obj = AnalysisRequest(**req_payload)
+                        request_obj = request_obj.model_copy(update={"user_id": current_user.id})
+                    except Exception:
+                        request_obj = None
 
-        if request.scenario == InvestmentScenario.EARLY_STAGE:
-            orchestrator = EarlyStageInvestmentOrchestrator(
-                session_id=session_id,
-                request=request,
-                websocket=websocket
-            )
-        elif request.scenario == InvestmentScenario.GROWTH:
-            orchestrator = GrowthInvestmentOrchestrator(
-                session_id=session_id,
-                request=request,
-                websocket=websocket
-            )
-        elif request.scenario == InvestmentScenario.PUBLIC_MARKET:
-            orchestrator = PublicMarketInvestmentOrchestrator(
-                session_id=session_id,
-                request=request,
-                websocket=websocket
-            )
-        elif request.scenario == InvestmentScenario.ALTERNATIVE:
-            orchestrator = AlternativeInvestmentOrchestrator(
-                session_id=session_id,
-                request=request,
-                websocket=websocket
-            )
-        elif request.scenario == InvestmentScenario.INDUSTRY_RESEARCH:
-            orchestrator = IndustryResearchOrchestrator(
-                session_id=session_id,
-                request=request,
-                websocket=websocket
-            )
-        else:
-            # 停止消息路由
-            heartbeat_active = False
-            router_task.cancel()
-            raise HTTPException(
-                status_code=501,
-                detail=f"场景 {request.scenario.value} 暂未实现"
-            )
+                runtime = {
+                    "session_id": session_id,
+                    "user_id": str(current_user.id),
+                    "request": request_obj,
+                    "status": session_status,
+                    "error": session_snapshot.get("error"),
+                    "events": [],
+                    "last_event_seq": session_store.get_latest_session_event_seq(session_id) if session_store else 0,
+                    "subscribers": [],
+                    "created_at": session_snapshot.get("started_at") or datetime.now().isoformat(),
+                    "updated_at": session_snapshot.get("updated_at") or datetime.now().isoformat(),
+                    "result": session_snapshot.get("final_report"),
+                    "task": None,
+                }
+                analysis_runtime_sessions[session_id] = runtime
 
-        # 执行分析
-        result = await orchestrator.orchestrate()
+            if not runtime:
+                request_obj = None
+                if isinstance(initial_payload, dict) and initial_payload.get("scenario"):
+                    request_obj = AnalysisRequest(**initial_payload)
+                    request_obj = request_obj.model_copy(update={"user_id": current_user.id})
+                else:
+                    request_obj = await _load_analysis_request_from_store(session_id, str(current_user.id))
 
-        logger.info(f"[V2 WS] Analysis completed: session={session_id}")
+                if not request_obj:
+                    await websocket.send_json({
+                        "type": "error",
+                        "session_id": session_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "data": {
+                            "error": "No analysis request payload found for this session"
+                        }
+                    })
+                    await websocket.close(code=1008, reason="Missing analysis request payload")
+                    return
 
-        # Stage 2: 停止消息路由任务
-        heartbeat_active = False
-        router_task.cancel()
+                await _start_analysis_runtime(session_id, request_obj, str(current_user.id))
+                runtime = analysis_runtime_sessions.get(session_id)
+
+        if not runtime:
+            await websocket.close(code=1011, reason="Failed to initialize runtime")
+            return
+
+        await _analysis_subscribe_websocket(runtime, websocket, after_seq=requested_after_seq)
+
+        # Message loop: keep-alive + optional manual replay
+        while True:
+            message = await websocket.receive_json()
+            if not isinstance(message, dict):
+                continue
+
+            msg_type = message.get("type")
+            if msg_type == "ping":
+                await websocket.send_json({
+                    "type": "pong",
+                    "timestamp": datetime.now().isoformat(),
+                })
+            elif msg_type == "subscribe":
+                cursor = int(message.get("cursor") or 0)
+                await _analysis_subscribe_websocket(runtime, websocket, after_seq=cursor)
 
     except WebSocketDisconnect:
         logger.info(f"[V2 WS] Client disconnected: session={session_id}")
     except Exception as e:
         logger.error(f"[V2 WS] Error: {e}")
-        import traceback
-        traceback.print_exc()
         try:
             await websocket.send_json({
                 "type": "error",
@@ -3389,6 +3770,9 @@ async def websocket_analysis_v2(websocket: WebSocket, session_id: str):
             })
         except Exception:
             pass
+    finally:
+        if runtime and websocket in runtime.get("subscribers", []):
+            runtime["subscribers"] = [ws for ws in runtime.get("subscribers", []) if ws is not websocket]
 
 
 # GET /api/v2/analysis/{session_id}/status - MOVED TO api/routers/analysis.py

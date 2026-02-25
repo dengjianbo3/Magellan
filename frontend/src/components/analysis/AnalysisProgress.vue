@@ -483,6 +483,37 @@ const analysisStartTime = computed(() => {
   });
 });
 
+function applyStatusSnapshot(statusPayload) {
+  if (!statusPayload || typeof statusPayload !== 'object') return;
+
+  if (Array.isArray(statusPayload.workflow) && statusPayload.workflow.length > 0) {
+    workflow.value = statusPayload.workflow.map((s) => ({
+      id: s.id,
+      name: s.name,
+      agent: s.agent,
+      status: s.status || 'pending',
+      progress: typeof s.progress === 'number' ? s.progress : 0,
+      result: s.result,
+      error: s.error
+    }));
+  }
+
+  if (typeof statusPayload.progress === 'number') {
+    overallProgress.value = Math.max(0, Math.min(100, statusPayload.progress));
+  }
+
+  if (statusPayload.quick_judgment) {
+    quickJudgment.value = statusPayload.quick_judgment;
+  }
+
+  if (statusPayload.status === 'completed') {
+    analysisStatus.value = 'completed';
+    overallProgress.value = 100;
+  } else if (statusPayload.status === 'error' || statusPayload.error) {
+    analysisStatus.value = 'error';
+  }
+}
+
 onMounted(() => {
   console.log('[AnalysisProgress] Mounted, session:', props.sessionId);
   console.log('[AnalysisProgress] Project name:', props.projectName);
@@ -502,6 +533,19 @@ onMounted(() => {
 
   // 监听连接状态变化
   analysisServiceV2.onStateChange(handleConnectionStateChange);
+
+  // If this component is mounted via session recovery/new page, resume WS subscription.
+  if (props.sessionId && !analysisServiceV2.isConnected()) {
+    analysisServiceV2.resumeSession(props.sessionId).catch(async (resumeError) => {
+      console.warn('[AnalysisProgress] Resume WS failed, fallback to status snapshot:', resumeError);
+      try {
+        const statusSnapshot = await analysisServiceV2.getStatus(props.sessionId);
+        applyStatusSnapshot(statusSnapshot);
+      } catch (statusError) {
+        console.error('[AnalysisProgress] Failed to load status snapshot:', statusError);
+      }
+    });
+  }
 
   // Stage 3: 刷新消息缓冲区，重放之前收到的消息
   console.log('[AnalysisProgress] Flushing message buffer...');
@@ -525,6 +569,9 @@ onUnmounted(() => {
   if (elapsedTimer) {
     clearInterval(elapsedTimer);
   }
+
+  // Detach live WS when leaving page. Backend task keeps running and can be resumed.
+  analysisServiceV2.disconnect();
 });
 
 function handleWorkflowStart(message) {

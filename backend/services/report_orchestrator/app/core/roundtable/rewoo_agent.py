@@ -380,10 +380,19 @@ class ReWOOAgent(Agent):
                     "raw_result": str(obs)
                 })
 
-        # Count successes - handle both dict and other types safely
+        # Count successes - treat dict payloads without explicit success/error as valid results
         success_count = 0
         for o in processed_observations:
-            if isinstance(o, dict) and o.get('success', False):
+            if not isinstance(o, dict):
+                continue
+
+            if o.get("success") is True:
+                success_count += 1
+                continue
+
+            # Backward compatibility: some tools return plain dict payloads
+            # without success/error envelope; these should be considered successful.
+            if "success" not in o and "error" not in o:
                 success_count += 1
         success_rate = success_count / len(plan) if plan else 0
 
@@ -587,10 +596,27 @@ Please create a tool call plan for this task (JSON format).
 
             # Handle both dict and string observations
             if isinstance(obs, dict):
-                if obs.get("success"):
-                    results_text += f"**Result**: {obs.get('summary', 'N/A')}\n"
-                else:
+                is_explicit_failure = obs.get("success") is False
+                has_error = bool(obs.get("error"))
+
+                if is_explicit_failure or has_error:
                     results_text += f"**Error**: {obs.get('error', 'Unknown error')}\n"
+                else:
+                    summary = obs.get("summary")
+                    if not summary:
+                        payload = obs.get("result", obs.get("raw_result", obs))
+                        try:
+                            summary = json.dumps(payload, ensure_ascii=False, default=str)
+                        except Exception:
+                            summary = str(payload)
+                    results_text += f"**Result**: {str(summary)[:2000]}\n"
+
+                    if "result" in obs and obs.get("result") is not None:
+                        try:
+                            result_preview = json.dumps(obs.get("result"), ensure_ascii=False, default=str)
+                        except Exception:
+                            result_preview = str(obs.get("result"))
+                        results_text += f"**Result Data**: {result_preview[:2000]}\n"
             elif isinstance(obs, str):
                 # Tool returned raw string
                 results_text += f"**Result**: {obs[:2000]}\n"

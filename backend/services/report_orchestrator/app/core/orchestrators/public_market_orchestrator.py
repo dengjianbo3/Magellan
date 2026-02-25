@@ -5,7 +5,7 @@ Public Market Investment Orchestrator (公开市场投资协调器)
 关注点: 估值、技术分析、基本面、市场情绪
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Callable, Awaitable
 
 from .base_orchestrator import BaseOrchestrator
 from ...models.analysis_models import (
@@ -32,12 +32,19 @@ class PublicMarketInvestmentOrchestrator(BaseOrchestrator):
     - 市场情绪 (15%)
     """
 
-    def __init__(self, session_id: str, request: Any, websocket: Any = None):
+    def __init__(
+        self,
+        session_id: str,
+        request: Any,
+        websocket: Any = None,
+        event_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+    ):
         super().__init__(
             scenario=InvestmentScenario.PUBLIC_MARKET,
             session_id=session_id,
             request=request,
-            websocket=websocket
+            websocket=websocket,
+            event_callback=event_callback,
         )
         self.scenario_name = "公开市场投资"
 

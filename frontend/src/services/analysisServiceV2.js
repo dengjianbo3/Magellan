@@ -19,6 +19,8 @@ class AnalysisServiceV2 {
     this.maxReconnectAttempts = 10; // Stage 2: 增加到10次
     this.reconnectTimer = null;
     this.messageHandlers = new Map();
+    this.currentRequest = null;
+    this.connectionMode = 'start'; // 'start' | 'resume'
 
     // Stage 2: 心跳机制
     this.heartbeatInterval = null;
@@ -125,6 +127,8 @@ class AnalysisServiceV2 {
     this.isBuffering = true; // 开启缓冲模式
     this.sessionId = null;
     this.reconnectAttempts = 0;
+    this.currentRequest = null;
+    this.connectionMode = 'start';
   }
 
   /**
@@ -171,9 +175,11 @@ class AnalysisServiceV2 {
       console.log('[AnalysisV2] Analysis started:', data);
 
       this.sessionId = data.session_id;
+      this.currentRequest = request;
+      this.connectionMode = 'start';
 
       // 连接WebSocket
-      await this._connectWebSocket(request, data.ws_url);
+      await this._connectWebSocket(request, data.ws_url, { mode: 'start' });
 
       return {
         sessionId: data.session_id,
@@ -191,7 +197,8 @@ class AnalysisServiceV2 {
   /**
    * 连接WebSocket
    */
-  async _connectWebSocket(request, serverWsUrl = null) {
+  async _connectWebSocket(request, serverWsUrl = null, options = {}) {
+    const mode = options.mode || this.connectionMode || 'start';
     return new Promise((resolve, reject) => {
       // 添加认证token作为查询参数
       const token = this._getAccessToken();
@@ -227,8 +234,15 @@ class AnalysisServiceV2 {
         // Stage 2: 启动心跳
         this._startHeartbeat();
 
-        // 发送初始请求
-        this.ws.send(JSON.stringify(request));
+        if (mode === 'resume') {
+          this.ws.send(JSON.stringify({
+            type: 'subscribe',
+            session_id: this.sessionId
+          }));
+        } else {
+          // 发送初始请求
+          this.ws.send(JSON.stringify(request));
+        }
         resolve();
       };
 
@@ -273,7 +287,7 @@ class AnalysisServiceV2 {
 
           this._clearReconnectTimer();
           this.reconnectTimer = setTimeout(() => {
-            this._connectWebSocket(request, serverWsUrl).catch(error => {
+            this._connectWebSocket(this.currentRequest, serverWsUrl, { mode: this.connectionMode }).catch(error => {
               console.error('[AnalysisV2] Reconnect failed:', error);
             });
           }, backoffDelay);
@@ -287,6 +301,24 @@ class AnalysisServiceV2 {
         }
       };
     });
+  }
+
+  /**
+   * 恢复已启动的分析会话（仅订阅，不重复发起分析）
+   */
+  async resumeSession(sessionId, cursor = 0) {
+    this.sessionId = sessionId;
+    this.connectionMode = 'resume';
+    this.currentRequest = null;
+    await this._connectWebSocket(null, null, { mode: 'resume' });
+
+    if (cursor > 0 && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: 'subscribe',
+        session_id: this.sessionId,
+        cursor
+      }));
+    }
   }
 
   /**
@@ -567,6 +599,8 @@ class AnalysisServiceV2 {
       this.ws = null;
     }
     this.messageHandlers.clear();
+    this.currentRequest = null;
+    this.connectionMode = 'start';
     this._setConnectionState('disconnected');
   }
 
