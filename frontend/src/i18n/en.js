@@ -655,6 +655,7 @@ export default {
   // Knowledge Base
   knowledge: {
     title: 'Knowledge Base',
+    subtitle: 'Upload, retrieve, and manage research materials',
     documentsCount: 'documents',
     searchPlaceholder: 'Search documents...',
     upload: 'Upload',
@@ -712,6 +713,7 @@ export default {
       notifications: 'Notifications',
       security: 'Security',
       api: 'API Keys',
+      plans: 'Membership Plans',
       appearance: 'Appearance',
       language: 'Language'
     },
@@ -765,6 +767,13 @@ export default {
       title: 'AI Model Configuration',
       llmProvider: 'LLM Provider',
       llmProviderDesc: 'Select the LLM provider for AI analysis',
+      useProLabel: 'Use Pro Model',
+      useProDesc: 'Enable for stronger reasoning quality, disable for faster Flash responses.',
+      currentModelLabel: 'Current active model',
+      modelSwitchSuccess: 'Model switched successfully',
+      modelSwitchError: 'Failed to switch model: {error}',
+      proModelNote: 'Pro model',
+      flashModelNote: 'Flash model',
       providers: {
         gemini: 'Gemini (Google)',
         kimi: 'Kimi (Moonshot AI)',
@@ -780,6 +789,45 @@ export default {
       update: 'Update',
       usage: 'API Usage',
       thisMonth: 'This Month'
+    },
+
+    pricing: {
+      title: 'Membership Plans',
+      subtitle: 'Three subscription tiers for different usage intensity and service levels.',
+      demoBadge: 'Member',
+      recommended: 'Recommended',
+      plans: {
+        free: {
+          name: 'Free',
+          price: '$0 / month',
+          description: 'Best for lightweight exploration and previews',
+          features: [
+            'Core expert group chat and Q&A',
+            'Limited session history with standard queueing',
+            'Suitable for individual trials and first look demos'
+          ]
+        },
+        pro: {
+          name: 'Pro',
+          price: '$100 / month',
+          description: 'Powered by the newest and strongest reasoning model',
+          features: [
+            'Analysis and responses powered by the latest flagship thinking model',
+            'More reliable deep reasoning for complex, multi-step questions',
+            'Ideal for professional research and decision validation'
+          ]
+        },
+        urtal: {
+          name: 'Utral',
+          price: '$500 / month',
+          description: 'Each expert is backed by a professionally trained specialist model',
+          features: [
+            'Every expert role is supported by a dedicated specialist model',
+            'Domain-specific collaboration that mirrors real expert workflows',
+            'Designed for institutional, high-value multi-expert scenarios'
+          ]
+        }
+      }
     },
 
     appearance: {

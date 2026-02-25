@@ -673,6 +673,7 @@ export default {
   // Knowledge Base
   knowledge: {
     title: '知识库',
+    subtitle: '上传、检索并管理研究资料',
     documentsCount: '篇文档',
     searchPlaceholder: '搜索文档...',
     upload: '上传',
@@ -730,6 +731,7 @@ export default {
       notifications: '通知',
       security: '安全',
       api: 'API 密钥',
+      plans: '会员方案',
       appearance: '外观',
       language: '语言'
     },
@@ -783,6 +785,13 @@ export default {
       title: 'AI 模型配置',
       llmProvider: 'LLM 提供商',
       llmProviderDesc: '选择用于 AI 分析的大语言模型提供商',
+      useProLabel: '使用 Pro 模型',
+      useProDesc: '开启后使用更强的推理模型，关闭后使用更快的 Flash 模型。',
+      currentModelLabel: '当前生效模型',
+      modelSwitchSuccess: '模型切换成功',
+      modelSwitchError: '模型切换失败: {error}',
+      proModelNote: 'Pro 模型',
+      flashModelNote: 'Flash 模型',
       providers: {
         gemini: 'Gemini (Google)',
         kimi: 'Kimi (Moonshot AI)',
@@ -798,6 +807,45 @@ export default {
       update: '更新',
       usage: 'API 用量',
       thisMonth: '本月'
+    },
+
+    pricing: {
+      title: '会员方案',
+      subtitle: '三档订阅方案，便于快速选择适合的能力与服务等级。',
+      demoBadge: '会员',
+      recommended: '推荐',
+      plans: {
+        free: {
+          name: 'Free',
+          price: '$0 / 月',
+          description: '适合轻量体验与功能预览',
+          features: [
+            '基础专家群聊与问答',
+            '有限历史会话与标准排队',
+            '适合个人试用与产品初识'
+          ]
+        },
+        pro: {
+          name: 'Pro',
+          price: '$100 / 月',
+          description: '可调用最新最强思考大模型，适合高质量推理任务',
+          features: [
+            '基于最新最强思考大模型进行分析与回答',
+            '更稳定的深度推理与复杂问题拆解能力',
+            '适合专业研究与关键决策前验证'
+          ]
+        },
+        urtal: {
+          name: 'Utral',
+          price: '$500 / 月',
+          description: '每位专家均由专业化训练过的专家模型支撑',
+          features: [
+            '每个专家角色背后都有专业训练模型支持',
+            '专家分工协作，输出更贴近真实研究流程',
+            '适合机构级多专家会诊与高价值场景'
+          ]
+        }
+      }
     },
 
     appearance: {

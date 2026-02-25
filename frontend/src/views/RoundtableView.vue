@@ -1,5 +1,12 @@
 <template>
-  <div class="page-shell h-[calc(100vh-12rem)] min-h-0 overflow-hidden flex flex-col md:h-[calc(100vh-13rem)]">
+  <div class="page-shell h-full min-h-0 overflow-hidden flex flex-col">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title page-title-gradient">{{ t('roundtable.title') }}</h1>
+        <p class="page-subtitle">{{ t('roundtable.subtitle') }}</p>
+      </div>
+    </div>
+
     <!-- Start Discussion Panel -->
     <div v-if="!isDiscussionActive" class="section-card md:p-10 lg:p-12 flex-1 flex justify-center overflow-y-auto">
       <div class="max-w-2xl w-full">
@@ -16,11 +23,11 @@
             <label class="block text-sm font-bold text-text-secondary mb-2 uppercase tracking-wider">
               {{ t('roundtable.startPanel.topicLabel') }} <span class="text-rose-500">*</span>
             </label>
-            <input
+            <textarea
               v-model="discussionTopic"
-              type="text"
               :placeholder="t('roundtable.startPanel.topicPlaceholder')"
-              class="w-full h-12 rounded-xl border border-white/10 bg-black/30 px-4 text-white placeholder-text-secondary transition-all focus:outline-none focus:border-primary/50 focus:bg-black/50"
+              rows="3"
+              class="w-full min-h-[108px] rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white placeholder-text-secondary transition-all resize-y focus:outline-none focus:border-primary/50 focus:bg-black/50"
             />
           </div>
 

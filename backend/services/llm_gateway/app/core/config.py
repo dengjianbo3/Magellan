@@ -5,7 +5,12 @@ from typing import Optional
 class Settings(BaseSettings):
     # Gemini 配置
     GOOGLE_API_KEY: Optional[str] = None
+    # Pro 模型（高质量，延迟更高）
     GEMINI_MODEL_NAME: str = "gemini-3.1-pro-preview"
+    # Flash 模型（更快，成本更低）
+    GEMINI_FLASH_MODEL_NAME: str = "gemini-3-flash-preview"
+    # 默认档位: pro | flash
+    GEMINI_DEFAULT_TIER: str = "pro"
     GEMINI_ENABLE_GOOGLE_SEARCH: bool = True
 
     # Kimi 配置 (Moonshot AI)

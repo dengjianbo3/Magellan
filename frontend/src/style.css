@@ -49,20 +49,20 @@ body {
 
 /* Glassmorphism Utility */
 .glass-panel {
-  @apply border border-white/10 bg-surface/55 shadow-[0_14px_40px_rgba(0,0,0,0.35)] backdrop-blur-lg;
+  @apply border border-white/10 bg-white/[0.035] shadow-[0_10px_30px_rgba(0,0,0,0.28)] backdrop-blur-lg;
 }
 
 .glass-card {
-  @apply border border-white/10 bg-surface/35 backdrop-blur-md transition-all duration-300 hover:border-primary/35;
+  @apply border border-white/10 bg-white/[0.028] backdrop-blur-md transition-all duration-300 hover:border-primary/25;
 }
 
 /* Page layout utilities */
 .page-shell {
-  @apply space-y-6 md:space-y-8;
+  @apply relative flex h-full min-h-0 flex-col gap-5 md:gap-6;
 }
 
 .page-header {
-  @apply flex flex-col gap-3 md:flex-row md:items-end md:justify-between;
+  @apply flex flex-col gap-2 md:flex-row md:items-end md:justify-between;
 }
 
 .page-title {
@@ -82,7 +82,7 @@ body {
 }
 
 .section-card {
-  @apply rounded-xl border border-white/10 bg-surface/55 p-6 shadow-[0_14px_40px_rgba(0,0,0,0.35)] backdrop-blur-lg;
+  @apply rounded-2xl border border-white/10 bg-white/[0.03] p-6 shadow-[0_12px_34px_rgba(0,0,0,0.26)] backdrop-blur-lg;
 }
 
 .section-header {

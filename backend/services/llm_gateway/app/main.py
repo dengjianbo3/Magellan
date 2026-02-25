@@ -37,6 +37,8 @@ class GenerateRequest(BaseModel):
     use_google_search: Optional[bool] = None
     # 指定 LLM 提供商 (可选，默认使用系统配置)
     provider: Optional[Literal["gemini", "kimi", "deepseek"]] = None
+    # 模型覆盖（可选，支持 gemini-3.1-pro-preview / gemini-3-flash-preview / pro / flash）
+    model: Optional[str] = None
 
 class GenerateResponse(BaseModel):
     content: str
@@ -55,6 +57,8 @@ class ChatCompletionRequest(BaseModel):
     tool_choice: Optional[Union[str, Dict[str, Any]]] = "auto"  # auto, none, or specific tool
     temperature: Optional[float] = None
     provider: Optional[Literal["gemini", "kimi", "deepseek"]] = None
+    # 模型覆盖（可选，支持 gemini-3.1-pro-preview / gemini-3-flash-preview / pro / flash）
+    model: Optional[str] = None
 
 class ChatCompletionResponse(BaseModel):
     choices: List[Dict[str, Any]]  # [{"message": {"role", "content", "tool_calls"}}]
@@ -69,6 +73,17 @@ class ProviderInfo(BaseModel):
 class ProvidersResponse(BaseModel):
     current_provider: str
     providers: List[ProviderInfo]
+
+
+class GeminiModelTierResponse(BaseModel):
+    tier: Literal["pro", "flash"]
+    use_pro: bool
+    model: str
+    available_models: Dict[str, str]
+
+
+class GeminiModelTierUpdateRequest(BaseModel):
+    use_pro: bool
 
 # --- FastAPI App ---
 app = FastAPI(
@@ -112,6 +127,7 @@ gemini_client = None
 kimi_client = None
 deepseek_client = None
 current_provider = settings.DEFAULT_LLM_PROVIDER
+gemini_model_tier: Literal["pro", "flash"] = "flash" if str(settings.GEMINI_DEFAULT_TIER).lower() == "flash" else "pro"
 
 # --- PoC hardening: request limits ---
 LLM_RATE_LIMIT_PER_MINUTE = max(1, int(os.getenv("LLM_RATE_LIMIT_PER_MINUTE", "60")))
@@ -217,6 +233,29 @@ def _should_enable_gemini_google_search(request_flag: Optional[bool]) -> bool:
     return bool(settings.GEMINI_ENABLE_GOOGLE_SEARCH)
 
 
+def _normalize_gemini_tier(value: Optional[str]) -> Literal["pro", "flash"]:
+    return "flash" if str(value or "").strip().lower() == "flash" else "pro"
+
+
+def _resolve_gemini_model_name(requested_model: Optional[str] = None) -> str:
+    """
+    Resolve Gemini model by priority:
+    1) request.model (supports 'pro'/'flash' aliases and full model IDs)
+    2) current global tier
+    """
+    pro_model = settings.GEMINI_MODEL_NAME
+    flash_model = settings.GEMINI_FLASH_MODEL_NAME
+    normalized = (requested_model or "").strip().lower()
+
+    if normalized in {"pro", "flash"}:
+        return pro_model if normalized == "pro" else flash_model
+
+    if requested_model in {pro_model, flash_model}:
+        return requested_model
+
+    return pro_model if gemini_model_tier == "pro" else flash_model
+
+
 def _attach_google_search_tool(config_dict: Dict[str, Any]) -> None:
     tools = list(config_dict.get("tools") or [])
     has_google_search = any(isinstance(tool, dict) and "google_search" in tool for tool in tools)
@@ -226,14 +265,18 @@ def _attach_google_search_tool(config_dict: Dict[str, Any]) -> None:
 
 @app.on_event("startup")
 def startup_event():
-    global gemini_client, kimi_client, deepseek_client, current_provider
+    global gemini_client, kimi_client, deepseek_client, current_provider, gemini_model_tier
 
     # 初始化 Gemini 客户端
     if settings.GOOGLE_API_KEY:
         try:
             from google import genai
             gemini_client = genai.Client(api_key=settings.GOOGLE_API_KEY)
-            print(f"[LLM Gateway] Gemini client initialized (model: {settings.GEMINI_MODEL_NAME})")
+            gemini_model_tier = _normalize_gemini_tier(settings.GEMINI_DEFAULT_TIER)
+            print(
+                "[LLM Gateway] Gemini client initialized "
+                f"(pro={settings.GEMINI_MODEL_NAME}, flash={settings.GEMINI_FLASH_MODEL_NAME}, tier={gemini_model_tier})"
+            )
         except Exception as e:
             print(f"[LLM Gateway] Failed to initialize Gemini client: {e}")
 
@@ -359,6 +402,7 @@ async def call_gemini(request: GenerateRequest) -> str:
     retry_delay = 3
 
     force_plain_text_retry = False
+    model_name = _resolve_gemini_model_name(request.model)
 
     for attempt in range(max_retries):
         try:
@@ -384,7 +428,7 @@ async def call_gemini(request: GenerateRequest) -> str:
             config = types.GenerateContentConfig(**config_dict) if config_dict else None
 
             response = gemini_client.models.generate_content(
-                model=settings.GEMINI_MODEL_NAME,
+                model=model_name,
                 contents=contents,
                 config=config
             )
@@ -749,6 +793,7 @@ async def call_gemini_with_tools(request: ChatCompletionRequest) -> Dict[str, An
 
     max_retries = 3
     retry_delay = 2
+    model_name = _resolve_gemini_model_name(request.model)
 
     for attempt in range(max_retries):
         try:
@@ -783,12 +828,12 @@ async def call_gemini_with_tools(request: ChatCompletionRequest) -> Dict[str, An
             config = types.GenerateContentConfig(**config_dict) if config_dict else None
 
             response = gemini_client.models.generate_content(
-                model=settings.GEMINI_MODEL_NAME,
+                model=model_name,
                 contents=contents,
                 config=config
             )
 
-            return convert_gemini_to_openai_response(response, settings.GEMINI_MODEL_NAME)
+            return convert_gemini_to_openai_response(response, model_name)
 
         except Exception as e:
             from google.genai.errors import ServerError
@@ -1004,7 +1049,7 @@ async def get_providers():
         ProviderInfo(
             name="gemini",
             available=gemini_client is not None,
-            model=settings.GEMINI_MODEL_NAME
+            model=_resolve_gemini_model_name()
         ),
         ProviderInfo(
             name="kimi",
@@ -1040,6 +1085,41 @@ async def set_provider(provider_name: Literal["gemini", "kimi", "deepseek"]):
     print(f"[LLM Gateway] Provider switched to: {current_provider}")
 
     return {"message": f"Provider switched to {provider_name}", "current_provider": current_provider}
+
+
+@app.get("/gemini/model-tier", response_model=GeminiModelTierResponse, tags=["Configuration"])
+@app.get("/api/llm/gemini/model-tier", response_model=GeminiModelTierResponse, tags=["Configuration"])
+async def get_gemini_model_tier():
+    """获取当前 Gemini 档位（pro/flash）及对应模型。"""
+    current_model = _resolve_gemini_model_name()
+    return GeminiModelTierResponse(
+        tier=gemini_model_tier,
+        use_pro=(gemini_model_tier == "pro"),
+        model=current_model,
+        available_models={
+            "pro": settings.GEMINI_MODEL_NAME,
+            "flash": settings.GEMINI_FLASH_MODEL_NAME,
+        },
+    )
+
+
+@app.post("/gemini/model-tier", response_model=GeminiModelTierResponse, tags=["Configuration"])
+@app.post("/api/llm/gemini/model-tier", response_model=GeminiModelTierResponse, tags=["Configuration"])
+async def set_gemini_model_tier(payload: GeminiModelTierUpdateRequest):
+    """设置当前 Gemini 档位。"""
+    global gemini_model_tier
+    gemini_model_tier = "pro" if payload.use_pro else "flash"
+    current_model = _resolve_gemini_model_name()
+    print(f"[LLM Gateway] Gemini tier switched to {gemini_model_tier} ({current_model})")
+    return GeminiModelTierResponse(
+        tier=gemini_model_tier,
+        use_pro=(gemini_model_tier == "pro"),
+        model=current_model,
+        available_models={
+            "pro": settings.GEMINI_MODEL_NAME,
+            "flash": settings.GEMINI_FLASH_MODEL_NAME,
+        },
+    )
 
 @app.post("/chat", response_model=GenerateResponse, tags=["AI Generation"])
 async def chat_handler(payload: GenerateRequest, request: Request):
@@ -1145,7 +1225,7 @@ async def generate_from_file(
 
         # 4. 生成内容
         response = gemini_client.models.generate_content(
-            model=settings.GEMINI_MODEL_NAME,
+            model=_resolve_gemini_model_name(),
             contents=[
                 types.Part(text=prompt),
                 types.Part(file_data=types.FileData(file_uri=upload_response.uri))
@@ -1210,7 +1290,7 @@ async def chat_stream(payload: GenerateRequest, request: Request):
             
             # 使用流式响应
             response = gemini_client.models.generate_content_stream(
-                model=settings.GEMINI_MODEL_NAME,
+                model=_resolve_gemini_model_name(payload.model),
                 contents=contents,
                 config=config
             )
@@ -1248,7 +1328,10 @@ def health_check():
         "kimi_available": kimi_client is not None,
         "deepseek_available": deepseek_client is not None,
         "gemini_google_search_enabled": settings.GEMINI_ENABLE_GOOGLE_SEARCH,
-        "gemini_model": settings.GEMINI_MODEL_NAME,
+        "gemini_model_tier": gemini_model_tier,
+        "gemini_model": _resolve_gemini_model_name(),
+        "gemini_pro_model": settings.GEMINI_MODEL_NAME,
+        "gemini_flash_model": settings.GEMINI_FLASH_MODEL_NAME,
         "kimi_model": settings.KIMI_MODEL_NAME,
         "deepseek_model": settings.DEEPSEEK_MODEL_NAME
     }

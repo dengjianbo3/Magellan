@@ -76,29 +76,31 @@ export default defineConfig({
   },
   // Server configuration
   server: {
+    host: '0.0.0.0',
+    strictPort: true,
     // Enable gzip compression in dev
     middlewareMode: false,
     // Proxy API requests to backend
     proxy: {
       // Auth API -> auth_service
       '/api/auth': {
-        target: 'http://localhost:8007',
+        target: 'http://127.0.0.1:8007',
         changeOrigin: true
       },
       // LLM Gateway API
       '/api/llm': {
-        target: 'http://localhost:8003',
+        target: 'http://127.0.0.1:8003',
         changeOrigin: true
       },
       // All other API routes -> report_orchestrator
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
         ws: true
       },
       // Non-/api websocket routes (e.g. /ws/roundtable)
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: 'ws://127.0.0.1:8000',
         changeOrigin: true,
         ws: true
       }

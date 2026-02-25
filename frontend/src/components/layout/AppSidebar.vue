@@ -1,20 +1,20 @@
 <template>
   <aside
     :class="[
-      'relative z-50 flex h-full flex-shrink-0 flex-col border-r border-white/10 bg-gradient-to-b from-surface/60 via-surface/35 to-surface/50 px-3 py-4 text-text-primary backdrop-blur-xl transition-all duration-300 ease-in-out md:py-5',
-      collapsed ? 'w-[72px]' : 'w-64'
+      'relative z-50 flex h-full flex-shrink-0 flex-col border-r border-white/10 bg-gradient-to-b from-surface/60 via-surface/35 to-surface/50 py-4 text-text-primary backdrop-blur-xl transition-all duration-300 ease-in-out md:py-5',
+      collapsed ? 'w-[72px] px-2' : 'w-64 px-3'
     ]"
   >
     <div class="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.03] via-transparent to-transparent"></div>
 
     <!-- Logo & Collapse Button -->
-    <div :class="['relative flex items-center mb-7', collapsed ? 'justify-center px-2' : 'justify-between px-2']">
-      <div class="flex items-center gap-3 overflow-hidden group">
+    <div :class="['relative flex items-center mb-7', collapsed ? 'justify-center px-0' : 'justify-between px-2']">
+      <div class="flex items-center gap-3 group">
         <!-- Magellan Logo -->
-        <div class="relative">
+        <div class="relative shrink-0">
           <div class="absolute inset-0 bg-primary/20 blur-lg rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
           <svg
-            class="w-10 h-10 text-primary relative z-10 drop-shadow-[0_0_8px_rgba(56,189,248,0.5)]"
+            class="w-10 h-10 text-primary relative z-10 block drop-shadow-[0_0_8px_rgba(56,189,248,0.5)]"
             fill="none"
             stroke="currentColor"
             stroke-linecap="round"

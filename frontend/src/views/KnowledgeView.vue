@@ -1,7 +1,15 @@
 <template>
-  <div class="grid h-full min-h-0 grid-cols-1 gap-6 xl:grid-cols-[18rem,minmax(0,1fr)]">
-    <!-- Left Sidebar: Categories -->
-    <div class="glass-panel flex min-h-[260px] flex-col rounded-2xl p-6 xl:sticky xl:top-6 xl:max-h-[calc(100vh-11rem)] xl:overflow-y-auto">
+  <div class="page-shell h-full min-h-0">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title page-title-gradient">{{ t('knowledge.title') }}</h1>
+        <p class="page-subtitle">{{ t('knowledge.subtitle') }}</p>
+      </div>
+    </div>
+
+    <div class="relative flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)] gap-6 lg:grid-cols-[18rem,minmax(0,1fr)]">
+      <!-- Left Sidebar: Categories -->
+      <div class="glass-panel flex min-h-[260px] flex-col rounded-2xl p-6 lg:h-full lg:sticky lg:top-0 lg:max-h-full lg:overflow-y-auto">
       <h3 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-6">{{ t('knowledge.newCategory') }}</h3>
       
       <div class="space-y-2 flex-1">
@@ -35,57 +43,56 @@
           {{ t('knowledge.newCategory') }}
         </button>
       </div>
-    </div>
+      </div>
 
-    <!-- Main Content Area -->
-    <div class="flex min-h-0 flex-col glass-panel rounded-2xl overflow-hidden">
-      <!-- Header -->
-      <div class="border-b border-white/10 bg-white/5 p-6 md:p-8 backdrop-blur-md">
-        <div class="section-header !mb-0">
-          <div>
-            <h1 class="page-title page-title-gradient !text-3xl mb-1">{{ t('knowledge.title') }}</h1>
-            <p class="page-subtitle !mt-0">
-              {{ searchMode ? `${searchResults.length} search results` : `${filteredDocuments.length} ${t('knowledge.documentsCount')}` }}
-            </p>
-          </div>
-          <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-            <div class="relative group w-full sm:w-80">
-              <div class="absolute inset-0 bg-primary/20 blur-md rounded-lg opacity-0 group-focus-within:opacity-100 transition-opacity duration-500"></div>
-              <input
-                v-model="searchQuery"
-                @keyup.enter="performSearch"
-                type="text"
-                :placeholder="t('knowledge.searchPlaceholder')"
-                class="control-input relative z-10 w-full pl-10 pr-20 !bg-black/20"
-              />
-              <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary z-20">
-                search
-              </span>
+      <!-- Main Content Area -->
+      <div class="flex h-full min-h-0 flex-col glass-panel rounded-2xl overflow-hidden">
+        <!-- Header -->
+        <div class="border-b border-white/10 bg-white/5 p-6 md:p-8 backdrop-blur-md">
+          <div class="section-header !mb-0">
+            <div>
+              <p class="page-subtitle !mt-0">
+                {{ searchMode ? `${searchResults.length} search results` : `${filteredDocuments.length} ${t('knowledge.documentsCount')}` }}
+              </p>
+            </div>
+            <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+              <div class="relative group w-full sm:w-80">
+                <div class="absolute inset-0 bg-primary/20 blur-md rounded-lg opacity-0 group-focus-within:opacity-100 transition-opacity duration-500"></div>
+                <input
+                  v-model="searchQuery"
+                  @keyup.enter="performSearch"
+                  type="text"
+                  :placeholder="t('knowledge.searchPlaceholder')"
+                  class="control-input relative z-10 w-full pl-10 pr-20 !bg-black/20"
+                />
+                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary z-20">
+                  search
+                </span>
+                <button
+                  v-if="searchMode"
+                  @click="clearSearch"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded-md bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 transition-colors font-bold z-20"
+                >
+                  Clear
+                </button>
+                <button
+                  v-else-if="searchQuery"
+                  @click="performSearch"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded-md bg-primary/20 text-primary hover:bg-primary/30 transition-colors font-bold z-20"
+                >
+                  Search
+                </button>
+              </div>
               <button
-                v-if="searchMode"
-                @click="clearSearch"
-                class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded-md bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 transition-colors font-bold z-20"
+                @click="showUploadModal = true"
+                class="page-primary-btn justify-center whitespace-nowrap"
               >
-                Clear
-              </button>
-              <button
-                v-else-if="searchQuery"
-                @click="performSearch"
-                class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded-md bg-primary/20 text-primary hover:bg-primary/30 transition-colors font-bold z-20"
-              >
-                Search
+                <span class="material-symbols-outlined">cloud_upload</span>
+                {{ t('knowledge.upload') }}
               </button>
             </div>
-            <button
-              @click="showUploadModal = true"
-              class="page-primary-btn justify-center whitespace-nowrap"
-            >
-              <span class="material-symbols-outlined">cloud_upload</span>
-              {{ t('knowledge.upload') }}
-            </button>
           </div>
         </div>
-      </div>
 
       <!-- Documents List -->
       <div class="relative flex-1 overflow-hidden">
@@ -163,6 +170,7 @@
               <span class="material-symbols-outlined">cloud_upload</span>
               {{ t('knowledge.empty.uploadButton') }}
             </button>
+          </div>
           </div>
         </div>
       </div>

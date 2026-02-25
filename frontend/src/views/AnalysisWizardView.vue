@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell max-w-7xl mx-auto flex flex-col pb-2">
+  <div class="page-shell !h-auto min-h-full flex flex-col pb-2">
     <div class="page-header">
       <div>
         <h1 class="page-title page-title-gradient">{{ t('sidebar.analysis') }}</h1>
@@ -72,7 +72,7 @@
     </div>
 
     <!-- Wizard Content Area -->
-    <div class="glass-panel rounded-2xl p-6 md:p-8 flex-grow relative overflow-hidden min-h-[600px]">
+    <div class="glass-panel rounded-2xl p-6 md:p-8 flex-grow relative overflow-y-auto min-h-[600px]">
       <!-- Background Decorative Elements -->
       <div class="absolute top-0 right-0 w-96 h-96 bg-primary/5 blur-[100px] rounded-full pointer-events-none"></div>
       <div class="absolute bottom-0 left-0 w-96 h-96 bg-accent-violet/5 blur-[100px] rounded-full pointer-events-none"></div>

@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell max-w-7xl mx-auto">
+  <div class="page-shell">
     <!-- Header -->
     <div class="page-header">
       <div>

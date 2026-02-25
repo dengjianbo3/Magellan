@@ -37,6 +37,27 @@
           </button>
         </div>
 
+        <div v-if="!historyCollapsed" class="mb-3">
+          <div class="relative">
+            <input
+              v-model.trim="sessionSearchQuery"
+              type="text"
+              :placeholder="t('common.search') || 'Search...'"
+              class="w-full rounded-xl border border-white/10 bg-white/6 px-9 py-2 text-sm text-text-primary placeholder-text-secondary outline-none transition-colors focus:border-primary/40 focus:bg-white/10"
+            />
+            <span class="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-text-secondary">search</span>
+            <button
+              v-if="sessionSearchQuery"
+              type="button"
+              class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-text-secondary hover:bg-white/10 hover:text-text-primary"
+              :title="t('common.clear') || 'Clear'"
+              @click="sessionSearchQuery = ''"
+            >
+              <span class="material-symbols-outlined text-base">close</span>
+            </button>
+          </div>
+        </div>
+
         <div v-if="!historyCollapsed" class="flex-1 overflow-y-auto space-y-2 pr-1">
           <div
             v-for="session in visibleSessions"
@@ -70,8 +91,8 @@
             </div>
           </div>
 
-          <div v-if="sessions.length === 0" class="rounded-xl bg-white/5 p-4 text-sm text-text-secondary">
-            {{ t('chatHub.emptyHistory') }}
+          <div v-if="filteredSessions.length === 0" class="rounded-xl bg-white/5 p-4 text-sm text-text-secondary">
+            {{ sessionSearchQuery ? noSessionSearchResultLabel : t('chatHub.emptyHistory') }}
           </div>
 
           <button
@@ -86,7 +107,7 @@
 
         <div v-else class="flex-1 overflow-y-auto space-y-2 pr-1">
           <button
-            v-for="session in sessions"
+            v-for="session in filteredSessions"
             :key="session.id"
             class="mx-auto flex h-10 w-10 items-center justify-center rounded-xl text-xs font-bold transition-colors"
             :class="session.id === activeSessionId ? 'bg-primary/25 text-primary-light' : 'bg-white/10 text-text-secondary hover:text-white'"
@@ -476,6 +497,7 @@ const knowledgeEnabled = ref(false);
 const knowledgeCategory = ref('all');
 const historyCollapsed = ref(false);
 const showAllSessions = ref(false);
+const sessionSearchQuery = ref('');
 const connected = ref(false);
 const connecting = ref(false);
 
@@ -674,11 +696,23 @@ const knowledgeChipLabel = computed(() => {
 const historyToggleLabel = computed(() => {
   return historyCollapsed.value ? t('chatHub.expandHistory') : t('chatHub.collapseHistory');
 });
-const visibleSessions = computed(() => {
-  if (showAllSessions.value) return sessions.value;
-  return sessions.value.slice(0, 5);
+const filteredSessions = computed(() => {
+  const query = String(sessionSearchQuery.value || '').trim().toLowerCase();
+  if (!query) return sessions.value;
+  return sessions.value.filter((session) => {
+    const title = String(session.title || '').toLowerCase();
+    const preview = String(session.preview || '').toLowerCase();
+    return title.includes(query) || preview.includes(query) || String(session.id || '').toLowerCase().includes(query);
+  });
 });
-const hasMoreSessions = computed(() => sessions.value.length > 5);
+const visibleSessions = computed(() => {
+  if (showAllSessions.value) return filteredSessions.value;
+  return filteredSessions.value.slice(0, 5);
+});
+const hasMoreSessions = computed(() => filteredSessions.value.length > 5);
+const noSessionSearchResultLabel = computed(() => {
+  return languageTag().startsWith('zh') ? '未找到匹配会话' : 'No matching sessions';
+});
 const starterPrompts = computed(() => [
   t('chatHub.starters.prompt1'),
   t('chatHub.starters.prompt2'),
@@ -765,6 +799,25 @@ function isConnectionSystemMessage(msg) {
     content.includes('Disconnected from expert chat') ||
     content.includes('Reconnecting to expert chat')
   );
+}
+
+function isTransientSocketErrorMessage(msg) {
+  if (!msg || msg.type !== 'system') return false;
+  if (msg.level !== 'error') return false;
+  const content = String(msg.content || '').trim();
+  if (!content) return false;
+  return (
+    content === t('connection.error') ||
+    content === '连接错误' ||
+    content === 'Connection error'
+  );
+}
+
+function clearTransientSocketErrors() {
+  const next = messages.value.filter((msg) => !isTransientSocketErrorMessage(msg));
+  if (next.length === messages.value.length) return;
+  messages.value = next;
+  updateActiveSessionStore();
 }
 
 function sanitizeMessages(list) {
@@ -1327,14 +1380,19 @@ async function connectWebSocket() {
     connecting.value = false;
     connected.value = true;
     reconnectAttempts = 0;
+    clearTransientSocketErrors();
     sendStartSession();
   };
 
   socket.onmessage = handleServerMessage;
 
-  socket.onerror = () => {
-    addSystemMessage(t('connection.error'), 'error');
-    stopTurnWaiting();
+  socket.onerror = (event) => {
+    // onerror can fire transiently during proxy/network jitter.
+    // Avoid persisting noisy "connection error" bubbles if socket recovers.
+    console.warn('[ChatHub] websocket error event', event);
+    if (!connected.value) {
+      stopTurnWaiting();
+    }
   };
 
   socket.onclose = async (event) => {

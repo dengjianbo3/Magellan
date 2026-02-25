@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell max-w-6xl mx-auto">
+  <div class="page-shell">
     <!-- Page Header -->
     <div class="page-header">
       <div>
@@ -50,9 +50,15 @@
               <div>
                 <h3 class="text-lg font-bold text-white">{{ userProfile.name || 'User' }}</h3>
                 <p class="text-text-secondary text-sm mb-3">{{ userProfile.role === 'admin' ? 'Administrator' : 'Investment Analyst' }}</p>
-                <button @click="showAvatarChangeInfo" class="px-4 py-2 rounded-lg border border-white/10 text-text-primary hover:bg-white/5 transition-colors text-sm font-bold">
-                  {{ t('settings.profile.changeAvatar') }}
-                </button>
+                <div class="flex items-center gap-2">
+                  <button @click="showAvatarChangeInfo" class="px-4 py-2 rounded-lg border border-white/10 text-text-primary hover:bg-white/5 transition-colors text-sm font-bold">
+                    {{ t('settings.profile.changeAvatar') }}
+                  </button>
+                  <button @click="logoutFromSettings" class="px-4 py-2 rounded-lg border border-rose-500/35 text-rose-300 hover:bg-rose-500/15 transition-colors text-sm font-bold flex items-center gap-1.5">
+                    <span class="material-symbols-outlined text-base">logout</span>
+                    {{ t('common.logout') || 'Logout' }}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -207,6 +213,77 @@
           </div>
         </div>
 
+        <!-- AI Model Settings -->
+        <div v-if="activeSection === 'api'" class="glass-panel rounded-2xl p-8 animate-fade-in">
+          <h2 class="text-xl font-bold text-white mb-8 pb-4 border-b border-white/10">{{ t('settings.api.title') }}</h2>
+          <div class="space-y-6">
+            <div class="p-5 rounded-xl bg-white/5 border border-white/5">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="font-bold text-white mb-1">{{ t('settings.api.useProLabel') }}</p>
+                  <p class="text-sm text-text-secondary">{{ t('settings.api.useProDesc') }}</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    v-model="llmUsePro"
+                    :disabled="llmLoading || llmSaving"
+                    @change="updateLlmPreference"
+                    class="sr-only peer"
+                  >
+                  <div class="w-14 h-7 bg-black/40 peer-focus:outline-none rounded-full peer peer-disabled:opacity-50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Membership Plans -->
+        <div v-if="activeSection === 'plans'" class="glass-panel rounded-2xl p-8 animate-fade-in">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-xl font-bold text-white">{{ t('settings.pricing.title') }}</h2>
+            <span class="px-3 py-1 rounded-full text-xs font-bold bg-primary/20 text-primary border border-primary/30">
+              {{ t('settings.pricing.demoBadge') }}
+            </span>
+          </div>
+          <p class="text-text-secondary mb-8">{{ t('settings.pricing.subtitle') }}</p>
+
+          <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
+            <article
+              v-for="plan in demoPlans"
+              :key="plan.id"
+              :class="[
+                'rounded-2xl p-5 transition-all duration-300',
+                plan.highlight
+                  ? 'bg-primary/10 border border-primary/40 shadow-[0_0_20px_rgba(56,189,248,0.12)]'
+                  : 'bg-white/5 border border-white/10'
+              ]"
+            >
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-base font-bold text-white">{{ plan.name }}</h3>
+                <span
+                  v-if="plan.highlight"
+                  class="px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-primary/20 text-primary"
+                >
+                  {{ t('settings.pricing.recommended') }}
+                </span>
+              </div>
+              <p class="text-2xl font-extrabold text-white mb-1">{{ plan.price }}</p>
+              <p class="text-sm text-text-secondary mb-4">{{ plan.description }}</p>
+              <ul class="space-y-2">
+                <li
+                  v-for="feature in plan.features"
+                  :key="feature"
+                  class="text-sm text-text-primary flex items-start gap-2"
+                >
+                  <span class="material-symbols-outlined text-base text-primary mt-0.5">check_circle</span>
+                  <span>{{ feature }}</span>
+                </li>
+              </ul>
+            </article>
+          </div>
+        </div>
+
         <!-- Language Settings -->
         <div v-if="activeSection === 'language'" class="glass-panel rounded-2xl p-8 animate-fade-in">
           <h2 class="text-xl font-bold text-white mb-8 pb-4 border-b border-white/10">{{ t('settings.language.title') }}</h2>
@@ -238,13 +315,17 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
 import { useLanguage } from '../composables/useLanguage';
 import { useToast } from '../composables/useToast';
-import { AUTH_BASE } from '@/config/api';
+import { AUTH_BASE, llmUrl } from '@/config/api';
 import { readJsonResponse } from '@/services/httpResponse';
 
 const { t, locale, setLocale } = useLanguage();
 const { success, error: showError, info } = useToast();
+const router = useRouter();
+const authStore = useAuthStore();
 
 // Show avatar change info (feature coming soon)
 const showAvatarChangeInfo = () => {
@@ -283,11 +364,59 @@ const notifications = ref({
   emailNotifications: true
 });
 
+// LLM model tier preference (Gemini Pro/Flash)
+const LLM_USE_PRO_STORAGE_KEY = 'magellan_llm_use_pro_v1';
+const llmUsePro = ref(true);
+const llmCurrentModel = ref('gemini-3.1-pro-preview');
+const llmLoading = ref(false);
+const llmSaving = ref(false);
+
 const sections = computed(() => [
   { id: 'profile', name: t('settings.sections.profile'), icon: 'person' },
   { id: 'notifications', name: t('settings.sections.notifications'), icon: 'notifications' },
   { id: 'security', name: t('settings.sections.security'), icon: 'lock' },
+  { id: 'api', name: t('settings.api.title'), icon: 'tune' },
+  { id: 'plans', name: t('settings.sections.plans'), icon: 'workspace_premium' },
   { id: 'language', name: t('settings.sections.language'), icon: 'translate' }
+]);
+
+const demoPlans = computed(() => [
+  {
+    id: 'free',
+    name: t('settings.pricing.plans.free.name'),
+    price: t('settings.pricing.plans.free.price'),
+    description: t('settings.pricing.plans.free.description'),
+    features: [
+      t('settings.pricing.plans.free.features.0'),
+      t('settings.pricing.plans.free.features.1'),
+      t('settings.pricing.plans.free.features.2')
+    ],
+    highlight: false
+  },
+  {
+    id: 'pro',
+    name: t('settings.pricing.plans.pro.name'),
+    price: t('settings.pricing.plans.pro.price'),
+    description: t('settings.pricing.plans.pro.description'),
+    features: [
+      t('settings.pricing.plans.pro.features.0'),
+      t('settings.pricing.plans.pro.features.1'),
+      t('settings.pricing.plans.pro.features.2')
+    ],
+    highlight: true
+  },
+  {
+    id: 'urtal',
+    name: t('settings.pricing.plans.urtal.name'),
+    price: t('settings.pricing.plans.urtal.price'),
+    description: t('settings.pricing.plans.urtal.description'),
+    features: [
+      t('settings.pricing.plans.urtal.features.0'),
+      t('settings.pricing.plans.urtal.features.1'),
+      t('settings.pricing.plans.urtal.features.2')
+    ],
+    highlight: false
+  }
 ]);
 
 // Get auth token from localStorage
@@ -415,13 +544,71 @@ const saveNotificationPrefs = () => {
   localStorage.setItem('notification_prefs', JSON.stringify(notifications.value));
 };
 
+const loadLlmPreference = async () => {
+  const localRaw = localStorage.getItem(LLM_USE_PRO_STORAGE_KEY);
+  if (localRaw === '0' || localRaw === '1') {
+    llmUsePro.value = localRaw === '1';
+  }
+
+  llmLoading.value = true;
+  try {
+    const response = await fetch(llmUrl('/gemini/model-tier'));
+    const data = await readJsonResponse(response, 'Get Gemini model tier');
+
+    if (typeof data?.use_pro === 'boolean') {
+      llmUsePro.value = data.use_pro;
+      localStorage.setItem(LLM_USE_PRO_STORAGE_KEY, llmUsePro.value ? '1' : '0');
+    }
+    if (data?.model) {
+      llmCurrentModel.value = data.model;
+    }
+  } catch (err) {
+    console.warn('[Settings] Failed to load Gemini model tier:', err);
+  } finally {
+    llmLoading.value = false;
+  }
+};
+
+const updateLlmPreference = async () => {
+  llmSaving.value = true;
+  try {
+    const response = await fetch(llmUrl('/gemini/model-tier'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ use_pro: llmUsePro.value })
+    });
+    const data = await readJsonResponse(response, 'Set Gemini model tier');
+
+    llmCurrentModel.value = data?.model || (llmUsePro.value ? 'gemini-3.1-pro-preview' : 'gemini-3-flash-preview');
+    localStorage.setItem(LLM_USE_PRO_STORAGE_KEY, llmUsePro.value ? '1' : '0');
+    success(t('settings.api.modelSwitchSuccess'));
+  } catch (err) {
+    console.error('[Settings] Failed to switch Gemini model tier:', err);
+    showError(t('settings.api.modelSwitchError', { error: err?.message || 'unknown error' }));
+  } finally {
+    llmSaving.value = false;
+  }
+};
+
 const handleLanguageChange = (lang) => {
   setLocale(lang);
+};
+
+const logoutFromSettings = async () => {
+  try {
+    await authStore.logout();
+    router.push({ name: 'Login' });
+  } catch (err) {
+    showError(err?.message || (t('common.logout') || 'Logout') + ' failed');
+  }
 };
 
 // Fetch profile on mount
 onMounted(() => {
   fetchProfile();
   loadNotificationPrefs();
+  loadLlmPreference();
 });
 </script>
