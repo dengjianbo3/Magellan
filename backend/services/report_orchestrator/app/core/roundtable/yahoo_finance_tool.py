@@ -5,9 +5,14 @@ try:
     import yfinance as yf
 except Exception:  # Optional dependency in some dev/test setups
     yf = None
+import os
+import time
+from collections import OrderedDict
+from copy import deepcopy
 from typing import Any, Dict
 from datetime import datetime
 from .tool import Tool
+from ..metrics import record_cache_event
 
 
 class YahooFinanceTool(Tool):
@@ -17,12 +22,21 @@ class YahooFinanceTool(Tool):
     Provides stock prices, financial statements, company info, market data, etc.
     """
 
+    _cache_lock = None
+    _cache_store: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+
     def __init__(self):
         """Initialize Yahoo Finance Tool"""
         super().__init__(
             name="yahoo_finance",
             description="Get real-time stock prices, historical data, financial statements, company info, market news, etc. Supports major global stock markets."
         )
+        self.cache_enabled = os.getenv("YAHOO_FINANCE_CACHE_ENABLED", "true").lower() == "true"
+        self.cache_max_entries = max(32, int(os.getenv("YAHOO_FINANCE_CACHE_MAX_ENTRIES", "256")))
+        self.cache_default_ttl_seconds = max(10, int(os.getenv("YAHOO_FINANCE_CACHE_TTL_SECONDS", "120")))
+        if YahooFinanceTool._cache_lock is None:
+            import asyncio
+            YahooFinanceTool._cache_lock = asyncio.Lock()
 
     async def execute(self, action: str, symbol: str, **kwargs) -> Dict[str, Any]:
         """
@@ -37,6 +51,11 @@ class YahooFinanceTool(Tool):
             查询结果
         """
         try:
+            cache_key = self._make_cache_key(action=action, symbol=symbol, kwargs=kwargs)
+            cached = await self._get_cached(cache_key)
+            if cached is not None:
+                return cached
+
             if yf is None:
                 return {
                     "success": False,
@@ -47,29 +66,33 @@ class YahooFinanceTool(Tool):
             ticker = yf.Ticker(symbol)
 
             if action == "price":
-                return await self._get_current_price(ticker, symbol)
+                result = await self._get_current_price(ticker, symbol)
             elif action == "history":
                 period = kwargs.get("period", "1mo")  # 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max
-                return await self._get_price_history(ticker, symbol, period)
+                result = await self._get_price_history(ticker, symbol, period)
             elif action == "financials":
                 statement = kwargs.get("statement", "income")  # income, balance, cash
-                return await self._get_financials(ticker, symbol, statement)
+                result = await self._get_financials(ticker, symbol, statement)
             elif action == "info":
-                return await self._get_company_info(ticker, symbol)
+                result = await self._get_company_info(ticker, symbol)
             elif action == "news":
-                return await self._get_news(ticker, symbol)
+                result = await self._get_news(ticker, symbol)
             elif action == "valuation":
-                return await self._get_valuation_metrics(ticker, symbol)
+                result = await self._get_valuation_metrics(ticker, symbol)
             elif action == "dividends":
-                return await self._get_dividend_info(ticker, symbol)
+                result = await self._get_dividend_info(ticker, symbol)
             elif action == "holders":
-                return await self._get_holders_info(ticker, symbol)
+                result = await self._get_holders_info(ticker, symbol)
             else:
-                return {
+                result = {
                     "success": False,
                     "error": f"未知操作类型: {action}",
                     "summary": f"不支持的操作: {action}。支持的操作: price, history, financials, info, news, valuation, dividends, holders"
                 }
+                return result
+
+            await self._store_cache(cache_key, action, result)
+            return result
 
         except Exception as e:
             print(f"[YahooFinanceTool] Error for {symbol}: {e}")
@@ -78,6 +101,65 @@ class YahooFinanceTool(Tool):
                 "error": str(e),
                 "summary": f"获取 {symbol} 的 {action} 数据时出错: {str(e)}"
             }
+
+    def _make_cache_key(self, action: str, symbol: str, kwargs: Dict[str, Any]) -> str:
+        key_parts = [
+            str(action or "").strip().lower(),
+            str(symbol or "").strip().upper(),
+            str(kwargs.get("period", "")).strip().lower(),
+            str(kwargs.get("statement", "")).strip().lower(),
+        ]
+        return "|".join(key_parts)
+
+    def _resolve_ttl(self, action: str) -> int:
+        action_ttl = {
+            "price": 15,
+            "history": 300,
+            "news": 120,
+            "info": 900,
+            "financials": 1200,
+            "valuation": 900,
+            "dividends": 1800,
+            "holders": 1800,
+        }
+        return max(10, min(action_ttl.get(str(action or "").lower(), self.cache_default_ttl_seconds), 3600))
+
+    async def _get_cached(self, key: str) -> Dict[str, Any] | None:
+        if not self.cache_enabled:
+            return None
+        now = time.time()
+        async with YahooFinanceTool._cache_lock:
+            item = YahooFinanceTool._cache_store.get(key)
+            if not item:
+                record_cache_event(layer="yahoo_finance", event="miss")
+                return None
+            if float(item.get("expires_at", 0.0)) <= now:
+                YahooFinanceTool._cache_store.pop(key, None)
+                record_cache_event(layer="yahoo_finance", event="stale")
+                return None
+            YahooFinanceTool._cache_store.move_to_end(key)
+            record_cache_event(layer="yahoo_finance", event="hit")
+            payload = item.get("payload")
+            return deepcopy(payload) if isinstance(payload, dict) else None
+
+    async def _store_cache(self, key: str, action: str, payload: Dict[str, Any]) -> None:
+        if not self.cache_enabled:
+            return
+        if not isinstance(payload, dict) or not payload.get("success"):
+            # Keep failure semantics strict: do not cache failed responses.
+            return
+        ttl = self._resolve_ttl(action)
+        entry = {
+            "expires_at": time.time() + ttl,
+            "payload": deepcopy(payload),
+        }
+        async with YahooFinanceTool._cache_lock:
+            YahooFinanceTool._cache_store[key] = entry
+            YahooFinanceTool._cache_store.move_to_end(key)
+            while len(YahooFinanceTool._cache_store) > self.cache_max_entries:
+                YahooFinanceTool._cache_store.popitem(last=False)
+                record_cache_event(layer="yahoo_finance", event="evict")
+        record_cache_event(layer="yahoo_finance", event="store")
 
     async def _get_current_price(self, ticker, symbol: str) -> Dict[str, Any]:
         """获取当前股价"""

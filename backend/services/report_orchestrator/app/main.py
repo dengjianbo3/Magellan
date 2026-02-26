@@ -7,6 +7,9 @@ import os
 import base64
 import uuid
 import time
+import hashlib
+from collections import OrderedDict
+from copy import deepcopy
 from datetime import datetime
 from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -33,7 +36,12 @@ from .core.auth import CurrentUser, get_current_user, resolve_user_from_token
 from .api.routers import health_router, reports_router
 from .api.routers.agents import router as agents_router
 from .api.routers.knowledge import router as knowledge_router, set_vector_store, set_rag_service
-from .api.routers.roundtable import router as roundtable_router, set_active_meetings, set_llm_gateway_url
+from .api.routers.roundtable import (
+    router as roundtable_router,
+    set_active_meetings,
+    set_llm_gateway_url,
+    set_roundtable_sessions,
+)
 from .api.routers.files import router as files_router
 from .api.routers.analysis import router as analysis_router
 from .api.routers.export import router as export_router, set_get_report_func
@@ -59,6 +67,12 @@ from .core.memory import format_memory_hits, get_memory_store
 from .core.memory.governance import compact_text, make_provenance_metadata, should_persist_memory
 from .core.model_policy import resolve_model_for_role
 from .core.orchestration_templates import get_orchestration_templates
+from .core.skills import build_skill_instruction_context
+from .core.metrics import (
+    record_cache_event,
+    record_llm_context_usage,
+    record_route_decision,
+)
 
 # Configure logging (JSON in production, console in development)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -101,9 +115,14 @@ EXPERT_CHAT_AGENT_TURN_TIMEOUT_SECONDS = int(
         str(_EXPERT_CHAT_TEMPLATE.get("turn_timeout_seconds", 600)),
     )
 )
+EXPERT_CHAT_ROUTE_CACHE_ENABLED = os.getenv("EXPERT_CHAT_ROUTE_CACHE_ENABLED", "true").lower() == "true"
+EXPERT_CHAT_ROUTE_CACHE_TTL_SECONDS = max(5, int(os.getenv("EXPERT_CHAT_ROUTE_CACHE_TTL_SECONDS", "30")))
+EXPERT_CHAT_ROUTE_CACHE_MAX_ENTRIES = max(32, int(os.getenv("EXPERT_CHAT_ROUTE_CACHE_MAX_ENTRIES", "512")))
 
 # In-memory chat sessions (PoC scope)
 active_chat_sessions: Dict[str, Dict[str, Any]] = {}
+_leader_route_cache: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+_leader_route_cache_lock = asyncio.Lock()
 
 # --- Lifespan Handler for Kafka ---
 @asynccontextmanager
@@ -189,9 +208,11 @@ app.add_middleware(CachingMiddleware)
 
 # Global storage for active meeting instances (for Human-in-the-Loop support)
 active_meetings: Dict[str, Any] = {}
+roundtable_sessions: Dict[str, Dict[str, Any]] = {}
 
 # Phase 4: Initialize Roundtable Router dependencies
 set_active_meetings(active_meetings)
+set_roundtable_sessions(roundtable_sessions)
 set_llm_gateway_url(LLM_GATEWAY_URL)
 print("[main.py] ✅ Roundtable Router initialized")
 
@@ -262,6 +283,17 @@ async def call_llm_gateway(
     history: List[Dict[str, Any]],
     model: Optional[str] = None,
 ) -> str:
+    safe_model = str(model or "gateway_default")
+    prompt_texts: List[str] = []
+    for item in history or []:
+        if not isinstance(item, dict):
+            continue
+        parts = item.get("parts")
+        if isinstance(parts, list):
+            prompt_texts.extend([str(part) for part in parts if part is not None])
+        elif item.get("content"):
+            prompt_texts.append(str(item.get("content")))
+
     try:
         payload: Dict[str, Any] = {"history": history}
         if model:
@@ -269,7 +301,16 @@ async def call_llm_gateway(
         response = await client.post(f"{LLM_GATEWAY_URL}/chat", json=payload)
         if response.status_code == 200:
             try:
-                return response.json()["content"]
+                parsed = response.json()
+                content = str(parsed.get("content", ""))
+                record_llm_context_usage(
+                    source="legacy_chat",
+                    model=safe_model,
+                    usage=parsed.get("usage"),
+                    prompt_texts=prompt_texts,
+                    completion_text=content,
+                )
+                return content
             except (json.JSONDecodeError, KeyError):
                 return '["Error: LLM returned invalid JSON."]'
         else:
@@ -870,6 +911,7 @@ async def _build_attachment_context(
 
 
 def _build_agent_task_prompt(
+    agent_id: str,
     user_message: str,
     history: List[Dict[str, Any]],
     language: str,
@@ -881,7 +923,12 @@ def _build_agent_task_prompt(
     delegated_by_leader: bool = False,
     specialist_outputs: Optional[List[Dict[str, str]]] = None,
 ) -> str:
-    history_text = _format_history_window(history, limit=12)
+    skill_context = build_skill_instruction_context(
+        agent_id=agent_id,
+        user_message=user_message,
+        language=language,
+    )
+    history_text = _format_history_window(history, limit=8 if skill_context else 12)
     normalized_category = _normalize_expert_chat_knowledge_category(knowledge_category)
 
     specialist_outputs_text = ""
@@ -903,6 +950,8 @@ def _build_agent_task_prompt(
         )
         if attachment_context:
             prompt += f"\n图片分析上下文:\n{attachment_context}\n"
+        if skill_context:
+            prompt += f"\n本轮能力卡片:\n{skill_context}\n"
         if memory_context:
             prompt += f"\n历史记忆参考:\n{memory_context}\n"
         if specialist_outputs_text:
@@ -923,6 +972,8 @@ def _build_agent_task_prompt(
     )
     if attachment_context:
         prompt += f"\nImage-grounded context:\n{attachment_context}\n"
+    if skill_context:
+        prompt += f"\nLoaded skill cards:\n{skill_context}\n"
     if memory_context:
         prompt += f"\nHistorical memory context:\n{memory_context}\n"
     if specialist_outputs_text:
@@ -991,6 +1042,73 @@ def _sanitize_resume_history(raw_history: Any) -> List[Dict[str, Any]]:
     return cleaned
 
 
+def _build_leader_route_cache_key(
+    user_message: str,
+    history: List[Dict[str, Any]],
+    language: str,
+    knowledge_enabled: bool,
+    knowledge_category: str,
+    attachments_summary: str,
+) -> str:
+    history_window = history[-6:] if isinstance(history, list) else []
+    history_snapshot = [
+        {
+            "role": str(item.get("role", "")),
+            "agent_id": str(item.get("agent_id", "")),
+            "content": str(item.get("content", ""))[:280],
+        }
+        for item in history_window
+        if isinstance(item, dict)
+    ]
+    payload = {
+        "user_message": str(user_message or "")[:1500],
+        "language": str(language or ""),
+        "knowledge_enabled": bool(knowledge_enabled),
+        "knowledge_category": str(knowledge_category or "all"),
+        "attachments_summary": str(attachments_summary or ""),
+        "history": history_snapshot,
+    }
+    digest = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+    return f"leader_route:{digest}"
+
+
+async def _leader_route_cache_get(cache_key: str) -> Optional[Dict[str, Any]]:
+    if not EXPERT_CHAT_ROUTE_CACHE_ENABLED:
+        return None
+    now = time.time()
+    async with _leader_route_cache_lock:
+        item = _leader_route_cache.get(cache_key)
+        if not item:
+            record_cache_event(layer="leader_route", event="miss")
+            return None
+        if float(item.get("expires_at", 0.0)) <= now:
+            _leader_route_cache.pop(cache_key, None)
+            record_cache_event(layer="leader_route", event="stale")
+            return None
+        _leader_route_cache.move_to_end(cache_key)
+        record_cache_event(layer="leader_route", event="hit")
+        value = item.get("value")
+        return deepcopy(value) if isinstance(value, dict) else None
+
+
+async def _leader_route_cache_set(cache_key: str, decision: Dict[str, Any]) -> None:
+    if not EXPERT_CHAT_ROUTE_CACHE_ENABLED:
+        return
+    if not isinstance(decision, dict):
+        return
+    payload = {
+        "expires_at": time.time() + EXPERT_CHAT_ROUTE_CACHE_TTL_SECONDS,
+        "value": deepcopy(decision),
+    }
+    async with _leader_route_cache_lock:
+        _leader_route_cache[cache_key] = payload
+        _leader_route_cache.move_to_end(cache_key)
+        while len(_leader_route_cache) > EXPERT_CHAT_ROUTE_CACHE_MAX_ENTRIES:
+            _leader_route_cache.popitem(last=False)
+            record_cache_event(layer="leader_route", event="evict")
+    record_cache_event(layer="leader_route", event="store")
+
+
 async def _llm_chat_completion(
     messages: List[Dict[str, Any]],
     temperature: float = 1.0,
@@ -999,6 +1117,7 @@ async def _llm_chat_completion(
     model: Optional[str] = None,
 ) -> str:
     sanitized_attachments = _sanitize_expert_chat_attachments(attachments)
+    prompt_texts = [str(msg.get("content", "")) for msg in messages if isinstance(msg, dict) and msg.get("content")]
 
     async with httpx.AsyncClient(timeout=420.0) as client:
         if sanitized_attachments and provider != "gemini":
@@ -1022,12 +1141,20 @@ async def _llm_chat_completion(
                 detail = response.text[:500]
                 raise HTTPException(status_code=502, detail=f"LLM Gateway error ({response.status_code}): {detail}")
             payload = response.json()
-            return (
+            content = (
                 payload.get("choices", [{}])[0]
                 .get("message", {})
                 .get("content", "")
                 .strip()
             )
+            record_llm_context_usage(
+                source="expert_chat",
+                model=str(model or provider or "default"),
+                usage=payload.get("usage"),
+                prompt_texts=prompt_texts,
+                completion_text=content,
+            )
+            return content
 
         prompt_for_file = _flatten_messages_for_file_prompt(messages)
         image_outputs: List[str] = []
@@ -1048,12 +1175,20 @@ async def _llm_chat_completion(
                 detail = file_resp.text[:500]
                 raise HTTPException(status_code=502, detail=f"File multimodal call failed ({file_resp.status_code}): {detail}")
             file_payload = file_resp.json()
-            image_outputs.append(str(file_payload.get("content", "")).strip())
+            image_content = str(file_payload.get("content", "")).strip()
+            record_llm_context_usage(
+                source="expert_chat_file",
+                model=str(model or provider or "default"),
+                usage=file_payload.get("usage"),
+                prompt_texts=[prompt_for_file, f"attachment:{attachment['name']}"],
+                completion_text=image_content,
+            )
+            image_outputs.append(image_content)
 
         if len(image_outputs) == 1:
             return image_outputs[0]
 
-        merge_payload: Dict[str, Any] = {
+        merge_request: Dict[str, Any] = {
             "messages": [
                 {
                     "role": "system",
@@ -1074,21 +1209,32 @@ async def _llm_chat_completion(
             "provider": provider,
         }
         if model:
-            merge_payload["model"] = model
+            merge_request["model"] = model
         merge_response = await client.post(
             f"{LLM_GATEWAY_URL}/v1/chat/completions",
-            json=merge_payload,
+            json=merge_request,
         )
         if merge_response.status_code != 200:
             detail = merge_response.text[:500]
             raise HTTPException(status_code=502, detail=f"LLM merge error ({merge_response.status_code}): {detail}")
-        merge_payload = merge_response.json()
-        return (
-            merge_payload.get("choices", [{}])[0]
+        merge_response_payload = merge_response.json()
+        merged_content = (
+            merge_response_payload.get("choices", [{}])[0]
             .get("message", {})
             .get("content", "")
             .strip()
         )
+        record_llm_context_usage(
+            source="expert_chat_merge",
+            model=str(model or provider or "default"),
+            usage=merge_response_payload.get("usage"),
+            prompt_texts=[
+                str(merge_request.get("messages", [{}])[0].get("content", "")),
+                str(merge_request.get("messages", [{}, {}])[1].get("content", "")),
+            ],
+            completion_text=merged_content,
+        )
+        return merged_content
 
 
 async def _leader_plan_route(
@@ -1099,6 +1245,26 @@ async def _leader_plan_route(
     knowledge_category: str,
     attachments_summary: str = "none",
 ) -> Dict[str, Any]:
+    route_started_at = time.perf_counter()
+    cache_key = _build_leader_route_cache_key(
+        user_message=user_message,
+        history=history,
+        language=language,
+        knowledge_enabled=knowledge_enabled,
+        knowledge_category=knowledge_category,
+        attachments_summary=attachments_summary,
+    )
+    cached = await _leader_route_cache_get(cache_key)
+    if cached:
+        cached_need_specialists = bool(cached.get("need_specialists")) and bool(cached.get("specialists"))
+        record_route_decision(
+            channel="expert_chat",
+            mode="delegated" if cached_need_specialists else "leader",
+            status="cached",
+            latency_seconds=time.perf_counter() - route_started_at,
+        )
+        return cached
+
     specialist_desc = ", ".join(
         f"{agent_id}({EXPERT_CHAT_AGENT_PROFILES[agent_id].get('name_zh')})"
         for agent_id in EXPERT_SPECIALIST_IDS
@@ -1119,26 +1285,44 @@ async def _leader_plan_route(
         f"Recent history:\n{history_text}\n\n"
         f"Current user message:\n{user_message}\n"
     )
-    raw = await _llm_chat_completion(
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.4,
-        model=resolve_model_for_role("leader_router"),
-    )
-    parsed = _parse_json_object(raw)
-    if not parsed:
-        raise RuntimeError("Leader route plan parsing failed: non-JSON response")
-    specialists = [
-        sid for sid in parsed.get("specialists", []) if sid in EXPERT_SPECIALIST_IDS
-    ]
-    return {
-        "need_specialists": bool(parsed.get("need_specialists")) and bool(specialists),
-        "specialists": specialists,
-        "leader_reply": str(parsed.get("leader_reply", "")).strip(),
-        "reason": str(parsed.get("reason", "")).strip() or "leader_decision",
-    }
+    try:
+        raw = await _llm_chat_completion(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.4,
+            model=resolve_model_for_role("leader_router"),
+        )
+        parsed = _parse_json_object(raw)
+        if not parsed:
+            raise RuntimeError("Leader route plan parsing failed: non-JSON response")
+        specialists = [
+            sid for sid in parsed.get("specialists", []) if sid in EXPERT_SPECIALIST_IDS
+        ]
+        need_specialists = bool(parsed.get("need_specialists")) and bool(specialists)
+        record_route_decision(
+            channel="expert_chat",
+            mode="delegated" if need_specialists else "leader",
+            status="success",
+            latency_seconds=time.perf_counter() - route_started_at,
+        )
+        decision = {
+            "need_specialists": need_specialists,
+            "specialists": specialists,
+            "leader_reply": str(parsed.get("leader_reply", "")).strip(),
+            "reason": str(parsed.get("reason", "")).strip() or "leader_decision",
+        }
+        await _leader_route_cache_set(cache_key, decision)
+        return decision
+    except Exception:
+        record_route_decision(
+            channel="expert_chat",
+            mode="leader",
+            status="error",
+            latency_seconds=time.perf_counter() - route_started_at,
+        )
+        raise
 
 
 async def _ask_specialist(
@@ -1167,6 +1351,7 @@ async def _ask_specialist(
     )
 
     prompt = _build_agent_task_prompt(
+        agent_id=agent_id,
         user_message=user_message,
         history=history,
         language=language,
@@ -1215,6 +1400,7 @@ async def _leader_direct_reply(
     )
 
     prompt = _build_agent_task_prompt(
+        agent_id="leader",
         user_message=user_message,
         history=history,
         language=language,
@@ -1262,6 +1448,7 @@ async def _leader_summarize_with_specialists(
     )
 
     prompt = _build_agent_task_prompt(
+        agent_id="leader",
         user_message=user_message,
         history=history,
         language=language,
@@ -2093,7 +2280,21 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
     registry = get_registry()
 
     session_id = None
+    runtime_state: Optional[Dict[str, Any]] = None
     kb_preferences_token = None
+
+    # Best-effort cleanup for old completed/error sessions to avoid unbounded memory growth.
+    now_ts = time.time()
+    for sid, state in list(roundtable_sessions.items()):
+        try:
+            status = str(state.get("status") or "")
+            updated_at = state.get("updated_at") or state.get("created_at")
+            updated_ts = datetime.fromisoformat(updated_at).timestamp() if updated_at else now_ts
+            ttl_seconds = 3600 if status in {"completed", "error"} else 6 * 3600
+            if now_ts - updated_ts > ttl_seconds:
+                roundtable_sessions.pop(sid, None)
+        except Exception:
+            continue
 
     try:
         # Wait for initial request
@@ -2102,7 +2303,85 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
 
         action = initial_request.get("action")
 
-        if action == "start_discussion":
+        if action == "resume_discussion":
+            session_id = str(initial_request.get("session_id") or "").strip()
+            runtime_state = roundtable_sessions.get(session_id)
+            if not session_id or not runtime_state:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "未找到可恢复的讨论会话，请重新发起讨论。"
+                })
+                return
+
+            if str(runtime_state.get("user_id") or "") != str(current_user.id):
+                await websocket.close(code=1008, reason="Session ownership mismatch")
+                return
+
+            meeting = runtime_state.get("meeting")
+            event_bus = runtime_state.get("event_bus")
+            if not meeting or not event_bus:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "会话运行时不可用，请重新发起讨论。"
+                })
+                return
+
+            await event_bus.subscribe(websocket)
+
+            # Replay persisted event history first (full stream), fallback to in-memory event bus.
+            replay_payloads: List[Dict[str, Any]] = []
+            if session_store:
+                try:
+                    persisted_events = session_store.get_session_events(
+                        session_id,
+                        after_seq=0,
+                        limit=5000,
+                    )
+                    for item in persisted_events:
+                        if isinstance(item, dict) and item.get("type") == "agent_event" and isinstance(item.get("event"), dict):
+                            replay_payloads.append(item.get("event"))
+                except Exception as replay_err:
+                    logger.warning(f"[ROUNDTABLE] Failed to replay persisted events for {session_id}: {replay_err}")
+
+            if not replay_payloads:
+                replay_payloads = [evt.dict() for evt in event_bus.get_history()]
+
+            for evt in replay_payloads:
+                try:
+                    await websocket.send_json({
+                        "type": "agent_event",
+                        "event": evt,
+                    })
+                except Exception:
+                    break
+
+            await websocket.send_json({
+                "type": "agents_ready",
+                "session_id": session_id,
+                "agents": runtime_state.get("agents", []),
+                "message": "已恢复讨论会话",
+            })
+
+            if runtime_state.get("status") in {"completed", "error"}:
+                if runtime_state.get("status") == "completed":
+                    await websocket.send_json({
+                        "type": "discussion_complete",
+                        "session_id": session_id,
+                        "report_id": runtime_state.get("report_id"),
+                        "summary": runtime_state.get("summary", {}),
+                    })
+                else:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": runtime_state.get("error") or "讨论已异常结束",
+                    })
+
+            while True:
+                msg = await websocket.receive_json()
+                if isinstance(msg, dict) and msg.get("type") == "ping":
+                    await websocket.send_json({"type": "pong", "timestamp": datetime.now().isoformat()})
+
+        elif action == "start_discussion":
             topic = initial_request.get("topic", "投资价值分析")
             company_name = initial_request.get("company_name", "目标公司")
             context = initial_request.get("context", {})
@@ -2134,7 +2413,28 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
 
             # Create agent event bus for real-time updates
             event_bus = AgentEventBus()
+            event_bus.max_history = max(event_bus.max_history, 5000)
             await event_bus.subscribe(websocket)
+
+            async def _persist_roundtable_event(event):
+                if runtime_state is not None:
+                    runtime_state["updated_at"] = datetime.now().isoformat()
+                if not session_store:
+                    return
+                try:
+                    session_store.append_session_event(
+                        session_id,
+                        {
+                            "type": "agent_event",
+                            "event": event.dict(),
+                        },
+                        ttl_days=30,
+                        max_events=5000,
+                    )
+                except Exception as persist_err:
+                    logger.warning(f"[ROUNDTABLE] Failed to persist event for {session_id}: {persist_err}")
+
+            event_bus.add_local_handler(_persist_roundtable_event)
 
             # Get selected experts from context (sent by frontend)
             selected_experts = context.get('experts', [])
@@ -2288,6 +2588,27 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
             # Store meeting in global dict for Human-in-the-Loop support
             active_meetings[session_id] = meeting
             meeting._owner_user_id = current_user.id
+            runtime_state = {
+                "session_id": session_id,
+                "user_id": str(current_user.id),
+                "topic": topic,
+                "company_name": company_name,
+                "status": "running",
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "max_rounds": max_rounds,
+                "agents": [agent.name for agent in agents],
+                "knowledge": {
+                    "enabled": knowledge_enabled,
+                    "category": knowledge_category or "all",
+                },
+                "meeting": meeting,
+                "event_bus": event_bus,
+                "summary": None,
+                "report_id": None,
+                "error": None,
+            }
+            roundtable_sessions[session_id] = runtime_state
             print(f"[ROUNDTABLE] Meeting stored with session_id: {session_id}", flush=True)
 
             # Link the meeting state to the meeting object
@@ -2411,11 +2732,14 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                 result = await meeting.run(initial_message=initial_message)
 
                 print(f"[ROUNDTABLE] Discussion completed", flush=True)
+                if runtime_state is not None:
+                    runtime_state["status"] = "completed"
+                    runtime_state["updated_at"] = datetime.now().isoformat()
+                    runtime_state["summary"] = result
 
                 # Save meeting minutes as a report
                 meeting_minutes = result.get("meeting_minutes", "")
                 if meeting_minutes:
-                    from datetime import datetime
                     report_id = f"roundtable_{session_id}"
                     report_title = await _generate_roundtable_report_title(
                         topic=topic,
@@ -2474,6 +2798,11 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
 
                     # Add report_id to result for frontend
                     result["report_id"] = report_id
+                    if runtime_state is not None:
+                        runtime_state["report_id"] = report_id
+
+                if runtime_state is not None:
+                    runtime_state["summary"] = result
 
                 # Send completion summary (check WebSocket state first)
                 try:
@@ -2492,6 +2821,10 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                 print(f"[ROUNDTABLE] Meeting error: {meeting_error}", flush=True)
                 import traceback
                 traceback.print_exc()
+                if runtime_state is not None:
+                    runtime_state["status"] = "error"
+                    runtime_state["error"] = str(meeting_error)
+                    runtime_state["updated_at"] = datetime.now().isoformat()
 
                 # Check if WebSocket is still open before sending error
                 try:
@@ -2507,6 +2840,10 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
             finally:
                 # Unsubscribe event bus
                 await event_bus.unsubscribe(websocket)
+                if runtime_state is not None and runtime_state.get("status") in {"completed", "error"}:
+                    removed = active_meetings.pop(session_id, None)
+                    if removed is not None:
+                        print(f"[ROUNDTABLE] Cleaned up active meeting: {session_id}", flush=True)
 
         else:
             await websocket.send_json({
@@ -2520,6 +2857,10 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
         print(f"[ROUNDTABLE] Error: {e}", flush=True)
         import traceback
         traceback.print_exc()
+        if runtime_state is not None:
+            runtime_state["status"] = "error"
+            runtime_state["error"] = str(e)
+            runtime_state["updated_at"] = datetime.now().isoformat()
 
         try:
             if websocket.client_state == 1:  # OPEN
@@ -2532,10 +2873,15 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
     finally:
         if kb_preferences_token is not None:
             reset_roundtable_knowledge_preferences(kb_preferences_token)
-        if session_id:
-            removed = active_meetings.pop(session_id, None)
-            if removed is not None:
-                print(f"[ROUNDTABLE] Cleaned up active meeting: {session_id}", flush=True)
+        if runtime_state is not None:
+            try:
+                event_bus = runtime_state.get("event_bus")
+                if event_bus:
+                    await event_bus.unsubscribe(websocket)
+            except Exception:
+                pass
+            if runtime_state.get("status") in {"completed", "error"} and session_id:
+                active_meetings.pop(session_id, None)
 
 
 # ============================================================================
@@ -2753,6 +3099,12 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                     targets = [m for m in direct_targets if m != "leader"]
                     if not targets:
                         targets = ["leader"]
+                    record_route_decision(
+                        channel="expert_chat",
+                        mode="direct",
+                        status="success",
+                        latency_seconds=0.0,
+                    )
 
                     await websocket.send_json(
                         {
@@ -2834,19 +3186,40 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                         }
                     )
 
-                    plan = await _leader_plan_route(
-                        user_message=effective_content,
-                        history=history,
-                        language=language,
-                        knowledge_enabled=knowledge_enabled,
-                        knowledge_category=knowledge_category,
-                        attachments_summary=attachment_summary,
-                    )
+                    try:
+                        plan = await _leader_plan_route(
+                            user_message=effective_content,
+                            history=history,
+                            language=language,
+                            knowledge_enabled=knowledge_enabled,
+                            knowledge_category=knowledge_category,
+                            attachments_summary=attachment_summary,
+                        )
+                    except Exception as route_error:
+                        logger.warning(
+                            "[ExpertChat] Leader route planning failed, fallback to leader direct reply: %s",
+                            route_error,
+                        )
+                        plan = {
+                            "need_specialists": False,
+                            "specialists": [],
+                            "leader_reply": "",
+                            "reason": "leader_router_error",
+                        }
+                        await websocket.send_json(
+                            {
+                                "type": "route_fallback",
+                                "session_id": session_id,
+                                "mode": "leader",
+                                "reason": "leader_router_error",
+                            }
+                        )
 
                     delegated_ids = [
                         sid for sid in plan.get("specialists", []) if sid in EXPERT_SPECIALIST_IDS
                     ]
                     specialist_outputs: List[Dict[str, str]] = []
+                    planned_leader_reply = str(plan.get("leader_reply", "")).strip()
 
                     if delegated_ids:
                         await websocket.send_json(
@@ -2945,6 +3318,8 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 attachment_context=attachment_context,
                                 session_agents=session_agents,
                             )
+                        elif planned_leader_reply:
+                            leader_response = planned_leader_reply
                         else:
                             leader_response = await _leader_direct_reply(
                                 user_message=effective_content,

@@ -1,0 +1,21 @@
+agent_id: technical_analyst
+skills:
+  - skill_id: trend_and_structure
+    title_zh: 趋势与结构
+    title_en: Trend and Structure
+    guidance_zh: "先判断趋势方向和结构位置，再给关键支撑阻力与失效位，避免只罗列指标。"
+    guidance_en: "Determine trend and structure first, then key support/resistance and invalidation levels. Avoid indicator-only output."
+    triggers: ["趋势", "阻力", "支撑", "结构", "trend", "support", "resistance"]
+    default: true
+  - skill_id: indicator_consistency
+    title_zh: 指标一致性校验
+    title_en: Indicator Consistency
+    guidance_zh: "交叉核对 RSI、MACD、布林带、成交量是否同向；出现背离时必须解释。"
+    guidance_en: "Cross-check RSI, MACD, Bollinger, and volume alignment; explain divergence explicitly when present."
+    triggers: ["RSI", "MACD", "布林", "背离", "bollinger", "divergence"]
+  - skill_id: execution_plan
+    title_zh: 交易执行计划
+    title_en: Execution Plan
+    guidance_zh: "输出可执行计划：入场条件、止损、分批止盈、仓位管理与风险提示。"
+    guidance_en: "Output executable plan: entry conditions, stop-loss, staged take-profit, position sizing, and risk warnings."
+    triggers: ["策略", "交易", "做多", "做空", "plan", "trade", "entry", "stop loss"]

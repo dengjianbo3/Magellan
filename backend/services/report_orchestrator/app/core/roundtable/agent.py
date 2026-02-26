@@ -2,6 +2,7 @@
 Agent: The fundamental actor in the multi-agent system
 """
 import os
+import time
 from typing import List, Dict, Any, Optional
 from .message import Message, MessageType
 from .tool import Tool
@@ -9,6 +10,7 @@ from .message_bus import MessageBus
 import httpx
 import json
 from ..config_timeouts import HTTP_CLIENT_TIMEOUT
+from ..metrics import record_llm_context_usage, record_tool_call
 from ..model_policy import resolve_model_for_role
 
 AGENT_MAX_SYSTEM_PROMPT_CHARS = max(1024, int(os.getenv("AGENT_MAX_SYSTEM_PROMPT_CHARS", "6000")))
@@ -402,6 +404,21 @@ After tool execution, you will receive results to continue the discussion.
         import asyncio
 
         last_exception = None
+        prompt_texts: List[str] = []
+
+        if isinstance(request_data.get("messages"), list):
+            for msg in request_data.get("messages", []):
+                if isinstance(msg, dict):
+                    prompt_texts.append(str(msg.get("content", "")))
+        elif isinstance(request_data.get("history"), list):
+            for msg in request_data.get("history", []):
+                if not isinstance(msg, dict):
+                    continue
+                parts = msg.get("parts")
+                if isinstance(parts, list):
+                    prompt_texts.extend([str(part) for part in parts if part is not None])
+
+        resolved_model = str(request_data.get("model") or self._resolve_request_model() or self.model or "default")
 
         for attempt in range(max_retries):
             try:
@@ -410,6 +427,23 @@ After tool execution, you will receive results to continue the discussion.
                     response.raise_for_status()
                     result = response.json()
                     print(f"[Agent:{self.name}] LLM response type: {type(result)}")
+                    completion_text = ""
+                    if isinstance(result, dict):
+                        completion_text = str(
+                            (
+                                result.get("choices", [{}])[0].get("message", {}).get("content")
+                                if "choices" in result
+                                else result.get("content", "")
+                            )
+                            or ""
+                        )
+                    record_llm_context_usage(
+                        source="roundtable_agent",
+                        model=resolved_model,
+                        usage=result.get("usage") if isinstance(result, dict) else None,
+                        prompt_texts=prompt_texts,
+                        completion_text=completion_text,
+                    )
                     return result
 
             except httpx.ReadTimeout as e:
@@ -532,6 +566,7 @@ After tool execution, you will receive results to continue the discussion.
         """Execute a single tool and return formatted result."""
         import json
 
+        started_at = time.perf_counter()
         try:
             # Parse JSON arguments if string
             if isinstance(tool_args, str):
@@ -542,6 +577,13 @@ After tool execution, you will receive results to continue the discussion.
             # Execute tool
             tool_result = await self.tools[tool_name].execute(**tool_args)
             print(f"[Agent:{self.name}] Tool {tool_name} result: {tool_result}")
+            record_tool_call(
+                channel="roundtable_agent",
+                agent=self.name,
+                tool=tool_name,
+                status="success",
+                duration_seconds=time.perf_counter() - started_at,
+            )
 
             # Format result
             if isinstance(tool_result, dict) and "summary" in tool_result:
@@ -551,6 +593,13 @@ After tool execution, you will receive results to continue the discussion.
 
         except Exception as e:
             print(f"[Agent:{self.name}] Tool execution failed: {e}")
+            record_tool_call(
+                channel="roundtable_agent",
+                agent=self.name,
+                tool=tool_name,
+                status="error",
+                duration_seconds=time.perf_counter() - started_at,
+            )
             return f"\n[{tool_name} Error]: {str(e)}"
 
     async def _handle_legacy_tool_calls(self, content: str) -> str:
@@ -587,6 +636,7 @@ After tool execution, you will receive results to continue the discussion.
         """Execute a legacy format tool call."""
         import re
 
+        started_at = time.perf_counter()
         try:
             # Parse arguments - support double and single quotes
             params = {}
@@ -603,6 +653,13 @@ After tool execution, you will receive results to continue the discussion.
             # Execute tool
             tool_result = await self.tools[tool_name].execute(**params)
             print(f"[Agent:{self.name}] Tool {tool_name} result: {tool_result}")
+            record_tool_call(
+                channel="roundtable_agent_legacy",
+                agent=self.name,
+                tool=tool_name,
+                status="success",
+                duration_seconds=time.perf_counter() - started_at,
+            )
 
             # Format result
             if isinstance(tool_result, dict) and "summary" in tool_result:
@@ -612,6 +669,13 @@ After tool execution, you will receive results to continue the discussion.
 
         except Exception as tool_error:
             print(f"[Agent:{self.name}] Tool {tool_name} error: {tool_error}")
+            record_tool_call(
+                channel="roundtable_agent_legacy",
+                agent=self.name,
+                tool=tool_name,
+                status="error",
+                duration_seconds=time.perf_counter() - started_at,
+            )
             return f"[{tool_name} Error]: {str(tool_error)}"
 
     def _analyze_message_intent(self, content: str) -> tuple[MessageType, str]:

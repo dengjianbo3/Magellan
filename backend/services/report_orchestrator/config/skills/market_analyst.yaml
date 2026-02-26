@@ -1,0 +1,22 @@
+agent_id: market_analyst
+skills:
+  - skill_id: market_structure
+    title_zh: 市场结构与竞争
+    title_en: Market Structure
+    guidance_zh: 优先输出 TAM/SAM/SOM、竞争格局和关键份额变化，只保留能影响结论的核心数据。
+    guidance_en: Prioritize TAM/SAM/SOM, competitive structure, and share shifts. Keep only evidence that changes the conclusion.
+    triggers: ["市场", "竞争", "份额", "TAM", "SAM", "SOM", "competition", "market share"]
+    default: true
+  - skill_id: flow_and_sentiment
+    title_zh: 资金流与情绪
+    title_en: Flow and Sentiment
+    guidance_zh: 聚焦 ETF 资金流、成交量与情绪指标，明确是短期噪音还是趋势性变化。
+    guidance_en: Focus on ETF flows, volume, and sentiment gauges. Distinguish short-lived noise from structural trend change.
+    triggers: ["资金流", "ETF", "情绪", "成交量", "flow", "sentiment", "volume"]
+  - skill_id: scenario_planning
+    title_zh: 情景推演
+    title_en: Scenario Planning
+    guidance_zh: 给出基准/乐观/悲观三种路径，并明确每条路径的触发条件和失效条件。
+    guidance_en: Provide base/upside/downside scenarios with explicit triggers and invalidation conditions.
+    triggers: ["预判", "路径", "概率", "scenario", "probability", "outlook"]
+

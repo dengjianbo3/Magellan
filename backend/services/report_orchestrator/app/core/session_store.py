@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any
 from datetime import timedelta
 import os
 from typing import List
+from datetime import datetime
 
 
 class SessionStore:
@@ -589,6 +590,115 @@ class SessionStore:
 
         except Exception as e:
             print(f"[SessionStore] ❌ Failed to invalidate cache: {e}")
+            return 0
+
+    # ==================== Session Event Stream ====================
+
+    def _session_events_key(self, session_id: str) -> str:
+        return f"session_events:{session_id}"
+
+    def _session_events_seq_key(self, session_id: str) -> str:
+        return f"session_events_seq:{session_id}"
+
+    def append_session_event(
+        self,
+        session_id: str,
+        event: Dict[str, Any],
+        ttl_days: int = 30,
+        max_events: int = 5000,
+    ) -> int:
+        """
+        Append a session event with an auto-increment sequence.
+
+        Returns:
+            sequence number, or -1 on failure
+        """
+        if not session_id:
+            return -1
+
+        try:
+            seq_key = self._session_events_seq_key(session_id)
+            events_key = self._session_events_key(session_id)
+            seq = int(self.redis_client.incr(seq_key))
+
+            payload = {
+                "seq": seq,
+                "timestamp": event.get("timestamp") or datetime.now().isoformat(),
+                **event,
+            }
+            value = json.dumps(payload, ensure_ascii=False, default=str)
+
+            # Use sorted set score=seq for efficient cursor-based reads.
+            self.redis_client.zadd(events_key, {value: float(seq)})
+
+            # Keep only recent max_events.
+            total = self.redis_client.zcard(events_key)
+            overflow = int(total) - int(max_events)
+            if overflow > 0:
+                self.redis_client.zremrangebyrank(events_key, 0, overflow - 1)
+
+            self.redis_client.expire(events_key, timedelta(days=ttl_days))
+            self.redis_client.expire(seq_key, timedelta(days=ttl_days))
+            return seq
+        except Exception as e:
+            print(f"[SessionStore] ❌ Failed to append session event ({session_id}): {e}")
+            return -1
+
+    def get_session_events(
+        self,
+        session_id: str,
+        after_seq: int = 0,
+        limit: int = 500,
+    ) -> List[Dict[str, Any]]:
+        """
+        Read session events strictly after `after_seq`, ordered by seq asc.
+        """
+        if not session_id:
+            return []
+
+        try:
+            events_key = self._session_events_key(session_id)
+            min_score = f"({int(after_seq)}" if int(after_seq) >= 0 else "-inf"
+            raw_values = self.redis_client.zrangebyscore(
+                events_key,
+                min_score,
+                "+inf",
+                start=0,
+                num=max(int(limit), 1),
+            )
+            events: List[Dict[str, Any]] = []
+            for item in raw_values:
+                try:
+                    parsed = json.loads(item)
+                    if isinstance(parsed, dict):
+                        events.append(parsed)
+                except Exception:
+                    continue
+            return events
+        except Exception as e:
+            print(f"[SessionStore] ❌ Failed to get session events ({session_id}): {e}")
+            return []
+
+    def get_latest_session_event_seq(self, session_id: str) -> int:
+        if not session_id:
+            return 0
+        try:
+            value = self.redis_client.get(self._session_events_seq_key(session_id))
+            return int(value or 0)
+        except Exception:
+            return 0
+
+    def clear_session_events(self, session_id: str) -> int:
+        if not session_id:
+            return 0
+        try:
+            keys = [
+                self._session_events_key(session_id),
+                self._session_events_seq_key(session_id),
+            ]
+            return int(self.redis_client.delete(*keys))
+        except Exception as e:
+            print(f"[SessionStore] ❌ Failed to clear session events ({session_id}): {e}")
             return 0
 
     # ==================== Utility Methods ====================

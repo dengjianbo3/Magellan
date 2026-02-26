@@ -10,6 +10,9 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import httpx
 import asyncio
+import os
+import time
+from collections import OrderedDict
 
 from ...models.technical_models import (
     SignalStrength, TrendDirection, TrendStrength, EMAAlignment,
@@ -20,6 +23,7 @@ from ...models.technical_models import (
     TradingSuggestion, TechnicalAnalysisOutput,
     signal_to_score, score_to_signal
 )
+from ..metrics import record_cache_event
 
 # Import centralized config
 try:
@@ -40,6 +44,9 @@ class TechnicalAnalysisTools:
     - Generate trading signals
     """
 
+    _ohlcv_cache_lock = asyncio.Lock()
+    _ohlcv_cache: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+
     def __init__(self):
         # API endpoints from centralized config
         if get_infra_config:
@@ -55,6 +62,9 @@ class TechnicalAnalysisTools:
 
         # Timeout configuration
         self.timeout = 30.0
+        self.ohlcv_cache_enabled = os.getenv("TA_OHLCV_CACHE_ENABLED", "true").lower() == "true"
+        self.ohlcv_cache_max_entries = max(16, int(os.getenv("TA_OHLCV_CACHE_MAX_ENTRIES", "256")))
+        self.ohlcv_cache_default_ttl_seconds = max(5, int(os.getenv("TA_OHLCV_CACHE_TTL_SECONDS", "60")))
 
     # ==================== Data Fetching ====================
 
@@ -77,10 +87,27 @@ class TechnicalAnalysisTools:
         Returns:
             DataFrame with columns: timestamp, open, high, low, close, volume
         """
+        cache_key = self._make_ohlcv_cache_key(
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=limit,
+            market_type=market_type,
+        )
+        cached = await self._get_cached_ohlcv(cache_key)
+        if cached is not None:
+            return cached
+
         if market_type == "crypto":
-            return await self._get_crypto_ohlcv(symbol, timeframe, limit)
+            df = await self._get_crypto_ohlcv(symbol, timeframe, limit)
         else:
-            return await self._get_stock_ohlcv(symbol, timeframe, limit)
+            df = await self._get_stock_ohlcv(symbol, timeframe, limit)
+
+        await self._store_ohlcv_cache(
+            key=cache_key,
+            timeframe=timeframe,
+            df=df,
+        )
+        return df
 
     async def _get_crypto_ohlcv(
         self,
@@ -407,6 +434,75 @@ class TechnicalAnalysisTools:
         """Get current price"""
         df = await self.get_ohlcv(symbol, "1h", 1, market_type)
         return df['close'].iloc[-1]
+
+    def _make_ohlcv_cache_key(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int,
+        market_type: str,
+    ) -> str:
+        return "|".join(
+            [
+                str(market_type or "crypto").strip().lower(),
+                str(symbol or "").strip().upper(),
+                str(timeframe or "1d").strip().lower(),
+                str(int(limit or 100)),
+            ]
+        )
+
+    def _resolve_ttl_by_timeframe(self, timeframe: str) -> int:
+        tf = str(timeframe or "1d").lower().strip()
+        ttl_map = {
+            "1m": 8,
+            "5m": 15,
+            "15m": 25,
+            "30m": 35,
+            "1h": 60,
+            "4h": 120,
+            "1d": 300,
+            "1w": 900,
+            "1mth": 1800,
+            "1mo": 1800,
+        }
+        ttl = ttl_map.get(tf, self.ohlcv_cache_default_ttl_seconds)
+        return max(5, min(ttl, 1800))
+
+    async def _get_cached_ohlcv(self, key: str) -> Optional[pd.DataFrame]:
+        if not self.ohlcv_cache_enabled:
+            return None
+        now = time.time()
+        async with self._ohlcv_cache_lock:
+            item = self._ohlcv_cache.get(key)
+            if not item:
+                record_cache_event(layer="technical_ohlcv", event="miss")
+                return None
+            if float(item.get("expires_at", 0.0)) <= now:
+                self._ohlcv_cache.pop(key, None)
+                record_cache_event(layer="technical_ohlcv", event="stale")
+                return None
+            self._ohlcv_cache.move_to_end(key)
+            record_cache_event(layer="technical_ohlcv", event="hit")
+            cached_df = item.get("df")
+            if isinstance(cached_df, pd.DataFrame):
+                return cached_df.copy(deep=True)
+            return None
+
+    async def _store_ohlcv_cache(self, key: str, timeframe: str, df: pd.DataFrame) -> None:
+        if not self.ohlcv_cache_enabled or not isinstance(df, pd.DataFrame) or df.empty:
+            return
+        ttl = self._resolve_ttl_by_timeframe(timeframe)
+        payload = {
+            "expires_at": time.time() + ttl,
+            "df": df.copy(deep=True),
+        }
+        async with self._ohlcv_cache_lock:
+            self._ohlcv_cache[key] = payload
+            self._ohlcv_cache.move_to_end(key)
+            while len(self._ohlcv_cache) > self.ohlcv_cache_max_entries:
+                self._ohlcv_cache.popitem(last=False)
+                record_cache_event(layer="technical_ohlcv", event="evict")
+        record_cache_event(layer="technical_ohlcv", event="store")
 
     # ==================== Technical Indicator Calculation ====================
 

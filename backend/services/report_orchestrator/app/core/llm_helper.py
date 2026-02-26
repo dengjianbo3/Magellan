@@ -7,6 +7,7 @@ import json
 import re
 from typing import Dict, Any, Optional
 from datetime import datetime
+from .metrics import record_llm_context_usage
 
 
 class LLMHelper:
@@ -71,6 +72,13 @@ class LLMHelper:
 
                 result = response.json()
                 content = result.get("content", "")
+                record_llm_context_usage(
+                    source="llm_helper",
+                    model=str(result.get("model") or "default"),
+                    usage=result.get("usage"),
+                    prompt_texts=[system_prompt or "", prompt],
+                    completion_text=content,
+                )
 
                 # 根据响应格式解析
                 if response_format == "json":

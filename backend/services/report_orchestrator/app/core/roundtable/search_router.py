@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional, List
 from enum import Enum
 
 from ..auth import get_current_user_id
+from ..metrics import record_cache_event
 from ..memory import get_memory_store
 from ..memory.governance import compact_text, make_provenance_metadata, should_persist_memory
 
@@ -191,7 +192,9 @@ class SearchRouter:
             deduped = self.dedup.find_similar(query, session_id, context=search_context)
             if deduped:
                 logger.info(f"[SearchRouter] Dedup HIT for '{query[:30]}...'")
+                record_cache_event("search_dedup", "hit")
                 return self._normalize_result_contract(query, deduped)
+            record_cache_event("search_dedup", "miss")
 
         # 0.5. Account-scoped shared evidence memory (skip realtime).
         if prio != SearchPriority.REALTIME:
@@ -202,7 +205,9 @@ class SearchRouter:
             )
             if memory_hit:
                 logger.info(f"[SearchRouter] Atomic memory HIT for '{query[:30]}...'")
+                record_cache_event("search_memory", "hit")
                 return self._normalize_result_contract(query, memory_hit)
+            record_cache_event("search_memory", "miss")
         
         # 1. 检查缓存（realtime不查缓存）
         if prio != SearchPriority.REALTIME and self.cache:
@@ -210,7 +215,9 @@ class SearchRouter:
             if cached:
                 logger.info(f"[SearchRouter] Cache HIT for '{query[:30]}...'")
                 cached["from_cache"] = True
+                record_cache_event("search_cache", "hit")
                 return self._normalize_result_contract(query, cached)
+            record_cache_event("search_cache", "miss")
         
         # 2. 根据优先级路由
         result = None
@@ -256,6 +263,7 @@ class SearchRouter:
         if prio != SearchPriority.REALTIME and self.cache and result.get("success"):
             await self.cache.set(query, priority, result, search_params=search_context)
             logger.info(f"[SearchRouter] Cached result for '{query[:30]}...'")
+            record_cache_event("search_cache", "store")
         
         # 4. 添加到会话去重缓存
         if session_id and self.dedup and result.get("success"):
@@ -277,6 +285,7 @@ class SearchRouter:
             )
         except Exception as e:
             logger.warning(f"[SearchRouter] Memory query failed: {e}")
+            record_cache_event("search_memory", "error")
             return None
         if not hits:
             return None

@@ -589,8 +589,11 @@ import { API_BASE, apiUrl, wsUrl } from '@/config/api';
 import { marked } from 'marked';
 import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
 import { readJsonResponse } from '@/services/httpResponse';
+import { useAuthStore } from '@/stores/auth';
 
 const { t, locale } = useLanguage();
+const authStore = useAuthStore();
+let authRefreshInFlight = false;
 
 // Discussion state
 const isDiscussionActive = ref(false);
@@ -678,11 +681,137 @@ const DEFAULT_EXPERTS = [
   'risk-assessor'      // 风险评估师
 ];
 
+const ACTIVE_ROUNDTABLE_STORAGE_KEY = 'magellan_active_roundtable_session';
+
+const persistActiveRoundtableSession = (extra = {}) => {
+  if (!sessionId.value) return;
+  try {
+    const payload = {
+      sessionId: sessionId.value,
+      topic: discussionConfig?.topic || discussionTopic.value,
+      experts: discussionConfig?.experts || selectedExperts.value,
+      maxRounds: discussionConfig?.maxRounds || maxRounds.value,
+      knowledge: discussionConfig?.knowledge || {
+        enabled: useKnowledgeBase.value,
+        category: knowledgeCategory.value
+      },
+      historyReference: discussionConfig?.historyReference || null,
+      status: discussionStatus.value,
+      updatedAt: Date.now(),
+      ...extra
+    };
+    localStorage.setItem(ACTIVE_ROUNDTABLE_STORAGE_KEY, JSON.stringify(payload));
+  } catch (error) {
+    console.warn('[Roundtable] Failed to persist active session:', error);
+  }
+};
+
+const clearPersistedRoundtableSession = () => {
+  try {
+    localStorage.removeItem(ACTIVE_ROUNDTABLE_STORAGE_KEY);
+  } catch (_) {
+    // ignore
+  }
+};
+
+const loadPersistedRoundtableSession = () => {
+  try {
+    const raw = localStorage.getItem(ACTIVE_ROUNDTABLE_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (error) {
+    console.warn('[Roundtable] Failed to read persisted session:', error);
+    return null;
+  }
+};
+
+const tryResumePersistedRoundtableSession = () => {
+  const persisted = loadPersistedRoundtableSession();
+  if (!persisted?.sessionId || persisted.status === 'completed') return false;
+
+  discussionConfig = {
+    topic: persisted.topic || '',
+    experts: Array.isArray(persisted.experts) ? persisted.experts : [...DEFAULT_EXPERTS],
+    maxRounds: persisted.maxRounds || 5,
+    knowledge: persisted.knowledge || { enabled: false, category: 'all' },
+    historyReference: persisted.historyReference || null
+  };
+
+  sessionId.value = persisted.sessionId;
+  discussionTopic.value = discussionConfig.topic;
+  selectedExperts.value = [...discussionConfig.experts];
+  maxRounds.value = discussionConfig.maxRounds;
+  useKnowledgeBase.value = !!discussionConfig.knowledge?.enabled;
+  knowledgeCategory.value = discussionConfig.knowledge?.category || 'all';
+
+  shouldReconnect = true;
+  reconnectAttempts = 0;
+  isDiscussionActive.value = true;
+  isConnecting.value = true;
+  discussionStatus.value = 'running';
+  currentRound.value = 0;
+  messages.value = [{
+    id: Date.now(),
+    type: 'system',
+    content: 'Resuming previous discussion session...'
+  }];
+
+  connectWebSocket({ resume: true });
+  return true;
+};
+
+const tryResumeBackendActiveSession = async () => {
+  try {
+    const response = await fetch(apiUrl('/api/roundtable/active'), {
+      headers: {
+        ...getAuthHeaders()
+      }
+    });
+    const data = await readJsonResponse(response, 'Load active roundtable sessions');
+    const latest = Array.isArray(data.sessions) && data.sessions.length > 0 ? data.sessions[0] : null;
+    if (!latest?.session_id) return false;
+
+    discussionConfig = {
+      topic: latest.topic || '',
+      experts: [...DEFAULT_EXPERTS],
+      maxRounds: latest.max_rounds || 5,
+      knowledge: latest.knowledge || { enabled: false, category: 'all' },
+      historyReference: null
+    };
+
+    sessionId.value = latest.session_id;
+    discussionTopic.value = latest.topic || '';
+    selectedExperts.value = [...discussionConfig.experts];
+    maxRounds.value = discussionConfig.maxRounds;
+    useKnowledgeBase.value = !!discussionConfig.knowledge?.enabled;
+    knowledgeCategory.value = discussionConfig.knowledge?.category || 'all';
+    shouldReconnect = true;
+    reconnectAttempts = 0;
+    isDiscussionActive.value = true;
+    isConnecting.value = true;
+    discussionStatus.value = 'running';
+    messages.value = [{
+      id: Date.now(),
+      type: 'system',
+      content: 'Recovered an active discussion from backend...'
+    }];
+    connectWebSocket({ resume: true });
+    return true;
+  } catch (error) {
+    console.warn('[Roundtable] Failed to recover backend active session:', error);
+    return false;
+  }
+};
+
 // Initialize selected experts on mount with defaults only
 onMounted(() => {
   selectedExperts.value = [...DEFAULT_EXPERTS];
   // Add click outside listener for dropdown
   document.addEventListener('click', handleClickOutside);
+  const resumedFromLocal = tryResumePersistedRoundtableSession();
+  if (!resumedFromLocal) {
+    tryResumeBackendActiveSession();
+  }
 });
 
 // Cleanup on unmount
@@ -754,6 +883,49 @@ const messagesContainer = ref(null);
 // WebSocket
 let ws = null;
 
+const parseJwtPayload = (token) => {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length < 2) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const normalized = base64 + '='.repeat((4 - (base64.length % 4 || 4)) % 4);
+    return JSON.parse(atob(normalized));
+  } catch {
+    return null;
+  }
+};
+
+const isAccessTokenExpired = (token, skewSeconds = 30) => {
+  const payload = parseJwtPayload(token);
+  if (!payload || typeof payload.exp !== 'number') return true;
+  const nowSec = Math.floor(Date.now() / 1000);
+  return payload.exp <= nowSec + skewSeconds;
+};
+
+const ensureValidAccessToken = async () => {
+  const token = localStorage.getItem('access_token') || '';
+  if (token && !isAccessTokenExpired(token)) return true;
+
+  if (authRefreshInFlight) {
+    for (let i = 0; i < 20; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const latest = localStorage.getItem('access_token') || '';
+      if (latest && !isAccessTokenExpired(latest)) return true;
+    }
+    return false;
+  }
+
+  authRefreshInFlight = true;
+  try {
+    const refreshed = await authStore.refreshAccessToken();
+    return Boolean(refreshed);
+  } catch {
+    return false;
+  } finally {
+    authRefreshInFlight = false;
+  }
+};
+
 // Computed
 const canStartDiscussion = computed(() => {
   return discussionTopic.value.trim().length > 0 && selectedExperts.value.length >= 2;
@@ -787,6 +959,10 @@ const toggleExpert = (expertId) => {
 
 const startDiscussion = async () => {
   if (!canStartDiscussion.value) return;
+
+  // Starting a new discussion invalidates any previous recoverable session.
+  clearPersistedRoundtableSession();
+  sessionId.value = '';
 
   // Store config for potential reconnection (including history reference)
   discussionConfig = {
@@ -833,11 +1009,24 @@ const startDiscussion = async () => {
   });
 
   // Connect to WebSocket
-  connectWebSocket();
+  connectWebSocket({ resume: false });
 };
 
-const connectWebSocket = () => {
+const connectWebSocket = async ({ resume = false } = {}) => {
   try {
+    const tokenOk = await ensureValidAccessToken();
+    if (!tokenOk) {
+      isConnecting.value = false;
+      isReconnecting.value = false;
+      discussionStatus.value = 'completed';
+      messages.value.push({
+        id: Date.now(),
+        type: 'system',
+        content: '登录状态已过期，请重新登录后再发起头脑风暴。'
+      });
+      return;
+    }
+
     // Connect to backend roundtable WebSocket
     ws = new WebSocket(appendTokenToUrl(wsUrl('/ws/roundtable')));
 
@@ -847,24 +1036,32 @@ const connectWebSocket = () => {
       isReconnecting.value = false;
       reconnectAttempts = 0;
 
-      // Send initial message to start discussion
-      const lang = locale.value.startsWith('zh') ? 'zh' : 'en'; // 转换为后端期望的格式
-      const initialMessage = {
-        action: 'start_discussion',
-        topic: discussionConfig?.topic || discussionTopic.value,
-        company_name: (discussionConfig?.topic || discussionTopic.value).split(' ')[0] || 'Target Company',
-        language: lang, // 添加语言偏好
-        context: {
-          max_rounds: discussionConfig?.maxRounds || maxRounds.value,
-          experts: discussionConfig?.experts || selectedExperts.value,
-          knowledge: discussionConfig?.knowledge || {
-            enabled: useKnowledgeBase.value,
-            category: knowledgeCategory.value
-          },
-          // Include history reference for continuation
-          history_reference: discussionConfig?.historyReference || null
-        }
-      };
+      let initialMessage;
+      if (resume && sessionId.value) {
+        initialMessage = {
+          action: 'resume_discussion',
+          session_id: sessionId.value
+        };
+      } else {
+        // Send initial message to start discussion
+        const lang = locale.value.startsWith('zh') ? 'zh' : 'en'; // 转换为后端期望的格式
+        initialMessage = {
+          action: 'start_discussion',
+          topic: discussionConfig?.topic || discussionTopic.value,
+          company_name: (discussionConfig?.topic || discussionTopic.value).split(' ')[0] || 'Target Company',
+          language: lang, // 添加语言偏好
+          context: {
+            max_rounds: discussionConfig?.maxRounds || maxRounds.value,
+            experts: discussionConfig?.experts || selectedExperts.value,
+            knowledge: discussionConfig?.knowledge || {
+              enabled: useKnowledgeBase.value,
+              category: knowledgeCategory.value
+            },
+            // Include history reference for continuation
+            history_reference: discussionConfig?.historyReference || null
+          }
+        };
+      }
 
       console.log('[Roundtable] Sending initial message:', initialMessage);
       ws.send(JSON.stringify(initialMessage));
@@ -889,9 +1086,27 @@ const connectWebSocket = () => {
       });
     };
 
-    ws.onclose = (event) => {
+    ws.onclose = async (event) => {
       console.log('[Roundtable] WebSocket closed:', event.code, event.reason);
       isConnecting.value = false;
+
+      if (event?.code === 1008) {
+        const refreshed = await ensureValidAccessToken();
+        if (refreshed && shouldReconnect && discussionStatus.value === 'running') {
+          connectWebSocket({ resume: !!sessionId.value });
+          return;
+        }
+        shouldReconnect = false;
+        isReconnecting.value = false;
+        discussionStatus.value = 'completed';
+        messages.value.push({
+          id: Date.now(),
+          type: 'system',
+          content: '鉴权失败（登录已过期），请重新登录后再试。'
+        });
+        clearPersistedRoundtableSession();
+        return;
+      }
 
       // Auto-reconnect logic (unless explicitly closed by user or discussion completed)
       if (shouldReconnect && event.code !== 1000 && discussionStatus.value === 'running') {
@@ -904,6 +1119,7 @@ const connectWebSocket = () => {
           type: 'system',
           content: 'Discussion ended'
         });
+        clearPersistedRoundtableSession();
       }
     };
   } catch (error) {
@@ -926,7 +1142,7 @@ const attemptReconnect = () => {
     });
 
     setTimeout(() => {
-      connectWebSocket();
+      connectWebSocket({ resume: !!sessionId.value });
     }, delay);
   } else {
     console.error('[Roundtable] Max reconnection attempts reached');
@@ -937,6 +1153,7 @@ const attemptReconnect = () => {
       type: 'system',
       content: 'Unable to reconnect to server. Discussion terminated.'
     });
+    clearPersistedRoundtableSession();
   }
 };
 
@@ -948,6 +1165,7 @@ const handleWebSocketMessage = (data) => {
     if (data.session_id) {
       sessionId.value = data.session_id;
       console.log('[HITL] Session ID stored:', sessionId.value);
+      persistActiveRoundtableSession({ status: 'running' });
     }
     messages.value.push({
       id: Date.now(),
@@ -1063,6 +1281,9 @@ const handleWebSocketMessage = (data) => {
     }
   } else if (data.type === 'discussion_complete') {
     discussionStatus.value = 'completed';
+    isDiscussionActive.value = false;
+    shouldReconnect = false;
+    clearPersistedRoundtableSession();
     if (data.summary) {
       const summary = data.summary;
 
@@ -1105,6 +1326,16 @@ const handleWebSocketMessage = (data) => {
       type: 'system',
       content: `Error: ${data.message}`
     });
+    if (String(data.message || '').includes('未找到可恢复的讨论会话')) {
+      shouldReconnect = false;
+      isReconnecting.value = false;
+      isDiscussionActive.value = false;
+      discussionStatus.value = 'completed';
+      clearPersistedRoundtableSession();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close(1000, 'session-not-recoverable');
+      }
+    }
     scrollToBottom();
   }
 };
@@ -1117,6 +1348,7 @@ const stopDiscussion = () => {
   }
   discussionStatus.value = 'completed';
   isReconnecting.value = false;
+  clearPersistedRoundtableSession();
 };
 
 const generateMeetingSummary = async () => {

@@ -17,11 +17,14 @@ import json
 import re
 import logging
 import os
+import time
 from typing import List, Dict, Any
 from .agent import Agent
 import httpx
 from ..memory import format_memory_hits, get_memory_store
 from ..memory.governance import compact_text, make_provenance_metadata, should_persist_memory
+from ..metrics import record_llm_context_usage, record_tool_call
+from ..skills import build_skill_instruction_context
 
 # Import timeout configurations
 from ..config_timeouts import (
@@ -106,13 +109,20 @@ class ReWOOAgent(Agent):
             )
 
         # Build context from all conversation history
-        recent_history = self.message_history[-MAX_REWOO_CONTEXT_MESSAGES:]
+        skill_context = build_skill_instruction_context(
+            agent_id=str(getattr(self, "atomic_agent_id", "") or getattr(self, "id", "") or self.name),
+            user_message=query,
+            language=str(getattr(self, "language", "en") or "en"),
+        )
+        history_window = MAX_REWOO_CONTEXT_MESSAGES if not skill_context else max(4, MAX_REWOO_CONTEXT_MESSAGES - 2)
+        recent_history = self.message_history[-history_window:]
         compacted_history = [self._compact_message_dict(msg.to_dict()) for msg in recent_history]
         memory_context = await self._load_memory_context(query)
         context = {
             "conversation_history": compacted_history,
             "available_agents": list(self.message_bus.registered_agents) if self.message_bus else [],
             "memory_context": memory_context,
+            "skills_context": skill_context,
         }
 
         # 4. Run ReWOO analysis
@@ -396,6 +406,13 @@ class ReWOOAgent(Agent):
             if not tool:
                 # Tool not found, add error result
                 logger.warning(f"[{self.name}] Tool '{tool_name}' not found for step {i+1}")
+                record_tool_call(
+                    channel="rewoo_agent",
+                    agent=self.name,
+                    tool=tool_name,
+                    status="not_found",
+                    duration_seconds=0.0,
+                )
                 error_result = {
                     "success": False,
                     "error": f"Tool '{tool_name}' not found",
@@ -414,15 +431,24 @@ class ReWOOAgent(Agent):
                         log_text=f"[Exec] 工具调用: {tool_name}({params_str})"
                     )
 
-                # Use configured tool execution timeout
-                task = asyncio.wait_for(
-                    tool.execute(**tool_params),
-                    timeout=TOOL_EXECUTION_TIMEOUT
+                # Use configured tool execution timeout + metrics.
+                task = self._execute_tool_with_metrics(
+                    tool_name=tool_name,
+                    tool=tool,
+                    tool_params=tool_params,
+                    timeout=TOOL_EXECUTION_TIMEOUT,
                 )
                 tasks.append(task)
                 logger.debug(f"[{self.name}] Step {i+1}: {tool_name}({tool_params}) - {purpose} (timeout: {TOOL_EXECUTION_TIMEOUT}s)")
             except Exception as e:
                 logger.error(f"[{self.name}] Failed to create task for {tool_name}: {e}")
+                record_tool_call(
+                    channel="rewoo_agent",
+                    agent=self.name,
+                    tool=tool_name,
+                    status="error",
+                    duration_seconds=0.0,
+                )
                 error_result = {
                     "success": False,
                     "error": str(e),
@@ -499,6 +525,52 @@ class ReWOOAgent(Agent):
     async def _create_completed_future(self, result: Any):
         """创建一个已完成的future"""
         return result
+
+    async def _execute_tool_with_metrics(
+        self,
+        tool_name: str,
+        tool: Any,
+        tool_params: Dict[str, Any],
+        timeout: float,
+    ) -> Any:
+        """Execute one tool call with timeout and metrics instrumentation."""
+        started_at = time.perf_counter()
+        try:
+            result = await asyncio.wait_for(tool.execute(**tool_params), timeout=timeout)
+            record_tool_call(
+                channel="rewoo_agent",
+                agent=self.name,
+                tool=tool_name,
+                status="success",
+                duration_seconds=time.perf_counter() - started_at,
+            )
+            return result
+        except asyncio.TimeoutError:
+            record_tool_call(
+                channel="rewoo_agent",
+                agent=self.name,
+                tool=tool_name,
+                status="timeout",
+                duration_seconds=time.perf_counter() - started_at,
+            )
+            return {
+                "success": False,
+                "error": "Tool execution timeout",
+                "summary": f"Tool execution timeout ({timeout}s)",
+            }
+        except Exception as exc:
+            record_tool_call(
+                channel="rewoo_agent",
+                agent=self.name,
+                tool=tool_name,
+                status="error",
+                duration_seconds=time.perf_counter() - started_at,
+            )
+            return {
+                "success": False,
+                "error": str(exc),
+                "summary": f"Tool execution error: {exc}",
+            }
 
     async def _solve_phase(
         self,
@@ -769,6 +841,9 @@ Please synthesize all the above information and generate a structured analysis r
             temperature = self.temperature
 
         last_error = None
+        prompt_texts = [str(msg.get("content", "")) for msg in messages if isinstance(msg, dict)]
+        request_model = self._resolve_request_model()
+        resolved_model = str(request_model or self.model or "default")
 
         for attempt in range(max_retries):
             try:
@@ -790,7 +865,6 @@ Please synthesize all the above information and generate a structured analysis r
                         })
 
                     payload = {"history": history}
-                    request_model = self._resolve_request_model()
                     if request_model:
                         payload["model"] = request_model
                     payload_json = json.dumps(payload, ensure_ascii=False)
@@ -816,6 +890,13 @@ Please synthesize all the above information and generate a structured analysis r
                     if not content:
                         raise ValueError("Empty response from LLM")
 
+                    record_llm_context_usage(
+                        source="rewoo_agent",
+                        model=resolved_model,
+                        usage=result.get("usage") if isinstance(result, dict) else None,
+                        prompt_texts=prompt_texts,
+                        completion_text=content,
+                    )
                     logger.info(f"[{self.name}] LLM call succeeded on attempt {attempt + 1}")
                     return content
 

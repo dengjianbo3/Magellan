@@ -8,6 +8,7 @@ Roundtable Router
 import logging
 import os
 from typing import Dict, Any
+from datetime import datetime
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,6 +21,7 @@ router = APIRouter()
 
 # Global references - will be set from main.py
 _active_meetings: Dict[str, Any] = {}
+_roundtable_sessions: Dict[str, Dict[str, Any]] = {}
 _llm_gateway_url: str = os.getenv("LLM_GATEWAY_URL", "http://llm_gateway:8003")
 
 
@@ -29,10 +31,55 @@ def set_active_meetings(meetings: Dict[str, Any]):
     _active_meetings = meetings
 
 
+def set_roundtable_sessions(sessions: Dict[str, Dict[str, Any]]):
+    """Set roundtable runtime sessions reference."""
+    global _roundtable_sessions
+    _roundtable_sessions = sessions
+
+
 def set_llm_gateway_url(url: str):
     """Set the LLM Gateway URL"""
     global _llm_gateway_url
     _llm_gateway_url = url
+
+
+@router.get("/active", tags=["Roundtable"])
+async def get_active_roundtable_sessions(
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    获取当前仍在后台运行（或等待用户输入）的头脑风暴会话。
+    """
+    sessions = []
+    for session_id, runtime in _roundtable_sessions.items():
+        try:
+            if str(runtime.get("user_id") or "") != str(current_user.id):
+                continue
+            meeting = runtime.get("meeting")
+            waiting_for_human = bool(getattr(meeting, "waiting_for_human", False)) if meeting else False
+            status = "waiting_human" if waiting_for_human else str(runtime.get("status") or "unknown")
+            if status not in {"running", "waiting_human"}:
+                continue
+            sessions.append({
+                "session_id": session_id,
+                "topic": runtime.get("topic", ""),
+                "company_name": runtime.get("company_name", ""),
+                "status": status,
+                "created_at": runtime.get("created_at"),
+                "updated_at": runtime.get("updated_at"),
+                "max_rounds": runtime.get("max_rounds"),
+                "agents": runtime.get("agents", []),
+                "knowledge": runtime.get("knowledge", {}),
+            })
+        except Exception:
+            continue
+
+    sessions.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
+    return {
+        "success": True,
+        "total": len(sessions),
+        "sessions": sessions,
+    }
 
 
 @router.get("/history", tags=["Roundtable"])
@@ -162,6 +209,10 @@ async def inject_human_input(
     # Inject the human input
     try:
         await meeting.inject_human_input(content, anchor_message_id=anchor_message_id)
+        runtime = _roundtable_sessions.get(session_id)
+        if runtime is not None:
+            runtime["status"] = "running"
+            runtime["updated_at"] = datetime.now().isoformat()
         logger.info(f"Successfully injected human input for session: {session_id}")
         has_content = bool((content or "").strip())
         return {
@@ -205,6 +256,10 @@ async def pause_for_human_input(
 
     try:
         paused_now = await meeting.pause_for_human_intervention(reason="manual_interrupt")
+        runtime = _roundtable_sessions.get(session_id)
+        if runtime is not None:
+            runtime["status"] = "waiting_human" if paused_now else runtime.get("status", "running")
+            runtime["updated_at"] = datetime.now().isoformat()
         return {
             "status": "success",
             "session_id": session_id,
