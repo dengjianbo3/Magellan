@@ -37,6 +37,11 @@ class QmdMemoryStore(MemoryStore):
         default_root = "/tmp/magellan_qmd_memory"
         self.memory_root = Path(memory_root or os.getenv("QMD_MEMORY_ROOT", default_root)).resolve()
         self.cmd_timeout_seconds = max(5, int(cmd_timeout_seconds))
+        retrieval_mode = os.getenv("QMD_MEMORY_RETRIEVAL_MODE", "search").strip().lower()
+        self.retrieval_mode = retrieval_mode if retrieval_mode in {"search", "vsearch", "query"} else "search"
+        self.query_fallback_to_search = (
+            os.getenv("QMD_MEMORY_FALLBACK_TO_SEARCH", "true").strip().lower() == "true"
+        )
         self._fallback = fallback_store or NoopMemoryStore()
         self._registered_collections: set[str] = set()
         self._degraded = False
@@ -153,13 +158,33 @@ class QmdMemoryStore(MemoryStore):
             return await self._fallback.query_shared_evidence(user_id, q, top_k)
 
     async def health(self) -> Dict[str, Any]:
+        cli_ok = await self._check_cli_available()
+
         return {
             "provider": "qmd",
             "degraded": self._degraded,
             "index_name": self.index_name,
             "memory_root": str(self.memory_root),
             "cli_path": self.cli_path,
+            "cli_available": cli_ok,
+            "retrieval_mode": self.retrieval_mode,
         }
+
+    async def _check_cli_available(self) -> bool:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                self.cli_path,
+                "--version",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout_b, stderr_b = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=5,
+            )
+            return proc.returncode == 0 and bool((stdout_b or b"").strip() or (stderr_b or b"").strip())
+        except Exception:
+            return False
 
     async def _ensure_collection(self, raw_collection: str) -> tuple[str, Path]:
         slug = self._collection_slug(raw_collection)
@@ -196,18 +221,37 @@ class QmdMemoryStore(MemoryStore):
             raise RuntimeError(result.get("stderr") or result.get("stdout") or "qmd update failed")
 
     async def _qmd_query(self, collection_slug: str, query: str, top_k: int) -> List[MemoryHit]:
+        mode = self.retrieval_mode
         result = await self._run_qmd(
             [
-                "query",
+                mode,
                 "--json",
                 "--collection",
                 collection_slug,
-                "--limit",
+                "-n",
                 str(top_k),
                 query,
             ],
-            allow_failure=False,
+            allow_failure=True,
         )
+        if not result["ok"] and mode != "search" and self.query_fallback_to_search:
+            logger.warning(
+                "[AtomicMemory:qmd] %s mode failed, fallback to search mode. stderr=%s",
+                mode,
+                (result.get("stderr") or "")[:300],
+            )
+            result = await self._run_qmd(
+                [
+                    "search",
+                    "--json",
+                    "--collection",
+                    collection_slug,
+                    "-n",
+                    str(top_k),
+                    query,
+                ],
+                allow_failure=True,
+            )
         if not result["ok"]:
             raise RuntimeError(result.get("stderr") or result.get("stdout") or "qmd query failed")
 
@@ -227,11 +271,13 @@ class QmdMemoryStore(MemoryStore):
                 str(row.get("snippet") or "")
                 or str(row.get("content") or "")
                 or str(row.get("text") or "")
+                or str(row.get("excerpt") or "")
             ).strip()
-            if not content and row.get("path"):
+            row_path = row.get("path") or row.get("filepath") or row.get("file")
+            if not content and row_path:
                 # Optional fallback for sparse JSON: try reading source file.
                 try:
-                    path = Path(str(row["path"]))
+                    path = Path(str(row_path))
                     if path.exists():
                         content = path.read_text(encoding="utf-8")[:1800]
                 except Exception:
@@ -241,9 +287,15 @@ class QmdMemoryStore(MemoryStore):
             score_val = row.get("score", 0.0)
             try:
                 score = float(score_val)
+                if score > 1:
+                    score = min(1.0, score / 100.0)
             except Exception:
                 score = 0.0
-            metadata = {"path": row.get("path"), "title": row.get("title")}
+            metadata = {
+                "path": row.get("path") or row.get("filepath") or row.get("file"),
+                "title": row.get("title"),
+                "docid": row.get("docid"),
+            }
             hits.append(
                 MemoryHit(
                     content=content,

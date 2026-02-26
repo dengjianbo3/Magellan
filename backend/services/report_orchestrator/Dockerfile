@@ -6,11 +6,35 @@ WORKDIR /usr/src/app
 
 # Install Chinese fonts for matplotlib
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    curl \
     fonts-noto-cjk \
     fonts-noto-cjk-extra \
     fontconfig \
+    git \
+    gnupg \
+    unzip \
     && rm -rf /var/lib/apt/lists/* \
     && fc-cache -fv
+
+# Install Node.js 22.x (required by qmd)
+RUN mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Bun + qmd CLI
+ENV BUN_INSTALL=/root/.bun
+ENV PATH="${BUN_INSTALL}/bin:${PATH}"
+RUN curl -fsSL https://bun.sh/install | bash \
+    && ln -sf /root/.bun/bin/bun /usr/local/bin/bun \
+    && npm install -g @tobilu/qmd \
+    && qmd --version
 
 # Copy the requirements file into the container at /usr/src/app
 COPY requirements.txt ./
