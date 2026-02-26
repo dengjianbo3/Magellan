@@ -1,0 +1,140 @@
+groups:
+  - name: magellan-context-metrics
+    interval: 30s
+    rules:
+      - record: magellan:route_total_5m
+        expr: sum(increase(magellan_context_route_decisions_total[5m]))
+
+      - record: magellan:route_error_ratio_pct_5m
+        expr: |
+          100 *
+          sum(increase(magellan_context_route_decisions_total{status="error"}[5m]))
+          /
+          clamp_min(sum(increase(magellan_context_route_decisions_total[5m])), 1)
+
+      - record: magellan:route_cached_ratio_pct_5m
+        expr: |
+          100 *
+          (
+            sum(increase(magellan_context_route_decisions_total{status="cached"}[5m]))
+            /
+            clamp_min(sum(increase(magellan_context_route_decisions_total[5m])), 1)
+          )
+
+      - record: magellan:tool_total_5m
+        expr: sum(increase(magellan_context_tool_calls_total{status=~"success|error"}[5m]))
+
+      - record: magellan:tool_error_ratio_pct_5m
+        expr: |
+          100 *
+          sum(increase(magellan_context_tool_calls_total{status="error"}[5m]))
+          /
+          clamp_min(sum(increase(magellan_context_tool_calls_total{status=~"success|error"}[5m])), 1)
+
+      - record: magellan:leader_route_cache_volume_5m
+        expr: sum(increase(magellan_context_cache_events_total{layer="leader_route",event=~"hit|miss|stale"}[5m]))
+
+      - record: magellan:leader_route_hit_ratio_pct_5m
+        expr: |
+          100 *
+          sum(increase(magellan_context_cache_events_total{layer="leader_route",event="hit"}[5m]))
+          /
+          clamp_min(sum(increase(magellan_context_cache_events_total{layer="leader_route",event=~"hit|miss|stale"}[5m])), 1)
+
+      - record: magellan:technical_ohlcv_cache_volume_5m
+        expr: sum(increase(magellan_context_cache_events_total{layer="technical_ohlcv",event=~"hit|miss|stale"}[5m]))
+
+      - record: magellan:technical_ohlcv_hit_ratio_pct_5m
+        expr: |
+          100 *
+          sum(increase(magellan_context_cache_events_total{layer="technical_ohlcv",event="hit"}[5m]))
+          /
+          clamp_min(sum(increase(magellan_context_cache_events_total{layer="technical_ohlcv",event=~"hit|miss|stale"}[5m])), 1)
+
+      - record: magellan:yahoo_finance_cache_volume_5m
+        expr: sum(increase(magellan_context_cache_events_total{layer="yahoo_finance",event=~"hit|miss|stale"}[5m]))
+
+      - record: magellan:yahoo_finance_hit_ratio_pct_5m
+        expr: |
+          100 *
+          sum(increase(magellan_context_cache_events_total{layer="yahoo_finance",event="hit"}[5m]))
+          /
+          clamp_min(sum(increase(magellan_context_cache_events_total{layer="yahoo_finance",event=~"hit|miss|stale"}[5m])), 1)
+
+      - alert: MagellanRouteErrorRatioHigh
+        expr: (magellan:route_total_5m >= 20) and (magellan:route_error_ratio_pct_5m > 5)
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Magellan route error ratio is high"
+          description: "Route error ratio > 5% over 5m with route volume gate satisfied (>=20)."
+
+      - alert: MagellanToolErrorRatioHigh
+        expr: (magellan:tool_total_5m >= 30) and (magellan:tool_error_ratio_pct_5m > 10)
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Magellan tool error ratio is high"
+          description: "Tool error ratio > 10% over 5m with tool volume gate satisfied (>=30)."
+
+      - alert: MagellanLeaderCacheHitLowSteady
+        expr: (magellan:route_total_5m >= 20) and (magellan:leader_route_cache_volume_5m >= 30) and (magellan:leader_route_hit_ratio_pct_5m < 40)
+        for: 15m
+        labels:
+          severity: warning
+          profile: steady
+        annotations:
+          summary: "Magellan leader route cache hit rate is low (steady)"
+          description: "Leader cache hit rate < 40% in steady profile."
+
+      - alert: MagellanLeaderCacheHitLowWarmup
+        expr: (magellan:route_total_5m < 20) and (magellan:leader_route_cache_volume_5m >= 30) and (magellan:leader_route_hit_ratio_pct_5m < 15)
+        for: 15m
+        labels:
+          severity: warning
+          profile: warmup
+        annotations:
+          summary: "Magellan leader route cache hit rate is low (warmup)"
+          description: "Leader cache hit rate < 15% in warmup profile."
+
+      - alert: MagellanTechnicalOhlcvCacheHitLowSteady
+        expr: (magellan:route_total_5m >= 20) and (magellan:technical_ohlcv_cache_volume_5m >= 30) and (magellan:technical_ohlcv_hit_ratio_pct_5m < 55)
+        for: 15m
+        labels:
+          severity: warning
+          profile: steady
+        annotations:
+          summary: "Magellan technical OHLCV cache hit rate is low (steady)"
+          description: "technical_ohlcv cache hit rate < 55% in steady profile."
+
+      - alert: MagellanTechnicalOhlcvCacheHitLowWarmup
+        expr: (magellan:route_total_5m < 20) and (magellan:technical_ohlcv_cache_volume_5m >= 30) and (magellan:technical_ohlcv_hit_ratio_pct_5m < 20)
+        for: 15m
+        labels:
+          severity: warning
+          profile: warmup
+        annotations:
+          summary: "Magellan technical OHLCV cache hit rate is low (warmup)"
+          description: "technical_ohlcv cache hit rate < 20% in warmup profile."
+
+      - alert: MagellanYahooCacheHitLowSteady
+        expr: (magellan:route_total_5m >= 20) and (magellan:yahoo_finance_cache_volume_5m >= 30) and (magellan:yahoo_finance_hit_ratio_pct_5m < 30)
+        for: 15m
+        labels:
+          severity: warning
+          profile: steady
+        annotations:
+          summary: "Magellan yahoo_finance cache hit rate is low (steady)"
+          description: "yahoo_finance cache hit rate < 30% in steady profile."
+
+      - alert: MagellanYahooCacheHitLowWarmup
+        expr: (magellan:route_total_5m < 20) and (magellan:yahoo_finance_cache_volume_5m >= 30) and (magellan:yahoo_finance_hit_ratio_pct_5m < 15)
+        for: 15m
+        labels:
+          severity: warning
+          profile: warmup
+        annotations:
+          summary: "Magellan yahoo_finance cache hit rate is low (warmup)"
+          description: "yahoo_finance cache hit rate < 15% in warmup profile."

@@ -81,6 +81,13 @@ sum(rate(magellan_context_tool_calls_total{status=~"success|error"}[5m]))
 - `warning`: leader route cache hit rate < `15%` for `15m` (warm-up only)
 - `critical`: leader route cache hit rate < `10%` for `15m` (warm-up only)
 
+## Prometheus Rule File
+- 已提供可落地规则模板: `ops/prometheus/context_metrics_alert_rules.yml`
+- 建议在 Prometheus 配置中加入:
+  - `rule_files:`
+  - `  - /etc/prometheus/rules/context_metrics_alert_rules.yml`
+- 并将该文件映射到容器路径 `/etc/prometheus/rules/context_metrics_alert_rules.yml`
+
 ## Operational Notes
 - Cache hit rates should be judged by **window rate**, not absolute counters.
 - For low traffic periods, avoid noisy alerts by setting `for` windows and minimum request volume gates.

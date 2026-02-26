@@ -12,7 +12,7 @@ from collections import OrderedDict
 from copy import deepcopy
 from datetime import datetime
 from contextlib import asynccontextmanager
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional, Set
@@ -78,6 +78,7 @@ from .core.metrics import (
     record_llm_context_usage,
     record_route_decision,
 )
+from .core.observability.metrics_snapshot import MetricsSnapshotCache
 
 # Configure logging (JSON in production, console in development)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -231,7 +232,16 @@ set_llm_gateway_url(LLM_GATEWAY_URL)
 print("[main.py] ✅ Roundtable Router initialized")
 
 # Phase 2: Initialize Prometheus metrics
-Instrumentator().instrument(app).expose(app, endpoint="/metrics", tags=["System (Phase 2)"])
+Instrumentator().instrument(app)
+
+# `/metrics` snapshot cache: avoid recomputing full exposition on every scrape under high load.
+METRICS_SNAPSHOT_TTL_SECONDS = max(0.1, float(os.getenv("METRICS_SNAPSHOT_TTL_SECONDS", "2.0")))
+_metrics_snapshot_cache = MetricsSnapshotCache(ttl_seconds=METRICS_SNAPSHOT_TTL_SECONDS)
+
+
+@app.get("/metrics", include_in_schema=False, tags=["System (Phase 2)"])
+async def metrics_snapshot() -> Response:
+    return await _metrics_snapshot_cache.response()
 
 # Phase 4: Include API Routers (新架构 - 完整迁移)
 app.include_router(health_router, tags=["Health"])

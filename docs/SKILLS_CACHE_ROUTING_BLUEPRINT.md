@@ -296,6 +296,10 @@ Skill Manifest 关键字段:
 | 2026-02-26 | Phase 5 | Skills 覆盖扩展到全部核心原子专家（新增多份 manifest），并修复 `-/_` agent_id 兼容 | 完成 | 需持续迭代触发词与卡片精炼 | 下一步做命中率分析与卡片瘦身 |
 | 2026-02-26 | Phase 5 | 模块化拆分：新增 `core/expert_chat/orchestration.py` 承载 DAG/证据逻辑，降低 `main.py` 复杂度 | 完成 | 主流程仍有进一步拆分空间 | 下一步继续抽离 session/transport 逻辑 |
 | 2026-02-26 | Phase 5 | 容器内测试与回归：新增/相关单测共 18 通过，服务已重建并健康检查通过 | 完成 | 无 | 进入线上观察与阈值调优 |
+| 2026-02-26 | Phase 5 | 前端兼容修复：`ChatHubView.vue` 新增 `delegation_stage/route_fallback` 处理，未知消息改为 debug 忽略 | 完成 | 无 | 消除“unsupported message type”噪音 |
+| 2026-02-26 | Phase 5 | `/metrics` 收敛优化：引入 `MetricsSnapshotCache`（TTL 快照 + `to_thread(generate_latest)`）并接管 `/metrics` 路由 | 完成 | 无 | 继续观察 scrape 延迟分布 |
+| 2026-02-26 | Phase 5 | 告警规则落地：新增 `ops/prometheus/context_metrics_alert_rules.yml`，将 volume gate 下沉到 Prometheus 规则层 | 完成 | 无 | 结合真实流量继续调阈值 |
+| 2026-02-26 | Phase 5 | Skills 覆盖防回归：新增单测校验 `agents.yaml` 全量 agent 均有 skills manifest | 完成 | 无 | 后续只需维护新增 agent 的 manifest |
 
 ---
 
@@ -306,21 +310,20 @@ Skill Manifest 关键字段:
 | ISSUE-001 | 2026-02-26 | N/A | 初版蓝图待确认指标阈值 | 中 | Open | TBD | 与业务目标对齐后锁定 |
 | ISSUE-002 | 2026-02-26 | expert-chat multimodal | 多图 merge 路径统计中错误引用响应对象字段，导致 prompt 来源不准确 | 中 | Closed | Codex | 已改为使用 `merge_request.messages` |
 | ISSUE-003 | 2026-02-26 | skills manifest | `technical_analyst.yaml` 因未转义冒号导致加载失败 | 低 | Closed | Codex | 已为文案字段补充引号并验证 |
-| ISSUE-004 | 2026-02-26 | observability | 在当前高负载状态下，`/metrics` 在外部采集端偶发超时 | 中 | Open | Codex | 已先加脚本超时重试，后续仍需评估标签基数与采集窗口 |
+| ISSUE-004 | 2026-02-26 | observability | 在当前高负载状态下，`/metrics` 在外部采集端偶发超时 | 中 | Closed | Codex | 已改为 `/metrics` 快照缓存（TTL）+ 线程外生成，降低 scrape 阻塞风险 |
 | ISSUE-005 | 2026-02-26 | yahoo cache | `execute` 初版缓存改造时多数 action 分支提前 `return`，导致缓存未生效 | 中 | Closed | Codex | 已改为统一 result 流程并回归通过 |
 | ISSUE-006 | 2026-02-26 | benchmark runtime | `scripts/` 目录未挂载到 `report_orchestrator` 容器，直接容器路径执行脚本失败 | 低 | Closed | Codex | 已提供 `run_skills_cache_routing_benchmark_in_container.sh` 通过 stdin 执行 |
 | ISSUE-007 | 2026-02-26 | expert chat routing | 路由阶段异常会直接让本轮消息失败，用户体验中断 | 中 | Closed | Codex | 已增加 route fallback（leader direct）并保留错误可观测 |
-| ISSUE-008 | 2026-02-26 | alert calibration | 低流量/短窗口时缓存命中率对样本分布敏感，阈值易误报 | 中 | Open | Codex | 建议引入最小样本门槛（如 route>=20, cache events>=30） |
+| ISSUE-008 | 2026-02-26 | alert calibration | 低流量/短窗口时缓存命中率对样本分布敏感，阈值易误报 | 中 | Closed | Codex | 已在阈值脚本与 Prometheus 告警规则中落实最小样本门槛（volume gate） |
 
 ---
 
 ## 11. 下一步（立即执行建议）
 
 1. 连续执行 3 天线上窗口采样（每 30s 抓取，输出 `summary.jsonl`）。
-2. 告警判定加入最小样本门槛（route>=20、tool success+error>=30、cache hit+miss+stale>=30）。
-3. 将阈值按阶段分层：冷启动/低流量阈值 + 稳态阈值。
-4. 每日更新第 9 节实施日志与第 10 节问题追踪。
-5. 基于 `tmp/phase0_baseline_window_live_route_probe/summary.jsonl` 继续扩充真实样本。
+2. 观察 `/metrics` scrape 延迟分布，并按环境调 `METRICS_SNAPSHOT_TTL_SECONDS`（建议 1~3s）。
+3. 每日更新第 9 节实施日志与第 10 节问题追踪。
+4. 基于 `tmp/phase0_baseline_window_live_route_probe/summary.jsonl` 继续扩充真实样本。
 
 ---
 
@@ -444,14 +447,14 @@ Skill Manifest 关键字段:
 
 ### 15.2 上阶段未收口事项并入下一阶段
 
-1. Skills 覆盖扩展:  
-   目前仅重点专家具备较完整 skills manifest，需扩展到全部原子 Agent 并统一 lint/预算约束。
+1. Skills 覆盖扩展（已完成）:  
+   `agents.yaml` 全量原子 Agent 已具备 skills manifest，并新增覆盖性单测防止回退。
 
 2. 缓存覆盖扩展:  
    当前缓存已覆盖部分高频工具，需继续扩展到更多工具链路并细化 TTL/命中策略。
 
-3. 告警阈值固化:  
-   继续做真实线上窗口采样，满足最小样本门槛后再固化阈值与告警规则。
+3. 告警阈值固化（已完成首版）:  
+   已完成 warmup/steady 分层与 volume gate 规则落地，后续按真实流量持续微调阈值。
 
 4. 大文件模块化拆分:  
    对 `main.py` 等大文件继续按职责拆分，降低耦合并提升可维护性与可观测性。
@@ -466,6 +469,6 @@ Skill Manifest 关键字段:
 
 ### 15.4 任务状态
 
-- 当前状态: `In Progress (Batch-1 Delivered)`  
-- 执行状态: `Core changes implemented and validated`  
+- 当前状态: `In Progress (Batch-2 Delivered)`  
+- 执行状态: `Core changes implemented and validated (incl. metrics hardening + alert rule landing)`  
 - 下一步触发条件: 进入线上真实流量观测窗口并按指标继续调参/收敛
