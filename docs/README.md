@@ -15,6 +15,7 @@
 | [README.md](../README.md) | Project overview and quick start |
 | [TRADING_SYSTEM_DOCUMENTATION.md](../TRADING_SYSTEM_DOCUMENTATION.md) | **Complete trading system documentation** |
 | [ARCHITECTURE_EVOLUTION.md](../ARCHITECTURE_EVOLUTION.md) | Architecture design evolution |
+| [ARCHITECTURE_FULL_SYSTEM.md](ARCHITECTURE_FULL_SYSTEM.md) | **Current full-system architecture (code-aligned)** |
 | [SYSTEM_STATUS_REPORT.md](../SYSTEM_STATUS_REPORT.md) | Current system status report |
 | [TRADING_COST_ANALYSIS.md](../TRADING_COST_ANALYSIS.md) | Trading cost analysis |
 
@@ -23,6 +24,8 @@
 | Document | Description |
 |----------|-------------|
 | [FUTURE_ROADMAP.md](FUTURE_ROADMAP.md) | Development roadmap (Phase 0-4) |
+| [ATOMIC_AGENT_UNIFICATION_PLAN.md](ATOMIC_AGENT_UNIFICATION_PLAN.md) | Atomic-agent unification plan (P0/P1) |
+| [SKILLS_CACHE_ROUTING_BLUEPRINT.md](SKILLS_CACHE_ROUTING_BLUEPRINT.md) | Skills + cache + routing acceleration blueprint |
 | [V4/](V4/) | V4 planning documents |
 
 ### Archived Documentation
@@ -45,7 +48,8 @@
 
 ### For Architecture Understanding
 1. [ARCHITECTURE_EVOLUTION.md](../ARCHITECTURE_EVOLUTION.md) - How the system evolved
-2. [FUTURE_ROADMAP.md](FUTURE_ROADMAP.md) - Where we're heading
+2. [ARCHITECTURE_FULL_SYSTEM.md](ARCHITECTURE_FULL_SYSTEM.md) - Current code-level architecture
+3. [FUTURE_ROADMAP.md](FUTURE_ROADMAP.md) - Where we're heading
 
 ### For Historical Reference
 - See [archive/](archive/) directory for previous version documentation

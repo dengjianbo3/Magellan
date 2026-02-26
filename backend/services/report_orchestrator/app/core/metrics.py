@@ -5,7 +5,7 @@ Custom Prometheus metrics for business-level monitoring
 from prometheus_client import Counter, Histogram, Gauge, Info
 import time
 from functools import wraps
-from typing import Callable, Any
+from typing import Callable, Any, Dict, Optional, Iterable
 
 # =============================================================================
 # Analysis Metrics
@@ -111,6 +111,54 @@ frontend_errors_total = Counter(
 app_info = Info(
     'magellan_app',
     'Magellan application information'
+)
+
+# =============================================================================
+# Context Optimization Metrics (Skills + Cache + Routing Blueprint Phase 0)
+# =============================================================================
+
+context_tokens_total = Counter(
+    'magellan_context_tokens_total',
+    'Context token usage for orchestration and chat flows',
+    ['source', 'model', 'type']  # type: prompt / completion
+)
+
+context_chars_total = Counter(
+    'magellan_context_chars_total',
+    'Character volume sent to / received from LLM calls',
+    ['source', 'model', 'type']  # type: prompt / completion
+)
+
+context_tool_calls_total = Counter(
+    'magellan_context_tool_calls_total',
+    'Tool call count in context-intensive flows',
+    ['channel', 'agent', 'tool', 'status']  # status: success / error / timeout
+)
+
+context_tool_call_duration_seconds = Histogram(
+    'magellan_context_tool_call_duration_seconds',
+    'Tool call latency in seconds',
+    ['channel', 'agent', 'tool'],
+    buckets=(0.1, 0.3, 0.5, 1, 2, 5, 10, 20, 30, 60)
+)
+
+context_route_decisions_total = Counter(
+    'magellan_context_route_decisions_total',
+    'Route decision count for leader/expert routing',
+    ['channel', 'mode', 'status']  # mode: direct / leader / delegated
+)
+
+context_route_decision_latency_seconds = Histogram(
+    'magellan_context_route_decision_latency_seconds',
+    'Latency for route decision',
+    ['channel', 'mode'],
+    buckets=(0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 30)
+)
+
+context_cache_events_total = Counter(
+    'magellan_context_cache_events_total',
+    'Cache hit/miss/store/error by layer',
+    ['layer', 'event']  # layer: search_memory/search_cache/... ; event: hit/miss/store/error
 )
 
 
@@ -263,3 +311,123 @@ def set_app_info(version: str, environment: str):
         'version': version,
         'environment': environment
     })
+
+
+def _estimate_tokens_from_chars(text: str) -> int:
+    """
+    Heuristic token estimation fallback.
+    Approximation: 1 token ~= 4 chars for mixed zh/en payload.
+    """
+    if not text:
+        return 0
+    return max(1, int(round(len(text) / 4)))
+
+
+def _normalize_usage_tokens(usage: Optional[Dict[str, Any]]) -> Dict[str, int]:
+    if not isinstance(usage, dict):
+        return {"prompt": 0, "completion": 0}
+
+    prompt = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
+    completion = usage.get("completion_tokens") or usage.get("output_tokens") or 0
+
+    try:
+        prompt = int(prompt or 0)
+    except Exception:
+        prompt = 0
+    try:
+        completion = int(completion or 0)
+    except Exception:
+        completion = 0
+
+    return {"prompt": max(0, prompt), "completion": max(0, completion)}
+
+
+def _join_texts(texts: Optional[Iterable[str]]) -> str:
+    if not texts:
+        return ""
+    parts = [str(t) for t in texts if t is not None]
+    return "\n".join(parts)
+
+
+def record_llm_context_usage(
+    source: str,
+    model: str,
+    usage: Optional[Dict[str, Any]] = None,
+    prompt_texts: Optional[Iterable[str]] = None,
+    completion_text: Optional[str] = None,
+):
+    """
+    Record context usage using provider usage first, then char-estimate fallback.
+    """
+    safe_source = str(source or "unknown")
+    safe_model = str(model or "default")
+
+    prompt_text = _join_texts(prompt_texts)
+    completion = str(completion_text or "")
+
+    if prompt_text:
+        context_chars_total.labels(source=safe_source, model=safe_model, type='prompt').inc(len(prompt_text))
+    if completion:
+        context_chars_total.labels(source=safe_source, model=safe_model, type='completion').inc(len(completion))
+
+    normalized = _normalize_usage_tokens(usage)
+    prompt_tokens = normalized["prompt"] or _estimate_tokens_from_chars(prompt_text)
+    completion_tokens = normalized["completion"] or _estimate_tokens_from_chars(completion)
+
+    if prompt_tokens > 0:
+        context_tokens_total.labels(source=safe_source, model=safe_model, type='prompt').inc(prompt_tokens)
+    if completion_tokens > 0:
+        context_tokens_total.labels(source=safe_source, model=safe_model, type='completion').inc(completion_tokens)
+
+
+def record_route_decision(
+    channel: str,
+    mode: str,
+    status: str = "success",
+    latency_seconds: Optional[float] = None,
+):
+    safe_channel = str(channel or "unknown")
+    safe_mode = str(mode or "unknown")
+    safe_status = str(status or "success")
+    context_route_decisions_total.labels(
+        channel=safe_channel,
+        mode=safe_mode,
+        status=safe_status,
+    ).inc()
+    if latency_seconds is not None and latency_seconds >= 0:
+        context_route_decision_latency_seconds.labels(
+            channel=safe_channel,
+            mode=safe_mode,
+        ).observe(latency_seconds)
+
+
+def record_tool_call(
+    channel: str,
+    agent: str,
+    tool: str,
+    status: str = "success",
+    duration_seconds: Optional[float] = None,
+):
+    safe_channel = str(channel or "unknown")
+    safe_agent = str(agent or "unknown")
+    safe_tool = str(tool or "unknown")
+    safe_status = str(status or "success")
+    context_tool_calls_total.labels(
+        channel=safe_channel,
+        agent=safe_agent,
+        tool=safe_tool,
+        status=safe_status,
+    ).inc()
+    if duration_seconds is not None and duration_seconds >= 0:
+        context_tool_call_duration_seconds.labels(
+            channel=safe_channel,
+            agent=safe_agent,
+            tool=safe_tool,
+        ).observe(duration_seconds)
+
+
+def record_cache_event(layer: str, event: str):
+    context_cache_events_total.labels(
+        layer=str(layer or "unknown"),
+        event=str(event or "unknown"),
+    ).inc()

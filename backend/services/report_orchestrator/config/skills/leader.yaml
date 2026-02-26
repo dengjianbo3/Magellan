@@ -1,0 +1,16 @@
+agent_id: leader
+skills:
+  - skill_id: orchestration_decision
+    title_zh: 编排决策
+    title_en: Orchestration Decision
+    guidance_zh: 优先判断是否需要委派专家；不需要委派时直接给出可执行结论，避免空泛复述。
+    guidance_en: Decide delegation first. If delegation is unnecessary, provide direct actionable conclusions without generic restatement.
+    triggers: ["委派", "总结", "汇总", "delegate", "summary", "synthesize"]
+    default: true
+  - skill_id: contradiction_resolution
+    title_zh: 分歧处理
+    title_en: Contradiction Resolution
+    guidance_zh: 若专家观点冲突，按证据强度和时效性排序，明确保留意见与风险边界。
+    guidance_en: When specialists conflict, rank claims by evidence quality and recency, then state caveats and risk boundaries.
+    triggers: ["分歧", "冲突", "contradiction", "conflict", "disagree"]
+

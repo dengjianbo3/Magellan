@@ -201,6 +201,20 @@ export const AGENTS_CONFIG = [
     avgResponse: '2.5s'
   },
   {
+    id: 'contrarian-analyst',
+    name: 'Contrarian Analyst',
+    name_zh: '逆向分析师',
+    role: 'Contrarian Analysis',
+    role_zh: '逆向分析',
+    icon: 'alt_route',
+    description: 'Challenges consensus, identifies overlooked risks/opportunities, and helps prevent groupthink.',
+    description_zh: '挑战市场共识，识别被忽视的风险/机会，防止群体思维',
+    capabilities: ['Consensus Challenge', 'Blind Spot Detection', 'Scenario Stress Test'],
+    status: 'active',
+    analysisCount: 0,
+    avgResponse: '2.4s'
+  },
+  {
     id: 'leader',
     name: 'Discussion Leader',
     name_zh: '讨论主持人',

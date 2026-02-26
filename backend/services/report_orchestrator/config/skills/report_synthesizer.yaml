@@ -1,0 +1,15 @@
+agent_id: report_synthesizer
+skills:
+  - skill_id: multi_agent_synthesis
+    title_zh: 多专家结论整合
+    title_en: Multi-Agent Synthesis
+    guidance_zh: 聚合各原子专家结论，先列共识再列分歧；冲突结论必须给出取舍依据与风险提示。
+    guidance_en: Merge atomic-agent conclusions by listing consensus first, then disagreements; provide decision rationale and risk notes for conflicts.
+    triggers: ["总结", "综合", "报告", "synthesis", "summary", "final report"]
+    default: true
+  - skill_id: decision_ready_output
+    title_zh: 决策可执行输出
+    title_en: Decision-Ready Output
+    guidance_zh: 输出应包含结论、关键证据、执行建议、触发条件与失效条件，避免泛泛表述。
+    guidance_en: Deliver decision-ready output with conclusion, key evidence, execution actions, trigger conditions, and invalidation conditions.
+    triggers: ["建议", "执行", "策略", "action", "decision", "plan"]

@@ -1,0 +1,16 @@
+agent_id: deal_structurer
+skills:
+  - skill_id: term_structure
+    title_zh: 交易条款结构
+    title_en: Deal Term Structure
+    guidance_zh: 聚焦估值、对赌、清算优先权、保护条款等关键条款并说明博弈影响。
+    guidance_en: Focus on valuation, earn-out, liquidation preference, and protection clauses with negotiation impact.
+    triggers: ["条款", "交易结构", "估值", "deal", "term sheet", "structure"]
+    default: true
+  - skill_id: downside_protection
+    title_zh: 下行保护设计
+    title_en: Downside Protection Design
+    guidance_zh: 给出风险隔离、里程碑触发和退出机制，确保结构可执行。
+    guidance_en: Propose enforceable downside protection via risk ring-fencing, milestone triggers, and exit mechanics.
+    triggers: ["保护", "下行", "退出", "protection", "downside", "exit"]
+

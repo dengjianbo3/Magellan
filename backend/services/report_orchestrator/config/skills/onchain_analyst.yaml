@@ -1,0 +1,22 @@
+agent_id: onchain_analyst
+skills:
+  - skill_id: wallet_and_exchange_flow
+    title_zh: 钱包与交易所流向
+    title_en: Wallet and Exchange Flows
+    guidance_zh: 先看交易所净流入流出、巨鲸钱包与矿工钱包行为，再解释其对短期供需的影响。
+    guidance_en: Start with exchange netflows, whale wallets, and miner flows, then map them to short-term supply-demand impact.
+    triggers: ["链上", "巨鲸", "交易所", "矿工", "on-chain", "whale", "exchange", "miner"]
+    default: true
+  - skill_id: holder_behavior
+    title_zh: 持币者行为
+    title_en: Holder Behavior
+    guidance_zh: 关注 STH/LTH、SOPR、MVRV 变化，识别投降、派发或吸筹阶段。
+    guidance_en: Track STH/LTH, SOPR, and MVRV shifts to identify capitulation, distribution, or accumulation phases.
+    triggers: ["SOPR", "MVRV", "持币", "capitulation", "distribution", "accumulation"]
+  - skill_id: cross_signal_validation
+    title_zh: 跨维度验证
+    title_en: Cross-Signal Validation
+    guidance_zh: 必须把链上结论与技术面、宏观面做一致性校验，结论冲突时给出优先级判断。
+    guidance_en: Validate on-chain conclusions against technical and macro signals, and state the priority rule if they conflict.
+    triggers: ["交叉验证", "宏观", "技术面", "validation", "macro", "technical"]
+

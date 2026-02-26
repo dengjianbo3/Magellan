@@ -17,9 +17,14 @@ import json
 import re
 import logging
 import os
+import time
 from typing import List, Dict, Any
 from .agent import Agent
 import httpx
+from ..memory import format_memory_hits, get_memory_store
+from ..memory.governance import compact_text, make_provenance_metadata, should_persist_memory
+from ..metrics import record_llm_context_usage, record_tool_call
+from ..skills import build_skill_instruction_context
 
 # Import timeout configurations
 from ..config_timeouts import (
@@ -60,6 +65,7 @@ class ReWOOAgent(Agent):
         super().__init__(name, role_prompt, llm_gateway_url, model, temperature)
         self.planning_temperature = 0.3  # 规划阶段使用更低温度
         self.solving_temperature = temperature  # 综合阶段使用正常温度
+        self._memory_store = get_memory_store()
 
     async def think_and_act(self) -> List:
         """
@@ -103,11 +109,20 @@ class ReWOOAgent(Agent):
             )
 
         # Build context from all conversation history
-        recent_history = self.message_history[-MAX_REWOO_CONTEXT_MESSAGES:]
+        skill_context = build_skill_instruction_context(
+            agent_id=str(getattr(self, "atomic_agent_id", "") or getattr(self, "id", "") or self.name),
+            user_message=query,
+            language=str(getattr(self, "language", "en") or "en"),
+        )
+        history_window = MAX_REWOO_CONTEXT_MESSAGES if not skill_context else max(4, MAX_REWOO_CONTEXT_MESSAGES - 2)
+        recent_history = self.message_history[-history_window:]
         compacted_history = [self._compact_message_dict(msg.to_dict()) for msg in recent_history]
+        memory_context = await self._load_memory_context(query)
         context = {
             "conversation_history": compacted_history,
-            "available_agents": list(self.message_bus.registered_agents) if self.message_bus else []
+            "available_agents": list(self.message_bus.registered_agents) if self.message_bus else [],
+            "memory_context": memory_context,
+            "skills_context": skill_context,
         }
 
         # 4. Run ReWOO analysis
@@ -119,6 +134,7 @@ class ReWOOAgent(Agent):
                     log_text=f"[Prompt] 输入过长，已截断为 {len(query)} 字符以避免超时"
                 )
             result = await self.analyze_with_rewoo(query, context)
+            await self._persist_memory(query=query, result=result, context=context)
 
             # 5. Create response message
             if result:
@@ -157,6 +173,85 @@ class ReWOOAgent(Agent):
             self.message_history.append(failure_msg)
             return [failure_msg]
 
+    async def _load_memory_context(self, query: str) -> str:
+        """Load account-scoped memory snippets for this atomic agent."""
+        user_id = str(getattr(self, "user_id", "") or "anonymous")
+        agent_id = str(getattr(self, "atomic_agent_id", "") or getattr(self, "id", "") or self.name)
+        session_id = str(getattr(self, "session_id", "") or "")
+        try:
+            hits = await self._memory_store.query_agent_memory(
+                user_id=user_id,
+                agent_id=agent_id,
+                query=query,
+                top_k=max(1, int(os.getenv("ATOMIC_MEMORY_TOP_K", "3"))),
+                collection="episodic",
+            )
+            shared = await self._memory_store.query_shared_evidence(
+                user_id=user_id,
+                query=query,
+                top_k=2,
+            )
+            agent_text = format_memory_hits(hits, max_items=3, max_chars=1400)
+            shared_text = format_memory_hits(shared, max_items=2, max_chars=900)
+            if not agent_text and not shared_text:
+                return ""
+            sections: List[str] = []
+            if agent_text:
+                sections.append("Prior memory:\n" + agent_text)
+            if shared_text:
+                sections.append("Shared evidence:\n" + shared_text)
+            if session_id:
+                sections.append(f"Current session_id: {session_id}")
+            return "\n\n".join(sections)
+        except Exception as e:
+            logger.warning("[%s] memory query failed: %s", self.name, e)
+            return ""
+
+    async def _persist_memory(self, query: str, result: str, context: Dict[str, Any]) -> None:
+        """Persist latest ReWOO output into unified memory store."""
+        if not result:
+            return
+        user_id = str(getattr(self, "user_id", "") or "anonymous")
+        agent_id = str(getattr(self, "atomic_agent_id", "") or getattr(self, "id", "") or self.name)
+        session_id = str(getattr(self, "session_id", "") or "")
+        metadata = make_provenance_metadata(
+            source="rewoo",
+            session_id=session_id,
+            agent_id=agent_id,
+            extra={"agent_name": self.name},
+        )
+        try:
+            payload = (
+                f"Query:\n{query[:1800]}\n\n"
+                f"Result:\n{str(result)[:5000]}"
+            )
+            payload = compact_text(payload, max_chars=4200)
+            if not should_persist_memory(payload):
+                return
+            await self._memory_store.add_agent_memory(
+                user_id=user_id,
+                agent_id=agent_id,
+                content=payload,
+                metadata=metadata,
+                collection="episodic",
+            )
+            await self._memory_store.add_shared_evidence(
+                user_id=user_id,
+                content=compact_text(f"[{self.name}] {str(result)[:3000]}", max_chars=2600),
+                metadata=metadata,
+            )
+            # Keep context metadata traceable for future governance.
+            if context.get("memory_context"):
+                await self._memory_store.add_agent_memory(
+                    user_id=user_id,
+                    agent_id=agent_id,
+                    content=f"Memory context used:\n{str(context.get('memory_context'))[:1800]}",
+                    metadata={**metadata, "kind": "memory_context_trace"},
+                    collection="lessons",
+                )
+        except Exception as e:
+            logger.warning("[%s] memory persist failed: %s", self.name, e)
+
     async def analyze_with_rewoo(
         self,
         query: str,
@@ -178,8 +273,14 @@ class ReWOOAgent(Agent):
         plan = await self._plan_phase(query, context)
 
         if not plan:
-            print(f"[{self.name}] Planning failed, falling back to direct analysis")
-            return await self._fallback_direct_analysis(query, context)
+            error_text = "ReWOO planning failed: no executable tool plan generated"
+            logger.error("[%s] %s", self.name, error_text)
+            if self.event_bus:
+                await self.event_bus.publish_error(
+                    agent_name=self.name,
+                    error_message=f"分析失败: {error_text}"
+                )
+            raise RuntimeError(error_text)
 
         # Phase 2: Execute (并行)
         observations = await self._execute_phase(plan)
@@ -305,6 +406,13 @@ class ReWOOAgent(Agent):
             if not tool:
                 # Tool not found, add error result
                 logger.warning(f"[{self.name}] Tool '{tool_name}' not found for step {i+1}")
+                record_tool_call(
+                    channel="rewoo_agent",
+                    agent=self.name,
+                    tool=tool_name,
+                    status="not_found",
+                    duration_seconds=0.0,
+                )
                 error_result = {
                     "success": False,
                     "error": f"Tool '{tool_name}' not found",
@@ -323,15 +431,24 @@ class ReWOOAgent(Agent):
                         log_text=f"[Exec] 工具调用: {tool_name}({params_str})"
                     )
 
-                # Use configured tool execution timeout
-                task = asyncio.wait_for(
-                    tool.execute(**tool_params),
-                    timeout=TOOL_EXECUTION_TIMEOUT
+                # Use configured tool execution timeout + metrics.
+                task = self._execute_tool_with_metrics(
+                    tool_name=tool_name,
+                    tool=tool,
+                    tool_params=tool_params,
+                    timeout=TOOL_EXECUTION_TIMEOUT,
                 )
                 tasks.append(task)
                 logger.debug(f"[{self.name}] Step {i+1}: {tool_name}({tool_params}) - {purpose} (timeout: {TOOL_EXECUTION_TIMEOUT}s)")
             except Exception as e:
                 logger.error(f"[{self.name}] Failed to create task for {tool_name}: {e}")
+                record_tool_call(
+                    channel="rewoo_agent",
+                    agent=self.name,
+                    tool=tool_name,
+                    status="error",
+                    duration_seconds=0.0,
+                )
                 error_result = {
                     "success": False,
                     "error": str(e),
@@ -409,11 +526,60 @@ class ReWOOAgent(Agent):
         if success_rate < 0.3 and len(plan) > 0:
             logger.warning(f"[{self.name}] Low success rate ({success_rate:.1%}), analysis quality may be affected")
 
+        if plan and success_count == 0:
+            raise RuntimeError("所有工具调用均失败，无法生成可靠结论")
+
         return processed_observations
 
     async def _create_completed_future(self, result: Any):
         """创建一个已完成的future"""
         return result
+
+    async def _execute_tool_with_metrics(
+        self,
+        tool_name: str,
+        tool: Any,
+        tool_params: Dict[str, Any],
+        timeout: float,
+    ) -> Any:
+        """Execute one tool call with timeout and metrics instrumentation."""
+        started_at = time.perf_counter()
+        try:
+            result = await asyncio.wait_for(tool.execute(**tool_params), timeout=timeout)
+            record_tool_call(
+                channel="rewoo_agent",
+                agent=self.name,
+                tool=tool_name,
+                status="success",
+                duration_seconds=time.perf_counter() - started_at,
+            )
+            return result
+        except asyncio.TimeoutError:
+            record_tool_call(
+                channel="rewoo_agent",
+                agent=self.name,
+                tool=tool_name,
+                status="timeout",
+                duration_seconds=time.perf_counter() - started_at,
+            )
+            return {
+                "success": False,
+                "error": "Tool execution timeout",
+                "summary": f"Tool execution timeout ({timeout}s)",
+            }
+        except Exception as exc:
+            record_tool_call(
+                channel="rewoo_agent",
+                agent=self.name,
+                tool=tool_name,
+                status="error",
+                duration_seconds=time.perf_counter() - started_at,
+            )
+            return {
+                "success": False,
+                "error": str(exc),
+                "summary": f"Tool execution error: {exc}",
+            }
 
     async def _solve_phase(
         self,
@@ -466,7 +632,7 @@ class ReWOOAgent(Agent):
                     agent_name=self.name,
                     error_message=f"分析失败: {error_text}"
                 )
-            return f"分析失败: {error_text}"
+            raise RuntimeError(f"ReWOO solving failed: {error_text}") from e
 
     def _create_planning_prompt(self) -> str:
         """创建规划阶段的Prompt (强化JSON输出)"""
@@ -686,8 +852,8 @@ Please synthesize all the above information and generate a structured analysis r
             logger.error(f"[{self.name}] Failed to parse plan JSON: {e}")
             logger.error(f"[{self.name}] Response preview: {llm_response[:300]}...")
 
-        # 解析失败，返回空列表（会触发fallback）
-        logger.warning(f"[{self.name}] Plan parsing failed, will use fallback")
+        # 解析失败，返回空列表并由上层按严格失败语义处理
+        logger.warning(f"[{self.name}] Plan parsing failed (strict failure mode)")
         return []
 
     async def _call_llm(
@@ -701,6 +867,9 @@ Please synthesize all the above information and generate a structured analysis r
             temperature = self.temperature
 
         last_error = None
+        prompt_texts = [str(msg.get("content", "")) for msg in messages if isinstance(msg, dict)]
+        request_model = self._resolve_request_model()
+        resolved_model = str(request_model or self.model or "default")
 
         for attempt in range(max_retries):
             try:
@@ -722,6 +891,8 @@ Please synthesize all the above information and generate a structured analysis r
                         })
 
                     payload = {"history": history}
+                    if request_model:
+                        payload["model"] = request_model
                     payload_json = json.dumps(payload, ensure_ascii=False)
                     payload_preview = self._truncate_text(payload_json, MAX_LLM_PAYLOAD_PREVIEW_CHARS)
                     logger.info(
@@ -745,6 +916,13 @@ Please synthesize all the above information and generate a structured analysis r
                     if not content:
                         raise ValueError("Empty response from LLM")
 
+                    record_llm_context_usage(
+                        source="rewoo_agent",
+                        model=resolved_model,
+                        usage=result.get("usage") if isinstance(result, dict) else None,
+                        prompt_texts=prompt_texts,
+                        completion_text=content,
+                    )
                     logger.info(f"[{self.name}] LLM call succeeded on attempt {attempt + 1}")
                     return content
 
@@ -799,30 +977,6 @@ Please synthesize all the above information and generate a structured analysis r
         logger.error(f"[{self.name}] All {max_retries} LLM call attempts failed")
         error_text = self._format_exception(last_error) if last_error else "未知错误"
         raise RuntimeError(f"LLM 调用失败（重试{max_retries}次）: {error_text}") from last_error
-
-    async def _fallback_direct_analysis(
-        self,
-        query: str,
-        context: Dict[str, Any]
-    ) -> str:
-        """回退到直接分析（无工具）"""
-        print(f"[{self.name}] Using direct analysis (no tools)")
-
-        context_str = self._format_context(context)
-
-        messages = [
-            {"role": "system", "content": self.role_prompt},
-            {"role": "user", "content": f"""# 分析任务
-{query}
-
-# 上下文信息
-{context_str}
-
-请基于现有信息进行分析。
-"""}
-        ]
-
-        return await self._call_llm(messages, temperature=self.temperature)
 
     def _compact_message_dict(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """Keep message structure but cap large content fields to protect prompt size."""

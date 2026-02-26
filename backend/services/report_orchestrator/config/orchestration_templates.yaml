@@ -1,0 +1,13 @@
+expert_chat:
+  max_history: 24
+  max_attachments: 3
+  max_attachment_bytes: 6291456
+  leader_followup_after_delegation: false
+  turn_timeout_seconds: 600
+  route_strategy: leader_first
+
+roundtable:
+  default_max_rounds: 5
+  seconds_per_round: 600
+  minimum_duration_seconds: 3600
+  history_excerpt_chars: 2000

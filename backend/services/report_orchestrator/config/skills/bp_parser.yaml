@@ -1,0 +1,15 @@
+agent_id: bp_parser
+skills:
+  - skill_id: structured_extraction
+    title_zh: 结构化字段抽取
+    title_en: Structured Field Extraction
+    guidance_zh: 优先提取公司名称、产品、团队、市场、融资与竞品等结构化字段，缺失项明确标注 unknown。
+    guidance_en: Extract company, product, team, market, funding, and competitors as structured fields, and mark missing items as unknown.
+    triggers: ["BP", "商业计划书", "解析", "提取", "parser", "extract"]
+    default: true
+  - skill_id: evidence_traceability
+    title_zh: 证据可追溯
+    title_en: Evidence Traceability
+    guidance_zh: 对关键结论附上来源片段与页码，避免主观推断；无法确认的信息要显式声明不确定性。
+    guidance_en: Attach source snippets and page references for key claims; avoid subjective inference and explicitly state uncertainty when unverifiable.
+    triggers: ["来源", "页码", "证据", "trace", "evidence", "citation"]

@@ -1,0 +1,16 @@
+agent_id: macro_economist
+skills:
+  - skill_id: liquidity_regime
+    title_zh: 流动性与利率周期
+    title_en: Liquidity and Rate Regime
+    guidance_zh: 先给流动性与利率阶段判断，再映射到风险资产定价影响。
+    guidance_en: Determine liquidity/rates regime first, then map implications for risk-asset pricing.
+    triggers: ["宏观", "利率", "流动性", "macro", "rates", "liquidity"]
+    default: true
+  - skill_id: scenario_macro_path
+    title_zh: 宏观路径推演
+    title_en: Macro Scenario Paths
+    guidance_zh: 给出基准/上行/下行情景及触发条件，注明与市场价格的关键连接变量。
+    guidance_en: Provide base/upside/downside macro paths with triggers and key transmission variables to market prices.
+    triggers: ["通胀", "CPI", "PCE", "美债", "inflation", "yield", "dxy"]
+

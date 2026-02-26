@@ -1,0 +1,16 @@
+agent_id: contrarian_analyst
+skills:
+  - skill_id: consensus_challenge
+    title_zh: 共识反证
+    title_en: Consensus Challenge
+    guidance_zh: 主动寻找主流叙事的反证与盲点，优先给可验证的反向证据。
+    guidance_en: Actively challenge consensus narratives and surface verifiable counter-evidence.
+    triggers: ["逆向", "反证", "共识", "contrarian", "counter", "consensus"]
+    default: true
+  - skill_id: asymmetric_scenarios
+    title_zh: 非对称情景
+    title_en: Asymmetric Scenarios
+    guidance_zh: 给出低概率高冲击情景及触发条件，强调仓位与风险边界。
+    guidance_en: Provide low-probability high-impact scenarios with triggers and explicit risk boundaries.
+    triggers: ["黑天鹅", "尾部风险", "非对称", "tail risk", "black swan", "asymmetric"]
+

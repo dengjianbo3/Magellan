@@ -1,0 +1,16 @@
+agent_id: ma_advisor
+skills:
+  - skill_id: strategic_fit
+    title_zh: 并购战略匹配
+    title_en: Strategic M&A Fit
+    guidance_zh: 评估并购标的与战略协同、整合难度和价值创造路径，避免只看估值便宜。
+    guidance_en: Evaluate strategic fit, integration complexity, and value-creation path beyond headline valuation.
+    triggers: ["并购", "协同", "整合", "M&A", "synergy", "integration"]
+    default: true
+  - skill_id: deal_risk_control
+    title_zh: 并购风险控制
+    title_en: M&A Risk Control
+    guidance_zh: 明确尽调重点、交易前置条件和交割后风险控制清单。
+    guidance_en: Specify diligence priorities, conditions precedent, and post-close risk-control checklist.
+    triggers: ["尽调", "交割", "风险控制", "diligence", "closing", "risk control"]
+

@@ -1,0 +1,16 @@
+agent_id: legal_advisor
+skills:
+  - skill_id: compliance_exposure
+    title_zh: 合规暴露面
+    title_en: Compliance Exposure
+    guidance_zh: 明确监管适用范围、潜在违规点和执法风险，避免泛泛而谈。
+    guidance_en: Specify regulatory scope, potential non-compliance points, and enforcement exposure concretely.
+    triggers: ["法律", "合规", "监管", "legal", "compliance", "regulation"]
+    default: true
+  - skill_id: contractual_guardrails
+    title_zh: 合同与法律边界
+    title_en: Contractual Guardrails
+    guidance_zh: 对关键合同条款、责任边界和争议处理机制给出可执行审查建议。
+    guidance_en: Provide actionable review guidance on key clauses, liabilities, and dispute mechanisms.
+    triggers: ["合同", "条款", "争议", "contract", "clause", "liability"]
+

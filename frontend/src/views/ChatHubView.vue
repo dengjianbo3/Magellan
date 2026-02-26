@@ -1309,10 +1309,23 @@ function handleServerMessage(event) {
       turnStage.value = 'delegating';
       break;
 
+    case 'delegation_stage':
+      // Backend sends stage progress for dependency-aware delegation batches.
+      delegationActive.value = true;
+      delegationEverStarted.value = true;
+      turnStage.value = 'collecting';
+      break;
+
     case 'delegation_finished':
       delegationActive.value = false;
       turnStage.value = 'summarizing';
       maybeFinishTurn(false);
+      break;
+
+    case 'route_fallback':
+      // Router failed and fell back to leader direct answer.
+      turnRoutingMode.value = 'leader';
+      turnStage.value = 'responding';
       break;
 
     case 'agent_thinking':
@@ -1333,7 +1346,8 @@ function handleServerMessage(event) {
       break;
 
     default:
-      addSystemMessage(`${t('chatHub.system.unsupported')}: ${data.type}`);
+      // Keep UI resilient to forward-compatible backend events.
+      console.debug('[ChatHub] Ignoring unsupported message type:', data.type, data);
   }
 }
 

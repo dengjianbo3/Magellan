@@ -7,10 +7,14 @@ Search Router - 统一搜索路由器 (Plan C 重构版)
 - realtime: Tavily (最佳质量，不缓存)
 """
 import logging
+import os
 from typing import Any, Dict, Optional, List
 from enum import Enum
 
 from ..auth import get_current_user_id
+from ..metrics import record_cache_event
+from ..memory import get_memory_store
+from ..memory.governance import compact_text, make_provenance_metadata, should_persist_memory
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +42,8 @@ class SearchRouter:
         self._ddg_tool = None
         self._cache = None
         self._dedup = None
+        self._memory_store = get_memory_store()
+        self._memory_top_k = max(1, int(os.getenv("ATOMIC_MEMORY_TOP_K", "3")))
     
     @property
     def tavily_tool(self):
@@ -179,13 +185,29 @@ class SearchRouter:
         search_context = self._build_search_context(**kwargs)
         
         logger.info(f"[SearchRouter] Query: '{query[:50]}...' Priority: {prio.value}")
-        
+        user_scope = str(search_context.get("user_scope") or "anonymous")
+
         # 0. 会话级语义去重
         if session_id and self.dedup:
             deduped = self.dedup.find_similar(query, session_id, context=search_context)
             if deduped:
                 logger.info(f"[SearchRouter] Dedup HIT for '{query[:30]}...'")
+                record_cache_event("search_dedup", "hit")
                 return self._normalize_result_contract(query, deduped)
+            record_cache_event("search_dedup", "miss")
+
+        # 0.5. Account-scoped shared evidence memory (skip realtime).
+        if prio != SearchPriority.REALTIME:
+            memory_hit = await self._search_from_shared_memory(
+                user_id=user_scope,
+                query=query,
+                priority=prio,
+            )
+            if memory_hit:
+                logger.info(f"[SearchRouter] Atomic memory HIT for '{query[:30]}...'")
+                record_cache_event("search_memory", "hit")
+                return self._normalize_result_contract(query, memory_hit)
+            record_cache_event("search_memory", "miss")
         
         # 1. 检查缓存（realtime不查缓存）
         if prio != SearchPriority.REALTIME and self.cache:
@@ -193,7 +215,9 @@ class SearchRouter:
             if cached:
                 logger.info(f"[SearchRouter] Cache HIT for '{query[:30]}...'")
                 cached["from_cache"] = True
+                record_cache_event("search_cache", "hit")
                 return self._normalize_result_contract(query, cached)
+            record_cache_event("search_cache", "miss")
         
         # 2. 根据优先级路由
         result = None
@@ -232,17 +256,116 @@ class SearchRouter:
         result = self._normalize_result_contract(query, result)
         result["routed_source"] = source
         result["priority"] = prio.value
+        if result.get("success"):
+            await self._persist_shared_evidence(user_id=user_scope, query=query, result=result, source=source)
         
         # 3. 写入缓存（realtime不缓存）
         if prio != SearchPriority.REALTIME and self.cache and result.get("success"):
             await self.cache.set(query, priority, result, search_params=search_context)
             logger.info(f"[SearchRouter] Cached result for '{query[:30]}...'")
+            record_cache_event("search_cache", "store")
         
         # 4. 添加到会话去重缓存
         if session_id and self.dedup and result.get("success"):
             self.dedup.add(query, session_id, result, context=search_context)
         
         return result
+
+    async def _search_from_shared_memory(
+        self,
+        user_id: str,
+        query: str,
+        priority: SearchPriority,
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            hits = await self._memory_store.query_shared_evidence(
+                user_id=user_id,
+                query=query,
+                top_k=self._memory_top_k,
+            )
+        except Exception as e:
+            logger.warning(f"[SearchRouter] Memory query failed: {e}")
+            record_cache_event("search_memory", "error")
+            return None
+        if not hits:
+            return None
+        # For critical searches require stronger score to avoid stale/noisy memory reuse.
+        if priority == SearchPriority.CRITICAL:
+            if not any(float(h.score or 0.0) >= 0.5 for h in hits):
+                return None
+
+        results = []
+        for hit in hits:
+            snippet = str(hit.content or "").strip()
+            if not snippet:
+                continue
+            metadata = dict(hit.metadata or {})
+            results.append(
+                {
+                    "title": metadata.get("title") or metadata.get("source") or "Memory Evidence",
+                    "url": metadata.get("url") or "",
+                    "content": snippet[:1800],
+                    "published_date": metadata.get("timestamp") or metadata.get("date"),
+                    "score": float(hit.score or 0.0),
+                }
+            )
+        if not results:
+            return None
+        return {
+            "success": True,
+            "query": query,
+            "summary": f"Found {len(results)} reusable evidence snippets from atomic memory.",
+            "results": results,
+            "from_memory": True,
+            "routed_source": "atomic_memory",
+            "priority": priority.value,
+        }
+
+    async def _persist_shared_evidence(
+        self,
+        user_id: str,
+        query: str,
+        result: Dict[str, Any],
+        source: Optional[str],
+    ) -> None:
+        try:
+            results = result.get("results", [])
+            if not isinstance(results, list) or not results:
+                return
+            max_items = min(3, len(results))
+            for idx in range(max_items):
+                item = results[idx] if isinstance(results[idx], dict) else {}
+                title = str(item.get("title", "")).strip()
+                content = str(item.get("content", "") or item.get("body", "")).strip()
+                if not content:
+                    continue
+                evidence_text = (
+                    f"Search query: {query}\n"
+                    f"Source: {source or 'unknown'}\n"
+                    f"Title: {title}\n"
+                    f"Content: {content[:2200]}"
+                )
+                evidence_text = compact_text(evidence_text, max_chars=2600)
+                if not should_persist_memory(evidence_text, min_score=0.25):
+                    continue
+                metadata = make_provenance_metadata(
+                    source=source or "search_router",
+                    session_id="",
+                    agent_id="shared:evidence",
+                    tool="search_router",
+                    extra={
+                        "title": title,
+                        "url": str(item.get("url", "")).strip(),
+                        "published_date": item.get("published_date"),
+                    },
+                )
+                await self._memory_store.add_shared_evidence(
+                    user_id=user_id,
+                    content=evidence_text,
+                    metadata=metadata,
+                )
+        except Exception as e:
+            logger.warning(f"[SearchRouter] Persist shared evidence failed: {e}")
     
     async def _search_with_tavily(self, query: str, **kwargs) -> Dict[str, Any]:
         """使用Tavily搜索 (最高质量，通过MCP)"""

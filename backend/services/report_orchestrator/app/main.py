@@ -7,12 +7,15 @@ import os
 import base64
 import uuid
 import time
+import hashlib
+from collections import OrderedDict
+from copy import deepcopy
 from datetime import datetime
 from contextlib import asynccontextmanager
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Set
 
 # V2 models (keep for backward compatibility)
 from .models.dd_models import (
@@ -60,12 +63,30 @@ from .core.logging_config import configure_logging, get_logger
 # Phase 2: Knowledge Base services
 from .services.vector_store import VectorStoreService
 from .services.rag_service import RAGService
+from .core.memory import format_memory_hits, get_memory_store
+from .core.memory.governance import compact_text, make_provenance_metadata, should_persist_memory
+from .core.model_policy import resolve_model_for_role
+from .core.orchestration_templates import get_orchestration_templates
+from .core.skills import build_skill_instruction_context
+from .core.expert_chat import (
+    build_execution_stages,
+    extract_specialist_response,
+    format_shared_evidence_context,
+)
+from .core.metrics import (
+    record_cache_event,
+    record_llm_context_usage,
+    record_route_decision,
+)
+from .core.observability.metrics_snapshot import MetricsSnapshotCache
 
 # Configure logging (JSON in production, console in development)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 JSON_LOGS = os.getenv("JSON_LOGS", "false").lower() == "true"
 configure_logging(log_level=LOG_LEVEL, json_logs=JSON_LOGS)
 logger = get_logger(__name__)
+atomic_memory_store = get_memory_store()
+ATOMIC_MEMORY_TOP_K = max(1, int(os.getenv("ATOMIC_MEMORY_TOP_K", "3")))
 
 # --- Service Discovery (prefer env, fall back to docker-compose internal DNS names) ---
 # docker-compose uses PUBLIC_DATA_URL to point at external_data_service
@@ -77,19 +98,46 @@ FILE_SERVICE_URL = os.getenv("FILE_SERVICE_URL", "http://file_service:8001")
 STANDALONE_MODE = os.getenv("STANDALONE_MODE", "false").lower() == "true"
 
 # Expert chat defaults
+ORCHESTRATION_TEMPLATES = get_orchestration_templates()
+_EXPERT_CHAT_TEMPLATE = ORCHESTRATION_TEMPLATES.get("expert_chat", {})
+_ROUNDTABLE_TEMPLATE = ORCHESTRATION_TEMPLATES.get("roundtable", {})
+
 EXPERT_CHAT_PROVIDER = os.getenv("EXPERT_CHAT_PROVIDER", "gemini")
-EXPERT_CHAT_MAX_HISTORY = int(os.getenv("EXPERT_CHAT_MAX_HISTORY", "24"))
-EXPERT_CHAT_MAX_ATTACHMENTS = int(os.getenv("EXPERT_CHAT_MAX_ATTACHMENTS", "3"))
-EXPERT_CHAT_MAX_ATTACHMENT_BYTES = int(os.getenv("EXPERT_CHAT_MAX_ATTACHMENT_BYTES", str(6 * 1024 * 1024)))
+EXPERT_CHAT_MAX_HISTORY = int(os.getenv("EXPERT_CHAT_MAX_HISTORY", str(_EXPERT_CHAT_TEMPLATE.get("max_history", 24))))
+EXPERT_CHAT_MAX_ATTACHMENTS = int(os.getenv("EXPERT_CHAT_MAX_ATTACHMENTS", str(_EXPERT_CHAT_TEMPLATE.get("max_attachments", 3))))
+EXPERT_CHAT_MAX_ATTACHMENT_BYTES = int(
+    os.getenv(
+        "EXPERT_CHAT_MAX_ATTACHMENT_BYTES",
+        str(_EXPERT_CHAT_TEMPLATE.get("max_attachment_bytes", 6 * 1024 * 1024)),
+    )
+)
 EXPERT_CHAT_LEADER_FOLLOWUP_AFTER_DELEGATION = os.getenv(
-    "EXPERT_CHAT_LEADER_FOLLOWUP_AFTER_DELEGATION", "false"
+    "EXPERT_CHAT_LEADER_FOLLOWUP_AFTER_DELEGATION",
+    str(_EXPERT_CHAT_TEMPLATE.get("leader_followup_after_delegation", False)).lower(),
 ).lower() == "true"
 EXPERT_CHAT_AGENT_TURN_TIMEOUT_SECONDS = int(
-    os.getenv("EXPERT_CHAT_AGENT_TURN_TIMEOUT_SECONDS", "600")
+    os.getenv(
+        "EXPERT_CHAT_AGENT_TURN_TIMEOUT_SECONDS",
+        str(_EXPERT_CHAT_TEMPLATE.get("turn_timeout_seconds", 600)),
+    )
+)
+EXPERT_CHAT_ROUTE_CACHE_ENABLED = os.getenv("EXPERT_CHAT_ROUTE_CACHE_ENABLED", "true").lower() == "true"
+EXPERT_CHAT_ROUTE_CACHE_TTL_SECONDS = max(5, int(os.getenv("EXPERT_CHAT_ROUTE_CACHE_TTL_SECONDS", "30")))
+EXPERT_CHAT_ROUTE_CACHE_MAX_ENTRIES = max(32, int(os.getenv("EXPERT_CHAT_ROUTE_CACHE_MAX_ENTRIES", "512")))
+EXPERT_CHAT_MAX_PARALLEL_SPECIALISTS = max(
+    1, int(os.getenv("EXPERT_CHAT_MAX_PARALLEL_SPECIALISTS", "2"))
+)
+EXPERT_CHAT_MEMORY_ASYNC_WRITE = os.getenv("EXPERT_CHAT_MEMORY_ASYNC_WRITE", "true").lower() == "true"
+EXPERT_CHAT_MEMORY_WRITE_CONCURRENCY = max(
+    1, int(os.getenv("EXPERT_CHAT_MEMORY_WRITE_CONCURRENCY", "4"))
 )
 
 # In-memory chat sessions (PoC scope)
 active_chat_sessions: Dict[str, Dict[str, Any]] = {}
+_leader_route_cache: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+_leader_route_cache_lock = asyncio.Lock()
+_expert_chat_memory_write_sem = asyncio.Semaphore(EXPERT_CHAT_MEMORY_WRITE_CONCURRENCY)
+_expert_chat_memory_tasks: Set[asyncio.Task] = set()
 
 # --- Lifespan Handler for Kafka ---
 @asynccontextmanager
@@ -184,7 +232,16 @@ set_llm_gateway_url(LLM_GATEWAY_URL)
 print("[main.py] ✅ Roundtable Router initialized")
 
 # Phase 2: Initialize Prometheus metrics
-Instrumentator().instrument(app).expose(app, endpoint="/metrics", tags=["System (Phase 2)"])
+Instrumentator().instrument(app)
+
+# `/metrics` snapshot cache: avoid recomputing full exposition on every scrape under high load.
+METRICS_SNAPSHOT_TTL_SECONDS = max(0.1, float(os.getenv("METRICS_SNAPSHOT_TTL_SECONDS", "2.0")))
+_metrics_snapshot_cache = MetricsSnapshotCache(ttl_seconds=METRICS_SNAPSHOT_TTL_SECONDS)
+
+
+@app.get("/metrics", include_in_schema=False, tags=["System (Phase 2)"])
+async def metrics_snapshot() -> Response:
+    return await _metrics_snapshot_cache.response()
 
 # Phase 4: Include API Routers (新架构 - 完整迁移)
 app.include_router(health_router, tags=["Health"])
@@ -245,12 +302,39 @@ class AnalysisResponse(BaseModel):
 
 
 # --- Helper Functions ---
-async def call_llm_gateway(client: httpx.AsyncClient, history: List[Dict[str, Any]]) -> str:
+async def call_llm_gateway(
+    client: httpx.AsyncClient,
+    history: List[Dict[str, Any]],
+    model: Optional[str] = None,
+) -> str:
+    safe_model = str(model or "gateway_default")
+    prompt_texts: List[str] = []
+    for item in history or []:
+        if not isinstance(item, dict):
+            continue
+        parts = item.get("parts")
+        if isinstance(parts, list):
+            prompt_texts.extend([str(part) for part in parts if part is not None])
+        elif item.get("content"):
+            prompt_texts.append(str(item.get("content")))
+
     try:
-        response = await client.post(f"{LLM_GATEWAY_URL}/chat", json={"history": history})
+        payload: Dict[str, Any] = {"history": history}
+        if model:
+            payload["model"] = model
+        response = await client.post(f"{LLM_GATEWAY_URL}/chat", json=payload)
         if response.status_code == 200:
             try:
-                return response.json()["content"]
+                parsed = response.json()
+                content = str(parsed.get("content", ""))
+                record_llm_context_usage(
+                    source="legacy_chat",
+                    model=safe_model,
+                    usage=parsed.get("usage"),
+                    prompt_texts=prompt_texts,
+                    completion_text=content,
+                )
+                return content
             except (json.JSONDecodeError, KeyError):
                 return '["Error: LLM returned invalid JSON."]'
         else:
@@ -361,7 +445,11 @@ Meeting minutes excerpt:
 
     try:
         async with httpx.AsyncClient(timeout=45.0) as client:
-            candidate = await call_llm_gateway(client, [{"role": "user", "parts": [prompt]}])
+            candidate = await call_llm_gateway(
+                client,
+                [{"role": "user", "parts": [prompt]}],
+                model=resolve_model_for_role("roundtable_summary"),
+            )
         cleaned = _clean_llm_title_candidate(candidate)
         if not cleaned:
             return fallback
@@ -392,146 +480,74 @@ class UserPersona(BaseModel):
 # Expert Chat Hub Helpers
 # ============================================================================
 
-EXPERT_CHAT_AGENT_PROFILES: Dict[str, Dict[str, Any]] = {
-    "leader": {
-        "name_zh": "Leader",
-        "name_en": "Leader",
-        "role_zh": "主理专家",
-        "role_en": "Primary Orchestrator",
-        "aliases": ["leader", "host", "主持人", "主理人", "主agent"],
-    },
-    "market-analyst": {
-        "name_zh": "市场分析师",
-        "name_en": "Market Analyst",
-        "role_zh": "市场情报",
-        "role_en": "Market Intelligence",
-        "aliases": ["market-analyst", "market", "市场分析师", "市场", "ma"],
-    },
-    "financial-expert": {
-        "name_zh": "财务专家",
-        "name_en": "Financial Expert",
-        "role_zh": "财务分析",
-        "role_en": "Financial Analysis",
-        "aliases": ["financial-expert", "finance", "财务专家", "财务", "fe"],
-    },
-    "risk-assessor": {
-        "name_zh": "风险评估师",
-        "name_en": "Risk Assessor",
-        "role_zh": "风险管理",
-        "role_en": "Risk Management",
-        "aliases": ["risk-assessor", "risk", "风险评估师", "风险", "ra"],
-    },
-    "technical-analyst": {
-        "name_zh": "技术分析师",
-        "name_en": "Technical Analyst",
-        "role_zh": "技术面分析",
-        "role_en": "Technical Analysis",
-        "aliases": ["technical-analyst", "technical", "tech", "技术分析师", "技术", "ta"],
-    },
-    "macro-economist": {
-        "name_zh": "宏观分析师",
-        "name_en": "Macro Economist",
-        "role_zh": "宏观研究",
-        "role_en": "Macro Analysis",
-        "aliases": ["macro-economist", "macro", "宏观分析师", "宏观", "me"],
-    },
-    "sentiment-analyst": {
-        "name_zh": "情绪分析师",
-        "name_en": "Sentiment Analyst",
-        "role_zh": "情绪与舆情",
-        "role_en": "Sentiment Analysis",
-        "aliases": ["sentiment-analyst", "sentiment", "情绪分析师", "情绪", "sa"],
-    },
-    "team-evaluator": {
-        "name_zh": "团队评估师",
-        "name_en": "Team Evaluator",
-        "role_zh": "团队尽调",
-        "role_en": "Team Evaluation",
-        "aliases": ["team-evaluator", "team", "团队评估师", "团队", "te"],
-    },
-    "tech-specialist": {
-        "name_zh": "技术专家",
-        "name_en": "Tech Specialist",
-        "role_zh": "技术与产品架构",
-        "role_en": "Technology & Product Architecture",
-        "aliases": ["tech-specialist", "product-tech", "技术专家", "技术架构", "ts"],
-    },
-    "legal-advisor": {
-        "name_zh": "法律顾问",
-        "name_en": "Legal Advisor",
-        "role_zh": "法律合规",
-        "role_en": "Legal Compliance",
-        "aliases": ["legal-advisor", "legal", "法律顾问", "法务", "la"],
-    },
-    "esg-analyst": {
-        "name_zh": "ESG分析师",
-        "name_en": "ESG Analyst",
-        "role_zh": "ESG评估",
-        "role_en": "ESG Analysis",
-        "aliases": ["esg-analyst", "esg", "ESG分析师", "可持续", "ea"],
-    },
-    "quant-strategist": {
-        "name_zh": "量化策略师",
-        "name_en": "Quant Strategist",
-        "role_zh": "量化分析",
-        "role_en": "Quantitative Analysis",
-        "aliases": ["quant-strategist", "quant", "量化策略师", "量化", "qs"],
-    },
-    "deal-structurer": {
-        "name_zh": "交易结构师",
-        "name_en": "Deal Structurer",
-        "role_zh": "交易结构与条款",
-        "role_en": "Deal Structure & Terms",
-        "aliases": ["deal-structurer", "deal", "交易结构师", "条款设计", "ds"],
-    },
-    "ma-advisor": {
-        "name_zh": "并购顾问",
-        "name_en": "M&A Advisor",
-        "role_zh": "并购分析",
-        "role_en": "M&A Analysis",
-        "aliases": ["ma-advisor", "m&a", "并购顾问", "并购", "maa"],
-    },
-    "onchain-analyst": {
-        "name_zh": "链上分析师",
-        "name_en": "Onchain Analyst",
-        "role_zh": "链上数据分析",
-        "role_en": "On-chain Analysis",
-        "aliases": ["onchain-analyst", "onchain", "链上分析师", "链上", "oa"],
-    },
-    "contrarian-analyst": {
-        "name_zh": "逆向分析师",
-        "name_en": "Contrarian Analyst",
-        "role_zh": "逆向与反共识分析",
-        "role_en": "Contrarian Analysis",
-        "aliases": ["contrarian-analyst", "contrarian", "逆向分析师", "反共识", "ca"],
-    },
-}
+def _registry_to_chat_id(agent_id: str) -> str:
+    return str(agent_id or "").strip().replace("_", "-")
 
-EXPERT_CHAT_AGENT_REGISTRY_IDS: Dict[str, str] = {
-    "leader": "leader",
-    "team-evaluator": "team_evaluator",
-    "market-analyst": "market_analyst",
-    "financial-expert": "financial_expert",
-    "risk-assessor": "risk_assessor",
-    "tech-specialist": "tech_specialist",
-    "legal-advisor": "legal_advisor",
-    "technical-analyst": "technical_analyst",
-    "macro-economist": "macro_economist",
-    "esg-analyst": "esg_analyst",
-    "sentiment-analyst": "sentiment_analyst",
-    "quant-strategist": "quant_strategist",
-    "deal-structurer": "deal_structurer",
-    "ma-advisor": "ma_advisor",
-    "onchain-analyst": "onchain_analyst",
-    "contrarian-analyst": "contrarian_analyst",
-}
 
+def _build_expert_chat_catalog() -> tuple[Dict[str, Dict[str, Any]], Dict[str, str], Dict[str, str]]:
+    from .core.agent_registry import get_registry
+
+    registry = get_registry()
+    profiles: Dict[str, Dict[str, Any]] = {}
+    registry_ids: Dict[str, str] = {}
+    alias_map: Dict[str, str] = {}
+
+    all_agents = registry.list_specialists(scope="roundtable")
+    for cfg in all_agents:
+        registry_id = str(cfg.get("agent_id") or "").strip()
+        if not registry_id:
+            continue
+        if registry_id in {"bp_parser", "report_synthesizer"}:
+            continue
+
+        chat_id = _registry_to_chat_id(registry_id)
+        name = cfg.get("name") if isinstance(cfg.get("name"), dict) else {}
+        desc = cfg.get("description") if isinstance(cfg.get("description"), dict) else {}
+        name_zh = str(name.get("zh") or chat_id)
+        name_en = str(name.get("en") or chat_id)
+        role_zh = str(desc.get("zh") or "专家")
+        role_en = str(desc.get("en") or "Expert")
+
+        aliases = {
+            chat_id.lower(),
+            registry_id.lower(),
+            name_zh.lower(),
+            name_en.lower(),
+            _registry_to_chat_id(name_en).lower(),
+        }
+        if registry_id == "leader":
+            aliases.update({"host", "主持人", "主理人", "主agent", "leader"})
+
+        profiles[chat_id] = {
+            "name_zh": name_zh,
+            "name_en": name_en,
+            "role_zh": role_zh,
+            "role_en": role_en,
+            "aliases": sorted([a for a in aliases if a]),
+        }
+        registry_ids[chat_id] = registry_id
+
+    # Keep leader first, preserve yaml order for others.
+    ordered_profiles: Dict[str, Dict[str, Any]] = {}
+    if "leader" in profiles:
+        ordered_profiles["leader"] = profiles.pop("leader")
+    ordered_profiles.update(profiles)
+
+    ordered_registry_ids: Dict[str, str] = {}
+    if "leader" in registry_ids:
+        ordered_registry_ids["leader"] = registry_ids.pop("leader")
+    ordered_registry_ids.update(registry_ids)
+
+    for chat_id, profile in ordered_profiles.items():
+        alias_map[chat_id.lower()] = chat_id
+        for alias in profile.get("aliases", []):
+            alias_map[str(alias).strip().lower()] = chat_id
+
+    return ordered_profiles, ordered_registry_ids, alias_map
+
+
+EXPERT_CHAT_AGENT_PROFILES, EXPERT_CHAT_AGENT_REGISTRY_IDS, EXPERT_ALIAS_TO_AGENT = _build_expert_chat_catalog()
 EXPERT_SPECIALIST_IDS = [k for k in EXPERT_CHAT_AGENT_PROFILES.keys() if k != "leader"]
-EXPERT_ALIAS_TO_AGENT: Dict[str, str] = {}
-for _agent_id, _profile in EXPERT_CHAT_AGENT_PROFILES.items():
-    EXPERT_ALIAS_TO_AGENT[_agent_id.lower()] = _agent_id
-    for _alias in _profile.get("aliases", []):
-        EXPERT_ALIAS_TO_AGENT[str(_alias).strip().lower()] = _agent_id
 
 
 def _is_zh(language: str) -> bool:
@@ -573,6 +589,8 @@ def _create_expert_chat_agent_pool(
     language: str,
     knowledge_enabled: bool,
     knowledge_category: str,
+    user_id: str = "",
+    session_id: str = "",
 ) -> Dict[str, Any]:
     from .core.agent_registry import get_registry
     from .core.roundtable.mcp_tools import (
@@ -597,10 +615,14 @@ def _create_expert_chat_agent_pool(
                 create_kwargs: Dict[str, Any] = {"language": registry_language}
                 if registry_agent_id != "leader":
                     create_kwargs["quick_mode"] = False
-                pool[chat_agent_id] = registry.create_agent(
+                agent = registry.create_agent(
                     registry_agent_id,
                     **create_kwargs,
                 )
+                setattr(agent, "user_id", str(user_id or "anonymous"))
+                setattr(agent, "session_id", str(session_id or ""))
+                setattr(agent, "atomic_agent_id", chat_agent_id)
+                pool[chat_agent_id] = agent
             except Exception as create_error:
                 logger.exception(
                     "[ExpertChat] Failed to create agent '%s' from registry id '%s': %s",
@@ -619,6 +641,8 @@ def _ensure_expert_chat_agent_pool(
     language: str,
     knowledge_enabled: bool,
     knowledge_category: str,
+    user_id: str = "",
+    session_id: str = "",
 ) -> Dict[str, Any]:
     signature = _build_expert_chat_pool_signature(
         language=language,
@@ -628,12 +652,18 @@ def _ensure_expert_chat_agent_pool(
 
     existing = session_state.get("agents")
     if isinstance(existing, dict) and session_state.get("agent_pool_signature") == signature:
+        for agent_id, agent in existing.items():
+            setattr(agent, "user_id", str(user_id or "anonymous"))
+            setattr(agent, "session_id", str(session_id or ""))
+            setattr(agent, "atomic_agent_id", str(agent_id))
         return existing
 
     pool = _create_expert_chat_agent_pool(
         language=language,
         knowledge_enabled=knowledge_enabled,
         knowledge_category=knowledge_category,
+        user_id=user_id,
+        session_id=session_id,
     )
     session_state["agents"] = pool
     session_state["agent_pool_signature"] = signature
@@ -677,10 +707,147 @@ def _format_history_window(history: List[Dict[str, Any]], limit: int = 12) -> st
     window = history[-limit:] if history else []
     if not window:
         return "(empty)"
-    return "\n".join(
-        f"- [{msg.get('speaker', 'Unknown')}] {msg.get('content', '')[:800]}"
-        for msg in window
+    lines: List[str] = []
+    for msg in window:
+        speaker = msg.get("speaker", "Unknown")
+        role = str(msg.get("role", "")).lower()
+        if role == "assistant":
+            # Keep assistant context compact to reduce repeated token replay.
+            body = str(msg.get("content_summary") or msg.get("content") or "").strip()[:360]
+        else:
+            body = str(msg.get("content") or "").strip()[:700]
+        if not body:
+            continue
+        lines.append(f"- [{speaker}] {body}")
+    return "\n".join(lines) if lines else "(empty)"
+
+
+def _rebuild_shared_evidence_board_from_history(
+    history: List[Dict[str, Any]],
+    max_items: int = 16,
+) -> List[Dict[str, Any]]:
+    board: List[Dict[str, Any]] = []
+    for msg in history[-max_items:]:
+        if str(msg.get("role", "")).lower() != "assistant":
+            continue
+        summary = str(msg.get("content_summary") or "").strip()
+        if not summary:
+            content = str(msg.get("content") or "").strip().replace("\n", " ")
+            summary = compact_text(content, max_chars=220)
+        if not summary:
+            continue
+        board.append(
+            {
+                "agent_id": str(msg.get("agent_id") or "").strip(),
+                "agent_name": str(msg.get("speaker") or msg.get("agent_id") or "Expert").strip(),
+                "summary": summary,
+                "key_points": [],
+                "risks": [],
+                "confidence": None,
+            }
+        )
+    return board[-max_items:]
+
+
+async def _build_expert_chat_memory_context(
+    user_id: str,
+    agent_id: str,
+    user_message: str,
+    history: List[Dict[str, Any]],
+) -> str:
+    query = " ".join(
+        [
+            str(user_message or "").strip(),
+            str(history[-1].get("content", "")) if history else "",
+        ]
+    ).strip()[:1800]
+    if not query:
+        return ""
+    try:
+        agent_hits = await atomic_memory_store.query_agent_memory(
+            user_id=str(user_id or "anonymous"),
+            agent_id=str(agent_id),
+            query=query,
+            top_k=ATOMIC_MEMORY_TOP_K,
+            collection="episodic",
+        )
+        shared_hits = await atomic_memory_store.query_shared_evidence(
+            user_id=str(user_id or "anonymous"),
+            query=query,
+            top_k=max(1, ATOMIC_MEMORY_TOP_K - 1),
+        )
+    except Exception as e:
+        logger.warning("[ExpertChat] memory query failed for %s: %s", agent_id, e)
+        return ""
+
+    agent_text = format_memory_hits(agent_hits, max_items=ATOMIC_MEMORY_TOP_K, max_chars=1400)
+    shared_text = format_memory_hits(shared_hits, max_items=ATOMIC_MEMORY_TOP_K, max_chars=900)
+    chunks: List[str] = []
+    if agent_text:
+        chunks.append(f"## {agent_id} historical memory\n{agent_text}")
+    if shared_text:
+        chunks.append(f"## Shared evidence memory\n{shared_text}")
+    return "\n\n".join(chunks)
+
+
+async def _persist_expert_chat_memory(
+    user_id: str,
+    agent_id: str,
+    session_id: str,
+    user_message: str,
+    answer: str,
+    delegated_by_leader: bool,
+) -> None:
+    if not answer:
+        return
+    content = compact_text(
+        (
+            f"User message:\n{(user_message or '')[:2000]}\n\n"
+            f"Agent response:\n{(answer or '')[:4500]}"
+        ),
+        max_chars=4200,
     )
+    if not should_persist_memory(content):
+        return
+    metadata = make_provenance_metadata(
+        source="expert_chat",
+        session_id=session_id,
+        agent_id=agent_id,
+        extra={"delegated_by_leader": bool(delegated_by_leader)},
+    )
+    try:
+        await atomic_memory_store.add_agent_memory(
+            user_id=str(user_id or "anonymous"),
+            agent_id=str(agent_id),
+            content=content,
+            metadata=metadata,
+            collection="episodic",
+        )
+        await atomic_memory_store.add_shared_evidence(
+            user_id=str(user_id or "anonymous"),
+            content=compact_text(f"[{agent_id}] {(answer or '')[:3000]}", max_chars=2600),
+            metadata=metadata,
+        )
+    except Exception as e:
+        logger.warning("[ExpertChat] memory persist failed for %s: %s", agent_id, e)
+
+
+def _schedule_expert_chat_memory_persist(**kwargs: Any) -> None:
+    async def _runner() -> None:
+        try:
+            async with _expert_chat_memory_write_sem:
+                await _persist_expert_chat_memory(**kwargs)
+        except Exception as e:
+            logger.warning("[ExpertChat] async memory persist task failed: %s", e)
+
+    try:
+        task = asyncio.create_task(_runner())
+    except RuntimeError:
+        # No running event loop: best effort fallback.
+        logger.warning("[ExpertChat] no running loop, skip async memory persist scheduling")
+        return
+    _expert_chat_memory_tasks.add(task)
+    task.add_done_callback(lambda t: _expert_chat_memory_tasks.discard(t))
 
 
 def _parse_json_object(text: str) -> Optional[Dict[str, Any]]:
@@ -814,6 +981,7 @@ async def _build_attachment_context(
             ],
             temperature=0.2,
             attachments=attachments,
+            model=resolve_model_for_role("attachment_vision"),
         )
     except Exception as e:
         logger.warning(f"[ExpertChat] Failed to build attachment context: {e}")
@@ -821,6 +989,7 @@ async def _build_attachment_context(
 
 
 def _build_agent_task_prompt(
+    agent_id: str,
     user_message: str,
     history: List[Dict[str, Any]],
     language: str,
@@ -828,10 +997,18 @@ def _build_agent_task_prompt(
     knowledge_category: str,
     attachment_summary: str,
     attachment_context: str,
+    memory_context: str = "",
+    shared_evidence_context: str = "",
     delegated_by_leader: bool = False,
     specialist_outputs: Optional[List[Dict[str, str]]] = None,
 ) -> str:
-    history_text = _format_history_window(history, limit=12)
+    skill_context = build_skill_instruction_context(
+        agent_id=agent_id,
+        user_message=user_message,
+        language=language,
+    )
+    history_limit = 6 if (shared_evidence_context or skill_context) else 10
+    history_text = _format_history_window(history, limit=history_limit)
     normalized_category = _normalize_expert_chat_knowledge_category(knowledge_category)
 
     specialist_outputs_text = ""
@@ -853,12 +1030,25 @@ def _build_agent_task_prompt(
         )
         if attachment_context:
             prompt += f"\n图片分析上下文:\n{attachment_context}\n"
+        if skill_context:
+            prompt += f"\n本轮能力卡片:\n{skill_context}\n"
+        if memory_context:
+            prompt += f"\n历史记忆参考:\n{memory_context}\n"
+        if shared_evidence_context:
+            prompt += f"\n共享证据板(优先复用，避免重复检索):\n{shared_evidence_context}\n"
         if specialist_outputs_text:
             prompt += f"\n专家阶段输出:\n{specialist_outputs_text}\n"
         prompt += (
             "\n请直接给出专业、可执行、基于证据的回答。"
             "如果信息不足，请明确缺口并给出下一步需要补充的数据。"
         )
+        if delegated_by_leader:
+            prompt += (
+                "\n你是被委派专家。请优先复用共享证据，只有在关键事实缺失时才额外检索。"
+                "结论请包含: 核心判断、关键依据、风险与失效条件。"
+                "在回答末尾附加 INTERNAL_EVIDENCE_PACKET JSON 块（summary/key_points/risks/confidence），"
+                "格式为 [INTERNAL_EVIDENCE_PACKET]{...}[/INTERNAL_EVIDENCE_PACKET]。"
+            )
         return prompt
 
     prompt = (
@@ -871,12 +1061,26 @@ def _build_agent_task_prompt(
     )
     if attachment_context:
         prompt += f"\nImage-grounded context:\n{attachment_context}\n"
+    if skill_context:
+        prompt += f"\nLoaded skill cards:\n{skill_context}\n"
+    if memory_context:
+        prompt += f"\nHistorical memory context:\n{memory_context}\n"
+    if shared_evidence_context:
+        prompt += f"\nShared evidence board (reuse first, avoid duplicate retrieval):\n{shared_evidence_context}\n"
     if specialist_outputs_text:
         prompt += f"\nSpecialist outputs:\n{specialist_outputs_text}\n"
     prompt += (
         "\nProvide a professional, evidence-based, and actionable response. "
         "If information is insufficient, clearly state what is missing and the next data needed."
     )
+    if delegated_by_leader:
+        prompt += (
+            "\nYou are a delegated specialist. Reuse shared evidence first and call new tools only for missing critical facts. "
+            "Include: thesis, supporting evidence, risk/invalidation. "
+            "Append an INTERNAL_EVIDENCE_PACKET JSON block at the end "
+            "using [INTERNAL_EVIDENCE_PACKET]{...}[/INTERNAL_EVIDENCE_PACKET] "
+            "with fields summary/key_points/risks/confidence."
+        )
     return prompt
 
 
@@ -933,8 +1137,78 @@ def _sanitize_resume_history(raw_history: Any) -> List[Dict[str, Any]]:
         }
         if role == "assistant":
             msg["agent_id"] = str(item.get("agent_id") or "").strip()[:80]
+            summary = str(item.get("content_summary") or "").strip()
+            if summary:
+                msg["content_summary"] = summary[:400]
         cleaned.append(msg)
     return cleaned
+
+
+def _build_leader_route_cache_key(
+    user_message: str,
+    history: List[Dict[str, Any]],
+    language: str,
+    knowledge_enabled: bool,
+    knowledge_category: str,
+    attachments_summary: str,
+) -> str:
+    history_window = history[-6:] if isinstance(history, list) else []
+    history_snapshot = [
+        {
+            "role": str(item.get("role", "")),
+            "agent_id": str(item.get("agent_id", "")),
+            "content": str(item.get("content", ""))[:280],
+        }
+        for item in history_window
+        if isinstance(item, dict)
+    ]
+    payload = {
+        "user_message": str(user_message or "")[:1500],
+        "language": str(language or ""),
+        "knowledge_enabled": bool(knowledge_enabled),
+        "knowledge_category": str(knowledge_category or "all"),
+        "attachments_summary": str(attachments_summary or ""),
+        "history": history_snapshot,
+    }
+    digest = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+    return f"leader_route:{digest}"
+
+
+async def _leader_route_cache_get(cache_key: str) -> Optional[Dict[str, Any]]:
+    if not EXPERT_CHAT_ROUTE_CACHE_ENABLED:
+        return None
+    now = time.time()
+    async with _leader_route_cache_lock:
+        item = _leader_route_cache.get(cache_key)
+        if not item:
+            record_cache_event(layer="leader_route", event="miss")
+            return None
+        if float(item.get("expires_at", 0.0)) <= now:
+            _leader_route_cache.pop(cache_key, None)
+            record_cache_event(layer="leader_route", event="stale")
+            return None
+        _leader_route_cache.move_to_end(cache_key)
+        record_cache_event(layer="leader_route", event="hit")
+        value = item.get("value")
+        return deepcopy(value) if isinstance(value, dict) else None
+
+
+async def _leader_route_cache_set(cache_key: str, decision: Dict[str, Any]) -> None:
+    if not EXPERT_CHAT_ROUTE_CACHE_ENABLED:
+        return
+    if not isinstance(decision, dict):
+        return
+    payload = {
+        "expires_at": time.time() + EXPERT_CHAT_ROUTE_CACHE_TTL_SECONDS,
+        "value": deepcopy(decision),
+    }
+    async with _leader_route_cache_lock:
+        _leader_route_cache[cache_key] = payload
+        _leader_route_cache.move_to_end(cache_key)
+        while len(_leader_route_cache) > EXPERT_CHAT_ROUTE_CACHE_MAX_ENTRIES:
+            _leader_route_cache.popitem(last=False)
+            record_cache_event(layer="leader_route", event="evict")
+    record_cache_event(layer="leader_route", event="store")
 
 
 async def _llm_chat_completion(
@@ -942,8 +1216,10 @@ async def _llm_chat_completion(
     temperature: float = 1.0,
     provider: str = EXPERT_CHAT_PROVIDER,
     attachments: Optional[List[Dict[str, Any]]] = None,
+    model: Optional[str] = None,
 ) -> str:
     sanitized_attachments = _sanitize_expert_chat_attachments(attachments)
+    prompt_texts = [str(msg.get("content", "")) for msg in messages if isinstance(msg, dict) and msg.get("content")]
 
     async with httpx.AsyncClient(timeout=420.0) as client:
         if sanitized_attachments and provider != "gemini":
@@ -952,24 +1228,35 @@ async def _llm_chat_completion(
             sanitized_attachments = []
 
         if not sanitized_attachments:
+            payload: Dict[str, Any] = {
+                "messages": messages,
+                "temperature": temperature,
+                "provider": provider,
+            }
+            if model:
+                payload["model"] = model
             response = await client.post(
                 f"{LLM_GATEWAY_URL}/v1/chat/completions",
-                json={
-                    "messages": messages,
-                    "temperature": temperature,
-                    "provider": provider,
-                },
+                json=payload,
             )
             if response.status_code != 200:
                 detail = response.text[:500]
                 raise HTTPException(status_code=502, detail=f"LLM Gateway error ({response.status_code}): {detail}")
             payload = response.json()
-            return (
+            content = (
                 payload.get("choices", [{}])[0]
                 .get("message", {})
                 .get("content", "")
                 .strip()
             )
+            record_llm_context_usage(
+                source="expert_chat",
+                model=str(model or provider or "default"),
+                usage=payload.get("usage"),
+                prompt_texts=prompt_texts,
+                completion_text=content,
+            )
+            return content
 
         prompt_for_file = _flatten_messages_for_file_prompt(messages)
         image_outputs: List[str] = []
@@ -990,71 +1277,66 @@ async def _llm_chat_completion(
                 detail = file_resp.text[:500]
                 raise HTTPException(status_code=502, detail=f"File multimodal call failed ({file_resp.status_code}): {detail}")
             file_payload = file_resp.json()
-            image_outputs.append(str(file_payload.get("content", "")).strip())
+            image_content = str(file_payload.get("content", "")).strip()
+            record_llm_context_usage(
+                source="expert_chat_file",
+                model=str(model or provider or "default"),
+                usage=file_payload.get("usage"),
+                prompt_texts=[prompt_for_file, f"attachment:{attachment['name']}"],
+                completion_text=image_content,
+            )
+            image_outputs.append(image_content)
 
         if len(image_outputs) == 1:
             return image_outputs[0]
 
+        merge_request: Dict[str, Any] = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Synthesize multiple image analyses into one concise response without repeating points.",
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Original request context:\n{prompt_for_file}\n\n"
+                        + "\n\n".join(
+                            f"[Image {idx + 1} Analysis]\n{text}"
+                            for idx, text in enumerate(image_outputs)
+                        )
+                    ),
+                },
+            ],
+            "temperature": 0.7,
+            "provider": provider,
+        }
+        if model:
+            merge_request["model"] = model
         merge_response = await client.post(
             f"{LLM_GATEWAY_URL}/v1/chat/completions",
-            json={
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "Synthesize multiple image analyses into one concise response without repeating points.",
-                    },
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Original request context:\n{prompt_for_file}\n\n"
-                            + "\n\n".join(
-                                f"[Image {idx + 1} Analysis]\n{text}"
-                                for idx, text in enumerate(image_outputs)
-                            )
-                        ),
-                    },
-                ],
-                "temperature": 0.7,
-                "provider": provider,
-            },
+            json=merge_request,
         )
         if merge_response.status_code != 200:
             detail = merge_response.text[:500]
             raise HTTPException(status_code=502, detail=f"LLM merge error ({merge_response.status_code}): {detail}")
-        merge_payload = merge_response.json()
-        return (
-            merge_payload.get("choices", [{}])[0]
+        merge_response_payload = merge_response.json()
+        merged_content = (
+            merge_response_payload.get("choices", [{}])[0]
             .get("message", {})
             .get("content", "")
             .strip()
         )
-
-
-def _leader_fallback_plan(user_message: str, language: str) -> Dict[str, Any]:
-    text = (user_message or "").lower()
-    mapping: List[Tuple[List[str], str]] = [
-        (["风险", "risk", "drawdown", "止损"], "risk-assessor"),
-        (["财务", "finance", "profit", "cash"], "financial-expert"),
-        (["技术", "technical", "rsi", "macd", "k线"], "technical-analyst"),
-        (["宏观", "macro", "cpi", "fed", "利率"], "macro-economist"),
-        (["情绪", "sentiment", "news", "舆情"], "sentiment-analyst"),
-        (["市场", "market", "竞争", "sector"], "market-analyst"),
-    ]
-    specialists: List[str] = []
-    for keywords, agent_id in mapping:
-        if any(k in text for k in keywords):
-            specialists.append(agent_id)
-            break
-    if _is_zh(language):
-        reply = "我先给你一个直接判断，并在必要时拉起专家补充。"
-    else:
-        reply = "I will answer directly first and involve specialists only if needed."
-    return {
-        "need_specialists": bool(specialists),
-        "specialists": specialists,
-        "leader_reply": reply,
-        "reason": "fallback_keyword_routing",
-    }
+        record_llm_context_usage(
+            source="expert_chat_merge",
+            model=str(model or provider or "default"),
+            usage=merge_response_payload.get("usage"),
+            prompt_texts=[
+                str(merge_request.get("messages", [{}])[0].get("content", "")),
+                str(merge_request.get("messages", [{}, {}])[1].get("content", "")),
+            ],
+            completion_text=merged_content,
+        )
+        return merged_content
 
 
 async def _leader_plan_route(
@@ -1065,6 +1347,26 @@ async def _leader_plan_route(
     knowledge_category: str,
     attachments_summary: str = "none",
 ) -> Dict[str, Any]:
+    route_started_at = time.perf_counter()
+    cache_key = _build_leader_route_cache_key(
+        user_message=user_message,
+        history=history,
+        language=language,
+        knowledge_enabled=knowledge_enabled,
+        knowledge_category=knowledge_category,
+        attachments_summary=attachments_summary,
+    )
+    cached = await _leader_route_cache_get(cache_key)
+    if cached:
+        cached_need_specialists = bool(cached.get("need_specialists")) and bool(cached.get("specialists"))
+        record_route_decision(
+            channel="expert_chat",
+            mode="delegated" if cached_need_specialists else "leader",
+            status="cached",
+            latency_seconds=time.perf_counter() - route_started_at,
+        )
+        return cached
+
     specialist_desc = ", ".join(
         f"{agent_id}({EXPERT_CHAT_AGENT_PROFILES[agent_id].get('name_zh')})"
         for agent_id in EXPERT_SPECIALIST_IDS
@@ -1092,21 +1394,37 @@ async def _leader_plan_route(
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.4,
+            model=resolve_model_for_role("leader_router"),
         )
         parsed = _parse_json_object(raw)
         if not parsed:
-            return _leader_fallback_plan(user_message, language)
+            raise RuntimeError("Leader route plan parsing failed: non-JSON response")
         specialists = [
             sid for sid in parsed.get("specialists", []) if sid in EXPERT_SPECIALIST_IDS
         ]
-        return {
-            "need_specialists": bool(parsed.get("need_specialists")) and bool(specialists),
+        need_specialists = bool(parsed.get("need_specialists")) and bool(specialists)
+        record_route_decision(
+            channel="expert_chat",
+            mode="delegated" if need_specialists else "leader",
+            status="success",
+            latency_seconds=time.perf_counter() - route_started_at,
+        )
+        decision = {
+            "need_specialists": need_specialists,
             "specialists": specialists,
             "leader_reply": str(parsed.get("leader_reply", "")).strip(),
             "reason": str(parsed.get("reason", "")).strip() or "leader_decision",
         }
+        await _leader_route_cache_set(cache_key, decision)
+        return decision
     except Exception:
-        return _leader_fallback_plan(user_message, language)
+        record_route_decision(
+            channel="expert_chat",
+            mode="leader",
+            status="error",
+            latency_seconds=time.perf_counter() - route_started_at,
+        )
+        raise
 
 
 async def _ask_specialist(
@@ -1116,17 +1434,27 @@ async def _ask_specialist(
     language: str,
     knowledge_enabled: bool,
     knowledge_category: str,
+    user_id: str,
+    session_id: str,
     attachments: Optional[List[Dict[str, Any]]] = None,
     attachment_context: str = "",
+    shared_evidence_context: str = "",
     session_agents: Optional[Dict[str, Any]] = None,
     delegated_by_leader: bool = False,
-) -> str:
+) -> Dict[str, Any]:
     attachment_note = _attachments_summary(attachments or [], language)
     specialist_agent = (session_agents or {}).get(agent_id)
     if specialist_agent is None:
         raise RuntimeError(f"ExpertChat specialist agent not initialized: {agent_id}")
+    memory_context = await _build_expert_chat_memory_context(
+        user_id=user_id,
+        agent_id=agent_id,
+        user_message=user_message,
+        history=history,
+    )
 
     prompt = _build_agent_task_prompt(
+        agent_id=agent_id,
         user_message=user_message,
         history=history,
         language=language,
@@ -1134,12 +1462,45 @@ async def _ask_specialist(
         knowledge_category=knowledge_category,
         attachment_summary=attachment_note,
         attachment_context=attachment_context,
+        memory_context=memory_context,
+        shared_evidence_context=shared_evidence_context,
         delegated_by_leader=delegated_by_leader,
     )
-    answer = await _run_expert_chat_agent_once(specialist_agent, prompt)
-    if not answer:
+    raw_answer = await _run_expert_chat_agent_once(specialist_agent, prompt)
+    if not raw_answer:
         raise RuntimeError(f"ExpertChat specialist agent returned empty output: {agent_id}")
-    return answer
+    parsed = extract_specialist_response(
+        agent_id=agent_id,
+        agent_name=_display_agent_name(agent_id, language),
+        raw_content=raw_answer,
+        language=language,
+    )
+    answer = str(parsed.get("content") or raw_answer).strip()
+    if not answer:
+        answer = raw_answer.strip()
+    if EXPERT_CHAT_MEMORY_ASYNC_WRITE:
+        _schedule_expert_chat_memory_persist(
+            user_id=user_id,
+            agent_id=agent_id,
+            session_id=session_id,
+            user_message=user_message,
+            answer=answer,
+            delegated_by_leader=delegated_by_leader,
+        )
+    else:
+        await _persist_expert_chat_memory(
+            user_id=user_id,
+            agent_id=agent_id,
+            session_id=session_id,
+            user_message=user_message,
+            answer=answer,
+            delegated_by_leader=delegated_by_leader,
+        )
+    return {
+        "content": answer,
+        "summary": str(parsed.get("summary") or "")[:320],
+        "evidence_packet": parsed.get("evidence_packet") or {},
+    }
 
 
 async def _leader_direct_reply(
@@ -1148,6 +1509,8 @@ async def _leader_direct_reply(
     language: str,
     knowledge_enabled: bool,
     knowledge_category: str,
+    user_id: str,
+    session_id: str,
     attachments: Optional[List[Dict[str, Any]]] = None,
     attachment_context: str = "",
     session_agents: Optional[Dict[str, Any]] = None,
@@ -1156,8 +1519,15 @@ async def _leader_direct_reply(
     leader_agent = (session_agents or {}).get("leader")
     if leader_agent is None:
         raise RuntimeError("ExpertChat leader agent not initialized")
+    memory_context = await _build_expert_chat_memory_context(
+        user_id=user_id,
+        agent_id="leader",
+        user_message=user_message,
+        history=history,
+    )
 
     prompt = _build_agent_task_prompt(
+        agent_id="leader",
         user_message=user_message,
         history=history,
         language=language,
@@ -1165,11 +1535,30 @@ async def _leader_direct_reply(
         knowledge_category=knowledge_category,
         attachment_summary=attachment_note,
         attachment_context=attachment_context,
+        memory_context=memory_context,
         delegated_by_leader=False,
     )
     answer = await _run_expert_chat_agent_once(leader_agent, prompt)
     if not answer:
         raise RuntimeError("ExpertChat leader agent returned empty output")
+    if EXPERT_CHAT_MEMORY_ASYNC_WRITE:
+        _schedule_expert_chat_memory_persist(
+            user_id=user_id,
+            agent_id="leader",
+            session_id=session_id,
+            user_message=user_message,
+            answer=answer,
+            delegated_by_leader=False,
+        )
+    else:
+        await _persist_expert_chat_memory(
+            user_id=user_id,
+            agent_id="leader",
+            session_id=session_id,
+            user_message=user_message,
+            answer=answer,
+            delegated_by_leader=False,
+        )
     return answer
 
 
@@ -1178,6 +1567,8 @@ async def _leader_summarize_with_specialists(
     specialist_outputs: List[Dict[str, str]],
     history: List[Dict[str, Any]],
     language: str,
+    user_id: str,
+    session_id: str,
     attachments: Optional[List[Dict[str, Any]]] = None,
     attachment_context: str = "",
     session_agents: Optional[Dict[str, Any]] = None,
@@ -1186,8 +1577,15 @@ async def _leader_summarize_with_specialists(
     leader_agent = (session_agents or {}).get("leader")
     if leader_agent is None:
         raise RuntimeError("ExpertChat leader agent not initialized for summarize")
+    memory_context = await _build_expert_chat_memory_context(
+        user_id=user_id,
+        agent_id="leader",
+        user_message=user_message,
+        history=history,
+    )
 
     prompt = _build_agent_task_prompt(
+        agent_id="leader",
         user_message=user_message,
         history=history,
         language=language,
@@ -1195,12 +1593,31 @@ async def _leader_summarize_with_specialists(
         knowledge_category="all",
         attachment_summary=attachment_note,
         attachment_context=attachment_context,
+        memory_context=memory_context,
         delegated_by_leader=False,
         specialist_outputs=specialist_outputs,
     )
     answer = await _run_expert_chat_agent_once(leader_agent, prompt)
     if not answer:
         raise RuntimeError("ExpertChat leader summarize returned empty output")
+    if EXPERT_CHAT_MEMORY_ASYNC_WRITE:
+        _schedule_expert_chat_memory_persist(
+            user_id=user_id,
+            agent_id="leader",
+            session_id=session_id,
+            user_message=user_message,
+            answer=answer,
+            delegated_by_leader=False,
+        )
+    else:
+        await _persist_expert_chat_memory(
+            user_id=user_id,
+            agent_id="leader",
+            session_id=session_id,
+            user_message=user_message,
+            answer=answer,
+            delegated_by_leader=False,
+        )
     return answer
 
 # --- WebSocket Workflow ---
@@ -2000,48 +2417,14 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
 
     # Import roundtable components
     from .core.roundtable import Meeting, Message
-    from .core.roundtable.investment_agents import (
-        create_leader,
-        create_market_analyst,
-        create_financial_expert,
-        create_risk_assessor,
-        create_team_evaluator,
-        create_tech_specialist,
-        create_legal_advisor,
-        create_technical_analyst,  # 技术分析师 (K线/指标分析)
-        # Phase 2 新增 agents
-        create_macro_economist,
-        create_esg_analyst,
-        create_sentiment_analyst,
-        create_quant_strategist,
-        create_deal_structurer,
-        create_ma_advisor
-    )
+    from .core.agent_registry import get_registry
     from .core.roundtable.mcp_tools import (
         normalize_knowledge_category,
         reset_roundtable_knowledge_preferences,
         set_roundtable_knowledge_preferences,
     )
     from .core.agent_event_bus import AgentEventBus
-
-    # Agent factory mapping - maps frontend agent IDs to factory functions
-    AGENT_FACTORIES = {
-        'leader': create_leader,
-        'market-analyst': create_market_analyst,
-        'financial-expert': create_financial_expert,
-        'team-evaluator': create_team_evaluator,
-        'risk-assessor': create_risk_assessor,
-        'tech-specialist': create_tech_specialist,
-        'legal-advisor': create_legal_advisor,
-        'technical-analyst': create_technical_analyst,  # 技术分析师 (K线/指标)
-        # Phase 2 新增 agents
-        'macro-economist': create_macro_economist,
-        'esg-analyst': create_esg_analyst,
-        'sentiment-analyst': create_sentiment_analyst,
-        'quant-strategist': create_quant_strategist,
-        'deal-structurer': create_deal_structurer,
-        'ma-advisor': create_ma_advisor
-    }
+    registry = get_registry()
 
     session_id = None
     runtime_state: Optional[Dict[str, Any]] = None
@@ -2205,13 +2588,28 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
             print(f"[ROUNDTABLE] Frontend selected experts: {selected_experts}", flush=True)
 
             # Get max_rounds from frontend context (default to 5 if not provided)
-            max_rounds = context.get('max_rounds', 5)
+            max_rounds = int(
+                context.get(
+                    "max_rounds",
+                    _ROUNDTABLE_TEMPLATE.get("default_max_rounds", 5),
+                )
+            )
 
             # Calculate timeout dynamically:
             # - Each round needs time for all agents to think and respond
             # - Keep at least 1 hour total for long brainstorm sessions
-            seconds_per_round = 600  # 10 minutes per round
-            minimum_meeting_duration_seconds = 3600  # 1 hour
+            seconds_per_round = int(
+                os.getenv(
+                    "ROUNDTABLE_SECONDS_PER_ROUND",
+                    str(_ROUNDTABLE_TEMPLATE.get("seconds_per_round", 600)),
+                )
+            )
+            minimum_meeting_duration_seconds = int(
+                os.getenv(
+                    "ROUNDTABLE_MINIMUM_DURATION_SECONDS",
+                    str(_ROUNDTABLE_TEMPLATE.get("minimum_duration_seconds", 3600)),
+                )
+            )
             max_duration = max(max_rounds * seconds_per_round, minimum_meeting_duration_seconds)
 
             # Create a placeholder meeting first (we'll set agents later)
@@ -2234,7 +2632,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
 
             # ALWAYS ensure leader is created first - Leader is essential for meeting orchestration
             # Frontend intentionally excludes 'leader' from selection (it's always auto-included)
-            leader = create_leader(language)
+            leader = registry.create_agent("leader", language=language)
             # Register end_meeting tool for Leader
             end_meeting_tool = FunctionTool(
                 name="end_meeting",
@@ -2255,39 +2653,63 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
             print(f"[ROUNDTABLE] Leader ALWAYS created with end_meeting tool", flush=True)
             agents.append(leader)
 
+            enabled_roundtable_ids = {
+                str(cfg.get("agent_id"))
+                for cfg in registry.list_agents(scope="roundtable")
+                if str(cfg.get("agent_id") or "").strip()
+            }
+
+            def _to_registry_agent_id(expert_id: str) -> str:
+                if not expert_id:
+                    return ""
+                chat_id = str(expert_id).strip()
+                if chat_id in EXPERT_CHAT_AGENT_REGISTRY_IDS:
+                    return EXPERT_CHAT_AGENT_REGISTRY_IDS[chat_id]
+                return chat_id.replace("-", "_")
+
             # Add other agents based on selection
+            added_registry_ids = {"leader"}
             for expert_id in selected_experts:
-                if expert_id != 'leader' and expert_id in AGENT_FACTORIES:
-                    agents.append(AGENT_FACTORIES[expert_id](language))
+                registry_id = _to_registry_agent_id(expert_id)
+                if not registry_id or registry_id == "leader":
+                    continue
+                if registry_id not in enabled_roundtable_ids:
+                    continue
+                if registry_id in added_registry_ids:
+                    continue
+                try:
+                    agents.append(registry.create_agent(registry_id, language=language, quick_mode=False))
+                    added_registry_ids.add(registry_id)
+                except Exception as create_error:
+                    logger.warning(
+                        "[ROUNDTABLE] Failed to create selected expert '%s' (%s): %s",
+                        expert_id,
+                        registry_id,
+                        create_error,
+                    )
 
             # Fallback: if no agents selected, use default 5 agents
-            if not agents:
+            if len(agents) <= 1:
                 print(f"[ROUNDTABLE] No agents selected, using defaults", flush=True)
-                leader = create_leader(language)
-                # Register end_meeting tool for default Leader too
-                end_meeting_tool = FunctionTool(
-                    name="end_meeting",
-                    description="结束圆桌会议。当讨论已经充分、已形成投资建议、所有专家观点已收集时调用此工具。",
-                    func=conclude_meeting_func,
-                    parameters_schema={
-                        "type": "object",
-                        "properties": {
-                            "reason": {
-                                "type": "string",
-                                "description": "结束会议的原因"
-                            }
-                        },
-                        "required": ["reason"]
-                    }
-                )
-                leader.register_tool(end_meeting_tool)
-                agents = [
-                    leader,
-                    create_market_analyst(language),
-                    create_financial_expert(language),
-                    create_team_evaluator(language),
-                    create_risk_assessor(language)
+                default_registry_ids = [
+                    "market_analyst",
+                    "financial_expert",
+                    "team_evaluator",
+                    "risk_assessor",
                 ]
+                for registry_id in default_registry_ids:
+                    if registry_id in added_registry_ids:
+                        continue
+                    if registry_id not in enabled_roundtable_ids:
+                        continue
+                    agents.append(registry.create_agent(registry_id, language=language, quick_mode=False))
+                    added_registry_ids.add(registry_id)
+
+            for agent in agents:
+                setattr(agent, "user_id", str(current_user.id))
+                setattr(agent, "session_id", session_id)
+                agent_id = getattr(agent, "id", None) or getattr(agent, "name", None) or "unknown"
+                setattr(agent, "atomic_agent_id", str(agent_id))
 
             num_agents = len(agents)
             print(f"[ROUNDTABLE] Created {num_agents} agents: {[a.name for a in agents]}", flush=True)
@@ -2412,6 +2834,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
             if history_reference:
                 previous_topic = history_reference.get("topic", "")
                 previous_minutes = history_reference.get("meeting_minutes", "")
+                excerpt_chars = int(_ROUNDTABLE_TEMPLATE.get("history_excerpt_chars", 2000))
 
                 print(f"[ROUNDTABLE] Using history reference from: {previous_topic}", flush=True)
 
@@ -2423,7 +2846,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
 我们之前对「{previous_topic}」进行过讨论，以下是上次会议的纪要摘要：
 
 <previous_meeting_minutes>
-{previous_minutes[:2000]}{'...(摘要已截断)' if len(previous_minutes) > 2000 else ''}
+{previous_minutes[:excerpt_chars]}{'...(摘要已截断)' if len(previous_minutes) > excerpt_chars else ''}
 </previous_meeting_minutes>
 
 ### 🔴 关键提醒（请所有专家注意）：
@@ -2524,6 +2947,9 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                     result["report_id"] = report_id
                     if runtime_state is not None:
                         runtime_state["report_id"] = report_id
+
+                if runtime_state is not None:
+                    runtime_state["summary"] = result
 
                 # Send completion summary (check WebSocket state first)
                 try:
@@ -2638,6 +3064,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
         "language": language,
         "knowledge_enabled": knowledge_enabled,
         "knowledge_category": knowledge_category,
+        "shared_evidence_board": [],
         "agents": {},
         "agent_pool_signature": "",
     }
@@ -2646,7 +3073,15 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
         language=language,
         knowledge_enabled=knowledge_enabled,
         knowledge_category=knowledge_category,
+        user_id=str(current_user.id),
+        session_id=session_id,
     )
+    inflight_turn_tasks: Set[asyncio.Task] = set()
+
+    def _track_turn_task(task: asyncio.Task) -> asyncio.Task:
+        inflight_turn_tasks.add(task)
+        task.add_done_callback(lambda t: inflight_turn_tasks.discard(t))
+        return task
 
     try:
         await websocket.send_json(
@@ -2697,6 +3132,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                             "language": language,
                             "knowledge_enabled": knowledge_enabled,
                             "knowledge_category": knowledge_category,
+                            "shared_evidence_board": _rebuild_shared_evidence_board_from_history(resume_history),
                             "agents": {},
                             "agent_pool_signature": "",
                         }
@@ -2712,6 +3148,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                         "language": language,
                         "knowledge_enabled": knowledge_enabled,
                         "knowledge_category": knowledge_category,
+                        "shared_evidence_board": [],
                         "agents": {},
                         "agent_pool_signature": "",
                     },
@@ -2724,6 +3161,8 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                     language=language,
                     knowledge_enabled=knowledge_enabled,
                     knowledge_category=knowledge_category,
+                    user_id=str(current_user.id),
+                    session_id=session_id,
                 )
                 await websocket.send_json(
                     {
@@ -2771,10 +3210,16 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                     "language": language,
                     "knowledge_enabled": knowledge_enabled,
                     "knowledge_category": knowledge_category,
+                    "shared_evidence_board": [],
                     "agents": {},
                     "agent_pool_signature": "",
                 },
             )
+            session_state.setdefault("shared_evidence_board", [])
+            if not session_state.get("shared_evidence_board") and session_state.get("messages"):
+                session_state["shared_evidence_board"] = _rebuild_shared_evidence_board_from_history(
+                    session_state["messages"]
+                )
             session_state["language"] = language
             session_state["knowledge_enabled"] = knowledge_enabled
             session_state["knowledge_category"] = knowledge_category
@@ -2783,6 +3228,8 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                 language=language,
                 knowledge_enabled=knowledge_enabled,
                 knowledge_category=knowledge_category,
+                user_id=str(current_user.id),
+                session_id=session_id,
             )
 
             history = session_state["messages"]
@@ -2814,6 +3261,12 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                     targets = [m for m in direct_targets if m != "leader"]
                     if not targets:
                         targets = ["leader"]
+                    record_route_decision(
+                        channel="expert_chat",
+                        mode="direct",
+                        status="success",
+                        latency_seconds=0.0,
+                    )
 
                     await websocket.send_json(
                         {
@@ -2826,6 +3279,11 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
 
                     for agent_id in targets:
                         agent_name = _display_agent_name(agent_id, language)
+                        shared_evidence_board = session_state.get("shared_evidence_board", [])
+                        shared_evidence_context = format_shared_evidence_context(
+                            shared_evidence_board,
+                            language=language,
+                        )
                         await websocket.send_json(
                             {
                                 "type": "agent_thinking",
@@ -2842,23 +3300,39 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 language=language,
                                 knowledge_enabled=knowledge_enabled,
                                 knowledge_category=knowledge_category,
+                                user_id=str(current_user.id),
+                                session_id=session_id,
                                 attachments=attachments,
                                 attachment_context=attachment_context,
                                 session_agents=session_agents,
                             )
+                            response_summary = compact_text(
+                                response_text.replace("\n", " "),
+                                max_chars=280,
+                            )
                         else:
-                            response_text = await _ask_specialist(
+                            specialist_result = await _ask_specialist(
                                 agent_id=agent_id,
                                 user_message=effective_content,
                                 history=history,
                                 language=language,
                                 knowledge_enabled=knowledge_enabled,
                                 knowledge_category=knowledge_category,
+                                user_id=str(current_user.id),
+                                session_id=session_id,
                                 attachments=attachments,
                                 attachment_context=attachment_context,
+                                shared_evidence_context=shared_evidence_context,
                                 session_agents=session_agents,
                                 delegated_by_leader=False,
                             )
+                            response_text = str(specialist_result.get("content", "")).strip()
+                            response_summary = str(specialist_result.get("summary", "")).strip()[:320]
+                            evidence_packet = specialist_result.get("evidence_packet") or {}
+                            if isinstance(evidence_packet, dict) and evidence_packet.get("summary"):
+                                shared_evidence_board.append(evidence_packet)
+                                if len(shared_evidence_board) > 24:
+                                    del shared_evidence_board[:-24]
 
                         history.append(
                             {
@@ -2866,6 +3340,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 "role": "assistant",
                                 "agent_id": agent_id,
                                 "content": response_text,
+                                "content_summary": response_summary,
                                 "timestamp": datetime.utcnow().isoformat(),
                             }
                         )
@@ -2891,79 +3366,150 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                         }
                     )
 
-                    plan = await _leader_plan_route(
-                        user_message=effective_content,
-                        history=history,
-                        language=language,
-                        knowledge_enabled=knowledge_enabled,
-                        knowledge_category=knowledge_category,
-                        attachments_summary=attachment_summary,
-                    )
+                    try:
+                        plan = await _leader_plan_route(
+                            user_message=effective_content,
+                            history=history,
+                            language=language,
+                            knowledge_enabled=knowledge_enabled,
+                            knowledge_category=knowledge_category,
+                            attachments_summary=attachment_summary,
+                        )
+                    except Exception as route_error:
+                        logger.warning(
+                            "[ExpertChat] Leader route planning failed, fallback to leader direct reply: %s",
+                            route_error,
+                        )
+                        plan = {
+                            "need_specialists": False,
+                            "specialists": [],
+                            "leader_reply": "",
+                            "reason": "leader_router_error",
+                        }
+                        await websocket.send_json(
+                            {
+                                "type": "route_fallback",
+                                "session_id": session_id,
+                                "mode": "leader",
+                                "reason": "leader_router_error",
+                            }
+                        )
 
                     delegated_ids = [
                         sid for sid in plan.get("specialists", []) if sid in EXPERT_SPECIALIST_IDS
                     ]
                     specialist_outputs: List[Dict[str, str]] = []
+                    planned_leader_reply = str(plan.get("leader_reply", "")).strip()
+                    shared_evidence_board = session_state.get("shared_evidence_board", [])
 
                     if delegated_ids:
+                        execution_stages = build_execution_stages(
+                            delegated_ids,
+                            max_parallel=EXPERT_CHAT_MAX_PARALLEL_SPECIALISTS,
+                        )
                         await websocket.send_json(
                             {
                                 "type": "delegation_started",
                                 "session_id": session_id,
                                 "from": "leader",
                                 "targets": delegated_ids,
+                                "stages": execution_stages,
                                 "reason": plan.get("reason", "leader_decision"),
                             }
                         )
 
-                        for sid in delegated_ids:
-                            specialist_name = _display_agent_name(sid, language)
+                        for stage_index, stage_agent_ids in enumerate(execution_stages, start=1):
                             await websocket.send_json(
                                 {
-                                    "type": "agent_thinking",
+                                    "type": "delegation_stage",
                                     "session_id": session_id,
-                                    "agent_id": sid,
-                                    "agent_name": specialist_name,
+                                    "stage_index": stage_index,
+                                    "stage_total": len(execution_stages),
+                                    "targets": stage_agent_ids,
                                 }
                             )
-                            output = await _ask_specialist(
-                                agent_id=sid,
-                                user_message=effective_content,
-                                history=history,
+                            stage_history = list(history)
+                            shared_evidence_context = format_shared_evidence_context(
+                                shared_evidence_board,
                                 language=language,
-                                knowledge_enabled=knowledge_enabled,
-                                knowledge_category=knowledge_category,
-                                attachments=attachments,
-                                attachment_context=attachment_context,
-                                session_agents=session_agents,
-                                delegated_by_leader=True,
                             )
-                            specialist_outputs.append(
-                                {
-                                    "agent_id": sid,
-                                    "agent_name": specialist_name,
-                                    "content": output,
-                                }
+                            stage_tasks: Dict[str, asyncio.Task] = {}
+                            for sid in stage_agent_ids:
+                                specialist_name = _display_agent_name(sid, language)
+                                await websocket.send_json(
+                                    {
+                                        "type": "agent_thinking",
+                                        "session_id": session_id,
+                                        "agent_id": sid,
+                                        "agent_name": specialist_name,
+                                    }
+                                )
+                                stage_tasks[sid] = _track_turn_task(
+                                    asyncio.create_task(
+                                        _ask_specialist(
+                                            agent_id=sid,
+                                            user_message=effective_content,
+                                            history=stage_history,
+                                            language=language,
+                                            knowledge_enabled=knowledge_enabled,
+                                            knowledge_category=knowledge_category,
+                                            user_id=str(current_user.id),
+                                            session_id=session_id,
+                                            attachments=attachments,
+                                            attachment_context=attachment_context,
+                                            shared_evidence_context=shared_evidence_context,
+                                            session_agents=session_agents,
+                                            delegated_by_leader=True,
+                                        )
+                                    )
+                                )
+
+                            stage_results = await asyncio.gather(
+                                *[stage_tasks[sid] for sid in stage_agent_ids],
+                                return_exceptions=True,
                             )
-                            history.append(
-                                {
-                                    "speaker": specialist_name,
-                                    "role": "assistant",
-                                    "agent_id": sid,
-                                    "content": output,
-                                    "timestamp": datetime.utcnow().isoformat(),
-                                }
-                            )
-                            await websocket.send_json(
-                                {
-                                    "type": "agent_message",
-                                    "session_id": session_id,
-                                    "agent_id": sid,
-                                    "agent_name": specialist_name,
-                                    "content": output,
-                                    "mode": "delegated",
-                                }
-                            )
+                            for sid, result in zip(stage_agent_ids, stage_results):
+                                if isinstance(result, Exception):
+                                    raise RuntimeError(
+                                        f"Specialist '{sid}' execution failed: {result}"
+                                    ) from result
+                                specialist_name = _display_agent_name(sid, language)
+                                output = str(result.get("content", "")).strip()
+                                output_summary = str(result.get("summary", "")).strip()[:320]
+                                specialist_outputs.append(
+                                    {
+                                        "agent_id": sid,
+                                        "agent_name": specialist_name,
+                                        "content": compact_text(output, max_chars=1400),
+                                    }
+                                )
+                                evidence_packet = result.get("evidence_packet") or {}
+                                if isinstance(evidence_packet, dict) and evidence_packet.get("summary"):
+                                    shared_evidence_board.append(evidence_packet)
+                                    if len(shared_evidence_board) > 24:
+                                        del shared_evidence_board[:-24]
+                                history.append(
+                                    {
+                                        "speaker": specialist_name,
+                                        "role": "assistant",
+                                        "agent_id": sid,
+                                        "content": output,
+                                        "content_summary": output_summary,
+                                        "timestamp": datetime.utcnow().isoformat(),
+                                    }
+                                )
+                                await websocket.send_json(
+                                    {
+                                        "type": "agent_message",
+                                        "session_id": session_id,
+                                        "agent_id": sid,
+                                        "agent_name": specialist_name,
+                                        "content": output,
+                                        "mode": "delegated",
+                                        "stage_index": stage_index,
+                                        "stage_total": len(execution_stages),
+                                    }
+                                )
 
                         await websocket.send_json(
                             {
@@ -2971,6 +3517,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 "session_id": session_id,
                                 "from": "leader",
                                 "targets": delegated_ids,
+                                "stages": execution_stages,
                             }
                         )
 
@@ -2994,10 +3541,14 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 specialist_outputs=specialist_outputs,
                                 history=history,
                                 language=language,
+                                user_id=str(current_user.id),
+                                session_id=session_id,
                                 attachments=attachments,
                                 attachment_context=attachment_context,
                                 session_agents=session_agents,
                             )
+                        elif planned_leader_reply:
+                            leader_response = planned_leader_reply
                         else:
                             leader_response = await _leader_direct_reply(
                                 user_message=effective_content,
@@ -3005,6 +3556,8 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 language=language,
                                 knowledge_enabled=knowledge_enabled,
                                 knowledge_category=knowledge_category,
+                                user_id=str(current_user.id),
+                                session_id=session_id,
                                 attachments=attachments,
                                 attachment_context=attachment_context,
                                 session_agents=session_agents,
@@ -3016,6 +3569,10 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 "role": "assistant",
                                 "agent_id": "leader",
                                 "content": leader_response,
+                                "content_summary": compact_text(
+                                    leader_response.replace("\n", " "),
+                                    max_chars=280,
+                                ),
                                 "timestamp": datetime.utcnow().isoformat(),
                             }
                         )
@@ -3046,6 +3603,11 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect:
         logger.info(f"[ExpertChat] Client disconnected: {session_id}")
+        pending = [t for t in list(inflight_turn_tasks) if not t.done()]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
     except Exception as e:
         logger.exception(f"[ExpertChat] Fatal error: {e}")
         try:
@@ -3060,6 +3622,11 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
         except Exception:
             pass
     finally:
+        pending = [t for t in list(inflight_turn_tasks) if not t.done()]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
         active_chat_sessions.pop(session_id, None)
 
 @app.websocket("/ws/conversation")

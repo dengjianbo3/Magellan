@@ -589,8 +589,11 @@ import { API_BASE, apiUrl, wsUrl } from '@/config/api';
 import { marked } from 'marked';
 import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
 import { readJsonResponse } from '@/services/httpResponse';
+import { useAuthStore } from '@/stores/auth';
 
 const { t, locale } = useLanguage();
+const authStore = useAuthStore();
+let authRefreshInFlight = false;
 
 // Discussion state
 const isDiscussionActive = ref(false);
@@ -779,6 +782,7 @@ const tryResumeBackendActiveSession = async () => {
     sessionId.value = latest.session_id;
     discussionTopic.value = latest.topic || '';
     selectedExperts.value = [...discussionConfig.experts];
+    maxRounds.value = discussionConfig.maxRounds;
     useKnowledgeBase.value = !!discussionConfig.knowledge?.enabled;
     knowledgeCategory.value = discussionConfig.knowledge?.category || 'all';
     shouldReconnect = true;
@@ -879,6 +883,49 @@ const messagesContainer = ref(null);
 // WebSocket
 let ws = null;
 
+const parseJwtPayload = (token) => {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length < 2) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const normalized = base64 + '='.repeat((4 - (base64.length % 4 || 4)) % 4);
+    return JSON.parse(atob(normalized));
+  } catch {
+    return null;
+  }
+};
+
+const isAccessTokenExpired = (token, skewSeconds = 30) => {
+  const payload = parseJwtPayload(token);
+  if (!payload || typeof payload.exp !== 'number') return true;
+  const nowSec = Math.floor(Date.now() / 1000);
+  return payload.exp <= nowSec + skewSeconds;
+};
+
+const ensureValidAccessToken = async () => {
+  const token = localStorage.getItem('access_token') || '';
+  if (token && !isAccessTokenExpired(token)) return true;
+
+  if (authRefreshInFlight) {
+    for (let i = 0; i < 20; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const latest = localStorage.getItem('access_token') || '';
+      if (latest && !isAccessTokenExpired(latest)) return true;
+    }
+    return false;
+  }
+
+  authRefreshInFlight = true;
+  try {
+    const refreshed = await authStore.refreshAccessToken();
+    return Boolean(refreshed);
+  } catch {
+    return false;
+  } finally {
+    authRefreshInFlight = false;
+  }
+};
+
 // Computed
 const canStartDiscussion = computed(() => {
   return discussionTopic.value.trim().length > 0 && selectedExperts.value.length >= 2;
@@ -965,8 +1012,21 @@ const startDiscussion = async () => {
   connectWebSocket({ resume: false });
 };
 
-const connectWebSocket = ({ resume = false } = {}) => {
+const connectWebSocket = async ({ resume = false } = {}) => {
   try {
+    const tokenOk = await ensureValidAccessToken();
+    if (!tokenOk) {
+      isConnecting.value = false;
+      isReconnecting.value = false;
+      discussionStatus.value = 'completed';
+      messages.value.push({
+        id: Date.now(),
+        type: 'system',
+        content: '登录状态已过期，请重新登录后再发起头脑风暴。'
+      });
+      return;
+    }
+
     // Connect to backend roundtable WebSocket
     ws = new WebSocket(appendTokenToUrl(wsUrl('/ws/roundtable')));
 
@@ -1026,7 +1086,7 @@ const connectWebSocket = ({ resume = false } = {}) => {
       });
     };
 
-    ws.onclose = (event) => {
+    ws.onclose = async (event) => {
       console.log('[Roundtable] WebSocket closed:', event.code, event.reason);
       isConnecting.value = false;
       const closeReason = String(event.reason || '').toLowerCase();
@@ -1035,6 +1095,24 @@ const connectWebSocket = ({ resume = false } = {}) => {
         closeReason.includes('token') ||
         closeReason.includes('unauthorized')
       );
+
+      if (event?.code === 1008) {
+        const refreshed = await ensureValidAccessToken();
+        if (refreshed && shouldReconnect && discussionStatus.value === 'running') {
+          connectWebSocket({ resume: !!sessionId.value });
+          return;
+        }
+        shouldReconnect = false;
+        isReconnecting.value = false;
+        discussionStatus.value = 'completed';
+        messages.value.push({
+          id: Date.now(),
+          type: 'system',
+          content: '鉴权失败（登录已过期），请重新登录后再试。'
+        });
+        clearPersistedRoundtableSession();
+        return;
+      }
 
       // Auto-reconnect logic (unless explicitly closed by user or discussion completed)
       if (isAuthClose) {

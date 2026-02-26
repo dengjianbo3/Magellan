@@ -1,0 +1,16 @@
+agent_id: risk_assessor
+skills:
+  - skill_id: risk_matrix
+    title_zh: 风险矩阵
+    title_en: Risk Matrix
+    guidance_zh: 用“影响 x 概率”给出风险矩阵，区分短期触发风险与中长期结构性风险。
+    guidance_en: Build an impact-probability matrix and separate near-term trigger risks from structural risks.
+    triggers: ["风险", "风险矩阵", "risk", "probability", "impact"]
+    default: true
+  - skill_id: mitigation_playbook
+    title_zh: 缓释与应对方案
+    title_en: Mitigation Playbook
+    guidance_zh: 每个高风险项配套可执行缓释动作、监控指标和失效条件。
+    guidance_en: Attach actionable mitigation steps, monitoring signals, and invalidation conditions to each high risk.
+    triggers: ["缓释", "对冲", "止损", "mitigation", "hedge", "playbook"]
+

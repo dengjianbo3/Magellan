@@ -117,25 +117,42 @@ const form = reactive({
 
 const loading = ref(false)
 const error = ref('')
+const LOGIN_UI_TIMEOUT_MS = 12000
 
 async function handleLogin() {
+  if (loading.value) return
   loading.value = true
   error.value = ''
+  let uiTimeout = null
 
-  // Trim whitespace from email
-  const email = form.email.trim()
-  const password = form.password
+  try {
+    uiTimeout = setTimeout(() => {
+      if (loading.value) {
+        error.value = '登录请求超时，请检查网络后重试'
+        loading.value = false
+      }
+    }, LOGIN_UI_TIMEOUT_MS)
 
-  const result = await authStore.login(email, password)
+    // Trim whitespace from email
+    const email = form.email.trim()
+    const password = form.password
 
-  if (result.success) {
-    // Redirect to original destination or dashboard
-    const redirect = route.query.redirect || '/'
-    router.push(redirect)
-  } else {
-    error.value = result.error
+    const result = await authStore.login(email, password)
+
+    if (result.success) {
+      // Redirect to original destination or dashboard
+      const redirect = route.query.redirect || '/'
+      router.push(redirect)
+    } else {
+      error.value = result.error
+    }
+  } catch (err) {
+    error.value = err?.message || t('auth.loginFailed') || 'Login failed'
+  } finally {
+    if (uiTimeout) {
+      clearTimeout(uiTimeout)
+    }
+    loading.value = false
   }
-
-  loading.value = false
 }
 </script>

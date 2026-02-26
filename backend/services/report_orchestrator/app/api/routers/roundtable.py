@@ -13,6 +13,7 @@ from datetime import datetime
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from ...core.auth import CurrentUser, get_current_user
+from ...core.model_policy import resolve_model_for_role
 
 logger = logging.getLogger(__name__)
 
@@ -378,7 +379,7 @@ Please present in a professional and concise manner with clear logic.
             response = await client.post(
                 f"{_llm_gateway_url}/v1/chat/completions",
                 json={
-                    "model": "gpt-4",
+                    "model": resolve_model_for_role("roundtable_summary"),
                     "messages": [
                         {"role": "system", "content": "你是一位专业的会议记录员，擅长总结和提炼会议要点。"},
                         {"role": "user", "content": summary_prompt}
@@ -489,7 +490,8 @@ Please generate meeting minutes in the following format:
                             {"role": "model", "parts": ["好的，我会以专业、简洁的方式为您整理会议纪要。"]},
                             {"role": "user", "parts": [summary_prompt]}
                         ],
-                        "temperature": 0.3
+                        "temperature": 0.3,
+                        "model": resolve_model_for_role("roundtable_summary"),
                     }
                 ) as response:
                     async for line in response.aiter_lines():
