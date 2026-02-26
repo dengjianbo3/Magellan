@@ -1,0 +1,16 @@
+agent_id: team_evaluator
+skills:
+  - skill_id: founder_background
+    title_zh: 创始人与核心团队
+    title_en: Founder and Core Team
+    guidance_zh: 聚焦创始人履历、关键岗位能力匹配和组织完整性，优先给可验证事实而非主观赞美。
+    guidance_en: Focus on founder track record, key-role fit, and org completeness with verifiable facts over subjective praise.
+    triggers: ["团队", "创始人", "履历", "team", "founder", "background"]
+    default: true
+  - skill_id: execution_risk
+    title_zh: 执行能力与短板
+    title_en: Execution Capacity and Gaps
+    guidance_zh: 明确团队当前短板、对业务目标的影响，以及3个月内可执行的补强建议。
+    guidance_en: State execution gaps, impact on business goals, and practical 90-day reinforcement actions.
+    triggers: ["执行", "短板", "组织", "execution", "gap", "org"]
+

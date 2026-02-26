@@ -1,0 +1,16 @@
+agent_id: sentiment_analyst
+skills:
+  - skill_id: sentiment_regime
+    title_zh: 情绪区间与反身性
+    title_en: Sentiment Regime and Reflexivity
+    guidance_zh: 判断情绪处于恐慌/中性/贪婪何区间，并分析是否触发反身性放大。
+    guidance_en: Identify fear/neutral/greed regime and whether reflexive amplification is active.
+    triggers: ["情绪", "恐慌", "贪婪", "sentiment", "fear", "greed"]
+    default: true
+  - skill_id: crowd_positioning
+    title_zh: 拥挤度与共识偏差
+    title_en: Crowding and Consensus Bias
+    guidance_zh: 评估共识拥挤度和预期偏差，提示顺势延续或反转风险。
+    guidance_en: Evaluate consensus crowding and expectation bias to flag continuation vs reversal risk.
+    triggers: ["拥挤", "共识", "反转", "crowding", "consensus", "reversal"]
+

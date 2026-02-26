@@ -44,6 +44,10 @@ class SkillService:
         self._loaded = False
         self._manifests: Dict[str, AgentSkillManifest] = {}
 
+    @staticmethod
+    def _normalize_agent_id(agent_id: str) -> str:
+        return str(agent_id or "").strip().lower().replace("-", "_")
+
     def _load(self) -> None:
         self._loaded = True
         self._manifests = {}
@@ -57,7 +61,8 @@ class SkillService:
                 raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
                 manifest = self._parse_manifest(raw, fallback_agent_id=path.stem)
                 if manifest.cards:
-                    self._manifests[manifest.agent_id] = manifest
+                    normalized_id = self._normalize_agent_id(manifest.agent_id)
+                    self._manifests[normalized_id] = manifest
             except Exception:
                 # Keep runtime resilient: bad one file should not block all agents.
                 continue
@@ -91,7 +96,7 @@ class SkillService:
 
     def select_cards(self, agent_id: str, user_message: str, max_cards: int = 3) -> List[SkillCard]:
         self._ensure_loaded()
-        safe_agent_id = str(agent_id or "").strip()
+        safe_agent_id = self._normalize_agent_id(agent_id)
         manifest = self._manifests.get(safe_agent_id)
         if not manifest:
             record_cache_event(layer="skills_manifest", event="miss")

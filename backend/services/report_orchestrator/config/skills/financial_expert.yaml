@@ -1,0 +1,16 @@
+agent_id: financial_expert
+skills:
+  - skill_id: cashflow_quality
+    title_zh: 现金流与盈利质量
+    title_en: Cashflow and Earnings Quality
+    guidance_zh: 先看现金流质量、利润可持续性和资本结构，再输出结论与关键假设。
+    guidance_en: Assess cashflow quality, earnings sustainability, and capital structure before issuing conclusions.
+    triggers: ["财务", "现金流", "盈利", "finance", "cashflow", "earnings"]
+    default: true
+  - skill_id: valuation_band
+    title_zh: 估值区间与敏感性
+    title_en: Valuation Range and Sensitivity
+    guidance_zh: 输出估值区间而非单点估值，并标注关键变量变化对估值的敏感性。
+    guidance_en: Provide valuation ranges (not single-point values) and sensitivity to key assumptions.
+    triggers: ["估值", "PE", "DCF", "valuation", "multiple", "discount rate"]
+

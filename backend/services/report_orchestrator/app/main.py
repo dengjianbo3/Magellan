@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set
 
 # V2 models (keep for backward compatibility)
 from .models.dd_models import (
@@ -68,6 +68,11 @@ from .core.memory.governance import compact_text, make_provenance_metadata, shou
 from .core.model_policy import resolve_model_for_role
 from .core.orchestration_templates import get_orchestration_templates
 from .core.skills import build_skill_instruction_context
+from .core.expert_chat import (
+    build_execution_stages,
+    extract_specialist_response,
+    format_shared_evidence_context,
+)
 from .core.metrics import (
     record_cache_event,
     record_llm_context_usage,
@@ -118,11 +123,20 @@ EXPERT_CHAT_AGENT_TURN_TIMEOUT_SECONDS = int(
 EXPERT_CHAT_ROUTE_CACHE_ENABLED = os.getenv("EXPERT_CHAT_ROUTE_CACHE_ENABLED", "true").lower() == "true"
 EXPERT_CHAT_ROUTE_CACHE_TTL_SECONDS = max(5, int(os.getenv("EXPERT_CHAT_ROUTE_CACHE_TTL_SECONDS", "30")))
 EXPERT_CHAT_ROUTE_CACHE_MAX_ENTRIES = max(32, int(os.getenv("EXPERT_CHAT_ROUTE_CACHE_MAX_ENTRIES", "512")))
+EXPERT_CHAT_MAX_PARALLEL_SPECIALISTS = max(
+    1, int(os.getenv("EXPERT_CHAT_MAX_PARALLEL_SPECIALISTS", "2"))
+)
+EXPERT_CHAT_MEMORY_ASYNC_WRITE = os.getenv("EXPERT_CHAT_MEMORY_ASYNC_WRITE", "true").lower() == "true"
+EXPERT_CHAT_MEMORY_WRITE_CONCURRENCY = max(
+    1, int(os.getenv("EXPERT_CHAT_MEMORY_WRITE_CONCURRENCY", "4"))
+)
 
 # In-memory chat sessions (PoC scope)
 active_chat_sessions: Dict[str, Dict[str, Any]] = {}
 _leader_route_cache: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
 _leader_route_cache_lock = asyncio.Lock()
+_expert_chat_memory_write_sem = asyncio.Semaphore(EXPERT_CHAT_MEMORY_WRITE_CONCURRENCY)
+_expert_chat_memory_tasks: Set[asyncio.Task] = set()
 
 # --- Lifespan Handler for Kafka ---
 @asynccontextmanager
@@ -683,10 +697,46 @@ def _format_history_window(history: List[Dict[str, Any]], limit: int = 12) -> st
     window = history[-limit:] if history else []
     if not window:
         return "(empty)"
-    return "\n".join(
-        f"- [{msg.get('speaker', 'Unknown')}] {msg.get('content', '')[:800]}"
-        for msg in window
-    )
+    lines: List[str] = []
+    for msg in window:
+        speaker = msg.get("speaker", "Unknown")
+        role = str(msg.get("role", "")).lower()
+        if role == "assistant":
+            # Keep assistant context compact to reduce repeated token replay.
+            body = str(msg.get("content_summary") or msg.get("content") or "").strip()[:360]
+        else:
+            body = str(msg.get("content") or "").strip()[:700]
+        if not body:
+            continue
+        lines.append(f"- [{speaker}] {body}")
+    return "\n".join(lines) if lines else "(empty)"
+
+
+def _rebuild_shared_evidence_board_from_history(
+    history: List[Dict[str, Any]],
+    max_items: int = 16,
+) -> List[Dict[str, Any]]:
+    board: List[Dict[str, Any]] = []
+    for msg in history[-max_items:]:
+        if str(msg.get("role", "")).lower() != "assistant":
+            continue
+        summary = str(msg.get("content_summary") or "").strip()
+        if not summary:
+            content = str(msg.get("content") or "").strip().replace("\n", " ")
+            summary = compact_text(content, max_chars=220)
+        if not summary:
+            continue
+        board.append(
+            {
+                "agent_id": str(msg.get("agent_id") or "").strip(),
+                "agent_name": str(msg.get("speaker") or msg.get("agent_id") or "Expert").strip(),
+                "summary": summary,
+                "key_points": [],
+                "risks": [],
+                "confidence": None,
+            }
+        )
+    return board[-max_items:]
 
 
 async def _build_expert_chat_memory_context(
@@ -770,6 +820,24 @@ async def _persist_expert_chat_memory(
         )
     except Exception as e:
         logger.warning("[ExpertChat] memory persist failed for %s: %s", agent_id, e)
+
+
+def _schedule_expert_chat_memory_persist(**kwargs: Any) -> None:
+    async def _runner() -> None:
+        try:
+            async with _expert_chat_memory_write_sem:
+                await _persist_expert_chat_memory(**kwargs)
+        except Exception as e:
+            logger.warning("[ExpertChat] async memory persist task failed: %s", e)
+
+    try:
+        task = asyncio.create_task(_runner())
+    except RuntimeError:
+        # No running event loop: best effort fallback.
+        logger.warning("[ExpertChat] no running loop, skip async memory persist scheduling")
+        return
+    _expert_chat_memory_tasks.add(task)
+    task.add_done_callback(lambda t: _expert_chat_memory_tasks.discard(t))
 
 
 def _parse_json_object(text: str) -> Optional[Dict[str, Any]]:
@@ -920,6 +988,7 @@ def _build_agent_task_prompt(
     attachment_summary: str,
     attachment_context: str,
     memory_context: str = "",
+    shared_evidence_context: str = "",
     delegated_by_leader: bool = False,
     specialist_outputs: Optional[List[Dict[str, str]]] = None,
 ) -> str:
@@ -928,7 +997,8 @@ def _build_agent_task_prompt(
         user_message=user_message,
         language=language,
     )
-    history_text = _format_history_window(history, limit=8 if skill_context else 12)
+    history_limit = 6 if (shared_evidence_context or skill_context) else 10
+    history_text = _format_history_window(history, limit=history_limit)
     normalized_category = _normalize_expert_chat_knowledge_category(knowledge_category)
 
     specialist_outputs_text = ""
@@ -954,12 +1024,21 @@ def _build_agent_task_prompt(
             prompt += f"\n本轮能力卡片:\n{skill_context}\n"
         if memory_context:
             prompt += f"\n历史记忆参考:\n{memory_context}\n"
+        if shared_evidence_context:
+            prompt += f"\n共享证据板(优先复用，避免重复检索):\n{shared_evidence_context}\n"
         if specialist_outputs_text:
             prompt += f"\n专家阶段输出:\n{specialist_outputs_text}\n"
         prompt += (
             "\n请直接给出专业、可执行、基于证据的回答。"
             "如果信息不足，请明确缺口并给出下一步需要补充的数据。"
         )
+        if delegated_by_leader:
+            prompt += (
+                "\n你是被委派专家。请优先复用共享证据，只有在关键事实缺失时才额外检索。"
+                "结论请包含: 核心判断、关键依据、风险与失效条件。"
+                "在回答末尾附加 INTERNAL_EVIDENCE_PACKET JSON 块（summary/key_points/risks/confidence），"
+                "格式为 [INTERNAL_EVIDENCE_PACKET]{...}[/INTERNAL_EVIDENCE_PACKET]。"
+            )
         return prompt
 
     prompt = (
@@ -976,12 +1055,22 @@ def _build_agent_task_prompt(
         prompt += f"\nLoaded skill cards:\n{skill_context}\n"
     if memory_context:
         prompt += f"\nHistorical memory context:\n{memory_context}\n"
+    if shared_evidence_context:
+        prompt += f"\nShared evidence board (reuse first, avoid duplicate retrieval):\n{shared_evidence_context}\n"
     if specialist_outputs_text:
         prompt += f"\nSpecialist outputs:\n{specialist_outputs_text}\n"
     prompt += (
         "\nProvide a professional, evidence-based, and actionable response. "
         "If information is insufficient, clearly state what is missing and the next data needed."
     )
+    if delegated_by_leader:
+        prompt += (
+            "\nYou are a delegated specialist. Reuse shared evidence first and call new tools only for missing critical facts. "
+            "Include: thesis, supporting evidence, risk/invalidation. "
+            "Append an INTERNAL_EVIDENCE_PACKET JSON block at the end "
+            "using [INTERNAL_EVIDENCE_PACKET]{...}[/INTERNAL_EVIDENCE_PACKET] "
+            "with fields summary/key_points/risks/confidence."
+        )
     return prompt
 
 
@@ -1038,6 +1127,9 @@ def _sanitize_resume_history(raw_history: Any) -> List[Dict[str, Any]]:
         }
         if role == "assistant":
             msg["agent_id"] = str(item.get("agent_id") or "").strip()[:80]
+            summary = str(item.get("content_summary") or "").strip()
+            if summary:
+                msg["content_summary"] = summary[:400]
         cleaned.append(msg)
     return cleaned
 
@@ -1336,9 +1428,10 @@ async def _ask_specialist(
     session_id: str,
     attachments: Optional[List[Dict[str, Any]]] = None,
     attachment_context: str = "",
+    shared_evidence_context: str = "",
     session_agents: Optional[Dict[str, Any]] = None,
     delegated_by_leader: bool = False,
-) -> str:
+) -> Dict[str, Any]:
     attachment_note = _attachments_summary(attachments or [], language)
     specialist_agent = (session_agents or {}).get(agent_id)
     if specialist_agent is None:
@@ -1360,20 +1453,44 @@ async def _ask_specialist(
         attachment_summary=attachment_note,
         attachment_context=attachment_context,
         memory_context=memory_context,
+        shared_evidence_context=shared_evidence_context,
         delegated_by_leader=delegated_by_leader,
     )
-    answer = await _run_expert_chat_agent_once(specialist_agent, prompt)
-    if not answer:
+    raw_answer = await _run_expert_chat_agent_once(specialist_agent, prompt)
+    if not raw_answer:
         raise RuntimeError(f"ExpertChat specialist agent returned empty output: {agent_id}")
-    await _persist_expert_chat_memory(
-        user_id=user_id,
+    parsed = extract_specialist_response(
         agent_id=agent_id,
-        session_id=session_id,
-        user_message=user_message,
-        answer=answer,
-        delegated_by_leader=delegated_by_leader,
+        agent_name=_display_agent_name(agent_id, language),
+        raw_content=raw_answer,
+        language=language,
     )
-    return answer
+    answer = str(parsed.get("content") or raw_answer).strip()
+    if not answer:
+        answer = raw_answer.strip()
+    if EXPERT_CHAT_MEMORY_ASYNC_WRITE:
+        _schedule_expert_chat_memory_persist(
+            user_id=user_id,
+            agent_id=agent_id,
+            session_id=session_id,
+            user_message=user_message,
+            answer=answer,
+            delegated_by_leader=delegated_by_leader,
+        )
+    else:
+        await _persist_expert_chat_memory(
+            user_id=user_id,
+            agent_id=agent_id,
+            session_id=session_id,
+            user_message=user_message,
+            answer=answer,
+            delegated_by_leader=delegated_by_leader,
+        )
+    return {
+        "content": answer,
+        "summary": str(parsed.get("summary") or "")[:320],
+        "evidence_packet": parsed.get("evidence_packet") or {},
+    }
 
 
 async def _leader_direct_reply(
@@ -1414,14 +1531,24 @@ async def _leader_direct_reply(
     answer = await _run_expert_chat_agent_once(leader_agent, prompt)
     if not answer:
         raise RuntimeError("ExpertChat leader agent returned empty output")
-    await _persist_expert_chat_memory(
-        user_id=user_id,
-        agent_id="leader",
-        session_id=session_id,
-        user_message=user_message,
-        answer=answer,
-        delegated_by_leader=False,
-    )
+    if EXPERT_CHAT_MEMORY_ASYNC_WRITE:
+        _schedule_expert_chat_memory_persist(
+            user_id=user_id,
+            agent_id="leader",
+            session_id=session_id,
+            user_message=user_message,
+            answer=answer,
+            delegated_by_leader=False,
+        )
+    else:
+        await _persist_expert_chat_memory(
+            user_id=user_id,
+            agent_id="leader",
+            session_id=session_id,
+            user_message=user_message,
+            answer=answer,
+            delegated_by_leader=False,
+        )
     return answer
 
 
@@ -1463,14 +1590,24 @@ async def _leader_summarize_with_specialists(
     answer = await _run_expert_chat_agent_once(leader_agent, prompt)
     if not answer:
         raise RuntimeError("ExpertChat leader summarize returned empty output")
-    await _persist_expert_chat_memory(
-        user_id=user_id,
-        agent_id="leader",
-        session_id=session_id,
-        user_message=user_message,
-        answer=answer,
-        delegated_by_leader=False,
-    )
+    if EXPERT_CHAT_MEMORY_ASYNC_WRITE:
+        _schedule_expert_chat_memory_persist(
+            user_id=user_id,
+            agent_id="leader",
+            session_id=session_id,
+            user_message=user_message,
+            answer=answer,
+            delegated_by_leader=False,
+        )
+    else:
+        await _persist_expert_chat_memory(
+            user_id=user_id,
+            agent_id="leader",
+            session_id=session_id,
+            user_message=user_message,
+            answer=answer,
+            delegated_by_leader=False,
+        )
     return answer
 
 # --- WebSocket Workflow ---
@@ -2917,6 +3054,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
         "language": language,
         "knowledge_enabled": knowledge_enabled,
         "knowledge_category": knowledge_category,
+        "shared_evidence_board": [],
         "agents": {},
         "agent_pool_signature": "",
     }
@@ -2928,6 +3066,12 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
         user_id=str(current_user.id),
         session_id=session_id,
     )
+    inflight_turn_tasks: Set[asyncio.Task] = set()
+
+    def _track_turn_task(task: asyncio.Task) -> asyncio.Task:
+        inflight_turn_tasks.add(task)
+        task.add_done_callback(lambda t: inflight_turn_tasks.discard(t))
+        return task
 
     try:
         await websocket.send_json(
@@ -2978,6 +3122,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                             "language": language,
                             "knowledge_enabled": knowledge_enabled,
                             "knowledge_category": knowledge_category,
+                            "shared_evidence_board": _rebuild_shared_evidence_board_from_history(resume_history),
                             "agents": {},
                             "agent_pool_signature": "",
                         }
@@ -2993,6 +3138,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                         "language": language,
                         "knowledge_enabled": knowledge_enabled,
                         "knowledge_category": knowledge_category,
+                        "shared_evidence_board": [],
                         "agents": {},
                         "agent_pool_signature": "",
                     },
@@ -3054,10 +3200,16 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                     "language": language,
                     "knowledge_enabled": knowledge_enabled,
                     "knowledge_category": knowledge_category,
+                    "shared_evidence_board": [],
                     "agents": {},
                     "agent_pool_signature": "",
                 },
             )
+            session_state.setdefault("shared_evidence_board", [])
+            if not session_state.get("shared_evidence_board") and session_state.get("messages"):
+                session_state["shared_evidence_board"] = _rebuild_shared_evidence_board_from_history(
+                    session_state["messages"]
+                )
             session_state["language"] = language
             session_state["knowledge_enabled"] = knowledge_enabled
             session_state["knowledge_category"] = knowledge_category
@@ -3117,6 +3269,11 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
 
                     for agent_id in targets:
                         agent_name = _display_agent_name(agent_id, language)
+                        shared_evidence_board = session_state.get("shared_evidence_board", [])
+                        shared_evidence_context = format_shared_evidence_context(
+                            shared_evidence_board,
+                            language=language,
+                        )
                         await websocket.send_json(
                             {
                                 "type": "agent_thinking",
@@ -3139,8 +3296,12 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 attachment_context=attachment_context,
                                 session_agents=session_agents,
                             )
+                            response_summary = compact_text(
+                                response_text.replace("\n", " "),
+                                max_chars=280,
+                            )
                         else:
-                            response_text = await _ask_specialist(
+                            specialist_result = await _ask_specialist(
                                 agent_id=agent_id,
                                 user_message=effective_content,
                                 history=history,
@@ -3151,9 +3312,17 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 session_id=session_id,
                                 attachments=attachments,
                                 attachment_context=attachment_context,
+                                shared_evidence_context=shared_evidence_context,
                                 session_agents=session_agents,
                                 delegated_by_leader=False,
                             )
+                            response_text = str(specialist_result.get("content", "")).strip()
+                            response_summary = str(specialist_result.get("summary", "")).strip()[:320]
+                            evidence_packet = specialist_result.get("evidence_packet") or {}
+                            if isinstance(evidence_packet, dict) and evidence_packet.get("summary"):
+                                shared_evidence_board.append(evidence_packet)
+                                if len(shared_evidence_board) > 24:
+                                    del shared_evidence_board[:-24]
 
                         history.append(
                             {
@@ -3161,6 +3330,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 "role": "assistant",
                                 "agent_id": agent_id,
                                 "content": response_text,
+                                "content_summary": response_summary,
                                 "timestamp": datetime.utcnow().isoformat(),
                             }
                         )
@@ -3220,68 +3390,116 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                     ]
                     specialist_outputs: List[Dict[str, str]] = []
                     planned_leader_reply = str(plan.get("leader_reply", "")).strip()
+                    shared_evidence_board = session_state.get("shared_evidence_board", [])
 
                     if delegated_ids:
+                        execution_stages = build_execution_stages(
+                            delegated_ids,
+                            max_parallel=EXPERT_CHAT_MAX_PARALLEL_SPECIALISTS,
+                        )
                         await websocket.send_json(
                             {
                                 "type": "delegation_started",
                                 "session_id": session_id,
                                 "from": "leader",
                                 "targets": delegated_ids,
+                                "stages": execution_stages,
                                 "reason": plan.get("reason", "leader_decision"),
                             }
                         )
 
-                        for sid in delegated_ids:
-                            specialist_name = _display_agent_name(sid, language)
+                        for stage_index, stage_agent_ids in enumerate(execution_stages, start=1):
                             await websocket.send_json(
                                 {
-                                    "type": "agent_thinking",
+                                    "type": "delegation_stage",
                                     "session_id": session_id,
-                                    "agent_id": sid,
-                                    "agent_name": specialist_name,
+                                    "stage_index": stage_index,
+                                    "stage_total": len(execution_stages),
+                                    "targets": stage_agent_ids,
                                 }
                             )
-                            output = await _ask_specialist(
-                                agent_id=sid,
-                                user_message=effective_content,
-                                history=history,
+                            stage_history = list(history)
+                            shared_evidence_context = format_shared_evidence_context(
+                                shared_evidence_board,
                                 language=language,
-                                knowledge_enabled=knowledge_enabled,
-                                knowledge_category=knowledge_category,
-                                user_id=str(current_user.id),
-                                session_id=session_id,
-                                attachments=attachments,
-                                attachment_context=attachment_context,
-                                session_agents=session_agents,
-                                delegated_by_leader=True,
                             )
-                            specialist_outputs.append(
-                                {
-                                    "agent_id": sid,
-                                    "agent_name": specialist_name,
-                                    "content": output,
-                                }
+                            stage_tasks: Dict[str, asyncio.Task] = {}
+                            for sid in stage_agent_ids:
+                                specialist_name = _display_agent_name(sid, language)
+                                await websocket.send_json(
+                                    {
+                                        "type": "agent_thinking",
+                                        "session_id": session_id,
+                                        "agent_id": sid,
+                                        "agent_name": specialist_name,
+                                    }
+                                )
+                                stage_tasks[sid] = _track_turn_task(
+                                    asyncio.create_task(
+                                        _ask_specialist(
+                                            agent_id=sid,
+                                            user_message=effective_content,
+                                            history=stage_history,
+                                            language=language,
+                                            knowledge_enabled=knowledge_enabled,
+                                            knowledge_category=knowledge_category,
+                                            user_id=str(current_user.id),
+                                            session_id=session_id,
+                                            attachments=attachments,
+                                            attachment_context=attachment_context,
+                                            shared_evidence_context=shared_evidence_context,
+                                            session_agents=session_agents,
+                                            delegated_by_leader=True,
+                                        )
+                                    )
+                                )
+
+                            stage_results = await asyncio.gather(
+                                *[stage_tasks[sid] for sid in stage_agent_ids],
+                                return_exceptions=True,
                             )
-                            history.append(
-                                {
-                                    "speaker": specialist_name,
-                                    "role": "assistant",
-                                    "agent_id": sid,
-                                    "content": output,
-                                    "timestamp": datetime.utcnow().isoformat(),
-                                }
-                            )
-                            await websocket.send_json(
-                                {
-                                    "type": "agent_message",
-                                    "session_id": session_id,
-                                    "agent_id": sid,
-                                    "agent_name": specialist_name,
-                                    "content": output,
-                                    "mode": "delegated",
-                                }
-                            )
+                            for sid, result in zip(stage_agent_ids, stage_results):
+                                if isinstance(result, Exception):
+                                    raise RuntimeError(
+                                        f"Specialist '{sid}' execution failed: {result}"
+                                    ) from result
+                                specialist_name = _display_agent_name(sid, language)
+                                output = str(result.get("content", "")).strip()
+                                output_summary = str(result.get("summary", "")).strip()[:320]
+                                specialist_outputs.append(
+                                    {
+                                        "agent_id": sid,
+                                        "agent_name": specialist_name,
+                                        "content": compact_text(output, max_chars=1400),
+                                    }
+                                )
+                                evidence_packet = result.get("evidence_packet") or {}
+                                if isinstance(evidence_packet, dict) and evidence_packet.get("summary"):
+                                    shared_evidence_board.append(evidence_packet)
+                                    if len(shared_evidence_board) > 24:
+                                        del shared_evidence_board[:-24]
+                                history.append(
+                                    {
+                                        "speaker": specialist_name,
+                                        "role": "assistant",
+                                        "agent_id": sid,
+                                        "content": output,
+                                        "content_summary": output_summary,
+                                        "timestamp": datetime.utcnow().isoformat(),
+                                    }
+                                )
+                                await websocket.send_json(
+                                    {
+                                        "type": "agent_message",
+                                        "session_id": session_id,
+                                        "agent_id": sid,
+                                        "agent_name": specialist_name,
+                                        "content": output,
+                                        "mode": "delegated",
+                                        "stage_index": stage_index,
+                                        "stage_total": len(execution_stages),
+                                    }
+                                )
 
                         await websocket.send_json(
                             {
@@ -3289,6 +3507,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 "session_id": session_id,
                                 "from": "leader",
                                 "targets": delegated_ids,
+                                "stages": execution_stages,
                             }
                         )
 
@@ -3340,6 +3559,10 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 "role": "assistant",
                                 "agent_id": "leader",
                                 "content": leader_response,
+                                "content_summary": compact_text(
+                                    leader_response.replace("\n", " "),
+                                    max_chars=280,
+                                ),
                                 "timestamp": datetime.utcnow().isoformat(),
                             }
                         )
@@ -3370,6 +3593,11 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect:
         logger.info(f"[ExpertChat] Client disconnected: {session_id}")
+        pending = [t for t in list(inflight_turn_tasks) if not t.done()]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
     except Exception as e:
         logger.exception(f"[ExpertChat] Fatal error: {e}")
         try:
@@ -3384,6 +3612,11 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
         except Exception:
             pass
     finally:
+        pending = [t for t in list(inflight_turn_tasks) if not t.done()]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
         active_chat_sessions.pop(session_id, None)
 
 @app.websocket("/ws/conversation")

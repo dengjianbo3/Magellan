@@ -1,0 +1,16 @@
+agent_id: tech_specialist
+skills:
+  - skill_id: architecture_and_moat
+    title_zh: 技术架构与壁垒
+    title_en: Architecture and Technical Moat
+    guidance_zh: 先判断架构可扩展性与稳定性，再评估技术壁垒是否可持续。
+    guidance_en: Evaluate architecture scalability/reliability first, then whether the technical moat is durable.
+    triggers: ["技术架构", "壁垒", "可扩展", "architecture", "moat", "scalability"]
+    default: true
+  - skill_id: delivery_risk
+    title_zh: 研发交付风险
+    title_en: Delivery Risk
+    guidance_zh: 识别技术债、关键依赖和交付瓶颈，并给出优先级明确的修复路径。
+    guidance_en: Identify tech debt, key dependencies, and delivery bottlenecks with prioritized remediation steps.
+    triggers: ["技术债", "交付", "研发", "tech debt", "delivery", "roadmap"]
+

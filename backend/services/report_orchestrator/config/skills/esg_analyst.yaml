@@ -1,0 +1,16 @@
+agent_id: esg_analyst
+skills:
+  - skill_id: esg_materiality
+    title_zh: ESG实质性议题
+    title_en: ESG Materiality
+    guidance_zh: 聚焦对业务和估值有实质影响的ESG议题，避免列举式空泛陈述。
+    guidance_en: Focus on ESG issues materially affecting operations and valuation, avoiding checklist-style output.
+    triggers: ["ESG", "可持续", "环保", "社会", "治理", "sustainability"]
+    default: true
+  - skill_id: controversy_monitoring
+    title_zh: 争议事件与声誉风险
+    title_en: Controversy and Reputation Risk
+    guidance_zh: 识别争议事件、监管处罚和声誉风险，并给出跟踪指标与缓释建议。
+    guidance_en: Identify controversies, enforcement actions, and reputation risks with tracking indicators and mitigations.
+    triggers: ["争议", "处罚", "声誉", "controversy", "penalty", "reputation"]
+

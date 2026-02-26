@@ -1,0 +1,16 @@
+agent_id: quant_strategist
+skills:
+  - skill_id: signal_fusion
+    title_zh: 多因子信号融合
+    title_en: Multi-factor Signal Fusion
+    guidance_zh: 把技术、链上、宏观、情绪信号做一致性校验，输出可交易的综合信号。
+    guidance_en: Fuse technical, on-chain, macro, and sentiment signals into an actionable composite signal.
+    triggers: ["量化", "因子", "信号", "quant", "factor", "signal"]
+    default: true
+  - skill_id: position_sizing
+    title_zh: 仓位与执行参数
+    title_en: Position Sizing and Execution
+    guidance_zh: 明确仓位规模、进出场条件、回撤控制和失效条件，不给模糊建议。
+    guidance_en: Specify sizing, entry/exit criteria, drawdown limits, and invalidation rules with no vague guidance.
+    triggers: ["仓位", "回撤", "执行", "position", "drawdown", "execution"]
+
