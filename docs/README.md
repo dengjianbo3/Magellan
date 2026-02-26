@@ -23,6 +23,7 @@
 | Document | Description |
 |----------|-------------|
 | [FUTURE_ROADMAP.md](FUTURE_ROADMAP.md) | Development roadmap (Phase 0-4) |
+| [ATOMIC_AGENT_UNIFICATION_PLAN.md](ATOMIC_AGENT_UNIFICATION_PLAN.md) | Atomic-agent unification plan (P0/P1) |
 | [V4/](V4/) | V4 planning documents |
 
 ### Archived Documentation

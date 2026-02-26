@@ -9,6 +9,7 @@ from .message_bus import MessageBus
 import httpx
 import json
 from ..config_timeouts import HTTP_CLIENT_TIMEOUT
+from ..model_policy import resolve_model_for_role
 
 AGENT_MAX_SYSTEM_PROMPT_CHARS = max(1024, int(os.getenv("AGENT_MAX_SYSTEM_PROMPT_CHARS", "6000")))
 AGENT_MAX_HISTORY_MESSAGE_CHARS = max(512, int(os.getenv("AGENT_MAX_HISTORY_MESSAGE_CHARS", "2000")))
@@ -86,6 +87,20 @@ class Agent:
 
         # Agent current state
         self.status = "idle"  # idle, thinking, tool_using, speaking
+
+    def _resolve_request_model(self) -> Optional[str]:
+        """
+        Resolve model override for llm_gateway.
+        Returns None to use gateway default tier.
+        """
+        configured = str(self.model or "").strip()
+        lowered = configured.lower()
+        if lowered in {"pro", "flash"}:
+            return lowered
+        if configured.startswith("gemini-"):
+            return configured
+        is_leader = str(self.id).lower() == "leader" or str(self.name).lower() == "leader"
+        return resolve_model_for_role("leader_chat" if is_leader else "specialist_chat")
 
     def register_tool(self, tool: Tool):
         """
@@ -318,6 +333,9 @@ After tool execution, you will receive results to continue the discussion.
             "tool_choice": "auto",
             "temperature": self.temperature
         }
+        request_model = self._resolve_request_model()
+        if request_model:
+            request_data["model"] = request_model
 
         print(f"[Agent:{self.name}] Using Tool Calling with {len(tools_schema)} tools")
 
@@ -343,6 +361,9 @@ After tool execution, you will receive results to continue the discussion.
             "history": history,
             "temperature": self.temperature
         }
+        request_model = self._resolve_request_model()
+        if request_model:
+            request_data["model"] = request_model
 
         result = await self._execute_llm_request(
             f"{self.llm_gateway_url}/chat",

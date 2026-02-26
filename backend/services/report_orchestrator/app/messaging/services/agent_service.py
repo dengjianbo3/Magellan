@@ -16,8 +16,7 @@ from datetime import datetime
 from ..messages import AgentRequest, AgentResponse, AuditLogMessage
 from ..topics import MagellanTopics
 from ..kafka_client import get_kafka_client
-from ...core.agents import AgentRegistry, get_agent_registry
-from ...core.agents.base.interfaces import AgentInput, AgentConfig
+from ...core.agent_registry import AgentRegistry, get_registry
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +37,7 @@ class AgentMessageService:
     async def initialize(self):
         """初始化服务"""
         self._kafka_client = get_kafka_client()
-        self._agent_registry = get_agent_registry()
+        self._agent_registry = get_registry()
 
         # 订阅 Agent 响应 Topic
         if self._kafka_client.is_available:
@@ -152,28 +151,18 @@ class AgentMessageService:
     async def _execute_directly(self, request: AgentRequest) -> Dict[str, Any]:
         """直接执行 Agent（降级模式）"""
         try:
+            language = str((request.config or {}).get("language") or "zh")
             agent = self._agent_registry.create_agent(
                 request.agent_id,
+                language=language,
                 quick_mode=request.config.get("quick_mode", False)
             )
+            setattr(agent, "session_id", request.session_id)
+            setattr(agent, "atomic_agent_id", request.agent_id)
 
-            # Phase 7: 构建标准化 AgentInput
-            agent_config = AgentConfig(
-                quick_mode=request.config.get("quick_mode", False),
-                timeout=request.timeout_seconds or 120
-            )
-
-            agent_input = AgentInput(
-                session_id=request.session_id,
-                agent_id=request.agent_id,
-                target=request.inputs if isinstance(request.inputs, dict) else {"data": request.inputs},
-                context=request.config.get("context", {}),
-                config=agent_config,
-                request_id=request.correlation_id
-            )
-
-            # 执行分析 - Agent.analyze 期望 (target, context) 两个参数
-            result = await agent.analyze(agent_input.target, agent_input.context)
+            target = request.inputs if isinstance(request.inputs, dict) else {"data": request.inputs}
+            context = (request.config or {}).get("context", {})
+            result = await agent.analyze(target, context)
 
             # 将 AgentOutput 转换为字典 (确保完全序列化 for direct call)
             if hasattr(result, 'model_dump'):
@@ -222,28 +211,18 @@ class AgentMessageService:
         start_time = datetime.now()
 
         try:
+            language = str((message.config or {}).get("language") or "zh")
             agent = self._agent_registry.create_agent(
                 message.agent_id,
+                language=language,
                 quick_mode=message.config.get("quick_mode", False)
             )
+            setattr(agent, "session_id", message.session_id)
+            setattr(agent, "atomic_agent_id", message.agent_id)
 
-            # Phase 7: 构建标准化 AgentInput
-            agent_config = AgentConfig(
-                quick_mode=message.config.get("quick_mode", False),
-                timeout=message.timeout_seconds or 120
-            )
-
-            agent_input = AgentInput(
-                session_id=message.session_id,
-                agent_id=message.agent_id,
-                target=message.inputs if isinstance(message.inputs, dict) else {"data": message.inputs},
-                context=message.config.get("context", {}),
-                config=agent_config,
-                request_id=message.correlation_id
-            )
-
-            # 执行分析 - Agent.analyze 期望 (target, context) 两个参数
-            result = await agent.analyze(agent_input.target, agent_input.context)
+            target = message.inputs if isinstance(message.inputs, dict) else {"data": message.inputs}
+            context = (message.config or {}).get("context", {})
+            result = await agent.analyze(target, context)
 
             # 将 AgentOutput 转换为字典 (确保完全序列化 for Kafka)
             if hasattr(result, 'model_dump'):

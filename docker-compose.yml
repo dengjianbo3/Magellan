@@ -57,7 +57,7 @@ services:
     build: ./backend/services/report_orchestrator
     container_name: magellan-report_orchestrator
     ports:
-      - "8000:8000"
+      - "18000:8000"
     volumes:
       - ./backend/services/report_orchestrator/app:/usr/src/app/app
       - ./backend/services/report_orchestrator/config:/usr/src/app/config
@@ -144,7 +144,7 @@ services:
     env_file:
       - .env # Load environment variables from .env file
     ports:
-      - "8003:8003"
+      - "18003:8003"
     volumes:
       - ./backend/services/llm_gateway/app:/usr/src/app/app
     environment:
@@ -292,7 +292,7 @@ services:
       context: ./backend/services/auth_service
     container_name: magellan-auth_service
     ports:
-      - "8007:8007"
+      - "18007:8007"
     volumes:
       - ./backend/services/auth_service/app:/usr/src/app/app
     depends_on:

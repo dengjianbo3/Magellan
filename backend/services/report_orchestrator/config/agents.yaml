@@ -190,7 +190,7 @@ agents:
       quick: 35
       standard: 130
       comprehensive: 300
-    tags: [risk, compliance, due-diligence]
+    tags: [risk, compliance, due-diligence, trading]
 
   - agent_id: tech_specialist
     type: atomic
@@ -342,7 +342,7 @@ agents:
       quick: 35
       standard: 120
       comprehensive: 280
-    tags: [macro, economics, policy, inflation, cycle]
+    tags: [macro, economics, policy, inflation, cycle, trading]
 
   - agent_id: esg_analyst
     type: atomic
@@ -412,7 +412,7 @@ agents:
       quick: 30
       standard: 100
       comprehensive: 240
-    tags: [sentiment, news, social, consensus, flow]
+    tags: [sentiment, news, social, consensus, flow, trading]
 
   - agent_id: quant_strategist
     type: atomic
@@ -447,7 +447,7 @@ agents:
       quick: 35
       standard: 130
       comprehensive: 300
-    tags: [quant, factor, portfolio, risk-metrics, backtest]
+    tags: [quant, factor, portfolio, risk-metrics, backtest, trading]
     notes: |
       此Agent使用较低temperature (0.5) 确保数值计算的稳定性
 
@@ -557,7 +557,7 @@ agents:
       quick: 25
       standard: 80
       comprehensive: 180
-    tags: [onchain, blockchain, whale, defi, crypto]
+    tags: [onchain, blockchain, whale, defi, crypto, trading]
     notes: |
       此Agent主要用于:
       - 加密货币链上分析
@@ -599,7 +599,7 @@ agents:
       quick: 20
       standard: 60
       comprehensive: 120
-    tags: [contrarian, risk, consensus, anti-groupthink]
+    tags: [contrarian, risk, consensus, anti-groupthink, trading]
     notes: |
       此Agent用于:
       - 防止群体思维

@@ -119,6 +119,7 @@ class Meeting:
 
         # 发送初始消息
         await self.message_bus.send(initial_message)
+        run_error: Optional[Exception] = None
 
         try:
             # 主循环
@@ -171,6 +172,7 @@ class Meeting:
 
         except Exception as e:
             print(f"[Meeting] Error during execution: {e}")
+            run_error = e
             if self.agent_event_bus:
                 await self.agent_event_bus.publish_error(
                     agent_name="Meeting Orchestrator",
@@ -189,6 +191,9 @@ class Meeting:
                     agent_name="Meeting Orchestrator",
                     message=f"圆桌讨论结束，共进行{self.current_turn}轮对话"
                 )
+
+        if run_error is not None:
+            raise RuntimeError(f"Meeting execution failed: {str(run_error)}") from run_error
 
         # 生成讨论摘要，包含会议纪要
         summary = self._generate_summary()

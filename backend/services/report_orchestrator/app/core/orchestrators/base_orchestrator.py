@@ -6,6 +6,9 @@ BaseOrchestrator - 所有场景Orchestrator的基类
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+import asyncio
+import logging
+import os
 from fastapi import WebSocket
 
 from app.models.analysis_models import (
@@ -19,8 +22,12 @@ from app.models.analysis_models import (
 )
 from app.core.agent_registry import registry
 from app.core.session_store import SessionStore
+from app.core.memory import format_memory_hits, get_memory_store
+from app.core.memory.governance import compact_text, make_provenance_metadata, should_persist_memory
 # Phase 7: Import Agent Message Service for Kafka integration
 from app.messaging import get_agent_service
+
+logger = logging.getLogger(__name__)
 
 
 class BaseOrchestrator(ABC):
@@ -51,6 +58,8 @@ class BaseOrchestrator(ABC):
         
         # Initialize SessionStore
         self.session_store = SessionStore()
+        self.memory_store = get_memory_store()
+        self.memory_top_k = max(1, int(os.getenv("ATOMIC_MEMORY_TOP_K", "3")))
 
         # Phase 2: 从AgentRegistry加载workflow配置
         # Convert YAML-based workflow steps to old WorkflowStepTemplate format for backward compatibility
@@ -200,9 +209,7 @@ class BaseOrchestrator(ABC):
         await self._save_session(status_override="running")
 
         # 执行快速workflow
-        for step in self.workflow:
-            self.current_step_index = self.workflow.index(step)
-            await self._execute_step(step)
+        await self._execute_workflow_dag()
 
         # 生成快速判断结果
         quick_result = await self._synthesize_quick_judgment()
@@ -308,15 +315,7 @@ class BaseOrchestrator(ABC):
         await self._save_session(status_override="running")
 
         # 执行工作流
-        for step in self.workflow:
-            self.current_step_index = self.workflow.index(step)
-            await self._execute_step(step)
-
-            # 智能模式: 检查是否需要调整后续步骤
-            if self.decision_mode == DecisionMode.INTELLIGENT:
-                adjusted = await self._maybe_adjust_workflow(step)
-                if adjusted:
-                    await self._send_workflow_adjusted()
+        await self._execute_workflow_dag()
 
         # 生成最终报告
         await self._send_status("synthesizing", "正在生成分析报告...")
@@ -462,6 +461,90 @@ class BaseOrchestrator(ABC):
             await self._save_session(status_override="error", error=str(e))
             raise
 
+    async def _execute_workflow_dag(self) -> None:
+        """
+        Execute workflow by dependency graph:
+        - run independent steps in parallel
+        - block downstream steps when dependency fails
+        """
+        if not self.workflow:
+            return
+
+        templates = {t.id: t for t in self.workflow_templates}
+        step_by_id = {s.id: s for s in self.workflow}
+        ordered_ids = [s.id for s in self.workflow]
+
+        deps_map: Dict[str, set[str]] = {}
+        for step_id in ordered_ids:
+            template = templates.get(step_id)
+            deps = set()
+            if template:
+                deps = {
+                    str(dep)
+                    for dep in (template.inputs or [])
+                    if str(dep) in step_by_id and str(dep) != "all_previous"
+                }
+            deps_map[step_id] = deps
+
+        pending = set(ordered_ids)
+        completed: set[str] = set()
+        failed: Dict[str, str] = {}
+
+        while pending:
+            ready_ids: List[str] = []
+            blocked_ids: List[str] = []
+
+            for step_id in ordered_ids:
+                if step_id not in pending:
+                    continue
+                deps = deps_map.get(step_id, set())
+                failed_upstream = [dep for dep in deps if dep in failed]
+                if failed_upstream:
+                    blocked_ids.append(step_id)
+                    continue
+                if deps.issubset(completed):
+                    ready_ids.append(step_id)
+
+            for blocked_id in blocked_ids:
+                step = step_by_id[blocked_id]
+                step.status = "error"
+                step.error = f"Dependency failed: {', '.join(sorted(dep for dep in deps_map.get(blocked_id, set()) if dep in failed))}"
+                failed[blocked_id] = step.error
+                pending.remove(blocked_id)
+
+            if not ready_ids:
+                if pending:
+                    unresolved = ", ".join(sorted(pending))
+                    raise RuntimeError(f"Workflow deadlock or unresolved dependencies: {unresolved}")
+                break
+
+            batch_steps = [step_by_id[sid] for sid in ready_ids]
+            results = await asyncio.gather(
+                *(self._execute_step(step) for step in batch_steps),
+                return_exceptions=True,
+            )
+
+            for step, result in zip(batch_steps, results):
+                pending.discard(step.id)
+                if isinstance(result, Exception):
+                    failed[step.id] = str(result)
+                else:
+                    completed.add(step.id)
+
+            if failed:
+                for step_id in list(pending):
+                    deps = deps_map.get(step_id, set())
+                    if any(dep in failed for dep in deps):
+                        blocked = step_by_id[step_id]
+                        blocked.status = "error"
+                        blocked.error = (
+                            "Dependency failed: "
+                            + ", ".join(sorted(dep for dep in deps if dep in failed))
+                        )
+                        pending.discard(step_id)
+                details = "; ".join([f"{sid}: {err}" for sid, err in failed.items()])
+                raise RuntimeError(f"Workflow execution failed: {details}")
+
     def _get_step_template(self, step_id: str) -> Optional[WorkflowStepTemplate]:
         """获取步骤模板"""
         for template in self.workflow_templates:
@@ -496,6 +579,16 @@ class BaseOrchestrator(ABC):
         """
         # 构建Agent任务
         task = self._build_agent_task(step, template)
+        memory_context = await self._build_agent_memory_context(step, template, task)
+        workflow_context = {
+            "scenario": self.scenario.value,
+            "session_id": self.session_id,
+            "step_id": step.id,
+            "step_name": step.name,
+            "dependency_outputs": task.get("inputs", {}),
+            "previous_step_results": self.results,
+            "memory_context": memory_context,
+        }
 
         await self._send_agent_event(step, "thinking", f"{step.agent}正在分析...")
 
@@ -508,7 +601,8 @@ class BaseOrchestrator(ABC):
                 "quick_mode": template.quick_mode,
                 "scenario": self.scenario.value,
                 "depth": self.request.config.depth.value,
-                "language": getattr(self.request.config, 'language', 'zh')
+                "language": getattr(self.request.config, 'language', 'zh'),
+                "context": workflow_context,
             }
 
             # 调用Agent服务
@@ -527,26 +621,115 @@ class BaseOrchestrator(ABC):
                 # 记录执行方式 (kafka 或 direct)
                 via = response.get("via", "unknown")
                 print(f"[BaseOrchestrator] Agent {step.agent} executed via {via}")
+                await self._persist_agent_memory(step, template, task, result, memory_context)
                 return result
-            else:
-                # Agent执行失败
-                error_msg = response.get("error_message", "Unknown error")
-                print(f"[BaseOrchestrator] Agent {step.agent} failed: {error_msg}")
-                return {
-                    "error": error_msg,
-                    "agent": step.agent,
-                    "mock": True
-                }
+            # Agent执行失败 -> 显式失败，不做伪结果回退
+            error_msg = response.get("error_message", "Unknown error")
+            print(f"[BaseOrchestrator] Agent {step.agent} failed: {error_msg}")
+            raise RuntimeError(
+                f"Agent step failed: agent={step.agent}, step={step.id}, reason={error_msg}"
+            )
 
         except Exception as e:
             print(f"[BaseOrchestrator] Agent {step.agent} execution failed: {e}")
-            import traceback
-            traceback.print_exc()
-            return {
-                "error": str(e),
-                "agent": step.agent,
-                "mock": True  # 标记为降级的mock结果
-            }
+            raise RuntimeError(
+                f"Agent execution failed: agent={step.agent}, step={step.id}, reason={str(e)}"
+            ) from e
+
+    async def _build_agent_memory_context(
+        self,
+        step: WorkflowStep,
+        template: WorkflowStepTemplate,
+        task: Dict[str, Any],
+    ) -> str:
+        """Retrieve account-scoped agent memory and shared evidence for this step."""
+        try:
+            user_id = str(getattr(self.request, "user_id", "") or "anonymous")
+            query_parts = [
+                str(step.name or ""),
+                str(template.name or ""),
+                str(self.request.project_name or ""),
+                str(task.get("target") or ""),
+            ]
+            query = " ".join([p for p in query_parts if p]).strip()[:1200]
+            if not query:
+                return ""
+
+            agent_hits = await self.memory_store.query_agent_memory(
+                user_id=user_id,
+                agent_id=step.agent,
+                query=query,
+                top_k=self.memory_top_k,
+                collection="episodic",
+            )
+            shared_hits = await self.memory_store.query_shared_evidence(
+                user_id=user_id,
+                query=query,
+                top_k=max(1, self.memory_top_k - 1),
+            )
+
+            agent_text = format_memory_hits(agent_hits, max_items=self.memory_top_k, max_chars=1600)
+            shared_text = format_memory_hits(shared_hits, max_items=self.memory_top_k, max_chars=1200)
+            sections: List[str] = []
+            if agent_text:
+                sections.append("## Prior Agent Memory\n" + agent_text)
+            if shared_text:
+                sections.append("## Shared Evidence\n" + shared_text)
+            return "\n\n".join(sections)
+        except Exception as e:
+            logger.warning("[AtomicMemory] build context failed for agent=%s: %s", step.agent, e)
+            return ""
+
+    async def _persist_agent_memory(
+        self,
+        step: WorkflowStep,
+        template: WorkflowStepTemplate,
+        task: Dict[str, Any],
+        result: Dict[str, Any],
+        memory_context: str,
+    ) -> None:
+        """Persist latest agent output for future turns."""
+        try:
+            user_id = str(getattr(self.request, "user_id", "") or "anonymous")
+            target_text = str(task.get("target") or "")[:1500]
+            result_text = str(result)[:4500]
+            if not target_text and not result_text:
+                return
+
+            content = (
+                f"Step: {step.id} | Agent: {step.agent}\n"
+                f"Objective: {template.name}\n"
+                f"Target: {target_text}\n"
+                f"Result: {result_text}"
+            )
+            content = compact_text(content, max_chars=4200)
+            if not should_persist_memory(content):
+                return
+            metadata = make_provenance_metadata(
+                source="analysis_workflow",
+                session_id=self.session_id,
+                agent_id=step.agent,
+                extra={
+                    "scenario": self.scenario.value,
+                    "step_id": step.id,
+                    "step_name": step.name,
+                    "had_memory_context": bool(memory_context),
+                },
+            )
+            await self.memory_store.add_agent_memory(
+                user_id=user_id,
+                agent_id=step.agent,
+                content=content,
+                metadata=metadata,
+                collection="episodic",
+            )
+            await self.memory_store.add_shared_evidence(
+                user_id=user_id,
+                content=compact_text(f"[{step.agent}] {result_text}", max_chars=2600),
+                metadata=metadata,
+            )
+        except Exception as e:
+            logger.warning("[AtomicMemory] persist failed for agent=%s: %s", step.agent, e)
 
     def _build_agent_task(
         self,
@@ -621,6 +804,10 @@ class BaseOrchestrator(ABC):
 
     async def _send_step_start(self, step: WorkflowStep):
         if self.websocket:
+            try:
+                step_number = next(i for i, s in enumerate(self.workflow, start=1) if s.id == step.id)
+            except StopIteration:
+                step_number = self.current_step_index + 1
             await self.websocket.send_json({
                 "type": "step_start",
                 "session_id": self.session_id,
@@ -628,7 +815,7 @@ class BaseOrchestrator(ABC):
                 "data": {
                     "step_id": step.id,
                     "step_name": step.name,
-                    "step_number": self.current_step_index + 1,
+                    "step_number": step_number,
                     "total_steps": len(self.workflow),
                     "agent": step.agent
                 }

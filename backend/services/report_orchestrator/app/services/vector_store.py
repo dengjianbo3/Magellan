@@ -297,27 +297,85 @@ class VectorStoreService:
             if conditions:
                 query_filter = Filter(must=conditions)
 
-        # Search
-        results = self.client.search(
-            collection_name=self.collection_name,
-            query_vector=query_embedding,
+        # Search (compatible with old/new qdrant-client)
+        results = self._query_points_compat(
+            query_embedding=query_embedding,
             limit=limit,
             score_threshold=score_threshold,
-            query_filter=query_filter
+            query_filter=query_filter,
         )
 
         # Format results
         formatted_results = []
         for result in results:
+            payload = result.get("payload", {}) if isinstance(result, dict) else (result.payload or {})
+            row_id = result.get("id") if isinstance(result, dict) else result.id
+            row_score = result.get("score", 0.0) if isinstance(result, dict) else result.score
             formatted_results.append({
-                "id": result.id,
-                "score": result.score,
-                "text": result.payload.get("text", ""),
-                "metadata": {k: v for k, v in result.payload.items() if k not in ["text", "doc_id"]}
+                "id": row_id,
+                "score": row_score,
+                "text": payload.get("text", ""),
+                "metadata": {k: v for k, v in payload.items() if k not in ["text", "doc_id"]},
             })
 
         print(f"[VectorStore] Found {len(formatted_results)} results for query")
         return formatted_results
+
+    def _query_points_compat(
+        self,
+        query_embedding: List[float],
+        limit: int,
+        score_threshold: float,
+        query_filter: Optional[Filter],
+    ) -> List[Any]:
+        if hasattr(self.client, "query_points"):
+            try:
+                response = self.client.query_points(
+                    collection_name=self.collection_name,
+                    query=query_embedding,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                    query_filter=query_filter,
+                )
+            except TypeError:
+                response = self.client.query_points(
+                    collection_name=self.collection_name,
+                    query=query_embedding,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                    filter=query_filter,
+                )
+            return self._extract_rows(response)
+
+        if hasattr(self.client, "search"):
+            return self.client.search(
+                collection_name=self.collection_name,
+                query_vector=query_embedding,
+                limit=limit,
+                score_threshold=score_threshold,
+                query_filter=query_filter,
+            )
+
+        raise RuntimeError("Qdrant client does not support query_points/search APIs")
+
+    @staticmethod
+    def _extract_rows(response: Any) -> List[Any]:
+        if response is None:
+            return []
+        if isinstance(response, list):
+            return response
+        points = getattr(response, "points", None)
+        if points is not None:
+            return list(points)
+        result = getattr(response, "result", None)
+        if result is None:
+            return []
+        if isinstance(result, list):
+            return result
+        result_points = getattr(result, "points", None)
+        if result_points is not None:
+            return list(result_points)
+        return []
 
     def get_document(self, doc_id: str) -> Optional[Dict[str, Any]]:
         """

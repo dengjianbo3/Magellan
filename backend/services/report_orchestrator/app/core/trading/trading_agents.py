@@ -1,19 +1,17 @@
 """
-Trading Agents for Auto Trading System
+Trading Agents for Auto Trading System.
 
-Uses atomic agents from AgentRegistry and adds trading-specific tools.
-Following the atomic agent design principle:
-- Agents are defined in agents.yaml
-- This module only orchestrates them with trading tools
+Uses atomic agents from the unified AgentRegistry and avoids hard-coded
+scenario-specific expert lists.
 """
 
+import os
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.core.trading.trading_tools import TradingToolkit
 
 from app.core.agent_registry import get_registry
-from app.core.roundtable.investment_agents import create_leader
 import logging
 
 logger = logging.getLogger(__name__)
@@ -47,17 +45,29 @@ def create_trading_agents(toolkit: Optional["TradingToolkit"] = None) -> List[An
     registry = get_registry()
     agents = []
 
-    # Define which atomic agents to use for analysis
-    # These IDs must match agents.yaml
-    analysis_agent_ids = [
-        "technical_analyst",    # K-line, technical indicators
-        "macro_economist",      # Macro economic analysis
-        "sentiment_analyst",    # Market sentiment, fear/greed index
-        "onchain_analyst",      # On-chain data, whale monitoring
-        "contrarian_analyst",   # Challenge consensus, prevent groupthink
-        "risk_assessor",        # Risk assessment (analysis only)
-        "quant_strategist",     # Quantitative analysis
+    # Primary path: pull candidates from agents.yaml tags.
+    # Fallback path: curated IDs (still validated against registry).
+    trading_tags = [
+        t.strip()
+        for t in os.getenv("TRADING_AGENT_TAGS", "trading").split(",")
+        if t.strip()
     ]
+    tagged_agents = registry.list_agents(
+        agent_type="atomic",
+        scope="roundtable",
+        tags_any=trading_tags,
+    )
+    analysis_agent_ids = [str(cfg.get("agent_id")) for cfg in tagged_agents if cfg.get("agent_id")]
+    if not analysis_agent_ids:
+        analysis_agent_ids = [
+            "technical_analyst",
+            "macro_economist",
+            "sentiment_analyst",
+            "onchain_analyst",
+            "contrarian_analyst",
+            "risk_assessor",
+            "quant_strategist",
+        ]
 
     # Load analysis agents from registry
     for agent_id in analysis_agent_ids:
@@ -75,9 +85,9 @@ def create_trading_agents(toolkit: Optional["TradingToolkit"] = None) -> List[An
 
     # Create Leader agent for final decision and execution
     try:
-        leader = create_leader(language='en')
+        leader = registry.create_agent("leader", language="en")
         agents.append(leader)
-        logger.info("Created Leader agent for trading decision execution")
+        logger.info("Loaded Leader agent for trading decision execution")
     except Exception as e:
         logger.error(f"Failed to create Leader agent: {e}")
 

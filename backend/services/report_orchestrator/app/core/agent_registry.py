@@ -16,7 +16,7 @@ Agent和Workflow配置加载器
 
 import yaml
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Iterable
 from pathlib import Path
 import importlib
 
@@ -106,7 +106,13 @@ class AgentRegistry:
         """
         return self.agents_config.get(agent_id)
 
-    def list_agents(self, agent_type: Optional[str] = None, scope: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_agents(
+        self,
+        agent_type: Optional[str] = None,
+        scope: Optional[str] = None,
+        tags_any: Optional[Iterable[str]] = None,
+        enabled_only: bool = True,
+    ) -> List[Dict[str, Any]]:
         """
         列出所有Agent
 
@@ -119,6 +125,9 @@ class AgentRegistry:
         """
         agents = list(self.agents_config.values())
 
+        if enabled_only:
+            agents = [a for a in agents if bool(a.get("enabled", True))]
+
         # 按类型过滤
         if agent_type:
             agents = [a for a in agents if a.get('type') == agent_type]
@@ -127,11 +136,47 @@ class AgentRegistry:
         if scope:
             agents = [a for a in agents if scope in a.get('scope', [])]
 
+        if tags_any:
+            wanted = {str(tag).strip().lower() for tag in tags_any if str(tag).strip()}
+            if wanted:
+                agents = [
+                    a for a in agents
+                    if wanted.intersection(
+                        {
+                            str(tag).strip().lower()
+                            for tag in (a.get("tags") or [])
+                            if str(tag).strip()
+                        }
+                    )
+                ]
+
         return agents
 
     def get_atomic_agents(self) -> List[Dict[str, Any]]:
         """获取所有原子Agent"""
         return self.list_agents(agent_type='atomic')
+
+    def list_specialists(
+        self,
+        scope: Optional[str] = None,
+        tags_any: Optional[Iterable[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        List stable specialist candidates:
+        - all enabled atomic agents
+        - plus leader when in roundtable scope
+        """
+        specialists = self.list_agents(
+            agent_type="atomic",
+            scope=scope,
+            tags_any=tags_any,
+            enabled_only=True,
+        )
+        if scope == "roundtable":
+            leader_cfg = self.get_agent_config("leader")
+            if leader_cfg and bool(leader_cfg.get("enabled", True)):
+                specialists = [leader_cfg] + specialists
+        return specialists
 
     def create_agent(self, agent_id: str, **kwargs) -> Any:
         """

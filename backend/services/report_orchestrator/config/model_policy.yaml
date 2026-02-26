@@ -1,0 +1,6 @@
+roles:
+  leader_router: flash
+  leader_chat: flash
+  specialist_chat: default
+  roundtable_summary: pro
+  attachment_vision: flash
