@@ -6,7 +6,7 @@ FRONTEND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$FRONTEND_DIR"
 
-npm run build
+npx vite build --mode android
 # Android assets merge can fail if compressed sidecar files are included.
 find dist -type f \( -name '*.gz' -o -name '*.br' \) -delete
 npx cap sync android

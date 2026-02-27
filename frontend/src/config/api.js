@@ -13,13 +13,37 @@ function browserWsOrigin() {
   return `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
 }
 
+function trimTrailingSlash(value) {
+  return value.replace(/\/+$/, '');
+}
+
+function normalizeApiBase(raw) {
+  const value = trimTrailingSlash(raw.trim());
+  // Allow user-provided forms like http://host or http://host/api
+  return value.replace(/\/api$/i, '');
+}
+
+function normalizeAuthBase(raw) {
+  const value = trimTrailingSlash(raw.trim());
+  // Allow user-provided forms like http://host, http://host/api, http://host/api/auth
+  return value.replace(/\/api\/auth$/i, '').replace(/\/api$/i, '');
+}
+
+function normalizeWsBase(raw) {
+  return trimTrailingSlash(raw.trim());
+}
+
+function normalizeLlmBase(raw) {
+  return trimTrailingSlash(raw.trim());
+}
+
 // Base URLs (prefer same-origin by default; override with VITE_* when needed)
 // NOTE: Use ?? instead of || so an explicitly empty string remains meaningful.
-export const API_BASE = (import.meta.env.VITE_API_BASE ?? '').trim() || browserOrigin() || 'http://localhost:18000';
-export const AUTH_BASE = (import.meta.env.VITE_AUTH_BASE ?? '').trim() || browserOrigin() || 'http://localhost:18007';
-export const WS_BASE = (import.meta.env.VITE_WS_BASE ?? '').trim() || browserWsOrigin() || 'ws://localhost:18000';
-const defaultLlmBase = browserOrigin() ? `${browserOrigin()}/api/llm` : 'http://localhost:18003';
-export const LLM_BASE = (import.meta.env.VITE_LLM_BASE ?? '').trim() || defaultLlmBase;
+export const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE ?? '') || browserOrigin() || 'http://localhost';
+export const AUTH_BASE = normalizeAuthBase(import.meta.env.VITE_AUTH_BASE ?? '') || browserOrigin() || 'http://localhost';
+export const WS_BASE = normalizeWsBase(import.meta.env.VITE_WS_BASE ?? '') || browserWsOrigin() || 'ws://localhost';
+const defaultLlmBase = browserOrigin() ? `${browserOrigin()}/api/llm` : 'http://localhost/api/llm';
+export const LLM_BASE = normalizeLlmBase(import.meta.env.VITE_LLM_BASE ?? '') || defaultLlmBase;
 
 // Helper function to build API URL
 export function apiUrl(path) {

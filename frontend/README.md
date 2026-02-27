@@ -26,6 +26,8 @@ npm install @capacitor/core @capacitor/cli @capacitor/android
 npm run android:build-web
 ```
 
+This uses `vite --mode android` and reads `frontend/.env.android`.
+
 3. Run environment preflight:
 
 ```bash

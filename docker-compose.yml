@@ -305,6 +305,21 @@ services:
     networks:
       - default
 
+  # Unified local gateway (aligns local entry pattern with server-side Nginx)
+  gateway:
+    image: nginx:alpine
+    container_name: magellan-gateway
+    depends_on:
+      - report_orchestrator
+      - auth_service
+      - llm_gateway
+    ports:
+      - "${GATEWAY_PORT:-80}:80"
+    volumes:
+      - ./ops/nginx/local-gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - default
+
 volumes:
   postgres_data:
   uploads_volume:

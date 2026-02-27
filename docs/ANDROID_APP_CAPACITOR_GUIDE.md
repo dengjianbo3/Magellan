@@ -33,6 +33,8 @@ npm --prefix frontend run android:build-web
 - 清理 `dist` 中 `.gz/.br` 压缩旁路文件（避免 Android assets 重名冲突）
 - `cap sync android`
 
+默认会使用 `frontend/.env.android`（`vite --mode android`）进行打包配置。
+
 ## 5. 初始化 Capacitor（首次）
 
 ```bash
@@ -105,3 +107,4 @@ npm --prefix frontend run android:apk:debug
   ```
 - `gradlew` 失败但 Android Studio 能打开：优先在 Android Studio 里安装缺失 SDK/Build Tools。
 - WebSocket 在 App 内失败：确认后端地址为 `https/wss` 且证书有效。
+- 当前如果后端仅 `http/ws`，需确保 `AndroidManifest.xml` 已设置 `android:usesCleartextTraffic=\"true\"`（本仓库已处理）。

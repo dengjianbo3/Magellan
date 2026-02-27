@@ -84,23 +84,23 @@ export default defineConfig({
     proxy: {
       // Auth API -> auth_service
       '/api/auth': {
-        target: 'http://localhost:18007',
+        target: 'http://localhost',
         changeOrigin: true
       },
       // LLM Gateway API
       '/api/llm': {
-        target: 'http://localhost:18003',
+        target: 'http://localhost',
         changeOrigin: true
       },
       // All other API routes -> report_orchestrator
       '/api': {
-        target: 'http://localhost:18000',
+        target: 'http://localhost',
         changeOrigin: true,
         ws: true
       },
       // Non-/api websocket routes (e.g. /ws/roundtable)
       '/ws': {
-        target: 'ws://localhost:18000',
+        target: 'ws://localhost',
         changeOrigin: true,
         ws: true
       }
