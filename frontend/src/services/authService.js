@@ -5,7 +5,10 @@ import { AUTH_BASE } from '@/config/api'
 import { readJsonResponse } from '@/services/httpResponse'
 
 const AUTH_API = `${AUTH_BASE}/api/auth`
-const LOCAL_AUTH_FALLBACK_API = 'http://localhost:18007/api/auth'
+const SAME_ORIGIN_AUTH_FALLBACK_API =
+  typeof window !== 'undefined' && window.location
+    ? `${window.location.origin}/api/auth`
+    : ''
 const AUTH_REQUEST_TIMEOUT_MS = 15000
 
 class AuthService {
@@ -46,9 +49,14 @@ class AuthService {
         signal: controller.signal
       })
     } catch (error) {
-      if (allowFallback && requestBase !== LOCAL_AUTH_FALLBACK_API) {
-        // If the current auth base is unreachable, retry once against local auth service.
-        return this.request(endpoint, options, LOCAL_AUTH_FALLBACK_API, false)
+      const canUseFallback = import.meta.env.DEV && allowFallback
+      if (
+        canUseFallback &&
+        SAME_ORIGIN_AUTH_FALLBACK_API &&
+        requestBase !== SAME_ORIGIN_AUTH_FALLBACK_API
+      ) {
+        // Retry once against same-origin gateway (/api/auth) when available.
+        return this.request(endpoint, options, SAME_ORIGIN_AUTH_FALLBACK_API, false)
       }
       if (error?.name === 'AbortError') {
         throw new Error(`Auth ${endpoint} timeout after ${AUTH_REQUEST_TIMEOUT_MS / 1000}s`)

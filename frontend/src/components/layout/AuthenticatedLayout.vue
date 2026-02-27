@@ -1,5 +1,5 @@
 <template>
-  <div class="relative isolate flex h-screen overflow-hidden bg-background-dark">
+  <div class="relative isolate flex h-[100dvh] overflow-hidden bg-background-dark pt-[env(safe-area-inset-top,0px)] md:pt-0">
     <!-- Background decoration -->
     <div class="pointer-events-none absolute inset-0 z-0">
       <div class="absolute -left-40 -top-36 h-[420px] w-[420px] rounded-full bg-primary/10 blur-3xl"></div>
@@ -33,6 +33,7 @@
         <div class="absolute inset-y-0 left-0">
           <AppSidebar
             :active-tab="currentTab"
+            :mobile="true"
             @navigate="handleNavigate"
           />
         </div>
@@ -42,14 +43,14 @@
     <!-- Main Content Area -->
     <main class="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden">
       <button
-        class="absolute left-3 top-3 z-30 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/8 text-text-secondary transition-colors hover:text-text-primary md:hidden"
+        class="absolute left-3 top-2 z-30 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/8 text-text-secondary transition-colors hover:text-text-primary md:hidden"
         aria-label="Open navigation"
         @click="toggleMobileSidebar"
       >
         <span class="material-symbols-outlined">menu</span>
       </button>
 
-      <div class="flex-1 overflow-auto scroll-smooth px-4 pb-2 pt-4 md:px-8 md:pb-3 md:pt-4">
+      <div class="flex-1 overflow-auto scroll-smooth px-3 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-12 md:px-8 md:pb-3 md:pt-4">
         <div class="w-full h-full min-h-0">
           <router-view />
         </div>

@@ -198,18 +198,42 @@ app = FastAPI(
 
 # --- CORS config ---
 def _parse_cors_origins(raw: str):
+    mobile_and_local_defaults = [
+        "http://localhost",
+        "https://localhost",
+        "capacitor://localhost",
+        "ionic://localhost",
+        "http://localhost:5174",
+        "http://localhost:8081",
+    ]
+
     raw = (raw or "").strip()
     if not raw:
-        return ["http://localhost:5174", "http://localhost:8081"]
+        return mobile_and_local_defaults
     if raw == "*" or raw.lower() == "all":
         return ["*"]
-    parts = [p.strip() for p in raw.split(",")]
-    return [p for p in parts if p]
+    parts = []
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                parts = [str(p).strip() for p in parsed if str(p).strip()]
+        except Exception:
+            parts = []
+    if not parts:
+        parts = [p.strip() for p in raw.split(",") if p.strip()]
+
+    for origin in mobile_and_local_defaults:
+        if origin not in parts:
+            parts.append(origin)
+    return parts
 
 # --- CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_parse_cors_origins(os.getenv("CORS_ALLOW_ORIGINS", "")),
+    allow_origins=_parse_cors_origins(
+        os.getenv("CORS_ALLOW_ORIGINS") or os.getenv("CORS_ORIGINS", "")
+    ),
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers

@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell h-full min-h-0">
+  <div class="page-shell h-full min-h-0 overflow-hidden">
     <div class="page-header">
       <div>
         <h1 class="page-title page-title-gradient">{{ t('knowledge.title') }}</h1>
@@ -7,9 +7,9 @@
       </div>
     </div>
 
-    <div class="relative flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)] gap-6 lg:grid-cols-[18rem,minmax(0,1fr)]">
+    <div class="relative flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)] gap-3 md:gap-4 lg:gap-6 lg:grid-cols-[18rem,minmax(0,1fr)]">
       <!-- Left Sidebar: Categories -->
-      <div class="glass-panel flex min-h-[260px] flex-col rounded-2xl p-6 lg:h-full lg:sticky lg:top-0 lg:max-h-full lg:overflow-y-auto">
+      <div class="glass-panel hidden min-h-[260px] flex-col rounded-2xl p-6 lg:flex lg:h-full lg:sticky lg:top-0 lg:max-h-full lg:overflow-y-auto">
       <h3 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-6">{{ t('knowledge.newCategory') }}</h3>
       
       <div class="space-y-2 flex-1">
@@ -46,9 +46,9 @@
       </div>
 
       <!-- Main Content Area -->
-      <div class="flex h-full min-h-0 flex-col glass-panel rounded-2xl overflow-hidden">
+      <div class="min-w-0 flex h-full min-h-0 flex-col glass-panel rounded-2xl overflow-hidden">
         <!-- Header -->
-        <div class="border-b border-white/10 bg-white/5 p-6 md:p-8 backdrop-blur-md">
+        <div class="border-b border-white/10 bg-white/5 p-4 md:p-8 backdrop-blur-md">
           <div class="section-header !mb-0">
             <div>
               <p class="page-subtitle !mt-0">
@@ -92,6 +92,23 @@
               </button>
             </div>
           </div>
+
+          <div class="mt-3 flex items-center gap-2 overflow-x-auto pb-1 lg:hidden">
+            <button
+              v-for="category in categories"
+              :key="`mobile_cat_${category.id}`"
+              type="button"
+              @click="selectedCategory = category.id"
+              :class="[
+                'shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+                selectedCategory === category.id
+                  ? 'border-primary/30 bg-primary/15 text-primary'
+                  : 'border-white/10 bg-white/5 text-text-secondary'
+              ]"
+            >
+              {{ category.name }} · {{ category.count }}
+            </button>
+          </div>
         </div>
 
       <!-- Documents List -->
@@ -100,7 +117,43 @@
          <div class="absolute inset-0 bg-tech-grid opacity-20 pointer-events-none"></div>
 
         <div class="h-full overflow-y-auto p-4 md:p-6">
-          <div class="overflow-x-auto">
+          <div class="space-y-3 md:hidden">
+            <article
+              v-for="doc in searchMode ? searchResults : filteredDocuments"
+              :key="`mobile_${doc.id}`"
+              class="rounded-2xl border border-white/10 bg-white/6 p-3"
+            >
+              <div class="flex items-start gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+                  <span class="material-symbols-outlined text-base">{{ getFileIcon(doc.metadata?.file_type) }}</span>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-bold text-white">{{ doc.metadata?.title || doc.metadata?.filename || 'Untitled' }}</p>
+                  <p class="mt-1 line-clamp-2 text-xs text-text-secondary">{{ doc.text ? doc.text.substring(0, 88) + '...' : 'No description' }}</p>
+                </div>
+                <button
+                  type="button"
+                  class="rounded-lg p-2 text-text-secondary transition-colors hover:bg-rose-500/20 hover:text-rose-400"
+                  @click="confirmDelete(doc)"
+                  title="Delete"
+                >
+                  <span class="material-symbols-outlined text-lg">delete</span>
+                </button>
+              </div>
+              <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                <span class="rounded-md border border-white/10 bg-white/10 px-2 py-1 font-semibold uppercase tracking-wide text-text-primary">
+                  {{ doc.metadata?.file_type || 'UNK' }}
+                </span>
+                <span class="text-text-secondary">{{ formatFileSize(doc.text?.length) }}</span>
+                <span class="text-text-secondary">{{ formatDate(doc.metadata?.created_at) }}</span>
+                <span v-if="searchMode && doc.score" class="rounded-full border border-primary/30 bg-primary/20 px-2 py-1 font-semibold text-primary">
+                  {{ (doc.score * 100).toFixed(0) }}% Match
+                </span>
+              </div>
+            </article>
+          </div>
+
+          <div class="hidden overflow-x-auto md:block">
             <table class="min-w-[920px] w-full border-separate border-spacing-y-2">
             <thead>
               <tr>
@@ -157,7 +210,7 @@
           </div>
 
           <!-- Empty State -->
-          <div v-if="filteredDocuments.length === 0" class="flex flex-col items-center justify-center h-96">
+          <div v-if="(searchMode ? searchResults : filteredDocuments).length === 0" class="flex flex-col items-center justify-center h-96">
             <div class="w-24 h-24 rounded-full bg-white/5 flex items-center justify-center mb-6 animate-pulse">
                <span class="material-symbols-outlined text-6xl text-text-secondary/50">folder_open</span>
             </div>
@@ -449,7 +502,7 @@ const fetchDocuments = async () => {
     updateCategoryCounts();
   } catch (err) {
     console.error('Error fetching documents:', err);
-    error('Failed to load documents');
+    error(err?.message || 'Failed to load documents');
   } finally {
     loading.value = false;
   }
