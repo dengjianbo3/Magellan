@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell h-full min-h-0 overflow-hidden flex flex-col">
+  <div class="page-shell h-full min-h-0 overflow-hidden flex flex-col" :class="{ 'roundtable-mobile-immersive': useAppMobileLayout }">
     <div class="page-header">
       <div>
         <h1 class="page-title page-title-gradient">{{ t('roundtable.title') }}</h1>
@@ -249,7 +249,7 @@
     </div>
 
     <!-- Active Discussion View -->
-    <div v-else class="flex flex-1 min-h-0 flex-col gap-3 md:gap-6 xl:flex-row xl:gap-8">
+    <div v-else class="flex flex-1 min-h-0 flex-col gap-3 md:gap-6 xl:flex-row xl:gap-8" :class="useAppMobileLayout ? 'gap-2.5 overflow-x-hidden' : ''">
       <transition
         enter-active-class="transition duration-200 ease-out"
         enter-from-class="opacity-0"
@@ -264,7 +264,7 @@
             aria-label="Close discussion controls"
             @click="mobileControlPanelOpen = false"
           />
-          <div class="absolute inset-y-0 right-0 w-[86vw] max-w-[360px] overflow-y-auto rounded-l-3xl bg-surface/92 p-4 shadow-2xl backdrop-blur-xl">
+          <div class="absolute inset-y-0 right-0 flex w-[90vw] max-w-[380px] flex-col overflow-y-auto rounded-l-3xl bg-surface/92 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+0.6rem)] pt-[calc(env(safe-area-inset-top,0px)+0.55rem)] shadow-2xl backdrop-blur-xl">
             <div class="mb-4 flex items-center justify-between">
               <h3 class="text-sm font-bold uppercase tracking-wider text-text-secondary">{{ t('roundtable.discussion.progress') }}</h3>
               <button class="icon-btn h-9 w-9 border-0 bg-white/10 hover:bg-white/15" @click="mobileControlPanelOpen = false">
@@ -438,12 +438,12 @@
       </div>
 
       <!-- Main Discussion Area -->
-      <div class="relative flex flex-1 flex-col overflow-hidden rounded-2xl glass-panel">
+      <div class="relative flex flex-1 min-h-0 flex-col overflow-hidden overflow-x-hidden" :class="useAppMobileLayout ? 'rounded-2xl bg-transparent' : 'rounded-2xl glass-panel'">
         <!-- Discussion Header -->
-        <div class="px-4 py-4 border-b border-white/10 bg-white/5 backdrop-blur-md flex-shrink-0 md:px-8 md:py-5">
+        <div class="border-b border-white/10 bg-white/5 backdrop-blur-md flex-shrink-0" :class="useAppMobileLayout ? 'px-3 py-3' : 'px-4 py-4 md:px-8 md:py-5'">
           <div class="flex items-center justify-between">
             <div class="flex-1 min-w-0">
-              <h2 class="text-xl font-bold text-white truncate">{{ discussionTopic }}</h2>
+              <h2 class="truncate font-bold text-white" :class="useAppMobileLayout ? 'text-lg' : 'text-xl'">{{ discussionTopic }}</h2>
               <p class="text-xs text-text-secondary mt-1 font-mono flex items-center gap-2">
                   <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
                   {{ t('roundtable.discussion.startedAt') }} {{ startTime }}
@@ -477,7 +477,11 @@
         </div>
 
         <!-- Messages Container -->
-        <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth md:p-8 md:space-y-6">
+        <div
+          ref="messagesContainer"
+          class="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth"
+          :class="useAppMobileLayout ? 'p-2.5 space-y-3' : 'p-4 space-y-4 md:p-8 md:space-y-6'"
+        >
           <div v-for="message in messages" :key="message.id" class="animate-fade-in">
             <!-- System Message -->
             <div v-if="message.type === 'system'" class="flex justify-center py-2">
@@ -492,9 +496,9 @@
               <div class="w-10 h-10 rounded-xl bg-black/30 border border-white/10 flex items-center justify-center flex-shrink-0 shadow-lg self-start mt-1 md:h-12 md:w-12">
                 <span class="material-symbols-outlined text-primary text-xl md:text-2xl">{{ getExpertIcon(message.sender) }}</span>
               </div>
-              <div class="flex-1 max-w-4xl">
+              <div :class="useAppMobileLayout ? 'flex-1 min-w-0' : 'flex-1 max-w-4xl'">
                 <div class="flex items-baseline gap-3 mb-2">
-                  <span class="font-bold text-white text-base">{{ message.sender }}</span>
+                  <span class="font-bold text-white" :class="useAppMobileLayout ? 'text-sm' : 'text-base'">{{ message.sender }}</span>
                   <span class="text-xs text-text-secondary font-mono">{{ formatTime(message.timestamp) }}</span>
                   <span
                     v-if="message.message_type !== 'broadcast'"
@@ -503,7 +507,10 @@
                     {{ getMessageTypeLabel(message.message_type) }}
                   </span>
                 </div>
-                <div class="glass-card p-3 rounded-2xl rounded-tl-none border border-white/10 bg-white/5 text-text-primary leading-relaxed shadow-md relative overflow-hidden md:p-5">
+                <div
+                  class="glass-card rounded-2xl rounded-tl-none border border-white/10 bg-white/5 text-text-primary leading-relaxed shadow-md relative overflow-hidden"
+                  :class="useAppMobileLayout ? 'p-2.5' : 'p-3 md:p-5'"
+                >
                   <div
                     class="meeting-markdown max-w-none break-words"
                     :class="{ 'report-mode': isReportLike(message.content) }"
@@ -531,7 +538,7 @@
               <div class="w-10 h-10 rounded-xl bg-black/30 border border-white/10 flex items-center justify-center flex-shrink-0 shadow-lg self-start mt-1 opacity-70 md:h-12 md:w-12">
                 <span class="material-symbols-outlined text-primary text-xl animate-pulse md:text-2xl">psychology</span>
               </div>
-              <div class="flex-1 max-w-[600px]">
+              <div :class="useAppMobileLayout ? 'flex-1 min-w-0' : 'flex-1 max-w-[600px]'">
                 <div class="flex items-center gap-2 mb-2">
                   <span class="font-bold text-text-secondary text-sm">{{ message.agent }}</span>
                   <span class="text-xs text-primary animate-pulse">Thinking...</span>
@@ -565,7 +572,10 @@
 
             <!-- Summary / Meeting Minutes -->
             <div v-else-if="message.type === 'summary' || message.type === 'meeting_minutes'" class="my-8">
-              <div class="glass-panel border border-primary/30 bg-primary/5 rounded-2xl p-4 relative overflow-hidden md:p-8">
+              <div
+                class="glass-panel border border-primary/30 bg-primary/5 rounded-2xl relative overflow-hidden"
+                :class="useAppMobileLayout ? 'p-3.5' : 'p-4 md:p-8'"
+              >
                 <!-- Background decoration -->
                 <div class="absolute top-0 right-0 w-64 h-64 bg-primary/10 blur-[80px] rounded-full pointer-events-none"></div>
                 
@@ -690,7 +700,8 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onUnmounted, onMounted } from 'vue';
+import { ref, computed, nextTick, onUnmounted, onMounted, watch } from 'vue';
+import { Capacitor } from '@capacitor/core';
 import { useLanguage } from '../composables/useLanguage';
 import { getRoundtableAgents } from '../config/agents';
 import { API_BASE, apiUrl, wsUrl } from '@/config/api';
@@ -716,12 +727,20 @@ const isGeneratingSummary = ref(false); // Track summary generation
 const useKnowledgeBase = ref(false);
 const knowledgeCategory = ref('all');
 const mobileControlPanelOpen = ref(false);
+const isNativeApp = ref(false);
+const isMobileViewport = ref(false);
 let reconnectAttempts = 0;
-const maxReconnectAttempts = 5;
+const reconnectBaseDelayMs = 1500;
+let reconnectTimer = null;
+let reconnectWatchdogTimer = null;
+let heartbeatTimer = null;
+let suppressCloseHandlingOnce = false;
+let isUnmounted = false;
 let shouldReconnect = true; // Flag to control reconnection
 let discussionConfig = null; // Store config for reconnection
 const markdownRenderCache = new Map();
 const reportDetectCache = new Map();
+const useAppMobileLayout = computed(() => isNativeApp.value && isMobileViewport.value);
 
 // Human-in-the-Loop (HITL) state
 const sessionId = ref(''); // Session ID for HITL API calls
@@ -912,11 +931,100 @@ const tryResumeBackendActiveSession = async () => {
   }
 };
 
+const updateViewportMode = () => {
+  if (typeof window === 'undefined') return;
+  isMobileViewport.value = window.innerWidth < 768;
+};
+
+const updateNativeAppMode = () => {
+  try {
+    isNativeApp.value = Boolean(Capacitor?.isNativePlatform?.());
+  } catch {
+    isNativeApp.value = false;
+  }
+};
+
+const isWebSocketOpen = () => !!ws && ws.readyState === WebSocket.OPEN;
+
+const stopHeartbeat = () => {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+};
+
+const startHeartbeat = () => {
+  stopHeartbeat();
+  heartbeatTimer = window.setInterval(() => {
+    if (!isWebSocketOpen()) return;
+    try {
+      ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+    } catch {
+      // Ignore transient heartbeat errors.
+    }
+  }, 25000);
+};
+
+const clearReconnectTimer = () => {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+};
+
+const scheduleReconnect = () => {
+  if (isUnmounted || !shouldReconnect || discussionStatus.value !== 'running') return;
+  if (reconnectTimer) return;
+  reconnectAttempts += 1;
+  isReconnecting.value = true;
+  const delay = Math.min(20000, reconnectBaseDelayMs * Math.max(1, reconnectAttempts));
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = null;
+    connectWebSocket({ resume: !!sessionId.value });
+  }, delay);
+};
+
+const startReconnectWatchdog = () => {
+  stopReconnectWatchdog();
+  reconnectWatchdogTimer = window.setInterval(() => {
+    if (isUnmounted || !shouldReconnect || discussionStatus.value !== 'running') return;
+    if (isConnecting.value || isWebSocketOpen() || reconnectTimer) return;
+    connectWebSocket({ resume: !!sessionId.value });
+  }, 6000);
+};
+
+const stopReconnectWatchdog = () => {
+  if (reconnectWatchdogTimer) {
+    clearInterval(reconnectWatchdogTimer);
+    reconnectWatchdogTimer = null;
+  }
+};
+
+const handleBrowserOnline = () => {
+  if (isUnmounted || !shouldReconnect || discussionStatus.value !== 'running') return;
+  if (isConnecting.value || isWebSocketOpen()) return;
+  connectWebSocket({ resume: !!sessionId.value });
+};
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState !== 'visible') return;
+  if (isUnmounted || !shouldReconnect || discussionStatus.value !== 'running') return;
+  if (isConnecting.value || isWebSocketOpen()) return;
+  connectWebSocket({ resume: !!sessionId.value });
+};
+
 // Initialize selected experts on mount with defaults only
 onMounted(() => {
+  isUnmounted = false;
   selectedExperts.value = [...DEFAULT_EXPERTS];
+  updateNativeAppMode();
+  updateViewportMode();
+  window.addEventListener('resize', updateViewportMode);
   // Add click outside listener for dropdown
   document.addEventListener('click', handleClickOutside);
+  window.addEventListener('online', handleBrowserOnline);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  startReconnectWatchdog();
   const resumedFromLocal = tryResumePersistedRoundtableSession();
   if (!resumedFromLocal) {
     tryResumeBackendActiveSession();
@@ -925,7 +1033,12 @@ onMounted(() => {
 
 // Cleanup on unmount
 onUnmounted(() => {
+  isUnmounted = true;
+  window.removeEventListener('resize', updateViewportMode);
   document.removeEventListener('click', handleClickOutside);
+  window.removeEventListener('online', handleBrowserOnline);
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
+  stopReconnectWatchdog();
 });
 
 // History Reference Methods
@@ -975,7 +1088,6 @@ const formatHistoryDate = (dateString) => {
 };
 
 // Watch for useHistoryReference toggle
-import { watch } from 'vue';
 watch(useHistoryReference, (newVal) => {
   if (newVal && historyList.value.length === 0) {
     loadHistoryList();
@@ -1123,7 +1235,11 @@ const startDiscussion = async () => {
 };
 
 const connectWebSocket = async ({ resume = false } = {}) => {
+  if (isUnmounted || isConnecting.value || isWebSocketOpen()) return;
+  clearReconnectTimer();
+
   try {
+    isConnecting.value = true;
     const tokenOk = await ensureValidAccessToken();
     if (!tokenOk) {
       isConnecting.value = false;
@@ -1145,6 +1261,7 @@ const connectWebSocket = async ({ resume = false } = {}) => {
       isConnecting.value = false;
       isReconnecting.value = false;
       reconnectAttempts = 0;
+      startHeartbeat();
 
       let initialMessage;
       if (resume && sessionId.value) {
@@ -1189,16 +1306,19 @@ const connectWebSocket = async ({ resume = false } = {}) => {
     ws.onerror = (error) => {
       console.error('[Roundtable] WebSocket error:', error);
       isConnecting.value = false;
-      messages.value.push({
-        id: Date.now(),
-        type: 'system',
-        content: 'Connection error. Please verify backend services are running.'
-      });
     };
 
     ws.onclose = async (event) => {
       console.log('[Roundtable] WebSocket closed:', event.code, event.reason);
+      stopHeartbeat();
       isConnecting.value = false;
+      ws = null;
+
+      if (suppressCloseHandlingOnce) {
+        suppressCloseHandlingOnce = false;
+        return;
+      }
+
       const closeReason = String(event.reason || '').toLowerCase();
       const isAuthClose = event.code === 1008 && (
         closeReason.includes('auth') ||
@@ -1235,51 +1355,14 @@ const connectWebSocket = async ({ resume = false } = {}) => {
           content: 'Authentication expired. Please log in again.'
         });
         clearPersistedRoundtableSession();
-      } else if (shouldReconnect && event.code !== 1000 && discussionStatus.value === 'running') {
-        isReconnecting.value = true;
-        attemptReconnect();
-      } else if (discussionStatus.value === 'running' && event.code !== 1000) {
-        discussionStatus.value = 'completed';
-        messages.value.push({
-          id: Date.now(),
-          type: 'system',
-          content: 'Discussion ended'
-        });
-        clearPersistedRoundtableSession();
+      } else if (shouldReconnect && discussionStatus.value === 'running') {
+        scheduleReconnect();
       }
     };
   } catch (error) {
     console.error('[Roundtable] Error connecting to WebSocket:', error);
     isConnecting.value = false;
-  }
-};
-
-const attemptReconnect = () => {
-  if (reconnectAttempts < maxReconnectAttempts) {
-    reconnectAttempts++;
-    const delay = 2000 * reconnectAttempts; // Exponential backoff
-
-    console.log(`[Roundtable] Attempting to reconnect (${reconnectAttempts}/${maxReconnectAttempts}) in ${delay}ms...`);
-
-    messages.value.push({
-      id: Date.now(),
-      type: 'system',
-      content: `Connection lost, reconnecting (${reconnectAttempts}/${maxReconnectAttempts})...`
-    });
-
-    setTimeout(() => {
-      connectWebSocket({ resume: !!sessionId.value });
-    }, delay);
-  } else {
-    console.error('[Roundtable] Max reconnection attempts reached');
-    isReconnecting.value = false;
-    discussionStatus.value = 'completed';
-    messages.value.push({
-      id: Date.now(),
-      type: 'system',
-      content: 'Unable to reconnect to server. Discussion terminated.'
-    });
-    clearPersistedRoundtableSession();
+    scheduleReconnect();
   }
 };
 
@@ -1409,6 +1492,8 @@ const handleWebSocketMessage = (data) => {
     discussionStatus.value = 'completed';
     isDiscussionActive.value = false;
     shouldReconnect = false;
+    clearReconnectTimer();
+    stopHeartbeat();
     clearPersistedRoundtableSession();
     if (data.summary) {
       const summary = data.summary;
@@ -1457,6 +1542,8 @@ const handleWebSocketMessage = (data) => {
       isReconnecting.value = false;
       isDiscussionActive.value = false;
       discussionStatus.value = 'completed';
+      clearReconnectTimer();
+      stopHeartbeat();
       clearPersistedRoundtableSession();
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.close(1000, 'session-not-recoverable');
@@ -1469,10 +1556,13 @@ const handleWebSocketMessage = (data) => {
 const stopDiscussion = () => {
   console.log('[Roundtable] Stopping discussion...');
   shouldReconnect = false; // Disable auto-reconnect
+  clearReconnectTimer();
   mobileControlPanelOpen.value = false;
   if (ws) {
+    suppressCloseHandlingOnce = true;
     ws.close(1000, 'User stopped discussion'); // Normal closure
   }
+  stopHeartbeat();
   discussionStatus.value = 'completed';
   isReconnecting.value = false;
   clearPersistedRoundtableSession();
@@ -2124,8 +2214,11 @@ const submitIntervention = async () => {
 // Cleanup
 onUnmounted(() => {
   shouldReconnect = false;
+  clearReconnectTimer();
+  stopHeartbeat();
   if (ws) {
-    ws.close();
+    suppressCloseHandlingOnce = true;
+    ws.close(1000, 'view-unmounted');
   }
 });
 </script>
@@ -2222,6 +2315,10 @@ onUnmounted(() => {
   padding: 0.42rem 0.5rem;
   text-align: left;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  vertical-align: top;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  white-space: nowrap;
 }
 
 .meeting-markdown :deep(thead th) {
@@ -2241,5 +2338,13 @@ onUnmounted(() => {
 .meeting-markdown :deep(img) {
   max-width: 100%;
   height: auto;
+}
+
+@media (max-width: 767px) {
+  .meeting-markdown :deep(th),
+  .meeting-markdown :deep(td) {
+    font-size: 0.78rem;
+    padding: 0.35rem 0.45rem;
+  }
 }
 </style>
