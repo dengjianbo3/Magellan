@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell !h-auto min-h-full flex flex-col pb-2">
+  <div class="page-shell h-full min-h-0 flex flex-col pb-2">
     <div class="page-header">
       <div>
         <h1 class="page-title page-title-gradient">{{ t('sidebar.analysis') }}</h1>
@@ -90,12 +90,12 @@
     </div>
 
     <!-- Wizard Content Area -->
-    <div class="glass-panel relative flex-grow overflow-y-auto rounded-2xl p-4 min-h-0 md:min-h-[600px] md:p-8">
+    <div class="glass-panel relative flex-grow min-h-0 overflow-hidden rounded-2xl p-4 md:min-h-[600px] md:overflow-y-auto md:p-8">
       <!-- Background Decorative Elements -->
       <div class="absolute top-0 right-0 w-96 h-96 bg-primary/5 blur-[100px] rounded-full pointer-events-none"></div>
       <div class="absolute bottom-0 left-0 w-96 h-96 bg-accent-violet/5 blur-[100px] rounded-full pointer-events-none"></div>
 
-      <div class="relative z-10 h-full">
+      <div class="relative z-10 h-full overflow-y-auto pr-1 md:overflow-visible md:pr-0">
         <!-- Step 1: Scenario Selection -->
         <transition
           enter-active-class="transition duration-300 ease-out"
@@ -109,7 +109,7 @@
           <ScenarioSelection
             v-if="currentStep === 0"
             @scenario-selected="handleScenarioSelected"
-            class="h-full"
+            class="min-h-full"
           />
 
           <!-- Step 2: Unified Analysis Form (Target Input + Config) -->
@@ -118,7 +118,7 @@
             :scenario="selectedScenario"
             @analysis-start="handleAnalysisStart"
             @back="currentStep--"
-            class="h-full"
+            class="min-h-full"
           />
 
           <!-- Step 3: Analysis Progress -->
@@ -131,7 +131,7 @@
             :target-data="targetConfig"
             @analysis-complete="handleAnalysisComplete"
             @upgrade="handleUpgradeToStandard"
-            class="h-full"
+            class="min-h-full"
           />
         </transition>
       </div>

@@ -49,8 +49,9 @@ class AuthService {
         signal: controller.signal
       })
     } catch (error) {
+      const canUseFallback = import.meta.env.DEV && allowFallback
       if (
-        allowFallback &&
+        canUseFallback &&
         SAME_ORIGIN_AUTH_FALLBACK_API &&
         requestBase !== SAME_ORIGIN_AUTH_FALLBACK_API
       ) {

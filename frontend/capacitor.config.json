@@ -1,12 +1,9 @@
 {
   "appId": "com.magellan.ai",
-  "appName": "Magellan",
+  "appName": "magellan",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "android": {
-    "allowMixedContent": false
-  },
-  "server": {
-    "androidScheme": "https"
+    "allowMixedContent": true
   }
 }

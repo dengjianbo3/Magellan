@@ -100,19 +100,34 @@ def _parse_cors_allow_origins() -> List[str]:
       CORS_ALLOW_ORIGINS=["https://poc.example.com"]
       CORS_ALLOW_ORIGINS=*
     """
-    raw = (os.getenv("CORS_ALLOW_ORIGINS") or "http://localhost:5174,http://localhost:8081").strip()
+    mobile_and_local_defaults = [
+        "http://localhost",
+        "https://localhost",
+        "capacitor://localhost",
+        "ionic://localhost",
+        "http://localhost:5174",
+        "http://localhost:8081",
+    ]
+    raw = (os.getenv("CORS_ALLOW_ORIGINS") or os.getenv("CORS_ORIGINS") or "").strip()
     if not raw:
-        return []
+        return mobile_and_local_defaults
     if raw in ("*", "all"):
         return ["*"]
+    parsed_origins: List[str] = []
     if raw.startswith("["):
         try:
             data = json.loads(raw)
             if isinstance(data, list):
-                return [str(x).strip() for x in data if str(x).strip()]
+                parsed_origins = [str(x).strip() for x in data if str(x).strip()]
         except Exception:
             pass
-    return [o.strip() for o in raw.split(",") if o.strip()]
+    if not parsed_origins:
+        parsed_origins = [o.strip() for o in raw.split(",") if o.strip()]
+
+    for origin in mobile_and_local_defaults:
+        if origin not in parsed_origins:
+            parsed_origins.append(origin)
+    return parsed_origins
 
 app.add_middleware(
     CORSMiddleware,

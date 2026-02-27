@@ -1,5 +1,5 @@
 <template>
-  <div class="relative isolate flex h-[100dvh] overflow-hidden bg-background-dark">
+  <div class="relative isolate flex h-[100dvh] overflow-hidden bg-background-dark pt-[env(safe-area-inset-top,0px)] md:pt-0">
     <!-- Background decoration -->
     <div class="pointer-events-none absolute inset-0 z-0">
       <div class="absolute -left-40 -top-36 h-[420px] w-[420px] rounded-full bg-primary/10 blur-3xl"></div>
@@ -43,55 +43,30 @@
     <!-- Main Content Area -->
     <main class="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden">
       <button
-        class="absolute left-3 top-3 z-30 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/8 text-text-secondary transition-colors hover:text-text-primary md:hidden"
+        class="absolute left-3 top-2 z-30 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/8 text-text-secondary transition-colors hover:text-text-primary md:hidden"
         aria-label="Open navigation"
         @click="toggleMobileSidebar"
       >
         <span class="material-symbols-outlined">menu</span>
       </button>
 
-      <div
-        class="flex-1 overflow-auto scroll-smooth px-3 pt-14 md:px-8 md:pb-3 md:pt-4"
-        :class="keyboardOpen ? 'pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]' : 'pb-[calc(env(safe-area-inset-bottom,0px)+5.2rem)]'"
-      >
+      <div class="flex-1 overflow-auto scroll-smooth px-3 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-12 md:px-8 md:pb-3 md:pt-4">
         <div class="w-full h-full min-h-0">
           <router-view />
         </div>
       </div>
-
-      <nav
-        v-if="!keyboardOpen"
-        class="mobile-bottom-nav fixed inset-x-0 bottom-0 z-40 flex items-center justify-between border-t border-white/10 bg-background-dark/92 px-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.4rem)] pt-2 backdrop-blur-xl md:hidden"
-        aria-label="Mobile quick navigation"
-      >
-        <button
-          v-for="item in mobileQuickTabs"
-          :key="item.id"
-          type="button"
-          class="flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-1.5 py-1.5 text-[11px] font-medium transition-colors"
-          :class="currentTab === item.id ? 'text-primary bg-primary/15' : 'text-text-secondary hover:text-white'"
-          @click="handleNavigate(item.id)"
-        >
-          <span class="material-symbols-outlined text-[20px]">{{ item.icon }}</span>
-          <span class="truncate">{{ item.label }}</span>
-        </button>
-      </nav>
     </main>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { useLanguage } from '@/composables/useLanguage';
 import AppSidebar from './AppSidebar.vue';
 
 const router = useRouter();
 const route = useRoute();
-const { t } = useLanguage();
 const mobileSidebarOpen = ref(false);
-const keyboardOpen = ref(false);
-let detachViewportListener = null;
 
 // Computed properties
 const currentTab = computed(() => {
@@ -107,14 +82,6 @@ const currentTab = computed(() => {
   };
   return routeToTab[route.name] || 'chat';
 });
-
-const mobileQuickTabs = computed(() => [
-  { id: 'chat', icon: 'chat', label: t('sidebar.chat') },
-  { id: 'analysis', icon: 'analytics', label: t('sidebar.analysis') },
-  { id: 'roundtable', icon: 'group', label: t('sidebar.roundtable') },
-  { id: 'knowledge', icon: 'database', label: t('sidebar.knowledge') },
-  { id: 'settings', icon: 'settings', label: t('sidebar.settings') },
-]);
 
 const toggleMobileSidebar = () => {
   mobileSidebarOpen.value = !mobileSidebarOpen.value;
@@ -142,32 +109,4 @@ watch(
     mobileSidebarOpen.value = false;
   }
 );
-
-onMounted(() => {
-  const win = window;
-  const viewport = win.visualViewport;
-  if (!viewport) return;
-
-  const baselineHeight = viewport.height;
-  const threshold = Math.max(120, baselineHeight * 0.2);
-
-  const onViewportChange = () => {
-    const delta = baselineHeight - viewport.height;
-    keyboardOpen.value = delta > threshold;
-  };
-
-  viewport.addEventListener('resize', onViewportChange);
-  viewport.addEventListener('scroll', onViewportChange);
-  detachViewportListener = () => {
-    viewport.removeEventListener('resize', onViewportChange);
-    viewport.removeEventListener('scroll', onViewportChange);
-  };
-});
-
-onUnmounted(() => {
-  if (typeof detachViewportListener === 'function') {
-    detachViewportListener();
-    detachViewportListener = null;
-  }
-});
 </script>

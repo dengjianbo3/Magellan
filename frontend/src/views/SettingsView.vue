@@ -223,16 +223,20 @@
                   <p class="font-bold text-white mb-1">{{ t('settings.api.useProLabel') }}</p>
                   <p class="text-sm text-text-secondary">{{ t('settings.api.useProDesc') }}</p>
                 </div>
-                <label class="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    v-model="llmUsePro"
-                    :disabled="llmLoading || llmSaving"
-                    @change="updateLlmPreference"
-                    class="sr-only peer"
-                  >
-                  <div class="w-14 h-7 bg-black/40 peer-focus:outline-none rounded-full peer peer-disabled:opacity-50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-primary"></div>
-                </label>
+                <button
+                  type="button"
+                  role="switch"
+                  :aria-checked="llmUsePro ? 'true' : 'false'"
+                  :disabled="llmSaving"
+                  class="relative inline-flex h-7 w-14 items-center rounded-full bg-black/40 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                  :class="llmUsePro ? 'bg-primary' : 'bg-black/40'"
+                  @click="toggleLlmPreference"
+                >
+                  <span
+                    class="absolute top-[2px] left-[2px] h-6 w-6 rounded-full border border-gray-300 bg-white transition-transform"
+                    :class="llmUsePro ? 'translate-x-7 border-white' : 'translate-x-0'"
+                  ></span>
+                </button>
               </div>
             </div>
           </div>
@@ -370,6 +374,7 @@ const llmUsePro = ref(true);
 const llmCurrentModel = ref('gemini-3.1-pro-preview');
 const llmLoading = ref(false);
 const llmSaving = ref(false);
+const LLM_REQUEST_TIMEOUT_MS = 8000;
 
 const sections = computed(() => [
   { id: 'profile', name: t('settings.sections.profile'), icon: 'person' },
@@ -551,8 +556,10 @@ const loadLlmPreference = async () => {
   }
 
   llmLoading.value = true;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), LLM_REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(llmUrl('/gemini/model-tier'));
+    const response = await fetch(llmUrl('/gemini/model-tier'), { signal: controller.signal });
     const data = await readJsonResponse(response, 'Get Gemini model tier');
 
     if (typeof data?.use_pro === 'boolean') {
@@ -563,33 +570,53 @@ const loadLlmPreference = async () => {
       llmCurrentModel.value = data.model;
     }
   } catch (err) {
-    console.warn('[Settings] Failed to load Gemini model tier:', err);
+    if (err?.name === 'AbortError') {
+      console.warn('[Settings] Load Gemini model tier timeout');
+    } else {
+      console.warn('[Settings] Failed to load Gemini model tier:', err);
+    }
   } finally {
+    clearTimeout(timeoutId);
     llmLoading.value = false;
   }
 };
 
-const updateLlmPreference = async () => {
+const updateLlmPreference = async (nextValue, prevValue) => {
   llmSaving.value = true;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), LLM_REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(llmUrl('/gemini/model-tier'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ use_pro: llmUsePro.value })
+      body: JSON.stringify({ use_pro: nextValue }),
+      signal: controller.signal
     });
     const data = await readJsonResponse(response, 'Set Gemini model tier');
 
+    llmUsePro.value = typeof data?.use_pro === 'boolean' ? data.use_pro : nextValue;
     llmCurrentModel.value = data?.model || (llmUsePro.value ? 'gemini-3.1-pro-preview' : 'gemini-3-flash-preview');
     localStorage.setItem(LLM_USE_PRO_STORAGE_KEY, llmUsePro.value ? '1' : '0');
     success(t('settings.api.modelSwitchSuccess'));
   } catch (err) {
     console.error('[Settings] Failed to switch Gemini model tier:', err);
+    llmUsePro.value = prevValue;
+    localStorage.setItem(LLM_USE_PRO_STORAGE_KEY, prevValue ? '1' : '0');
     showError(t('settings.api.modelSwitchError', { error: err?.message || 'unknown error' }));
   } finally {
+    clearTimeout(timeoutId);
     llmSaving.value = false;
   }
+};
+
+const toggleLlmPreference = async () => {
+  if (llmSaving.value) return;
+  const prevValue = llmUsePro.value;
+  const nextValue = !prevValue;
+  llmUsePro.value = nextValue;
+  await updateLlmPreference(nextValue, prevValue);
 };
 
 const handleLanguageChange = (lang) => {

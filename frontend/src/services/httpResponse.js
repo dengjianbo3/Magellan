@@ -28,7 +28,7 @@ export async function readJsonResponse(response, requestLabel = 'Request') {
       }
     }
 
-    throw new Error(`${requestLabel} failed (${response.status}): ${detail}`)
+    throw new Error(`${requestLabel} failed (${response.status}) [${response.url}]: ${detail}`)
   }
 
   if (!isJson) {
@@ -39,7 +39,7 @@ export async function readJsonResponse(response, requestLabel = 'Request') {
       // ignore
     }
     throw new Error(
-      `${requestLabel} expected JSON but received "${contentType || 'unknown'}"${preview ? `: ${preview}` : ''}`
+      `${requestLabel} expected JSON from [${response.url}] but received "${contentType || 'unknown'}"${preview ? `: ${preview}` : ''}`
     )
   }
 

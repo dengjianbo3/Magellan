@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell h-full min-h-0">
+  <div class="page-shell h-full min-h-0 overflow-hidden">
     <div class="page-header">
       <div>
         <h1 class="page-title page-title-gradient">{{ t('knowledge.title') }}</h1>
@@ -7,7 +7,7 @@
       </div>
     </div>
 
-    <div class="relative flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)] gap-4 lg:gap-6 lg:grid-cols-[18rem,minmax(0,1fr)]">
+    <div class="relative flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)] gap-3 md:gap-4 lg:gap-6 lg:grid-cols-[18rem,minmax(0,1fr)]">
       <!-- Left Sidebar: Categories -->
       <div class="glass-panel hidden min-h-[260px] flex-col rounded-2xl p-6 lg:flex lg:h-full lg:sticky lg:top-0 lg:max-h-full lg:overflow-y-auto">
       <h3 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-6">{{ t('knowledge.newCategory') }}</h3>
@@ -46,9 +46,9 @@
       </div>
 
       <!-- Main Content Area -->
-      <div class="flex h-full min-h-0 flex-col glass-panel rounded-2xl overflow-hidden">
+      <div class="min-w-0 flex h-full min-h-0 flex-col glass-panel rounded-2xl overflow-hidden">
         <!-- Header -->
-        <div class="border-b border-white/10 bg-white/5 p-6 md:p-8 backdrop-blur-md">
+        <div class="border-b border-white/10 bg-white/5 p-4 md:p-8 backdrop-blur-md">
           <div class="section-header !mb-0">
             <div>
               <p class="page-subtitle !mt-0">
@@ -93,7 +93,7 @@
             </div>
           </div>
 
-          <div class="mt-4 flex items-center gap-2 overflow-x-auto pb-1 lg:hidden">
+          <div class="mt-3 flex items-center gap-2 overflow-x-auto pb-1 lg:hidden">
             <button
               v-for="category in categories"
               :key="`mobile_cat_${category.id}`"
@@ -502,7 +502,7 @@ const fetchDocuments = async () => {
     updateCategoryCounts();
   } catch (err) {
     console.error('Error fetching documents:', err);
-    error('Failed to load documents');
+    error(err?.message || 'Failed to load documents');
   } finally {
     loading.value = false;
   }

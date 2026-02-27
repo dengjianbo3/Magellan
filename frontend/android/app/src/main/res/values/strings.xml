@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Magellan</string>
-    <string name="title_activity_main">Magellan</string>
+    <string name="app_name">magellan</string>
+    <string name="title_activity_main">magellan</string>
     <string name="package_name">com.magellan.ai</string>
     <string name="custom_url_scheme">com.magellan.ai</string>
 </resources>
