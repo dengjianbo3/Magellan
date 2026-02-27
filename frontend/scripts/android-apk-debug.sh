@@ -24,7 +24,10 @@ fi
 export GRADLE_USER_HOME="$FRONTEND_DIR/.gradle"
 
 cd "$ANDROID_DIR"
-./gradlew assembleDebug
+# Ensure stale Gradle asset merge cache does not drop bundled web files.
+rm -rf "$ANDROID_DIR/app/build/intermediates/incremental/mergeDebugAssets" \
+       "$ANDROID_DIR/app/build/intermediates/merged_assets"
+./gradlew --rerun-tasks assembleDebug
 
 if [ ! -f "$DEFAULT_APK" ]; then
   echo "[android-apk-debug] ERROR: missing default APK: $DEFAULT_APK"
