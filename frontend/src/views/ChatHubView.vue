@@ -5,12 +5,78 @@
       <div class="absolute -right-20 bottom-16 h-72 w-72 rounded-full bg-accent-cyan/10 blur-3xl"></div>
     </div>
 
+    <transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div v-if="mobileHistoryOpen" class="fixed inset-0 z-[80] xl:hidden">
+        <button
+          class="absolute inset-0 bg-black/70 backdrop-blur-sm"
+          aria-label="Close session history"
+          @click="mobileHistoryOpen = false"
+        />
+        <aside class="absolute inset-y-0 right-0 w-[86vw] max-w-[360px] overflow-hidden rounded-l-3xl bg-surface/92 p-3 shadow-2xl backdrop-blur-xl">
+          <div class="mb-3 flex items-center justify-between gap-2">
+            <h3 class="section-title !mb-0">
+              <span class="material-symbols-outlined text-primary">history</span>
+              {{ t('chatHub.sessionHistory') }}
+            </h3>
+            <div class="flex items-center gap-1">
+              <button class="icon-btn h-9 w-9 border-0 bg-white/10 hover:bg-white/15" :title="t('chatHub.newSession')" @click="createNewSession">
+                <span class="material-symbols-outlined text-base">add</span>
+              </button>
+              <button class="icon-btn h-9 w-9 border-0 bg-white/10 hover:bg-white/15" :title="t('common.close') || 'Close'" @click="mobileHistoryOpen = false">
+                <span class="material-symbols-outlined text-base">close</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <div class="relative">
+              <input
+                v-model.trim="sessionSearchQuery"
+                type="text"
+                :placeholder="t('common.search') || 'Search...'"
+                class="w-full rounded-xl border border-white/10 bg-white/6 px-9 py-2 text-sm text-text-primary placeholder-text-secondary outline-none transition-colors focus:border-primary/40 focus:bg-white/10"
+              />
+              <span class="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-text-secondary">search</span>
+            </div>
+          </div>
+
+          <div class="h-[calc(100%-84px)] overflow-y-auto space-y-2 pr-1">
+            <div
+              v-for="session in visibleSessions"
+              :key="`mobile_${session.id}`"
+              class="rounded-2xl p-2 transition-colors"
+              :class="session.id === activeSessionId ? 'bg-primary/14' : 'bg-transparent hover:bg-white/6'"
+            >
+              <button
+                class="w-full rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white/5"
+                @click="setActiveSession(session.id)"
+              >
+                <p class="truncate text-sm font-semibold text-white">{{ session.title || t('chatHub.sessionUntitled') }}</p>
+                <p class="mt-1 line-clamp-2 text-xs text-text-secondary">{{ session.preview || t('chatHub.sessionPreviewNone') }}</p>
+                <p class="mt-2 text-[11px] text-text-tertiary">{{ formatSessionTime(session.updatedAt) }}</p>
+              </button>
+            </div>
+            <div v-if="filteredSessions.length === 0" class="rounded-xl bg-white/5 p-4 text-sm text-text-secondary">
+              {{ sessionSearchQuery ? noSessionSearchResultLabel : t('chatHub.emptyHistory') }}
+            </div>
+          </div>
+        </aside>
+      </div>
+    </transition>
+
     <div
       class="grid h-full flex-1 min-h-0 grid-cols-1 gap-2 xl:gap-1"
       :class="historyCollapsed ? 'xl:grid-cols-[minmax(0,1fr)_96px] xl:grid-rows-1' : 'xl:grid-cols-[minmax(0,1fr)_312px] xl:grid-rows-1'"
     >
       <aside
-        class="min-h-0 h-full flex flex-col overflow-hidden xl:col-start-2 xl:row-start-1 transition-all duration-200"
+        class="hidden min-h-0 h-full flex-col overflow-hidden xl:col-start-2 xl:row-start-1 xl:flex transition-all duration-200"
         :class="historyCollapsed ? 'rounded-2xl bg-transparent p-1' : 'rounded-3xl bg-transparent p-3'"
       >
         <div v-if="!historyCollapsed" class="mb-3 flex items-center justify-between gap-2">
@@ -123,7 +189,7 @@
         <div class="pointer-events-none absolute -right-8 top-10 h-36 w-36 rounded-full bg-primary/10 blur-3xl"></div>
         <div class="pointer-events-none absolute left-10 bottom-10 h-32 w-32 rounded-full bg-accent-cyan/10 blur-3xl"></div>
 
-        <div class="relative flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+        <div class="relative flex flex-wrap items-center justify-between gap-3 px-4 py-4 md:px-5">
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <span class="material-symbols-outlined text-primary">forum</span>
@@ -132,6 +198,14 @@
             <p class="mt-1 truncate text-xs text-text-secondary">{{ sessionId || t('chatHub.system.sessionPending') }}</p>
           </div>
           <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="icon-btn border-0 bg-white/10 hover:bg-white/15 xl:hidden"
+              :title="t('chatHub.sessionHistory')"
+              @click="mobileHistoryOpen = true"
+            >
+              <span class="material-symbols-outlined text-base">history</span>
+            </button>
             <div
               class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs"
               :class="connected ? 'text-emerald-300 bg-emerald-500/12' : 'text-amber-300 bg-amber-500/12'"
@@ -145,7 +219,7 @@
           </div>
         </div>
 
-        <div ref="messagesContainer" class="relative flex-1 overflow-y-auto px-5 py-3 space-y-4">
+        <div ref="messagesContainer" class="relative flex-1 overflow-y-auto px-4 py-3 space-y-4 md:px-5">
           <div v-if="messages.length === 0" class="flex min-h-full items-center justify-center py-12">
             <div class="max-w-xl text-center">
               <p class="text-2xl font-semibold tracking-tight text-white md:text-4xl">{{ t('chatHub.emptyState.title') }}</p>
@@ -282,7 +356,7 @@
           </div>
         </div>
 
-        <div class="relative px-4 pb-4 pt-2">
+        <div class="relative px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-2 md:px-4 md:pb-4">
           <div v-if="selectedAttachments.length" class="mb-3 flex flex-wrap gap-2">
             <div
               v-for="att in selectedAttachments"
@@ -299,8 +373,8 @@
             </div>
           </div>
 
-          <div ref="composerRef" class="relative rounded-[28px] bg-black/34 p-3 shadow-[0_10px_28px_rgba(0,0,0,0.22)] backdrop-blur-xl">
-            <div class="mb-2 flex flex-wrap items-center gap-2">
+          <div ref="composerRef" class="relative rounded-[24px] bg-black/34 p-3 shadow-[0_10px_28px_rgba(0,0,0,0.22)] backdrop-blur-xl md:rounded-[28px]">
+            <div class="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
               <span class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">{{ t('chatHub.composer.specialists') }}</span>
               <button
                 v-for="agent in quickMentionAgents"
@@ -493,6 +567,7 @@ const agents = ref([]);
 const thinkingAgentIds = ref([]);
 const selectedAttachments = ref([]);
 const showCollabPanel = ref(false);
+const mobileHistoryOpen = ref(false);
 const knowledgeEnabled = ref(false);
 const knowledgeCategory = ref('all');
 const historyCollapsed = ref(false);
@@ -967,6 +1042,7 @@ function setActiveSession(targetId) {
   mentionState.value = null;
   mentionActiveIndex.value = 0;
   showCollabPanel.value = false;
+  mobileHistoryOpen.value = false;
   reconnectCurrentSession();
   scrollToBottom();
 }
@@ -981,6 +1057,7 @@ function createNewSession() {
   mentionState.value = null;
   mentionActiveIndex.value = 0;
   showCollabPanel.value = false;
+  mobileHistoryOpen.value = false;
   showAllSessions.value = false;
   reconnectCurrentSession();
 }

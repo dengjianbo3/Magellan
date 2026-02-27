@@ -6,9 +6,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "android:preflight": "./scripts/android-preflight.sh",
+    "android:sync": "npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:build-web": "./scripts/android-build-web.sh",
+    "android:apk:debug": "./scripts/android-apk-debug.sh"
   },
   "dependencies": {
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
     "chart.js": "^4.5.1",
     "marked": "^17.0.0",
     "pinia": "^3.0.4",

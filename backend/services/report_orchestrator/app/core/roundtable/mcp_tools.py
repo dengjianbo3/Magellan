@@ -611,6 +611,14 @@ def create_mcp_tools_for_agent(agent_role: str) -> List[Tool]:
         tools.append(DefiLlamaTVLTool())       # 免费: DeFi TVL 数据
         tools.append(OnchainDataTool())        # 免费: 统一链上数据
 
+    elif agent_role in ["ContrarianAnalyst", "Contrarian Analyst", "逆向分析师"]:
+        # 逆向分析师用于反共识验证：需要价格、情绪、链上和风险交叉证据
+        tools.append(YahooFinanceTool())       # 市场价格/波动/估值锚点
+        tools.append(SentimentMonitorTool())   # 舆情拥挤度和叙事方向
+        tools.append(FearGreedIndexTool())     # 情绪极值（常见反向信号）
+        tools.append(OnchainDataTool())        # 资金行为和链上验证
+        tools.append(RiskScoringTool())        # 风险因子量化压力测试
+
     # 知识库工具 - 所有专家都可以使用
     tools.append(KnowledgeBaseTool())
 

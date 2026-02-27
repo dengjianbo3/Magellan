@@ -70,6 +70,11 @@ AGENT_TOOL_PROFILES = {
         "specialized": ["get_kline", "get_technical_indicators"],
         "optional": []
     },
+    "ContrarianAnalyst": {
+        "base": ["web_search"],
+        "specialized": ["get_fear_greed_index", "get_onchain_data"],
+        "optional": ["yahoo_finance"]
+    },
     
     # Decision agents (Leader, RiskAssessor, TradeExecutor)
     "Leader": {

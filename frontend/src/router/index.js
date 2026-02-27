@@ -4,17 +4,17 @@ import { useAuthStore } from '@/stores/auth';
 // Import layouts
 import AuthenticatedLayout from '@/components/layout/AuthenticatedLayout.vue';
 
-// Import views
-import ChatHubView from '@/views/ChatHubView.vue';
-import AnalysisWizardView from '@/views/AnalysisWizardView.vue';
-import ReportsView from '@/views/ReportsView.vue';
-import RoundtableView from '@/views/RoundtableView.vue';
-import AgentsView from '@/views/AgentsView.vue';
-import KnowledgeView from '@/views/KnowledgeView.vue';
-import SettingsView from '@/views/SettingsView.vue';
-import AutoTradingView from '@/views/AutoTradingView.vue';
-import LoginView from '@/views/LoginView.vue';
-import RegisterView from '@/views/RegisterView.vue';
+// Route-level lazy loading improves mobile first-load performance.
+const ChatHubView = () => import('@/views/ChatHubView.vue');
+const AnalysisWizardView = () => import('@/views/AnalysisWizardView.vue');
+const ReportsView = () => import('@/views/ReportsView.vue');
+const RoundtableView = () => import('@/views/RoundtableView.vue');
+const AgentsView = () => import('@/views/AgentsView.vue');
+const KnowledgeView = () => import('@/views/KnowledgeView.vue');
+const SettingsView = () => import('@/views/SettingsView.vue');
+const AutoTradingView = () => import('@/views/AutoTradingView.vue');
+const LoginView = () => import('@/views/LoginView.vue');
+const RegisterView = () => import('@/views/RegisterView.vue');
 
 const routes = [
   // Public routes (no authentication required)

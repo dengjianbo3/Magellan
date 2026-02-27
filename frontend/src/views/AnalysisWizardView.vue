@@ -18,7 +18,25 @@
     </button>
 
     <!-- Wizard Steps Indicator -->
-    <div class="glass-panel rounded-2xl p-6 md:p-8 relative overflow-hidden">
+    <div class="glass-panel rounded-2xl p-4 relative overflow-hidden md:hidden">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs uppercase tracking-wider text-text-secondary">{{ t('analysisWizard.analyzing') || 'Progress' }}</p>
+          <p class="mt-1 text-sm font-bold text-white">{{ steps[currentStep].label }}</p>
+        </div>
+        <div class="rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary">
+          {{ currentStep + 1 }} / {{ steps.length }}
+        </div>
+      </div>
+      <div class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+        <div
+          class="h-full rounded-full bg-gradient-to-r from-primary to-accent-cyan transition-all duration-500"
+          :style="{ width: `${(currentStep / (steps.length - 1)) * 100}%` }"
+        ></div>
+      </div>
+    </div>
+
+    <div class="glass-panel relative hidden overflow-hidden rounded-2xl p-6 md:block md:p-8">
       <div class="relative z-10 flex justify-between items-start">
         <!-- Progress Line Container (Constrained to centers of first/last circles) -->
         <div class="absolute top-6 -translate-y-1/2 left-6 right-6 h-1 -z-10">
@@ -72,7 +90,7 @@
     </div>
 
     <!-- Wizard Content Area -->
-    <div class="glass-panel rounded-2xl p-6 md:p-8 flex-grow relative overflow-y-auto min-h-[600px]">
+    <div class="glass-panel relative flex-grow overflow-y-auto rounded-2xl p-4 min-h-0 md:min-h-[600px] md:p-8">
       <!-- Background Decorative Elements -->
       <div class="absolute top-0 right-0 w-96 h-96 bg-primary/5 blur-[100px] rounded-full pointer-events-none"></div>
       <div class="absolute bottom-0 left-0 w-96 h-96 bg-accent-violet/5 blur-[100px] rounded-full pointer-events-none"></div>

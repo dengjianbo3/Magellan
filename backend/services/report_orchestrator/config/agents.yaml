@@ -579,21 +579,26 @@ agents:
       en: Challenge mainstream views, identify overlooked risks and opportunities, prevent groupthink
     class_path: app.core.roundtable.investment_agents.create_contrarian_analyst
     capabilities:
-      - 挑战主流共识
+      - 共识压力测试 (Consensus Stress Test)
+      - 反证链构建 (Falsification Chain)
       - 识别被忽视的风险信号
-      - 发现被忽视的机会信号
-      - 寻找预期外的情景
-      - 历史类比分析
+      - 识别被忽视的机会信号
+      - 情景矩阵推演 (基准/上行/下行)
+      - 共识失效条件定义
     inputs:
       - symbol: 交易标的
       - market_consensus: 当前市场共识 (可选)
       - target_data: 目标数据 (可选)
     outputs:
       contrarian_score: 共识风险评分 (高分=需警惕共识)
+      consensus_summary: 当前主流共识摘要
+      counter_evidence: 关键反证链 (含证据来源)
       overlooked_risks: 被忽视的风险
       overlooked_opportunities: 被忽视的机会
       alternative_scenarios: 替代情景
-      consensus_warning: 共识警告
+      invalidation_conditions: 共识失效触发条件
+      position_adjustment: 仓位微调/对冲建议
+      consensus_warning: 共识警报
     quick_mode_support: true
     estimated_duration:
       quick: 20
@@ -610,6 +615,7 @@ agents:
       - 不预设方向偏见(不强制做空)
       - 同时寻找被忽视的多头和空头信号
       - 基于证据质疑共识
+      - 输出可执行且可验证的失效条件
 
   # ============================================
   # 特殊Agent层 (Special Agents)

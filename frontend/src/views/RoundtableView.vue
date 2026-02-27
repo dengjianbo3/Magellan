@@ -249,9 +249,109 @@
     </div>
 
     <!-- Active Discussion View -->
-    <div v-else class="flex flex-1 min-h-0 flex-col gap-6 xl:flex-row xl:gap-8">
+    <div v-else class="flex flex-1 min-h-0 flex-col gap-3 md:gap-6 xl:flex-row xl:gap-8">
+      <transition
+        enter-active-class="transition duration-200 ease-out"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition duration-150 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div v-if="mobileControlPanelOpen" class="fixed inset-0 z-[80] xl:hidden">
+          <button
+            class="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            aria-label="Close discussion controls"
+            @click="mobileControlPanelOpen = false"
+          />
+          <div class="absolute inset-y-0 right-0 w-[86vw] max-w-[360px] overflow-y-auto rounded-l-3xl bg-surface/92 p-4 shadow-2xl backdrop-blur-xl">
+            <div class="mb-4 flex items-center justify-between">
+              <h3 class="text-sm font-bold uppercase tracking-wider text-text-secondary">{{ t('roundtable.discussion.progress') }}</h3>
+              <button class="icon-btn h-9 w-9 border-0 bg-white/10 hover:bg-white/15" @click="mobileControlPanelOpen = false">
+                <span class="material-symbols-outlined text-base">close</span>
+              </button>
+            </div>
+
+            <div class="section-card !p-4">
+              <div class="space-y-4">
+                <div>
+                  <div class="mb-2 flex justify-between text-sm">
+                    <span class="text-text-secondary font-medium">{{ t('roundtable.discussion.currentRound') }}</span>
+                    <span class="text-white font-bold">{{ currentRound }} / {{ maxRounds }}</span>
+                  </div>
+                  <div class="h-2 w-full overflow-hidden rounded-full border border-white/5 bg-black/30">
+                    <div
+                      class="relative h-full rounded-full bg-gradient-to-r from-primary to-accent-cyan transition-all duration-500"
+                      :style="{ width: (currentRound / maxRounds * 100) + '%' }"
+                    >
+                      <div class="absolute inset-0 animate-pulse bg-white/20"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="flex justify-between border-t border-white/5 pt-2 text-sm">
+                  <span class="text-text-secondary">{{ t('roundtable.discussion.messageCount') }}</span>
+                  <span class="text-white font-bold">{{ messages.length }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <h3 class="mb-3 text-xs font-bold uppercase tracking-wider text-text-secondary">{{ t('roundtable.discussion.participants') }}</h3>
+              <div class="space-y-2">
+                <div
+                  v-for="expert in activeExpertsList"
+                  :key="`mobile_${expert.id}`"
+                  class="flex items-center gap-3 rounded-xl border border-white/5 bg-white/5 p-2.5"
+                >
+                  <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20 text-primary">
+                    <span class="material-symbols-outlined text-base">{{ expert.icon }}</span>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-sm font-bold text-white">{{ expert.name }}</p>
+                    <p class="truncate text-xs font-medium text-text-secondary">{{ expert.role }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-4 space-y-3">
+              <button
+                @click="generateMeetingSummary"
+                :disabled="isGeneratingSummary || messages.length === 0"
+                :class="[
+                  'w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-all font-bold border',
+                  isGeneratingSummary || messages.length === 0
+                    ? 'bg-white/5 border-white/5 text-text-secondary cursor-not-allowed'
+                    : 'bg-primary/10 border-primary/30 text-primary hover:bg-primary/20'
+                ]"
+              >
+                <span class="material-symbols-outlined" :class="{ 'animate-spin': isGeneratingSummary }">
+                  {{ isGeneratingSummary ? 'sync' : 'summarize' }}
+                </span>
+                {{ isGeneratingSummary ? 'Generating...' : 'Generate Minutes' }}
+              </button>
+              <div class="grid grid-cols-2 gap-3">
+                <button
+                  @click="stopDiscussion"
+                  class="flex items-center justify-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 font-bold text-rose-400 transition-colors hover:bg-rose-500/20"
+                >
+                  <span class="material-symbols-outlined">stop</span>
+                  Stop
+                </button>
+                <button
+                  @click="exportDiscussion"
+                  class="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-bold text-text-primary transition-colors hover:bg-white/10"
+                >
+                  <span class="material-symbols-outlined">download</span>
+                  Export
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </transition>
       <!-- Left Sidebar: Experts Panel -->
-      <div class="w-full xl:w-80 xl:flex-shrink-0 flex flex-col gap-6">
+      <div class="hidden w-full flex-col gap-6 xl:flex xl:w-80 xl:flex-shrink-0">
         <!-- Discussion Info -->
         <div class="section-card">
           <h3 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-4">{{ t('roundtable.discussion.progress') }}</h3>
@@ -338,9 +438,9 @@
       </div>
 
       <!-- Main Discussion Area -->
-      <div class="flex-1 glass-panel rounded-2xl overflow-hidden flex flex-col relative">
+      <div class="relative flex flex-1 flex-col overflow-hidden rounded-2xl glass-panel">
         <!-- Discussion Header -->
-        <div class="px-8 py-5 border-b border-white/10 bg-white/5 backdrop-blur-md flex-shrink-0">
+        <div class="px-4 py-4 border-b border-white/10 bg-white/5 backdrop-blur-md flex-shrink-0 md:px-8 md:py-5">
           <div class="flex items-center justify-between">
             <div class="flex-1 min-w-0">
               <h2 class="text-xl font-bold text-white truncate">{{ discussionTopic }}</h2>
@@ -351,12 +451,20 @@
             </div>
             <span
               :class="[
-                'text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider border shadow-[0_0_10px_rgba(0,0,0,0.2)]',
+                'hidden sm:inline-flex text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider border shadow-[0_0_10px_rgba(0,0,0,0.2)]',
                 discussionStatus === 'running' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-white/10 text-text-secondary border-white/10'
               ]"
             >
               {{ discussionStatus === 'running' ? t('roundtable.discussion.status.running') : t('roundtable.discussion.status.completed') }}
             </span>
+            <button
+              type="button"
+              class="icon-btn ml-2 border-0 bg-white/10 hover:bg-white/15 xl:hidden"
+              :title="t('roundtable.discussion.participants')"
+              @click="mobileControlPanelOpen = true"
+            >
+              <span class="material-symbols-outlined text-base">tune</span>
+            </button>
           </div>
         </div>
 
@@ -369,7 +477,7 @@
         </div>
 
         <!-- Messages Container -->
-        <div ref="messagesContainer" class="flex-1 overflow-y-auto p-8 space-y-6 scroll-smooth">
+        <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth md:p-8 md:space-y-6">
           <div v-for="message in messages" :key="message.id" class="animate-fade-in">
             <!-- System Message -->
             <div v-if="message.type === 'system'" class="flex justify-center py-2">
@@ -380,9 +488,9 @@
             </div>
 
             <!-- Agent Message -->
-            <div v-else-if="message.type === 'agent_message'" class="flex gap-5 group">
-              <div class="w-12 h-12 rounded-xl bg-black/30 border border-white/10 flex items-center justify-center flex-shrink-0 shadow-lg self-start mt-1">
-                <span class="material-symbols-outlined text-primary text-2xl">{{ getExpertIcon(message.sender) }}</span>
+            <div v-else-if="message.type === 'agent_message'" class="flex gap-3 group md:gap-5">
+              <div class="w-10 h-10 rounded-xl bg-black/30 border border-white/10 flex items-center justify-center flex-shrink-0 shadow-lg self-start mt-1 md:h-12 md:w-12">
+                <span class="material-symbols-outlined text-primary text-xl md:text-2xl">{{ getExpertIcon(message.sender) }}</span>
               </div>
               <div class="flex-1 max-w-4xl">
                 <div class="flex items-baseline gap-3 mb-2">
@@ -395,7 +503,7 @@
                     {{ getMessageTypeLabel(message.message_type) }}
                   </span>
                 </div>
-                <div class="glass-card p-5 rounded-2xl rounded-tl-none border border-white/10 bg-white/5 text-text-primary leading-relaxed shadow-md relative overflow-hidden">
+                <div class="glass-card p-3 rounded-2xl rounded-tl-none border border-white/10 bg-white/5 text-text-primary leading-relaxed shadow-md relative overflow-hidden md:p-5">
                   <div
                     class="meeting-markdown max-w-none break-words"
                     :class="{ 'report-mode': isReportLike(message.content) }"
@@ -410,7 +518,7 @@
                 <button
                   v-if="message.sender !== 'Human' && sessionId"
                   @click="openInterventionDialog(messages.indexOf(message))"
-                  class="mt-3 px-4 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all flex items-center gap-2 text-sm font-medium opacity-0 group-hover:opacity-100"
+                  class="mt-3 px-4 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all flex items-center gap-2 text-sm font-medium opacity-100 md:opacity-0 md:group-hover:opacity-100"
                 >
                   <span class="material-symbols-outlined text-lg">chat_bubble</span>
                   {{ t('roundtable.hitl.interruptButton') }}
@@ -419,9 +527,9 @@
             </div>
 
             <!-- Thinking Indicator with Scrollable Log -->
-            <div v-else-if="message.type === 'thinking'" class="flex gap-5">
-              <div class="w-12 h-12 rounded-xl bg-black/30 border border-white/10 flex items-center justify-center flex-shrink-0 shadow-lg self-start mt-1 opacity-70">
-                <span class="material-symbols-outlined text-primary text-2xl animate-pulse">psychology</span>
+            <div v-else-if="message.type === 'thinking'" class="flex gap-3 md:gap-5">
+              <div class="w-10 h-10 rounded-xl bg-black/30 border border-white/10 flex items-center justify-center flex-shrink-0 shadow-lg self-start mt-1 opacity-70 md:h-12 md:w-12">
+                <span class="material-symbols-outlined text-primary text-xl animate-pulse md:text-2xl">psychology</span>
               </div>
               <div class="flex-1 max-w-[600px]">
                 <div class="flex items-center gap-2 mb-2">
@@ -457,7 +565,7 @@
 
             <!-- Summary / Meeting Minutes -->
             <div v-else-if="message.type === 'summary' || message.type === 'meeting_minutes'" class="my-8">
-              <div class="glass-panel border border-primary/30 bg-primary/5 rounded-2xl p-8 relative overflow-hidden">
+              <div class="glass-panel border border-primary/30 bg-primary/5 rounded-2xl p-4 relative overflow-hidden md:p-8">
                 <!-- Background decoration -->
                 <div class="absolute top-0 right-0 w-64 h-64 bg-primary/10 blur-[80px] rounded-full pointer-events-none"></div>
                 
@@ -607,6 +715,7 @@ const isReconnecting = ref(false); // Track reconnection attempts
 const isGeneratingSummary = ref(false); // Track summary generation
 const useKnowledgeBase = ref(false);
 const knowledgeCategory = ref('all');
+const mobileControlPanelOpen = ref(false);
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 let shouldReconnect = true; // Flag to control reconnection
@@ -982,6 +1091,7 @@ const startDiscussion = async () => {
   };
   shouldReconnect = true;
   reconnectAttempts = 0;
+  mobileControlPanelOpen.value = false;
 
   isDiscussionActive.value = true;
   isConnecting.value = true;
@@ -1359,6 +1469,7 @@ const handleWebSocketMessage = (data) => {
 const stopDiscussion = () => {
   console.log('[Roundtable] Stopping discussion...');
   shouldReconnect = false; // Disable auto-reconnect
+  mobileControlPanelOpen.value = false;
   if (ws) {
     ws.close(1000, 'User stopped discussion'); // Normal closure
   }

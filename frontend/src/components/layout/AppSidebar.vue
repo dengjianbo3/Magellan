@@ -2,13 +2,13 @@
   <aside
     :class="[
       'relative z-50 flex h-full flex-shrink-0 flex-col border-r border-white/10 bg-gradient-to-b from-surface/60 via-surface/35 to-surface/50 py-4 text-text-primary backdrop-blur-xl transition-all duration-300 ease-in-out md:py-5',
-      collapsed ? 'w-[72px] px-2' : 'w-64 px-3'
+      effectiveCollapsed ? 'w-[72px] px-2' : 'w-64 px-3'
     ]"
   >
     <div class="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.03] via-transparent to-transparent"></div>
 
     <!-- Logo & Collapse Button -->
-    <div :class="['relative flex items-center mb-7', collapsed ? 'justify-center px-0' : 'justify-between px-2']">
+    <div :class="['relative flex items-center mb-7', effectiveCollapsed ? 'justify-center px-0' : 'justify-between px-2']">
       <div class="flex items-center gap-3 group">
         <!-- Magellan Logo -->
         <div class="relative shrink-0">
@@ -29,7 +29,7 @@
         </div>
 
         <!-- Brand Text -->
-        <div v-show="!collapsed" class="flex flex-col whitespace-nowrap animate-fade-in">
+        <div v-show="!effectiveCollapsed" class="flex flex-col whitespace-nowrap animate-fade-in">
           <h1 class="text-lg font-display font-bold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-white to-primary">Magellan</h1>
           <p class="text-text-secondary text-xs font-medium tracking-wider">{{ t('sidebar.brandSubtitle') }}</p>
         </div>
@@ -64,7 +64,7 @@
           {{ item.icon }}
         </span>
         <p
-          v-show="!collapsed"
+          v-show="!effectiveCollapsed"
           :class="[
             'text-sm font-medium leading-normal whitespace-nowrap transition-colors',
             activeTab === item.id ? 'font-semibold text-text-primary' : ''
@@ -76,7 +76,7 @@
     </nav>
 
     <!-- Bottom Actions -->
-    <div class="relative mt-auto flex flex-col gap-3 border-t border-white/10 pt-4">
+    <div v-if="!mobile" class="relative mt-auto flex flex-col gap-3 border-t border-white/10 pt-4">
       <!-- Collapse Toggle -->
       <button
         @click="toggleCollapse"
@@ -85,12 +85,12 @@
         <span
           :class="[
             'material-symbols-outlined transition-transform duration-300',
-            collapsed ? 'rotate-180' : ''
+            effectiveCollapsed ? 'rotate-180' : ''
           ]"
         >
           menu_open
         </span>
-        <span v-show="!collapsed" class="text-xs font-medium tracking-wider uppercase">{{ t('sidebar.collapse') }}</span>
+        <span v-show="!effectiveCollapsed" class="text-xs font-medium tracking-wider uppercase">{{ t('sidebar.collapse') }}</span>
       </button>
     </div>
   </aside>
@@ -102,16 +102,21 @@ import { useLanguage } from '../../composables/useLanguage';
 
 const { t } = useLanguage();
 
-defineProps({
+const props = defineProps({
   activeTab: {
     type: String,
     default: 'chat'
+  },
+  mobile: {
+    type: Boolean,
+    default: false,
   }
 });
 
 const emit = defineEmits(['navigate']);
 
 const collapsed = ref(false);
+const effectiveCollapsed = computed(() => (props.mobile ? false : collapsed.value));
 
 // 使用 computed 让 navItems 响应语言变化
 const navItems = computed(() => [
