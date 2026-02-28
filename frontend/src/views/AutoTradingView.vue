@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell">
+  <div class="page-shell conversation-scroll immersive-scroll h-full min-h-0 overflow-y-auto">
     <!-- Header -->
     <div class="page-header">
       <div>
@@ -10,10 +10,10 @@
       </div>
 
       <!-- Controls & Status -->
-      <div class="flex flex-wrap items-center gap-3">
+      <div class="flex flex-wrap items-center gap-2.5 md:gap-3">
 
         <!-- 1. Next Analysis (Pulse) -->
-        <div class="flex items-center h-10 gap-3 bg-white/5 rounded-lg px-4 border border-white/5 backdrop-blur-sm">
+        <div class="flex h-10 w-full items-center gap-2.5 rounded-lg border border-white/5 bg-white/5 px-3 backdrop-blur-sm sm:w-auto md:gap-3 md:px-4">
           <div class="flex items-baseline gap-2">
             <span class="text-[10px] text-text-secondary uppercase tracking-wider font-semibold">{{ t('trading.nextAnalysis') }}</span>
             <span class="text-sm font-mono font-bold text-accent-cyan">{{ countdown }}</span>
@@ -29,7 +29,7 @@
         </div>
 
         <!-- 3. Status (State) -->
-        <div class="flex items-center h-10 gap-2 bg-white/5 rounded-lg px-3 border border-white/5 backdrop-blur-sm">
+        <div class="flex h-10 w-full items-center gap-2 rounded-lg border border-white/5 bg-white/5 px-3 backdrop-blur-sm sm:w-auto">
           <span class="relative flex h-2.5 w-2.5">
              <span v-if="systemStatus.enabled" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
              <span :class="['relative inline-flex rounded-full h-2.5 w-2.5', systemStatus.enabled ? 'bg-emerald-500' : 'bg-red-500']"></span>
@@ -40,7 +40,7 @@
         </div>
 
         <!-- 4. Actions (Control) -->
-        <div class="flex items-center gap-2">
+        <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <!-- Start/Stop Button -->
             <button
             v-if="!systemStatus.enabled"
@@ -60,7 +60,7 @@
             </button>
 
             <!-- Separator -->
-            <div class="w-px h-6 bg-white/10 mx-1"></div>
+            <div class="mx-1 hidden h-6 w-px bg-white/10 lg:block"></div>
 
             <!-- Team -->
             <button
@@ -95,10 +95,10 @@
 
     <!-- Main Content Grid -->
     <!-- Main Content (Sticky Sidebar Layout) -->
-    <div class="grid grid-cols-12 gap-6 items-start mb-6">
+    <div class="mb-4 grid grid-cols-12 items-start gap-3 md:mb-6 md:gap-4 lg:gap-6">
       
       <!-- Left Sidebar (Sticky Control Center) -->
-      <div class="col-span-12 lg:col-span-4 sticky top-6 z-10 space-y-6">
+      <div class="col-span-12 space-y-3 md:space-y-4 lg:col-span-4 lg:sticky lg:top-6 lg:space-y-6">
         
         <!-- Account Overview -->
         <div class="section-card">
@@ -162,7 +162,7 @@
                 </span>
                 <span class="text-white font-medium">{{ position.symbol }}</span>
               </div>
-              <div class="grid grid-cols-2 gap-3 text-sm">
+              <div class="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 sm:gap-3">
                 <div><span class="text-text-secondary block">{{ t('trading.entry') }}</span><span class="text-white">${{ formatNumber(position.entryPrice) }}</span></div>
                 <div><span class="text-text-secondary block">{{ t('trading.current') }}</span><span class="text-white">${{ formatNumber(position.currentPrice) }}</span></div>
                 <div><span class="text-text-secondary block">TP</span><span class="text-emerald-400">{{ position.takeProfitPrice > 0 ? '$' + formatNumber(position.takeProfitPrice) : t('trading.notSet') }}</span></div>
@@ -195,7 +195,7 @@
       </div>
 
       <!-- Right Column (Analysis & History) -->
-      <div class="col-span-12 lg:col-span-8 space-y-6">
+      <div class="col-span-12 space-y-3 md:space-y-4 lg:col-span-8 lg:space-y-6">
         
         <!-- Equity Curve Chart -->
         <div class="section-card">
@@ -212,14 +212,14 @@
         </div>
 
         <!-- Live Discussion (Fixed Height, Internal Scroll) -->
-        <div class="section-card flex flex-col h-[700px]">
-          <h3 class="text-lg font-semibold text-white mb-4 flex items-center sticky top-0 bg-[#0f172a]/95 backdrop-blur z-10 py-2 border-b border-white/5">
+        <div class="section-card flex h-[56vh] min-h-0 flex-col md:h-[700px]">
+          <h3 class="mb-4 flex items-center border-b border-white/5 bg-[#0f172a]/95 py-2 text-lg font-semibold text-white backdrop-blur md:sticky md:top-0 z-10">
             <span class="material-symbols-outlined mr-2 text-accent-violet">forum</span>
             {{ t('trading.discussion') }}
             <span v-if="isAnalyzing" class="ml-2 flex items-center text-primary text-sm"><span class="animate-pulse mr-1">●</span> {{ t('trading.live') }}</span>
           </h3>
 
-          <div class="flex-1 overflow-y-auto space-y-4 pr-2" ref="discussionContainer">
+          <div class="immersive-scroll flex-1 space-y-3 overflow-y-auto pr-0 md:space-y-4 md:pr-2" ref="discussionContainer">
             <div v-for="(msg, idx) in discussionMessages" :key="idx" class="p-4 rounded-xl bg-white/5 border border-white/5 transition-all hover:bg-white/10">
               <!-- Case 1: Has JSON Conclusion -->
               <div v-if="msg.parsed && msg.parsed.hasJson">
@@ -247,7 +247,7 @@
                         <div class="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-xl -translate-y-1/2 translate-x-1/2"></div>
 
                         <!-- Compressed Header Row -->
-                        <div class="flex items-center justify-between mb-3 pb-2 border-b border-white/5 relative z-10">
+                        <div class="relative z-10 mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-white/5 pb-2">
                              <!-- Left: Direction Badge & Leverage -->
                              <div class="flex items-center gap-3">
                                 <span :class="['px-2 py-0.5 rounded text-xs font-black uppercase tracking-wider', 
@@ -261,7 +261,7 @@
                              </div>
 
                              <!-- Right: Compact Metrics -->
-                             <div class="flex items-center gap-3 text-xs font-mono bg-black/20 rounded px-2 py-1">
+                             <div class="flex flex-wrap items-center gap-2 text-xs font-mono bg-black/20 rounded px-2 py-1">
                                  <div class="flex items-center gap-1.5 border-r border-white/10 pr-3">
                                      <span class="text-text-secondary text-[10px] uppercase">{{ t('trading.confidenceShort') }}</span>
                                      <span :class="['font-bold', (msg.parsed.parsedJson.confidence || 0) >= 70 ? 'text-emerald-400' : 'text-yellow-400']">
@@ -356,7 +356,36 @@
         </div>
       </div>
 
-      <div class="overflow-x-auto">
+      <div class="space-y-3 md:hidden">
+        <article
+          v-for="(agent, agentId) in agentPerformance.agents"
+          :key="`mobile_${agentId}`"
+          class="rounded-xl border border-white/10 bg-white/5 p-3"
+        >
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <p class="truncate text-sm font-semibold text-white">{{ agent.agent_name || agentId }}</p>
+            <span :class="(agent.win_rate || 0) >= 0.5 ? 'text-emerald-400' : 'text-red-400'" class="text-xs font-semibold">
+              {{ ((agent.win_rate || 0) * 100).toFixed(1) }}%
+            </span>
+          </div>
+          <div class="grid grid-cols-2 gap-2 text-xs text-text-secondary">
+            <p>{{ t('trading.totalTrades') }}: <span class="text-white">{{ agent.total_trades || 0 }}</span></p>
+            <p>{{ t('trading.wins') }}: <span class="text-white">{{ agent.wins || 0 }}</span></p>
+            <p>{{ t('trading.totalPnlLabel') }}:
+              <span :class="(agent.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'" class="font-semibold">
+                {{ (agent.total_pnl || 0) >= 0 ? '+' : '' }}${{ formatNumber(agent.total_pnl || 0) }}
+              </span>
+            </p>
+            <p class="truncate">{{ t('trading.latestLesson') }}: <span class="text-white">{{ agent.lessons_learned?.slice(-1)?.[0] || '-' }}</span></p>
+          </div>
+        </article>
+
+        <div v-if="!agentPerformance.agents || Object.keys(agentPerformance.agents).length === 0" class="text-center py-6 text-text-secondary">
+          {{ t('trading.noAgentData') }}
+        </div>
+      </div>
+
+      <div class="hidden overflow-x-auto md:block">
         <table class="w-full text-sm">
           <thead>
             <tr class="text-text-secondary border-b border-white/10">
@@ -414,7 +443,31 @@
            <span class="material-symbols-outlined text-sm mr-1">refresh</span> {{ t('common.refresh') }}
         </button>
       </div>
-      <div class="max-h-[500px] overflow-y-auto">
+      <div class="space-y-2.5 md:hidden">
+        <article
+          v-for="trade in tradeHistory"
+          :key="`mobile_trade_${trade.id}`"
+          class="rounded-xl border border-white/10 bg-white/5 p-3"
+        >
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <span :class="['rounded px-2 py-0.5 text-xs font-bold', trade.direction === 'long' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400']">
+              {{ formatDirection(trade.direction) }}
+            </span>
+            <span class="text-xs text-text-secondary">{{ formatDate(trade.timestamp) }}</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2 text-xs text-text-secondary">
+            <p>{{ t('trading.entryPrice') }}: <span class="text-white">${{ formatNumber(trade.entryPrice) }}</span></p>
+            <p>{{ t('trading.pnl') }}:
+              <span :class="(trade.pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'" class="font-semibold">
+                {{ (trade.pnl || 0) >= 0 ? '+' : '' }}${{ formatNumber(trade.pnl || 0) }}
+              </span>
+            </p>
+          </div>
+        </article>
+        <div v-if="tradeHistory.length === 0" class="py-6 text-center text-text-secondary">{{ t('trading.noTrades') }}</div>
+      </div>
+
+      <div class="hidden max-h-[500px] overflow-y-auto md:block">
          <table class="w-full text-sm">
             <thead><tr class="text-text-secondary border-b border-white/10 sticky top-0 bg-[#0f172a] z-10"><th class="text-left py-3 px-4">{{ t('trading.time') }}</th><th class="text-left py-3 px-4">{{ t('trading.direction') }}</th><th class="text-right py-3 px-4">{{ t('trading.entryPrice') }}</th><th class="text-right py-3 px-4">{{ t('trading.pnl') }}</th></tr></thead>
             <tbody>
@@ -631,7 +684,7 @@
 
         <!-- Signal Details -->
         <div class="bg-white/5 rounded-lg p-4 mb-4">
-          <div class="grid grid-cols-3 gap-4 text-center mb-4">
+          <div class="mb-4 grid grid-cols-1 gap-3 text-center sm:grid-cols-3 sm:gap-4">
             <div>
 	              <span class="text-text-secondary text-xs block mb-1">{{ t('trading.direction') }}</span>
               <span
@@ -663,7 +716,7 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-4 text-sm">
+          <div class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 sm:gap-4">
             <div class="flex justify-between">
 	              <span class="text-text-secondary">{{ t('trading.takeProfit') }}</span>
               <span class="text-emerald-400 font-medium">
@@ -682,7 +735,7 @@
         </div>
 
         <!-- Leader Reasoning -->
-        <div class="bg-white/5 rounded-lg p-4 mb-4 max-h-32 overflow-y-auto">
+        <div class="immersive-scroll bg-white/5 rounded-lg p-4 mb-4 max-h-32 overflow-y-auto">
           <div class="text-text-secondary text-xs mb-2 flex items-center">
             <span class="material-symbols-outlined text-sm mr-1">psychology</span>
 	            {{ t('trading.leaderRationale') }}
@@ -752,7 +805,7 @@
         <!-- Defer Reasons (shown when deferring) -->
         <div v-if="showDeferReasons" class="bg-white/5 rounded-lg p-4 mb-4 border border-red-500/30">
 	          <div class="text-text-secondary text-xs mb-3">{{ t('trading.selectDeferReason') }}</div>
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label 
               v-for="reason in deferReasonOptions" 
               :key="reason"
@@ -826,7 +879,7 @@
 
   <!-- Expert Team Modal -->
   <div v-if="showTeamModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" @click.self="showTeamModal = false">
-    <div class="bg-[#0f172a] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl relative animate-fadeIn">
+    <div class="immersive-scroll bg-[#0f172a] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl relative animate-fadeIn">
        <div class="p-6 border-b border-white/10 flex justify-between items-center sticky top-0 bg-[#0f172a] z-10">
          <h3 class="text-xl font-bold text-white flex items-center">
            <span class="material-symbols-outlined mr-2 text-accent-cyan">groups</span>
@@ -2554,6 +2607,17 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+:deep(.overflow-y-auto),
+:deep(.overflow-auto) {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+:deep(.overflow-y-auto::-webkit-scrollbar),
+:deep(.overflow-auto::-webkit-scrollbar) {
+  display: none;
+}
+
 /* Force code blocks to wrap text to prevent overflow */
 :deep(.prose pre) {
   white-space: pre-wrap !important;

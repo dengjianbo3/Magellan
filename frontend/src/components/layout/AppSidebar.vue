@@ -1,14 +1,20 @@
 <template>
   <aside
     :class="[
-      'relative z-50 flex h-full flex-shrink-0 flex-col border-r border-white/10 bg-gradient-to-b from-surface/60 via-surface/35 to-surface/50 py-4 text-text-primary backdrop-blur-xl transition-all duration-300 ease-in-out md:py-5',
-      effectiveCollapsed ? 'w-[72px] px-2' : 'w-64 px-3'
+      'relative z-50 flex h-full flex-shrink-0 flex-col text-text-primary backdrop-blur-xl transition-all duration-300 ease-in-out',
+      mobile
+        ? 'border-r-0 bg-surface/90 shadow-2xl'
+        : 'border-r border-white/10 bg-gradient-to-b from-surface/60 via-surface/35 to-surface/50',
+      mobile
+        ? 'pt-[calc(env(safe-area-inset-top,0px)+0.55rem)] pb-[calc(env(safe-area-inset-bottom,0px)+0.65rem)]'
+        : 'py-4 md:py-5',
+      mobile ? 'w-[84vw] max-w-[332px] px-2.5' : (effectiveCollapsed ? 'w-[72px] px-2' : 'w-64 px-3')
     ]"
   >
     <div class="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.03] via-transparent to-transparent"></div>
 
     <!-- Logo & Collapse Button -->
-    <div :class="['relative flex items-center mb-7', effectiveCollapsed ? 'justify-center px-0' : 'justify-between px-2']">
+    <div :class="['relative flex items-center mb-6', effectiveCollapsed ? 'justify-center px-0' : 'justify-between px-2']">
       <div class="flex items-center gap-3 group">
         <!-- Magellan Logo -->
         <div class="relative shrink-0">
@@ -43,7 +49,8 @@
         :key="item.id"
         @click="emit('navigate', item.id)"
         :class="[
-          'group relative flex items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 transition-all duration-300',
+          'group relative flex items-center gap-3 overflow-hidden rounded-xl px-3 transition-all duration-300',
+          mobile ? 'min-h-[46px] py-3' : 'py-2.5',
           activeTab === item.id
             ? 'bg-gradient-to-r from-primary/20 to-primary/5 text-primary ring-1 ring-primary/25'
             : 'text-text-secondary hover:bg-white/5 hover:text-text-primary'

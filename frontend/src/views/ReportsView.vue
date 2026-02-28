@@ -1,5 +1,5 @@
 <template>
-  <div v-if="!selectedReport" class="page-shell">
+  <div v-if="!selectedReport" class="page-shell h-full min-h-0 overflow-y-auto">
     <!-- Page Header -->
     <div class="page-header">
       <div>
@@ -13,16 +13,16 @@
     </div>
 
     <!-- Filters -->
-    <div class="toolbar-panel">
+    <div class="toolbar-panel sticky top-0 z-20">
       <div class="toolbar-row">
         <div class="flex flex-wrap items-center gap-2">
-          <select class="control-select cursor-pointer">
+          <select class="control-select w-full cursor-pointer sm:w-auto">
             <option>{{ t('reports.filters.allTypes') }}</option>
             <option>{{ t('reports.filters.dueDiligence') }}</option>
             <option>{{ t('reports.filters.marketAnalysis') }}</option>
             <option>{{ t('reports.filters.financialReview') }}</option>
           </select>
-          <select class="control-select cursor-pointer">
+          <select class="control-select w-full cursor-pointer sm:w-auto">
             <option>{{ t('reports.filters.allStatus') }}</option>
             <option>{{ t('reports.filters.completed') }}</option>
             <option>{{ t('reports.filters.inProgress') }}</option>
@@ -35,9 +35,9 @@
           <input
             type="text"
             :placeholder="t('reports.searchPlaceholder')"
-            class="control-input relative z-10 w-full pl-10"
+            class="control-input relative z-10 w-full !pl-12 pr-4"
           />
-          <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary z-20 group-focus-within:text-primary transition-colors">
+          <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary z-20 group-focus-within:text-primary transition-colors">
             search
           </span>
         </div>
@@ -45,12 +45,12 @@
     </div>
 
     <!-- Reports Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5 lg:grid-cols-3 lg:gap-6">
       <div
         v-for="report in reports"
         :key="report.id"
         @click="viewReport(report.id)"
-        class="glass-card rounded-2xl p-6 cursor-pointer group relative overflow-hidden flex flex-col"
+        class="glass-card relative flex cursor-pointer flex-col overflow-hidden rounded-2xl p-4 md:p-6 group"
       >
         <!-- Background Gradient on Hover -->
         <div class="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -97,8 +97,8 @@
           </div>
         </div>
 
-        <div class="relative z-10 grid grid-cols-4 gap-2 border-t border-white/10 pt-4">
-          <button class="col-span-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary hover:text-white transition-all font-bold text-sm group/btn">
+        <div class="relative z-10 grid grid-cols-2 gap-2 border-t border-white/10 pt-4 sm:grid-cols-4">
+          <button class="col-span-2 flex items-center justify-center gap-2 rounded-lg bg-primary/10 px-3 py-2 text-sm font-bold text-primary transition-all hover:bg-primary hover:text-white group/btn sm:col-span-2">
             <span class="material-symbols-outlined text-lg group-hover/btn:scale-110 transition-transform">visibility</span>
             {{ t('reports.card.view') }}
           </button>
@@ -130,13 +130,13 @@
             </div>
           </div>
 
-          <button @click.stop="shareReport(report.id)" class="flex items-center justify-center px-3 py-2 rounded-lg bg-white/5 text-text-secondary hover:bg-white/10 hover:text-white transition-colors border border-white/5" :title="t('reports.card.share')">
+          <button @click.stop="shareReport(report.id)" class="flex items-center justify-center rounded-lg border border-white/5 bg-white/5 px-3 py-2 text-text-secondary transition-colors hover:bg-white/10 hover:text-white" :title="t('reports.card.share')">
             <span class="material-symbols-outlined text-lg">share</span>
           </button>
 
           <button
             @click.stop="confirmDelete(report.id)"
-            class="flex items-center justify-center px-3 py-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white transition-colors border border-rose-500/20"
+            class="flex items-center justify-center rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-rose-400 transition-colors hover:bg-rose-500 hover:text-white"
             :title="t('reports.detail.deleteReport')"
           >
             <span class="material-symbols-outlined text-lg">delete</span>
@@ -147,7 +147,7 @@
   </div>
 
   <!-- Report Detail View -->
-  <div v-else class="page-shell animate-fade-in">
+  <div v-else class="page-shell h-full min-h-0 overflow-y-auto animate-fade-in">
     <!-- Header with Back Button -->
     <div class="page-header">
       <button
@@ -168,9 +168,9 @@
     </div>
 
     <!-- Report Content -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div class="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-3 lg:gap-8">
       <!-- Main Content -->
-      <div class="lg:col-span-2 space-y-8">
+      <div class="space-y-4 md:space-y-6 lg:col-span-2 lg:space-y-8">
 
         <!-- ============================================ -->
         <!-- Roundtable Meeting Report Template -->
@@ -188,7 +188,7 @@
             </div>
 
             <!-- Meeting Stats -->
-            <div class="grid grid-cols-3 gap-4 mb-6 p-4 rounded-xl bg-white/5 border border-white/10">
+            <div class="mb-6 grid grid-cols-1 gap-3 rounded-xl border border-white/10 bg-white/5 p-4 sm:grid-cols-3 sm:gap-4">
               <div class="text-center">
                 <div class="text-2xl font-bold text-primary">{{ selectedReport.config?.num_agents || selectedReport.discussion_summary?.participating_agents?.length || 'N/A' }}</div>
                 <div class="text-xs text-text-secondary mt-1">{{ t('reports.detail.participatingExperts') }}</div>

@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell h-full min-h-0 overflow-hidden flex flex-col" :class="{ 'roundtable-mobile-immersive': useAppMobileLayout }">
+  <div class="page-shell conversation-scroll h-full min-h-0 overflow-hidden flex flex-col" :class="{ 'roundtable-mobile-immersive': useAppMobileLayout }">
     <div class="page-header">
       <div>
         <h1 class="page-title page-title-gradient">{{ t('roundtable.title') }}</h1>
@@ -8,16 +8,22 @@
     </div>
 
     <!-- Start Discussion Panel -->
-    <div v-if="!isDiscussionActive" class="section-card md:p-10 lg:p-12 flex-1 flex justify-center overflow-y-auto">
+    <div
+      v-if="!isDiscussionActive"
+      :class="[
+        'immersive-scroll flex flex-1 justify-center overflow-y-auto',
+        useAppMobileLayout ? 'rounded-none bg-transparent p-1.5' : 'section-card p-3.5 md:p-10 lg:p-12'
+      ]"
+    >
       <div class="max-w-2xl w-full">
-        <h2 class="text-2xl font-bold text-white mb-8 flex items-center gap-3">
+        <h2 class="mb-5 flex items-center gap-3 text-lg font-bold text-white md:mb-8 md:text-2xl">
             <span class="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
                 <span class="material-symbols-outlined">forum</span>
             </span>
             {{ t('roundtable.startPanel.title') }}
         </h2>
 
-        <div class="space-y-8">
+        <div class="space-y-4 md:space-y-8">
           <!-- Topic Input -->
           <div>
             <label class="block text-sm font-bold text-text-secondary mb-2 uppercase tracking-wider">
@@ -67,7 +73,7 @@
               <!-- Dropdown list -->
               <div
                 v-if="showExpertDropdown"
-                class="absolute top-full left-0 right-0 mt-2 bg-gray-900/95 border border-white/10 rounded-xl shadow-2xl z-50 max-h-64 overflow-y-auto backdrop-blur-sm"
+                class="immersive-scroll absolute top-full left-0 right-0 mt-2 bg-gray-900/95 border border-white/10 rounded-xl shadow-2xl z-50 max-h-64 overflow-y-auto backdrop-blur-sm"
               >
                 <div
                   v-for="expert in availableExperts"
@@ -99,7 +105,7 @@
           </div>
 
           <!-- Discussion Settings -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
             <div>
               <label class="block text-sm font-bold text-text-secondary mb-2 uppercase tracking-wider">
                 {{ t('roundtable.startPanel.roundsLabel') }}
@@ -186,7 +192,7 @@
                 <p class="text-sm text-text-secondary mt-2">No history found</p>
               </div>
 
-              <div v-else class="max-h-48 overflow-y-auto space-y-2 pr-2">
+              <div v-else class="immersive-scroll max-h-48 overflow-y-auto space-y-2 pr-2">
                 <div
                   v-for="history in historyList"
                   :key="history.id"
@@ -249,7 +255,7 @@
     </div>
 
     <!-- Active Discussion View -->
-    <div v-else class="flex flex-1 min-h-0 flex-col gap-3 md:gap-6 xl:flex-row xl:gap-8" :class="useAppMobileLayout ? 'gap-2.5 overflow-x-hidden' : ''">
+    <div v-else class="flex flex-1 min-h-0 flex-col gap-3 md:gap-6 xl:flex-row xl:gap-8" :class="useAppMobileLayout ? 'gap-2 overflow-x-hidden' : ''">
       <transition
         enter-active-class="transition duration-200 ease-out"
         enter-from-class="opacity-0"
@@ -264,7 +270,7 @@
             aria-label="Close discussion controls"
             @click="mobileControlPanelOpen = false"
           />
-          <div class="absolute inset-y-0 right-0 flex w-[90vw] max-w-[380px] flex-col overflow-y-auto rounded-l-3xl bg-surface/92 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+0.6rem)] pt-[calc(env(safe-area-inset-top,0px)+0.55rem)] shadow-2xl backdrop-blur-xl">
+          <div class="immersive-scroll absolute inset-y-0 right-0 flex w-[90vw] max-w-[380px] flex-col overflow-y-auto rounded-l-3xl bg-surface/92 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+0.6rem)] pt-[calc(env(safe-area-inset-top,0px)+0.55rem)] shadow-2xl backdrop-blur-xl">
             <div class="mb-4 flex items-center justify-between">
               <h3 class="text-sm font-bold uppercase tracking-wider text-text-secondary">{{ t('roundtable.discussion.progress') }}</h3>
               <button class="icon-btn h-9 w-9 border-0 bg-white/10 hover:bg-white/15" @click="mobileControlPanelOpen = false">
@@ -378,7 +384,7 @@
         </div>
 
         <!-- Active Experts -->
-        <div class="section-card flex-1 overflow-y-auto">
+        <div class="section-card immersive-scroll flex-1 overflow-y-auto">
           <h3 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-4">{{ t('roundtable.discussion.participants') }}</h3>
           <div class="space-y-3">
             <div
@@ -438,9 +444,9 @@
       </div>
 
       <!-- Main Discussion Area -->
-      <div class="relative flex flex-1 min-h-0 flex-col overflow-hidden overflow-x-hidden" :class="useAppMobileLayout ? 'rounded-2xl bg-transparent' : 'rounded-2xl glass-panel'">
+      <div class="relative flex flex-1 min-h-0 flex-col overflow-hidden overflow-x-hidden" :class="useAppMobileLayout ? 'rounded-none bg-transparent' : 'rounded-2xl glass-panel'">
         <!-- Discussion Header -->
-        <div class="border-b border-white/10 bg-white/5 backdrop-blur-md flex-shrink-0" :class="useAppMobileLayout ? 'px-3 py-3' : 'px-4 py-4 md:px-8 md:py-5'">
+        <div class="border-b border-white/10 bg-white/5 backdrop-blur-md flex-shrink-0" :class="useAppMobileLayout ? 'px-2.5 py-2.5' : 'px-4 py-4 md:px-8 md:py-5'">
           <div class="flex items-center justify-between">
             <div class="flex-1 min-w-0">
               <h2 class="truncate font-bold text-white" :class="useAppMobileLayout ? 'text-lg' : 'text-xl'">{{ discussionTopic }}</h2>
@@ -479,8 +485,8 @@
         <!-- Messages Container -->
         <div
           ref="messagesContainer"
-          class="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth"
-          :class="useAppMobileLayout ? 'p-2.5 space-y-3' : 'p-4 space-y-4 md:p-8 md:space-y-6'"
+          class="immersive-scroll flex-1 overflow-y-auto overflow-x-hidden scroll-smooth"
+          :class="useAppMobileLayout ? 'p-2 space-y-2.5' : 'p-4 space-y-4 md:p-8 md:space-y-6'"
         >
           <div v-for="message in messages" :key="message.id" class="animate-fade-in">
             <!-- System Message -->
@@ -553,7 +559,7 @@
                     <span class="text-xs text-white/40 ml-2">{{ message.agent }} - Execution Log</span>
                   </div>
                   <!-- Scrollable log content -->
-                  <div class="p-3 max-h-[200px] overflow-y-auto font-mono text-xs leading-relaxed custom-scrollbar"
+                  <div class="immersive-scroll p-3 max-h-[200px] overflow-y-auto font-mono text-xs leading-relaxed custom-scrollbar"
                        :ref="el => scrollLogToBottom(el)">
                     <div v-for="(log, idx) in message.logs" :key="idx" 
                          class="text-gray-300 mb-1 animate-fade-in whitespace-pre-wrap">
@@ -2223,6 +2229,24 @@ onUnmounted(() => {
 });
 </script>
 <style scoped>
+.roundtable-mobile-immersive {
+  gap: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.roundtable-mobile-immersive :deep(.overflow-y-auto),
+.conversation-scroll :deep(.overflow-y-auto),
+.conversation-scroll :deep(.overflow-auto) {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.roundtable-mobile-immersive :deep(.overflow-y-auto::-webkit-scrollbar),
+.conversation-scroll :deep(.overflow-y-auto::-webkit-scrollbar),
+.conversation-scroll :deep(.overflow-auto::-webkit-scrollbar) {
+  display: none;
+}
+
 .meeting-markdown {
   font-size: 0.925rem;
   line-height: 1.75;

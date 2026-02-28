@@ -1,5 +1,5 @@
 <template>
-  <div class="relative isolate flex h-[100dvh] overflow-hidden bg-background-dark pt-[env(safe-area-inset-top,0px)] md:pt-0">
+  <div class="relative isolate flex h-[100dvh] w-full overflow-hidden bg-background-dark">
     <!-- Background decoration -->
     <div class="pointer-events-none absolute inset-0 z-0">
       <div class="absolute -left-40 -top-36 h-[420px] w-[420px] rounded-full bg-primary/10 blur-3xl"></div>
@@ -43,15 +43,19 @@
     <!-- Main Content Area -->
     <main class="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden">
       <button
-        class="absolute left-3 top-2 z-30 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/8 text-text-secondary transition-colors hover:text-text-primary md:hidden"
+        class="absolute left-3 z-40 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-text-secondary transition-colors hover:bg-white/15 hover:text-text-primary md:hidden"
+        :class="isNativeApp ? 'top-[calc(env(safe-area-inset-top,0px)+0.45rem)]' : 'top-3'"
         aria-label="Open navigation"
         @click="toggleMobileSidebar"
       >
         <span class="material-symbols-outlined">menu</span>
       </button>
 
-      <div class="flex-1 overflow-auto scroll-smooth px-3 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-12 md:px-8 md:pb-3 md:pt-4">
-        <div class="w-full h-full min-h-0">
+      <div
+        class="flex-1 min-h-0 overflow-hidden overflow-x-hidden scroll-smooth md:px-8 md:pb-3 md:pt-4"
+        :class="isNativeApp ? 'px-0 pb-[calc(env(safe-area-inset-bottom,0px)+0.05rem)] pt-[calc(env(safe-area-inset-top,0px)+2.9rem)]' : 'px-3 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-14'"
+      >
+        <div class="h-full min-h-0 w-full" :class="isNativeApp ? 'w-full' : 'mx-auto max-w-[1080px]'">
           <router-view />
         </div>
       </div>
@@ -61,12 +65,20 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { Capacitor } from '@capacitor/core';
 import { useRouter, useRoute } from 'vue-router';
 import AppSidebar from './AppSidebar.vue';
 
 const router = useRouter();
 const route = useRoute();
 const mobileSidebarOpen = ref(false);
+const isNativeApp = computed(() => {
+  try {
+    return Boolean(Capacitor?.isNativePlatform?.());
+  } catch {
+    return false;
+  }
+});
 
 // Computed properties
 const currentTab = computed(() => {

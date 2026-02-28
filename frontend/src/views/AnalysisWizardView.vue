@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell h-full min-h-0 flex flex-col pb-2">
+  <div class="page-shell immersive-scroll h-full min-h-0 flex flex-col overflow-y-auto pb-1.5 md:pb-2">
     <div class="page-header">
       <div>
         <h1 class="page-title page-title-gradient">{{ t('sidebar.analysis') }}</h1>
@@ -8,17 +8,17 @@
     </div>
 
     <!-- Back Button -->
-    <button 
+    <button
       v-if="currentStep === 1"
       @click="currentStep--"
-      class="self-start flex items-center gap-2 text-text-secondary hover:text-primary transition-colors"
+      class="self-start inline-flex items-center gap-2 rounded-xl bg-white/6 px-3 py-2 text-text-secondary transition-colors hover:bg-white/10 hover:text-primary"
     >
       <span class="material-symbols-outlined">arrow_back</span>
       {{ t('common.back') || 'Back' }}
     </button>
 
     <!-- Wizard Steps Indicator -->
-    <div class="glass-panel rounded-2xl p-4 relative overflow-hidden md:hidden">
+    <div class="glass-panel relative overflow-hidden rounded-2xl p-3.5 md:hidden md:p-4">
       <div class="flex items-center justify-between gap-3">
         <div>
           <p class="text-xs uppercase tracking-wider text-text-secondary">{{ t('analysisWizard.analyzing') || 'Progress' }}</p>
@@ -90,12 +90,12 @@
     </div>
 
     <!-- Wizard Content Area -->
-    <div class="glass-panel relative flex-grow min-h-0 overflow-hidden rounded-2xl p-4 md:min-h-[600px] md:overflow-y-auto md:p-8">
+    <div class="glass-panel immersive-scroll relative min-h-0 flex-grow overflow-y-auto rounded-2xl p-2.5 md:min-h-[600px] md:p-8">
       <!-- Background Decorative Elements -->
       <div class="absolute top-0 right-0 w-96 h-96 bg-primary/5 blur-[100px] rounded-full pointer-events-none"></div>
       <div class="absolute bottom-0 left-0 w-96 h-96 bg-accent-violet/5 blur-[100px] rounded-full pointer-events-none"></div>
 
-      <div class="relative z-10 h-full overflow-y-auto pr-1 md:overflow-visible md:pr-0">
+      <div class="relative z-10 min-h-0 md:h-full md:pr-0">
         <!-- Step 1: Scenario Selection -->
         <transition
           enter-active-class="transition duration-300 ease-out"
@@ -169,7 +169,7 @@
           </div>
         </div>
 
-        <div class="flex items-center gap-4">
+        <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4">
           <button
             @click="dismissRecovery"
             class="flex-1 px-6 py-3 rounded-xl border border-white/10 text-white hover:bg-white/10 transition-colors font-bold"

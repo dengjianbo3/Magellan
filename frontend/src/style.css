@@ -6,6 +6,12 @@
   color-scheme: dark;
 }
 
+html,
+body,
+#app {
+  overflow-x: hidden;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -24,6 +30,11 @@ body {
     url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h40v40H0V0zm1 1h38v38H1V1z' fill='%2338bdf8' fill-opacity='0.03'/%3E%3C/svg%3E");
   background-attachment: fixed;
   @apply bg-background-dark text-text-primary antialiased selection:bg-primary selection:text-white;
+}
+
+body.native-app {
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: contain;
 }
 
 #app {
@@ -145,6 +156,19 @@ body {
     font-size: 16px;
   }
 
+  .page-shell {
+    gap: 0.85rem;
+  }
+
+  .page-header {
+    gap: 0.45rem;
+  }
+
+  .page-header .page-primary-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
   .page-title {
     @apply text-2xl;
   }
@@ -152,4 +176,122 @@ body {
   .page-subtitle {
     @apply text-sm;
   }
+
+  /* App-only immersive mobile look */
+  .native-app .page-shell {
+    padding-inline: 0.05rem;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.12rem);
+    gap: 0.5rem;
+    overflow-x: hidden;
+  }
+
+  .native-app .page-header {
+    gap: 0.3rem;
+    padding-inline: 0.05rem;
+  }
+
+  .native-app .page-title {
+    font-size: 1.35rem;
+    line-height: 1.25;
+  }
+
+  .native-app .page-subtitle {
+    margin-top: 0.2rem;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    opacity: 0.84;
+  }
+
+  .native-app .page-header .page-primary-btn {
+    width: auto;
+    align-self: flex-start;
+  }
+
+  .native-app .section-card,
+  .native-app .glass-panel,
+  .native-app .glass-card,
+  .native-app .toolbar-panel {
+    border-color: transparent !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    box-shadow: none !important;
+  }
+
+  .native-app .section-card,
+  .native-app .glass-panel {
+    border-radius: 1rem !important;
+    padding: 0.85rem !important;
+  }
+
+  .native-app .toolbar-panel {
+    border-radius: 0.95rem !important;
+    padding: 0.62rem !important;
+  }
+
+  .native-app .page-primary-btn,
+  .native-app .secondary-btn {
+    border-radius: 0.9rem;
+    min-height: 2.55rem;
+    padding: 0.58rem 0.94rem;
+  }
+
+  .native-app .control-input,
+  .native-app .control-select {
+    min-height: 2.65rem;
+    border-color: transparent !important;
+    background: rgba(255, 255, 255, 0.07) !important;
+  }
+
+  .native-app .icon-btn {
+    border-color: transparent !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+  }
+
+  .native-app .glass-card:hover {
+    transform: none !important;
+  }
+
+  .native-app .modal-shell {
+    max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 1.4rem);
+    overflow-y: auto;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.9rem) !important;
+  }
+
+  .native-app table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .native-app .page-shell > *,
+  .native-app .page-shell [class*='grid'],
+  .native-app .page-shell [class*='flex'] {
+    min-width: 0;
+  }
+
+  .native-app .page-shell [class*='overflow-x-auto'] {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Hide scrollbar but keep scroll behavior for immersive chat UIs */
+.immersive-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.immersive-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* Reusable class for chat/discussion surfaces where visible scrollbars should be hidden */
+.conversation-scroll,
+.conversation-scroll * {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.conversation-scroll::-webkit-scrollbar,
+.conversation-scroll *::-webkit-scrollbar {
+  display: none;
 }

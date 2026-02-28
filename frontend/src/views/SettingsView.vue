@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell">
+  <div class="page-shell h-full min-h-0 overflow-y-auto">
     <!-- Page Header -->
     <div class="page-header">
       <div>
@@ -9,36 +9,36 @@
     </div>
 
     <!-- Settings Sections -->
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+    <div class="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-4 lg:gap-8">
       <!-- Settings Navigation -->
       <div class="lg:col-span-1">
-        <div class="glass-panel rounded-2xl p-4 sticky top-6">
-          <nav class="space-y-2">
+        <div class="glass-panel rounded-2xl p-2.5 md:p-4 lg:sticky lg:top-6">
+          <nav class="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-2 lg:overflow-visible lg:pb-0">
             <button
               v-for="section in sections"
               :key="section.id"
               @click="activeSection = section.id"
               :class="[
-                'w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300 text-left group',
+                'flex flex-shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-all duration-300 group lg:w-full lg:gap-4 lg:px-4 lg:py-3',
                 activeSection === section.id
                   ? 'bg-primary/10 text-primary shadow-[0_0_15px_rgba(56,189,248,0.15)]'
                   : 'text-text-secondary hover:bg-white/5 hover:text-white'
               ]"
             >
-              <span class="material-symbols-outlined text-xl group-hover:scale-110 transition-transform">{{ section.icon }}</span>
-              <span class="text-sm font-bold">{{ section.name }}</span>
+              <span class="material-symbols-outlined text-lg transition-transform group-hover:scale-110 lg:text-xl">{{ section.icon }}</span>
+              <span class="text-xs font-bold whitespace-nowrap lg:text-sm">{{ section.name }}</span>
             </button>
           </nav>
         </div>
       </div>
 
       <!-- Settings Content -->
-      <div class="lg:col-span-3 space-y-6">
+      <div class="space-y-4 md:space-y-6 lg:col-span-3">
         <!-- Profile Settings -->
-        <div v-if="activeSection === 'profile'" class="glass-panel rounded-2xl p-8 animate-fade-in">
-          <h2 class="text-xl font-bold text-white mb-8 pb-4 border-b border-white/10">{{ t('settings.sections.profile') }}</h2>
-          <div class="space-y-8">
-            <div class="flex items-center gap-8">
+        <div v-if="activeSection === 'profile'" class="glass-panel rounded-2xl p-4 md:p-6 lg:p-8 animate-fade-in">
+          <h2 class="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10 md:mb-8">{{ t('settings.sections.profile') }}</h2>
+          <div class="space-y-6 md:space-y-8">
+            <div class="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-8">
               <div class="relative group cursor-pointer">
                 <div class="w-24 h-24 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center text-3xl font-bold text-white shadow-glow">
                   {{ userProfile.name ? userProfile.name.slice(0, 2).toUpperCase() : 'U' }}
@@ -62,7 +62,7 @@
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-6">
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
               <div>
                 <label class="block text-sm font-bold text-text-secondary mb-2 uppercase tracking-wider">{{ t('settings.profile.name') || 'Full Name' }}</label>
                 <input
@@ -111,8 +111,8 @@
         </div>
 
         <!-- Notification Settings -->
-        <div v-if="activeSection === 'notifications'" class="glass-panel rounded-2xl p-8 animate-fade-in">
-          <h2 class="text-xl font-bold text-white mb-8 pb-4 border-b border-white/10">{{ t('settings.sections.notifications') }}</h2>
+        <div v-if="activeSection === 'notifications'" class="glass-panel rounded-2xl p-4 md:p-6 lg:p-8 animate-fade-in">
+          <h2 class="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10 md:mb-8">{{ t('settings.sections.notifications') }}</h2>
           <div class="space-y-4">
             <div class="flex items-center justify-between p-5 rounded-xl bg-white/5 border border-white/5">
               <div>
@@ -150,8 +150,8 @@
         </div>
 
         <!-- Security Settings -->
-        <div v-if="activeSection === 'security'" class="glass-panel rounded-2xl p-8 animate-fade-in">
-          <h2 class="text-xl font-bold text-white mb-8 pb-4 border-b border-white/10">{{ t('settings.sections.security') }}</h2>
+        <div v-if="activeSection === 'security'" class="glass-panel rounded-2xl p-4 md:p-6 lg:p-8 animate-fade-in">
+          <h2 class="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10 md:mb-8">{{ t('settings.sections.security') }}</h2>
           <div class="space-y-8">
             <div>
               <h3 class="font-bold text-primary mb-4 text-sm uppercase tracking-wider">{{ t('settings.security.changePassword') }}</h3>
@@ -164,7 +164,7 @@
                     class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all"
                   />
                 </div>
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                         <label class="block text-xs font-bold text-text-secondary mb-2 uppercase">{{ t('settings.security.newPassword') }}</label>
                         <input
@@ -214,8 +214,8 @@
         </div>
 
         <!-- AI Model Settings -->
-        <div v-if="activeSection === 'api'" class="glass-panel rounded-2xl p-8 animate-fade-in">
-          <h2 class="text-xl font-bold text-white mb-8 pb-4 border-b border-white/10">{{ t('settings.api.title') }}</h2>
+        <div v-if="activeSection === 'api'" class="glass-panel rounded-2xl p-4 md:p-6 lg:p-8 animate-fade-in">
+          <h2 class="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10 md:mb-8">{{ t('settings.api.title') }}</h2>
           <div class="space-y-6">
             <div class="p-5 rounded-xl bg-white/5 border border-white/5">
               <div class="flex items-start justify-between gap-4">
@@ -243,14 +243,14 @@
         </div>
 
         <!-- Membership Plans -->
-        <div v-if="activeSection === 'plans'" class="glass-panel rounded-2xl p-8 animate-fade-in">
+        <div v-if="activeSection === 'plans'" class="glass-panel rounded-2xl p-4 md:p-6 lg:p-8 animate-fade-in">
           <div class="flex items-center justify-between mb-3">
             <h2 class="text-xl font-bold text-white">{{ t('settings.pricing.title') }}</h2>
             <span class="px-3 py-1 rounded-full text-xs font-bold bg-primary/20 text-primary border border-primary/30">
               {{ t('settings.pricing.demoBadge') }}
             </span>
           </div>
-          <p class="text-text-secondary mb-8">{{ t('settings.pricing.subtitle') }}</p>
+          <p class="text-text-secondary mb-6 md:mb-8">{{ t('settings.pricing.subtitle') }}</p>
 
           <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
             <article
@@ -289,8 +289,8 @@
         </div>
 
         <!-- Language Settings -->
-        <div v-if="activeSection === 'language'" class="glass-panel rounded-2xl p-8 animate-fade-in">
-          <h2 class="text-xl font-bold text-white mb-8 pb-4 border-b border-white/10">{{ t('settings.language.title') }}</h2>
+        <div v-if="activeSection === 'language'" class="glass-panel rounded-2xl p-4 md:p-6 lg:p-8 animate-fade-in">
+          <h2 class="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10 md:mb-8">{{ t('settings.language.title') }}</h2>
           <div class="space-y-8">
             <div>
               <label class="block text-sm font-bold text-text-secondary mb-4 uppercase tracking-wider">{{ t('settings.language.label') }}</label>

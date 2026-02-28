@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
+import { Capacitor } from '@capacitor/core'
 import './style.css'
 import App from './App.vue'
 import router from './router'
@@ -8,6 +9,20 @@ import { useAuthStore } from './stores/auth'
 
 const app = createApp(App)
 const pinia = createPinia()
+
+// Runtime platform flag for app-only UI behaviors.
+const isNativeApp = (() => {
+  try {
+    return Boolean(Capacitor?.isNativePlatform?.())
+  } catch {
+    return false
+  }
+})()
+
+if (typeof document !== 'undefined') {
+  document.documentElement.classList.toggle('native-app', isNativeApp)
+  document.body.classList.toggle('native-app', isNativeApp)
+}
 
 // Initialize error tracking
 errorTracker.init(app)

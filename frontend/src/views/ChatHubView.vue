@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell relative h-full min-h-0 flex flex-col">
+  <div class="page-shell conversation-scroll relative h-full min-h-0 flex flex-col" :class="{ 'app-chat-immersive': useAppImmersiveLayout }">
     <div class="pointer-events-none absolute inset-0 -z-10">
       <div class="absolute -left-16 top-1/4 h-64 w-64 rounded-full bg-primary/10 blur-3xl"></div>
       <div class="absolute -right-20 bottom-16 h-72 w-72 rounded-full bg-accent-cyan/10 blur-3xl"></div>
@@ -19,7 +19,7 @@
           aria-label="Close session history"
           @click="mobileHistoryOpen = false"
         />
-        <aside class="absolute inset-y-0 right-0 w-[86vw] max-w-[360px] overflow-hidden rounded-l-3xl bg-surface/92 p-3 shadow-2xl backdrop-blur-xl">
+        <aside class="absolute inset-y-0 left-0 flex w-[92vw] max-w-[380px] flex-col overflow-hidden rounded-r-3xl bg-surface/92 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)] pt-[calc(env(safe-area-inset-top,0px)+0.55rem)] shadow-2xl backdrop-blur-xl">
           <div class="mb-3 flex items-center justify-between gap-2">
             <h3 class="section-title !mb-0">
               <span class="material-symbols-outlined text-primary">history</span>
@@ -47,7 +47,7 @@
             </div>
           </div>
 
-          <div class="h-[calc(100%-84px)] overflow-y-auto space-y-2 pr-1">
+          <div class="immersive-scroll mt-1 flex-1 overflow-y-auto space-y-2 pr-1">
             <div
               v-for="session in visibleSessions"
               :key="`mobile_${session.id}`"
@@ -72,7 +72,7 @@
     </transition>
 
     <div
-      class="grid h-full flex-1 min-h-0 grid-cols-1 gap-2 xl:gap-1"
+      class="grid h-full flex-1 min-h-0 grid-cols-1 gap-0 md:gap-2 xl:gap-1"
       :class="historyCollapsed ? 'xl:grid-cols-[minmax(0,1fr)_96px] xl:grid-rows-1' : 'xl:grid-cols-[minmax(0,1fr)_312px] xl:grid-rows-1'"
     >
       <aside
@@ -124,7 +124,7 @@
           </div>
         </div>
 
-        <div v-if="!historyCollapsed" class="flex-1 overflow-y-auto space-y-2 pr-1">
+        <div v-if="!historyCollapsed" class="immersive-scroll flex-1 overflow-y-auto space-y-2 pr-1">
           <div
             v-for="session in visibleSessions"
             :key="session.id"
@@ -171,7 +171,7 @@
           </button>
         </div>
 
-        <div v-else class="flex-1 overflow-y-auto space-y-2 pr-1">
+        <div v-else class="immersive-scroll flex-1 overflow-y-auto space-y-2 pr-1">
           <button
             v-for="session in filteredSessions"
             :key="session.id"
@@ -185,17 +185,23 @@
         </div>
       </aside>
 
-      <section class="relative h-full min-h-0 overflow-hidden rounded-[30px] bg-transparent flex flex-col xl:col-start-1 xl:row-start-1">
+      <section
+        class="relative h-full min-h-0 overflow-hidden bg-transparent flex flex-col xl:col-start-1 xl:row-start-1"
+        :class="useAppImmersiveLayout ? 'rounded-none' : 'rounded-[22px] md:rounded-[30px]'"
+      >
         <div class="pointer-events-none absolute -right-8 top-10 h-36 w-36 rounded-full bg-primary/10 blur-3xl"></div>
         <div class="pointer-events-none absolute left-10 bottom-10 h-32 w-32 rounded-full bg-accent-cyan/10 blur-3xl"></div>
 
-        <div class="relative flex flex-wrap items-center justify-between gap-3 px-4 py-4 md:px-5">
+        <div
+          class="relative flex items-center justify-between gap-2 md:flex-wrap md:gap-3 md:px-5 md:py-4"
+          :class="useAppImmersiveLayout ? 'px-3 pb-1.5 pt-0.5' : 'px-4 py-4'"
+        >
           <div class="min-w-0">
             <div class="flex items-center gap-2">
-              <span class="material-symbols-outlined text-primary">forum</span>
-              <p class="truncate text-sm font-semibold text-white">{{ activeSessionTitle }}</p>
+              <span class="material-symbols-outlined text-[20px] text-primary md:text-[22px]">forum</span>
+              <p class="truncate text-sm font-semibold text-white md:text-base">{{ activeSessionTitle }}</p>
             </div>
-            <p class="mt-1 truncate text-xs text-text-secondary">{{ sessionId || t('chatHub.system.sessionPending') }}</p>
+            <p class="mt-1 hidden truncate text-xs text-text-secondary md:block">{{ sessionId || t('chatHub.system.sessionPending') }}</p>
           </div>
           <div class="flex items-center gap-2">
             <button
@@ -206,218 +212,214 @@
             >
               <span class="material-symbols-outlined text-base">history</span>
             </button>
-            <div
-              class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs"
-              :class="connected ? 'text-emerald-300 bg-emerald-500/12' : 'text-amber-300 bg-amber-500/12'"
-            >
-              <span class="h-2 w-2 rounded-full" :class="connected ? 'bg-emerald-400' : 'bg-amber-300'"></span>
-              {{ connected ? t('chatHub.connected') : t('chatHub.disconnected') }}
-            </div>
-            <button class="icon-btn border-0 bg-white/10 hover:bg-white/15" :disabled="connecting" :title="connectionButtonLabel" @click="reconnectCurrentSession">
-              <span class="material-symbols-outlined text-base" :class="connecting ? 'animate-spin' : ''">refresh</span>
-            </button>
           </div>
         </div>
 
-        <div ref="messagesContainer" class="relative flex-1 overflow-y-auto px-4 py-3 space-y-4 md:px-5">
-          <div v-if="messages.length === 0" class="flex min-h-full items-center justify-center py-12">
-            <div class="max-w-xl text-center">
-              <p class="text-2xl font-semibold tracking-tight text-white md:text-4xl">{{ t('chatHub.emptyState.title') }}</p>
-              <p class="mt-3 text-sm text-text-secondary md:text-base">{{ t('chatHub.emptyState.subtitle') }}</p>
-              <div class="mt-6 flex flex-wrap items-center justify-center gap-2">
-                <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">{{ t('chatHub.starters.label') }}</span>
-                <button
-                  v-for="prompt in starterPrompts"
-                  :key="prompt"
-                  type="button"
-                  class="rounded-full bg-white/10 px-3 py-1.5 text-xs text-text-primary transition-colors hover:bg-white/20"
-                  @click="applyStarterPrompt(prompt)"
-                >
-                  {{ prompt }}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <template v-for="msg in messages" :key="msg.id">
-            <div v-if="msg.type === 'system'" class="flex justify-center">
-              <div
-                class="max-w-[90%] rounded-full bg-white/8 px-4 py-1.5 text-xs"
-                :class="msg.level === 'error'
-                  ? 'bg-rose-500/20 text-rose-300'
-                  : 'text-text-secondary'"
-              >
-                {{ msg.content }}
-              </div>
-            </div>
-
-            <div v-else :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
-              <div
-                :class="[
-                  'max-w-[88%] rounded-3xl px-4 py-3 shadow-sm',
-                  msg.role === 'user'
-                    ? 'bg-primary/22 text-white'
-                    : 'bg-white/10 text-text-primary'
-                ]"
-              >
-                <div class="mb-2 flex items-center justify-between gap-3">
-                  <p class="text-xs font-bold uppercase tracking-wider" :class="msg.role === 'user' ? 'text-primary-light' : 'text-text-secondary'">
-                    {{ msg.speaker }}
-                  </p>
-                  <p class="text-[11px] text-text-secondary">{{ formatTime(msg.timestamp) }}</p>
-                </div>
-
-                <div
-                  v-if="msg.role === 'assistant'"
-                  class="analysis-markdown max-w-none break-words"
-                  :class="{ 'report-mode': isReportLike(msg.content) }"
-                  v-html="renderMarkdown(msg.content)"
-                ></div>
-                <p v-else class="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                  {{ msg.content }}
-                </p>
-
-                <div v-if="msg.role === 'user' && msg.attachments && msg.attachments.length" class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <div
-                    v-for="att in msg.attachments"
-                    :key="att.id || att.name"
-                    class="overflow-hidden rounded-xl bg-black/25"
+        <div ref="messagesContainer" class="immersive-scroll relative flex-1 overflow-y-auto overflow-x-hidden pb-3 pt-1.5 md:px-5 md:py-3" :class="useAppImmersiveLayout ? 'px-1.5' : 'px-2'">
+          <div class="mx-auto w-full max-w-[920px] space-y-3 md:space-y-4">
+            <div v-if="messages.length === 0" class="flex min-h-full items-center justify-center py-14 md:py-12">
+              <div class="w-full max-w-2xl text-center">
+                <p class="text-2xl font-semibold tracking-tight text-white md:text-4xl">{{ t('chatHub.emptyState.title') }}</p>
+                <p class="mt-2 text-sm text-text-secondary md:mt-3 md:text-base">{{ t('chatHub.emptyState.subtitle') }}</p>
+                <div class="mt-5 flex flex-col items-stretch gap-2.5 md:mt-6 md:flex-wrap md:flex-row md:items-center md:justify-center md:gap-2">
+                  <span class="text-center text-[11px] font-semibold uppercase tracking-wider text-text-secondary md:text-xs">{{ t('chatHub.starters.label') }}</span>
+                  <button
+                    v-for="prompt in starterPromptsForDisplay"
+                    :key="prompt"
+                    type="button"
+                    class="rounded-2xl bg-white/10 px-3 py-2 text-left text-xs text-text-primary transition-colors hover:bg-white/20 md:rounded-full md:px-3 md:py-1.5 md:text-center"
+                    @click="applyStarterPrompt(prompt)"
                   >
-                    <img
-                      v-if="att.previewUrl"
-                      :src="att.previewUrl"
-                      :alt="att.name"
-                      class="h-24 w-full object-cover"
-                      @load="handleMessageImageLoad"
-                    />
-                    <div v-else class="flex h-24 items-center justify-center gap-2 px-2 text-xs text-text-secondary">
-                      <span class="material-symbols-outlined text-sm">image</span>
-                      <span class="truncate">{{ att.name }}</span>
+                    {{ prompt }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <template v-for="msg in messages" :key="msg.id">
+              <div v-if="msg.type === 'system'" class="flex justify-center">
+                <div
+                  class="max-w-[90%] rounded-full bg-white/8 px-4 py-1.5 text-xs"
+                  :class="msg.level === 'error'
+                    ? 'bg-rose-500/20 text-rose-300'
+                    : 'text-text-secondary'"
+                >
+                  {{ msg.content }}
+                </div>
+              </div>
+
+              <div v-else :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+                <div
+                  :class="[
+                    'max-w-[97%] rounded-3xl px-3.5 py-3 shadow-sm md:max-w-[86%] md:px-4',
+                    msg.role === 'user'
+                      ? 'bg-primary/20 text-white'
+                      : 'bg-white/10 text-text-primary'
+                  ]"
+                >
+                  <div class="mb-2 flex items-center justify-between gap-3">
+                    <p class="text-xs font-bold uppercase tracking-wider" :class="msg.role === 'user' ? 'text-primary-light' : 'text-text-secondary'">
+                      {{ msg.speaker }}
+                    </p>
+                    <p class="text-[11px] text-text-secondary">{{ formatTime(msg.timestamp) }}</p>
+                  </div>
+
+                  <div
+                    v-if="msg.role === 'assistant'"
+                    class="analysis-markdown max-w-none break-words"
+                    :class="{ 'report-mode': isReportLike(msg.content) }"
+                    v-html="renderMarkdown(msg.content)"
+                  ></div>
+                  <p v-else class="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                    {{ msg.content }}
+                  </p>
+
+                  <div v-if="msg.role === 'user' && msg.attachments && msg.attachments.length" class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    <div
+                      v-for="att in msg.attachments"
+                      :key="att.id || att.name"
+                      class="overflow-hidden rounded-xl bg-black/25"
+                    >
+                      <img
+                        v-if="att.previewUrl"
+                        :src="att.previewUrl"
+                        :alt="att.name"
+                        class="h-24 w-full object-cover"
+                        @load="handleMessageImageLoad"
+                      />
+                      <div v-else class="flex h-24 items-center justify-center gap-2 px-2 text-xs text-text-secondary">
+                        <span class="material-symbols-outlined text-sm">image</span>
+                        <span class="truncate">{{ att.name }}</span>
+                      </div>
+                      <p class="truncate px-2 py-1 text-[11px] text-text-secondary">{{ att.name }}</p>
                     </div>
-                    <p class="truncate px-2 py-1 text-[11px] text-text-secondary">{{ att.name }}</p>
                   </div>
                 </div>
               </div>
-            </div>
-          </template>
+            </template>
 
-          <div v-if="turnInFlight" class="mx-auto w-full max-w-2xl rounded-2xl bg-white/8 px-4 py-3 backdrop-blur-sm">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="flex items-center gap-2 text-sm text-primary-light">
-                <span class="material-symbols-outlined animate-spin text-base">progress_activity</span>
-                <span class="font-semibold">{{ waitStageLabel }}</span>
+            <div v-if="turnInFlight" class="mx-auto w-full max-w-[97%] rounded-2xl bg-white/8 px-4 py-3 backdrop-blur-sm md:max-w-3xl">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2 text-sm text-primary-light">
+                  <span class="material-symbols-outlined animate-spin text-base">progress_activity</span>
+                  <span class="font-semibold">{{ waitStageLabel }}</span>
+                </div>
+                <div class="rounded-full bg-black/25 px-2.5 py-1 text-xs text-text-secondary">
+                  {{ waitElapsedLabel }}
+                </div>
               </div>
-              <div class="rounded-full bg-black/25 px-2.5 py-1 text-xs text-text-secondary">
-                {{ waitElapsedLabel }}
+              <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <p class="text-text-secondary">{{ waitMilestoneSummary }}</p>
+                <p class="text-primary/90">{{ waitRemainingLabel }}</p>
               </div>
-            </div>
-            <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-              <p class="text-text-secondary">{{ waitMilestoneSummary }}</p>
-              <p class="text-primary/90">{{ waitRemainingLabel }}</p>
-            </div>
-            <div class="mt-2 flex flex-wrap gap-1.5">
-              <span
-                v-for="item in waitMilestones"
-                :key="item.key"
-                class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]"
-                :class="item.status === 'done'
-                  ? 'bg-emerald-500/18 text-emerald-200'
-                  : item.status === 'active'
-                    ? 'bg-primary/22 text-primary-light'
-                    : 'bg-white/8 text-text-secondary'"
-              >
-                <span class="h-1.5 w-1.5 rounded-full" :class="item.status === 'pending' ? 'bg-white/30' : 'bg-current'"></span>
-                {{ item.label }}
-              </span>
-            </div>
-            <p class="mt-2 text-xs text-text-secondary">{{ activeWaitHint }}</p>
-            <p v-if="currentThinkingAgentName" class="mt-1 text-xs text-primary/90">
-              {{ languageTag().startsWith('zh') ? `当前：${currentThinkingAgentName}` : `Current: ${currentThinkingAgentName}` }}
-            </p>
-            <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-              <div class="h-full w-1/3 animate-pulse rounded-full bg-primary/55"></div>
-            </div>
-          </div>
-
-          <div v-for="agent in thinkingAgentNames" :key="agent.id" class="flex justify-start">
-            <div class="w-full max-w-[88%] rounded-3xl bg-white/8 px-4 py-3">
-              <div class="flex items-center gap-2 text-sm text-primary-light">
-                <span class="material-symbols-outlined animate-spin text-base">progress_activity</span>
-                <span class="font-semibold">{{ agent.name }}</span>
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                <span
+                  v-for="item in waitMilestones"
+                  :key="item.key"
+                  class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]"
+                  :class="item.status === 'done'
+                    ? 'bg-emerald-500/18 text-emerald-200'
+                    : item.status === 'active'
+                      ? 'bg-primary/22 text-primary-light'
+                      : 'bg-white/8 text-text-secondary'"
+                >
+                  <span class="h-1.5 w-1.5 rounded-full" :class="item.status === 'pending' ? 'bg-white/30' : 'bg-current'"></span>
+                  {{ item.label }}
+                </span>
               </div>
-              <p class="mt-1 text-xs text-text-secondary">
-                {{ languageTag().startsWith('zh') ? '正在调用工具、检索信息并组织回答…' : 'Calling tools, retrieving evidence, and composing response…' }}
+              <p class="mt-2 text-xs text-text-secondary">{{ activeWaitHint }}</p>
+              <p v-if="currentThinkingAgentName" class="mt-1 text-xs text-primary/90">
+                {{ languageTag().startsWith('zh') ? `当前：${currentThinkingAgentName}` : `Current: ${currentThinkingAgentName}` }}
               </p>
-              <div class="mt-2 space-y-1.5">
-                <div class="h-2 w-11/12 rounded-full bg-white/10"></div>
-                <div class="h-2 w-8/12 rounded-full bg-white/10"></div>
+              <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div class="h-full w-1/3 animate-pulse rounded-full bg-primary/55"></div>
+              </div>
+            </div>
+
+            <div v-for="agent in thinkingAgentNames" :key="agent.id" class="flex justify-start">
+              <div class="w-full max-w-[97%] rounded-3xl bg-white/8 px-4 py-3 md:max-w-[86%]">
+                <div class="flex items-center gap-2 text-sm text-primary-light">
+                  <span class="material-symbols-outlined animate-spin text-base">progress_activity</span>
+                  <span class="font-semibold">{{ agent.name }}</span>
+                </div>
+                <p class="mt-1 text-xs text-text-secondary">
+                  {{ languageTag().startsWith('zh') ? '正在调用工具、检索信息并组织回答…' : 'Calling tools, retrieving evidence, and composing response…' }}
+                </p>
+                <div class="mt-2 space-y-1.5">
+                  <div class="h-2 w-11/12 rounded-full bg-white/10"></div>
+                  <div class="h-2 w-8/12 rounded-full bg-white/10"></div>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div class="relative px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-2 md:px-4 md:pb-4">
-          <div v-if="selectedAttachments.length" class="mb-3 flex flex-wrap gap-2">
-            <div
-              v-for="att in selectedAttachments"
-              :key="att.id"
-              class="group relative overflow-hidden rounded-xl bg-primary/12"
-            >
-              <img :src="att.previewUrl" :alt="att.name" class="h-16 w-24 object-cover" />
-              <button
-                class="absolute right-1 top-1 rounded bg-black/60 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                @click="removeAttachment(att.id)"
+        <div
+          class="relative shrink-0 px-2 md:px-4 md:pb-4 md:pt-2"
+          :class="useAppImmersiveLayout ? 'pb-[calc(env(safe-area-inset-bottom,0px)+0.06rem)] pt-0' : 'pb-[calc(env(safe-area-inset-bottom,0px)+0.45rem)] pt-1'"
+        >
+          <div class="mx-auto w-full max-w-[940px]">
+            <div v-if="selectedAttachments.length" class="mb-3 flex flex-wrap gap-2">
+              <div
+                v-for="att in selectedAttachments"
+                :key="att.id"
+                class="group relative overflow-hidden rounded-xl bg-primary/12"
               >
-                <span class="material-symbols-outlined text-sm">close</span>
-              </button>
-            </div>
-          </div>
-
-          <div ref="composerRef" class="relative rounded-[24px] bg-black/34 p-3 shadow-[0_10px_28px_rgba(0,0,0,0.22)] backdrop-blur-xl md:rounded-[28px]">
-            <div class="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
-              <span class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">{{ t('chatHub.composer.specialists') }}</span>
-              <button
-                v-for="agent in quickMentionAgents"
-                :key="agent.id"
-                class="shrink-0 rounded-full bg-white/12 px-3 py-1 text-xs text-primary hover:bg-white/20"
-                @click="appendMention(agent.id)"
-              >
-                @{{ agent.id }}
-              </button>
-              <button
-                v-if="mentionableAgents.length > quickMentionAgents.length"
-                type="button"
-                class="shrink-0 rounded-full bg-white/10 px-3 py-1 text-xs text-text-secondary hover:bg-white/20 hover:text-white"
-                @click="showCollabPanel = true"
-              >
-                +{{ mentionableAgents.length - quickMentionAgents.length }}
-              </button>
-              <button
-                v-if="knowledgeEnabled"
-                type="button"
-                class="inline-flex items-center gap-1 rounded-full bg-white/12 px-3 py-1 text-xs text-primary-light hover:bg-white/18"
-                @click="disableKnowledge"
-              >
-                <span class="material-symbols-outlined text-sm">library_books</span>
-                {{ knowledgeChipLabel }}
-                <span class="material-symbols-outlined text-sm">close</span>
-              </button>
+                <img :src="att.previewUrl" :alt="att.name" class="h-16 w-24 object-cover" />
+                <button
+                  class="absolute right-1 top-1 rounded bg-black/60 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                  @click="removeAttachment(att.id)"
+                >
+                  <span class="material-symbols-outlined text-sm">close</span>
+                </button>
+              </div>
             </div>
 
-            <div class="relative">
-              <textarea
-                ref="textareaRef"
-                v-model="inputMessage"
-                rows="4"
-                :placeholder="t('chatHub.inputPlaceholder')"
-                class="w-full rounded-2xl bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-text-secondary outline-none transition-colors focus:bg-white/[0.08] resize-none"
-                @keydown="handleTextareaKeydown"
-                @compositionstart="handleCompositionStart"
-                @compositionend="handleCompositionEnd"
-                @paste="handleTextareaPaste"
-                @input="handleTextareaInput"
-                @click="handleTextareaInput"
-              ></textarea>
+            <div ref="composerRef" class="relative rounded-[22px] bg-white/[0.06] p-2 shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl md:rounded-[28px] md:p-3">
+              <div class="mb-2 items-center gap-2 overflow-x-auto pb-1" :class="useAppImmersiveLayout ? 'hidden md:flex' : 'flex'">
+                <span class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">{{ t('chatHub.composer.specialists') }}</span>
+                <button
+                  v-for="agent in quickMentionAgentsForDisplay"
+                  :key="agent.id"
+                  class="shrink-0 rounded-full bg-white/12 px-3 py-1 text-xs text-primary hover:bg-white/20"
+                  @click="appendMention(agent.id)"
+                >
+                  @{{ agent.id }}
+                </button>
+                <button
+                  v-if="mentionableAgents.length > quickMentionAgents.length"
+                  type="button"
+                  class="shrink-0 rounded-full bg-white/10 px-3 py-1 text-xs text-text-secondary hover:bg-white/20 hover:text-white"
+                  @click="showCollabPanel = true"
+                >
+                  +{{ mentionableAgents.length - quickMentionAgents.length }}
+                </button>
+                <button
+                  v-if="knowledgeEnabled"
+                  type="button"
+                  class="inline-flex items-center gap-1 rounded-full bg-white/12 px-3 py-1 text-xs text-primary-light hover:bg-white/18"
+                  @click="disableKnowledge"
+                >
+                  <span class="material-symbols-outlined text-sm">library_books</span>
+                  {{ knowledgeChipLabel }}
+                  <span class="material-symbols-outlined text-sm">close</span>
+                </button>
+              </div>
+
+              <div class="relative">
+                <textarea
+                  ref="textareaRef"
+                  v-model="inputMessage"
+                  :rows="useAppImmersiveLayout ? 2 : (isMobileViewport ? 3 : 4)"
+                  :placeholder="t('chatHub.inputPlaceholder')"
+                  class="w-full resize-none rounded-[18px] bg-black/18 px-4 py-3 text-sm leading-6 text-white placeholder-text-secondary outline-none transition-colors focus:bg-black/26 md:rounded-2xl"
+                  @keydown="handleTextareaKeydown"
+                  @compositionstart="handleCompositionStart"
+                  @compositionend="handleCompositionEnd"
+                  @paste="handleTextareaPaste"
+                  @input="handleTextareaInput"
+                  @click="handleTextareaInput"
+                ></textarea>
 
               <div
                 v-if="showMentionMenu"
@@ -471,7 +473,7 @@
 
                   <div>
                     <p class="mb-1 text-xs font-bold uppercase tracking-wider text-text-secondary">{{ t('chatHub.participants') }}</p>
-                    <div class="max-h-32 overflow-y-auto space-y-1 pr-1">
+                    <div class="immersive-scroll max-h-32 overflow-y-auto space-y-1 pr-1">
                       <div
                         v-for="agent in agents"
                         :key="agent.id"
@@ -486,46 +488,47 @@
               </div>
             </div>
 
-            <input
-              ref="fileInputRef"
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              multiple
-              class="hidden"
-              @change="onAttachmentSelected"
-            />
+              <input
+                ref="fileInputRef"
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                class="hidden"
+                @change="onAttachmentSelected"
+              />
 
-            <div class="mt-3 flex items-center justify-between gap-3">
-              <div class="flex items-center gap-2">
+              <div class="mt-2.5 flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <button
+                    class="icon-btn h-10 w-10 shrink-0 border-0 bg-white/10 hover:bg-white/15 md:h-11 md:w-11"
+                    :title="t('chatHub.collabConfig')"
+                    @click="showCollabPanel = !showCollabPanel"
+                  >
+                    <span class="material-symbols-outlined text-base">tune</span>
+                  </button>
+
+                  <button
+                    class="icon-btn h-10 w-10 shrink-0 border-0 bg-white/10 hover:bg-white/15 md:h-11 md:w-11"
+                    :title="t('chatHub.attachImage')"
+                    @click="triggerAttachmentPicker"
+                  >
+                    <span class="material-symbols-outlined text-base">image</span>
+                  </button>
+
+                  <p class="hidden text-[11px] text-text-tertiary sm:block">
+                    {{ t('chatHub.composer.hint') }}
+                  </p>
+                </div>
+
                 <button
-                  class="icon-btn h-11 w-11 shrink-0 border-0 bg-white/10 hover:bg-white/15"
-                  :title="t('chatHub.collabConfig')"
-                  @click="showCollabPanel = !showCollabPanel"
+                  class="page-primary-btn h-10 shrink-0 px-4 md:h-11"
+                  :disabled="!canSend"
+                  @click="sendMessage"
                 >
-                  <span class="material-symbols-outlined text-base">tune</span>
+                  <span class="material-symbols-outlined text-base">send</span>
+                  <span :class="useAppImmersiveLayout ? 'hidden md:inline' : 'inline'">{{ sendLabel }}</span>
                 </button>
-
-                <button
-                  class="icon-btn h-11 w-11 shrink-0 border-0 bg-white/10 hover:bg-white/15"
-                  :title="t('chatHub.attachImage')"
-                  @click="triggerAttachmentPicker"
-                >
-                  <span class="material-symbols-outlined text-base">image</span>
-                </button>
-
-                <p class="hidden text-[11px] text-text-tertiary sm:block">
-                  {{ t('chatHub.composer.hint') }}
-                </p>
               </div>
-
-              <button
-                class="page-primary-btn h-11 shrink-0"
-                :disabled="!canSend"
-                @click="sendMessage"
-              >
-                <span class="material-symbols-outlined text-base">send</span>
-                {{ sendLabel }}
-              </button>
             </div>
           </div>
         </div>
@@ -537,6 +540,7 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { marked } from 'marked';
+import { Capacitor } from '@capacitor/core';
 import { useI18n } from '@/i18n';
 import { wsUrl } from '@/config/api';
 import { appendTokenToUrl, getAccessToken } from '@/services/authHeaders';
@@ -575,6 +579,8 @@ const showAllSessions = ref(false);
 const sessionSearchQuery = ref('');
 const connected = ref(false);
 const connecting = ref(false);
+const isMobileViewport = ref(false);
+const isNativeApp = ref(false);
 
 const messagesContainer = ref(null);
 const composerRef = ref(null);
@@ -588,17 +594,20 @@ const isComposing = ref(false);
 const MAX_IMAGE_ATTACHMENTS = 3;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
-const maxReconnectAttempts = 5;
 const reconnectBaseDelayMs = 1500;
 let socket = null;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
+let heartbeatTimer = null;
+let reconnectWatchdogTimer = null;
 let isUnmounted = false;
 let suppressReconnectOnce = false;
 let authRefreshInFlight = false;
 let waitTicker = null;
 let waitHintTicker = null;
 let finishTurnTimer = null;
+let sessionHandshakeReady = false;
+const outboundQueue = [];
 
 const turnInFlight = ref(false);
 const turnStartedAt = ref(0);
@@ -614,12 +623,6 @@ const waitDurationStats = ref({ direct: [], delegated: [] });
 const markdownRenderCache = new Map();
 const reportDetectCache = new Map();
 
-function sessionExpiredMessage() {
-  return String(locale.value || '').startsWith('zh')
-    ? '登录已过期，请重新登录。'
-    : 'Session expired. Please log in again.';
-}
-
 const knowledgeOptions = computed(() => [
   { value: 'all', label: t('chatHub.knowledge.all') },
   { value: 'general', label: t('chatHub.knowledge.general') },
@@ -630,6 +633,11 @@ const knowledgeOptions = computed(() => [
 
 const mentionableAgents = computed(() => agents.value.filter((agent) => agent.id !== 'leader'));
 const quickMentionAgents = computed(() => mentionableAgents.value.slice(0, 3));
+const useAppImmersiveLayout = computed(() => isNativeApp.value && isMobileViewport.value);
+const quickMentionAgentsForDisplay = computed(() => {
+  if (useAppImmersiveLayout.value) return quickMentionAgents.value.slice(0, 2);
+  return quickMentionAgents.value;
+});
 const mentionSuggestions = computed(() => {
   const state = mentionState.value;
   if (!state) return [];
@@ -750,12 +758,7 @@ const waitRemainingLabel = computed(() => {
   return zh ? `预计剩余 ${remain}s` : `Estimated ${remain}s left`;
 });
 
-const canSend = computed(() => (Boolean(inputMessage.value.trim()) || selectedAttachments.value.length > 0) && connected.value);
-
-const connectionButtonLabel = computed(() => {
-  if (connecting.value) return t('chatHub.connecting');
-  return connected.value ? t('chatHub.connected') : t('chatHub.connect');
-});
+const canSend = computed(() => Boolean(inputMessage.value.trim()) || selectedAttachments.value.length > 0);
 
 const sendLabel = computed(() => t('chatHub.send'));
 const activeSessionTitle = computed(() => {
@@ -795,6 +798,10 @@ const starterPrompts = computed(() => [
   t('chatHub.starters.prompt4'),
   t('chatHub.starters.prompt5'),
 ]);
+const starterPromptsForDisplay = computed(() => {
+  if (isMobileViewport.value) return starterPrompts.value.slice(0, 4);
+  return starterPrompts.value;
+});
 
 function languageTag() {
   return String(locale.value || 'zh-CN').startsWith('zh') ? 'zh-CN' : 'en-US';
@@ -1226,6 +1233,42 @@ function clearWaitTimers() {
   }
 }
 
+function startReconnectWatchdog() {
+  stopReconnectWatchdog();
+  reconnectWatchdogTimer = window.setInterval(() => {
+    if (isUnmounted) return;
+    if (connected.value || connecting.value) return;
+    if (reconnectTimer) return;
+    connectWebSocket();
+  }, 6000);
+}
+
+function stopReconnectWatchdog() {
+  if (reconnectWatchdogTimer) {
+    clearInterval(reconnectWatchdogTimer);
+    reconnectWatchdogTimer = null;
+  }
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
+
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeatTimer = window.setInterval(() => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    try {
+      socket.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+    } catch {
+      // ignore heartbeat send errors
+    }
+  }, 25000);
+}
+
 function startTurnWaiting() {
   clearWaitTimers();
   turnInFlight.value = true;
@@ -1354,6 +1397,28 @@ function sendStartSession() {
   );
 }
 
+function enqueueOutbound(payload) {
+  if (!payload) return;
+  outboundQueue.push(payload);
+  if (outboundQueue.length > 20) {
+    outboundQueue.splice(0, outboundQueue.length - 20);
+  }
+}
+
+function flushOutboundQueue() {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  if (!sessionHandshakeReady) return;
+  while (outboundQueue.length > 0) {
+    const payload = outboundQueue.shift();
+    try {
+      socket.send(JSON.stringify(payload));
+    } catch {
+      outboundQueue.unshift(payload);
+      break;
+    }
+  }
+}
+
 function handleServerMessage(event) {
   const data = parseIncoming(event);
   if (!data || !data.type) return;
@@ -1362,6 +1427,8 @@ function handleServerMessage(event) {
     case 'session_started':
       sessionId.value = data.session_id || sessionId.value;
       agents.value = Array.isArray(data.agents) ? data.agents : agents.value;
+      sessionHandshakeReady = true;
+      flushOutboundQueue();
       break;
 
     case 'session_ready':
@@ -1373,6 +1440,8 @@ function handleServerMessage(event) {
       }
       agents.value = Array.isArray(data.agents) ? data.agents : agents.value;
       updateActiveSessionStore();
+      sessionHandshakeReady = true;
+      flushOutboundQueue();
       break;
 
     case 'route_decided':
@@ -1429,9 +1498,10 @@ function handleServerMessage(event) {
 }
 
 function scheduleReconnect() {
-  if (isUnmounted || reconnectAttempts >= maxReconnectAttempts) return;
+  if (isUnmounted) return;
+  if (reconnectTimer) return;
   reconnectAttempts += 1;
-  const delay = reconnectBaseDelayMs * reconnectAttempts;
+  const delay = Math.min(20000, reconnectBaseDelayMs * Math.max(1, reconnectAttempts));
   reconnectTimer = window.setTimeout(() => {
     reconnectTimer = null;
     connectWebSocket();
@@ -1454,11 +1524,12 @@ async function connectWebSocket() {
   if (!tokenOk) {
     connecting.value = false;
     connected.value = false;
-    addSystemMessage(sessionExpiredMessage(), 'error');
+    scheduleReconnect();
     return;
   }
 
   try {
+    sessionHandshakeReady = false;
     socket = new WebSocket(appendTokenToUrl(wsUrl('/ws/expert-chat')));
   } catch (error) {
     connecting.value = false;
@@ -1472,6 +1543,7 @@ async function connectWebSocket() {
     connected.value = true;
     reconnectAttempts = 0;
     clearTransientSocketErrors();
+    startHeartbeat();
     sendStartSession();
   };
 
@@ -1489,6 +1561,7 @@ async function connectWebSocket() {
   socket.onclose = async (event) => {
     connecting.value = false;
     connected.value = false;
+    stopHeartbeat();
     clearThinking();
     stopTurnWaiting();
 
@@ -1505,7 +1578,8 @@ async function connectWebSocket() {
         connectWebSocket();
         return;
       }
-      addSystemMessage(sessionExpiredMessage(), 'error');
+      socket = null;
+      scheduleReconnect();
       return;
     }
 
@@ -1537,17 +1611,20 @@ function closeWebSocket(manual = false) {
 
   connected.value = false;
   connecting.value = false;
+  sessionHandshakeReady = false;
+  stopHeartbeat();
   clearThinking();
   stopTurnWaiting();
 }
 
 function reconnectCurrentSession() {
-  closeWebSocket(true);
+  suppressReconnectOnce = false;
+  closeWebSocket(false);
   connectWebSocket();
 }
 
 function sendMessage() {
-  if (!canSend.value || !socket || socket.readyState !== WebSocket.OPEN) return;
+  if (!canSend.value) return;
 
   const content = inputMessage.value.trim();
   const attachmentsPayload = selectedAttachments.value.map((att) => ({
@@ -1574,18 +1651,25 @@ function sendMessage() {
   mentionState.value = null;
   mentionActiveIndex.value = 0;
 
-  socket.send(
-    JSON.stringify({
-      type: 'user_message',
-      content,
-      attachments: attachmentsPayload,
-      language: languageTag(),
-      knowledge: {
-        enabled: knowledgeEnabled.value,
-        category: knowledgeCategory.value,
-      },
-    })
-  );
+  const payload = {
+    type: 'user_message',
+    content,
+    attachments: attachmentsPayload,
+    language: languageTag(),
+    knowledge: {
+      enabled: knowledgeEnabled.value,
+      category: knowledgeCategory.value,
+    },
+  };
+
+  if (socket && socket.readyState === WebSocket.OPEN && sessionHandshakeReady) {
+    socket.send(JSON.stringify(payload));
+  } else {
+    enqueueOutbound(payload);
+    if (!connected.value && !connecting.value) {
+      reconnectCurrentSession();
+    }
+  }
 
   startTurnWaiting();
 
@@ -2077,6 +2161,31 @@ function handleMessageImageLoad() {
   scrollToBottom();
 }
 
+function handleBrowserOnline() {
+  if (isUnmounted) return;
+  if (connected.value || connecting.value) return;
+  reconnectCurrentSession();
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState !== 'visible') return;
+  if (connected.value || connecting.value) return;
+  reconnectCurrentSession();
+}
+
+function updateViewportMode() {
+  if (typeof window === 'undefined') return;
+  isMobileViewport.value = window.innerWidth < 768;
+}
+
+function updateNativeAppMode() {
+  try {
+    isNativeApp.value = Boolean(Capacitor?.isNativePlatform?.());
+  } catch {
+    isNativeApp.value = false;
+  }
+}
+
 watch([knowledgeEnabled, knowledgeCategory, locale], () => {
   sendStartSession();
 });
@@ -2090,6 +2199,9 @@ watch(
 
 onMounted(() => {
   waitDurationStats.value = loadWaitDurationStats();
+  updateNativeAppMode();
+  updateViewportMode();
+  window.addEventListener('resize', updateViewportMode);
 
   const storedCollapseState = localStorage.getItem(HISTORY_COLLAPSE_KEY);
   if (storedCollapseState === '1') {
@@ -2114,17 +2226,25 @@ onMounted(() => {
   sessionId.value = initial;
 
   reconnectCurrentSession();
+  startReconnectWatchdog();
   scrollToBottom();
   document.addEventListener('click', handleGlobalClick);
+  window.addEventListener('online', handleBrowserOnline);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
 });
 
 onUnmounted(() => {
   isUnmounted = true;
   updateActiveSessionStore();
   closeWebSocket(true);
+  stopReconnectWatchdog();
   clearWaitTimers();
+  stopHeartbeat();
   clearSelectedAttachments();
   document.removeEventListener('click', handleGlobalClick);
+  window.removeEventListener('online', handleBrowserOnline);
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
+  window.removeEventListener('resize', updateViewportMode);
 });
 
 watch(historyCollapsed, (next) => {
@@ -2133,6 +2253,24 @@ watch(historyCollapsed, (next) => {
 </script>
 
 <style scoped>
+.app-chat-immersive {
+  gap: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.app-chat-immersive > div[class*='grid'] {
+  gap: 0 !important;
+}
+
+.app-chat-immersive :deep(.overflow-y-auto) {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.app-chat-immersive :deep(.overflow-y-auto::-webkit-scrollbar) {
+  display: none;
+}
+
 .analysis-markdown {
   font-size: 0.925rem;
   line-height: 1.75;
@@ -2210,6 +2348,9 @@ watch(historyCollapsed, (next) => {
   overflow: hidden;
   border-radius: 0.75rem;
   background: rgba(255, 255, 255, 0.05);
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .analysis-markdown :deep(th),
@@ -2217,6 +2358,10 @@ watch(historyCollapsed, (next) => {
   padding: 0.42rem 0.5rem;
   text-align: left;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  vertical-align: top;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  white-space: nowrap;
 }
 
 .analysis-markdown :deep(thead th) {
@@ -2227,5 +2372,13 @@ watch(historyCollapsed, (next) => {
 
 .analysis-markdown :deep(tr:last-child td) {
   border-bottom: 0;
+}
+
+@media (max-width: 767px) {
+  .analysis-markdown :deep(th),
+  .analysis-markdown :deep(td) {
+    font-size: 0.78rem;
+    padding: 0.35rem 0.45rem;
+  }
 }
 </style>

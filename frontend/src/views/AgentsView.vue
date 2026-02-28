@@ -1,5 +1,5 @@
 <template>
-  <div class="page-shell">
+  <div class="page-shell h-full min-h-0 overflow-y-auto">
     <!-- Page Header -->
     <div class="page-header">
       <div>
@@ -28,17 +28,17 @@
     </div>
 
     <!-- Agents Grid -->
-    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5 lg:grid-cols-3 lg:gap-6">
       <div
         v-for="agent in agents"
         :key="agent.id"
-        class="glass-card rounded-2xl p-6 group relative overflow-hidden hover:-translate-y-1 transition-transform duration-300"
+        class="glass-card group relative overflow-hidden rounded-2xl p-4 transition-transform duration-300 hover:-translate-y-1 md:p-6"
       >
         <!-- Background Glow -->
         <div class="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
 
         <!-- Agent Header -->
-        <div class="relative z-10 flex items-start justify-between mb-6">
+        <div class="relative z-10 mb-5 flex items-start justify-between md:mb-6">
           <div class="flex items-center gap-4">
             <div
               :class="[
@@ -66,10 +66,10 @@
         </div>
 
         <!-- Agent Description -->
-        <p class="relative z-10 text-sm text-text-secondary mb-6 leading-relaxed h-12 line-clamp-2">{{ agent.description }}</p>
+        <p class="relative z-10 mb-5 h-12 line-clamp-2 text-sm leading-relaxed text-text-secondary md:mb-6">{{ agent.description }}</p>
 
         <!-- Agent Stats -->
-        <div class="relative z-10 grid grid-cols-2 gap-4 mb-6 pb-6 border-b border-white/10">
+        <div class="relative z-10 mb-6 grid grid-cols-2 gap-3 border-b border-white/10 pb-5 md:gap-4 md:pb-6">
           <div class="bg-white/5 rounded-lg p-3 border border-white/5">
             <p class="text-xs text-text-secondary mb-1 uppercase tracking-wide">{{ t('agents.card.analyses') }}</p>
             <p class="text-lg font-bold text-white font-mono">{{ agent.analysisCount }}</p>
@@ -97,7 +97,7 @@
         </div>
 
         <!-- Agent Actions -->
-        <div class="relative z-10 flex items-center gap-3">
+        <div class="relative z-10 flex flex-col items-stretch gap-2.5 sm:flex-row sm:items-center sm:gap-3">
           <button
             @click="configureAgent(agent.id)"
             class="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-white/10 text-text-primary hover:bg-white/10 transition-colors text-sm font-bold group/btn"

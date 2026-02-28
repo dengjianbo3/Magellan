@@ -7,7 +7,7 @@
       </div>
     </div>
 
-    <div class="relative flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)] gap-3 md:gap-4 lg:gap-6 lg:grid-cols-[18rem,minmax(0,1fr)]">
+    <div class="relative flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)] gap-2.5 md:gap-4 lg:gap-6 lg:grid-cols-[18rem,minmax(0,1fr)]">
       <!-- Left Sidebar: Categories -->
       <div class="glass-panel hidden min-h-[260px] flex-col rounded-2xl p-6 lg:flex lg:h-full lg:sticky lg:top-0 lg:max-h-full lg:overflow-y-auto">
       <h3 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-6">{{ t('knowledge.newCategory') }}</h3>
@@ -46,16 +46,16 @@
       </div>
 
       <!-- Main Content Area -->
-      <div class="min-w-0 flex h-full min-h-0 flex-col glass-panel rounded-2xl overflow-hidden">
+      <div class="min-w-0 flex h-full min-h-0 flex-col overflow-hidden rounded-2xl glass-panel">
         <!-- Header -->
-        <div class="border-b border-white/10 bg-white/5 p-4 md:p-8 backdrop-blur-md">
-          <div class="section-header !mb-0">
+        <div class="sticky top-0 z-20 border-b border-white/10 bg-background-dark/82 p-3.5 backdrop-blur-md md:p-8">
+          <div class="section-header !mb-0 gap-2.5">
             <div>
               <p class="page-subtitle !mt-0">
                 {{ searchMode ? `${searchResults.length} search results` : `${filteredDocuments.length} ${t('knowledge.documentsCount')}` }}
               </p>
             </div>
-            <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+            <div class="flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
               <div class="relative group w-full sm:w-80">
                 <div class="absolute inset-0 bg-primary/20 blur-md rounded-lg opacity-0 group-focus-within:opacity-100 transition-opacity duration-500"></div>
                 <input
@@ -63,7 +63,7 @@
                   @keyup.enter="performSearch"
                   type="text"
                   :placeholder="t('knowledge.searchPlaceholder')"
-                  class="control-input relative z-10 w-full pl-10 pr-20 !bg-black/20"
+                  class="control-input relative z-10 w-full pl-10 pr-20 !h-11 !bg-black/20"
                 />
                 <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary z-20">
                   search
@@ -85,7 +85,7 @@
               </div>
               <button
                 @click="showUploadModal = true"
-                class="page-primary-btn justify-center whitespace-nowrap"
+                class="page-primary-btn justify-center whitespace-nowrap sm:w-auto"
               >
                 <span class="material-symbols-outlined">cloud_upload</span>
                 {{ t('knowledge.upload') }}
@@ -116,7 +116,7 @@
          <!-- Background Grid Pattern -->
          <div class="absolute inset-0 bg-tech-grid opacity-20 pointer-events-none"></div>
 
-        <div class="h-full overflow-y-auto p-4 md:p-6">
+          <div class="h-full overflow-y-auto p-3 md:p-6">
           <div class="space-y-3 md:hidden">
             <article
               v-for="doc in searchMode ? searchResults : filteredDocuments"
