@@ -1284,6 +1284,7 @@ function clearRealtimeTimers() {
     clearInterval(dataRefreshInterval);
     dataRefreshInterval = null;
   }
+  currentRefreshIntervalMs = null;
   if (equityInterval) {
     clearInterval(equityInterval);
     equityInterval = null;
@@ -1695,6 +1696,8 @@ async function startTrading() {
   try {
     await tradingFetch('/api/trading/start', { method: 'POST' });
     systemStatus.value.enabled = true;
+    await fetchStatus();
+    resetDataRefreshLoop();
   } catch (e) {
     console.error('Error starting trading:', e);
   }
@@ -1704,6 +1707,9 @@ async function stopTrading() {
   try {
     await tradingFetch('/api/trading/stop', { method: 'POST' });
     systemStatus.value.enabled = false;
+    isAnalyzing.value = false;
+    await fetchStatus();
+    resetDataRefreshLoop();
   } catch (e) {
     console.error('Error stopping trading:', e);
   }
@@ -2507,22 +2513,85 @@ function updateEquityChart() {
 let equityInterval = null;
 let performanceInterval = null;
 let dataRefreshInterval = null;
+let currentRefreshIntervalMs = null;
+let idleHeavyRefreshCounter = 0;
+
+const ACTIVE_SCHEDULER_STATES = new Set(['running', 'analyzing', 'executing']);
+const ACTIVE_REFRESH_MS = 5000;
+const IDLE_REFRESH_MS = 30000;
+const IDLE_HEAVY_REFRESH_EVERY = 4; // 2 minutes (4 * 30s)
+
+function getSchedulerState() {
+  return String(systemStatus.value?.scheduler?.state || '').toLowerCase();
+}
+
+function isTradingActive() {
+  return ACTIVE_SCHEDULER_STATES.has(getSchedulerState());
+}
+
+function getTargetRefreshIntervalMs() {
+  return isTradingActive() ? ACTIVE_REFRESH_MS : IDLE_REFRESH_MS;
+}
+
+function resetDataRefreshLoop() {
+  if (!isComponentMounted) return;
+
+  const nextInterval = getTargetRefreshIntervalMs();
+  if (currentRefreshIntervalMs === nextInterval && dataRefreshInterval) {
+    return;
+  }
+
+  if (dataRefreshInterval) {
+    clearInterval(dataRefreshInterval);
+    dataRefreshInterval = null;
+  }
+  currentRefreshIntervalMs = null;
+
+  currentRefreshIntervalMs = nextInterval;
+  dataRefreshInterval = setInterval(refreshAllData, nextInterval);
+}
 
 // Consolidated data refresh function
 async function refreshAllData() {
   if (authExpired.value) return;
+
+  await fetchStatus();
+
+  const active = isTradingActive();
+
   await Promise.all([
-    fetchStatus(),
     fetchAccount(),
     fetchPosition(),
-    fetchTradeHistory(),
-    fetchPerformance(),
-    fetchMtfAnalysis(),
-    fetchAgentWeights(),
-    fetchDiscussionMessages(),
-    fetchDegradation(),
     fetchPendingTrades(),
   ]);
+
+  if (active) {
+    idleHeavyRefreshCounter = 0;
+    await Promise.all([
+      fetchTradeHistory(),
+      fetchPerformance(),
+      fetchMtfAnalysis(),
+      fetchAgentWeights(),
+      fetchDiscussionMessages(),
+      fetchDegradation(),
+      fetchDrawdown(),
+    ]);
+    return;
+  }
+
+  idleHeavyRefreshCounter += 1;
+  if (idleHeavyRefreshCounter >= IDLE_HEAVY_REFRESH_EVERY) {
+    idleHeavyRefreshCounter = 0;
+    await Promise.all([
+      fetchTradeHistory(),
+      fetchPerformance(),
+      fetchAgentWeights(),
+      fetchDiscussionMessages(),
+      fetchDegradation(),
+    ]);
+  }
+
+  resetDataRefreshLoop();
 }
 
 
@@ -2555,8 +2624,10 @@ onMounted(async () => {
   // Update countdown every second
   countdownInterval = setInterval(updateCountdown, 1000);
 
-  // Refresh core data every 5 seconds for real-time updates
-  dataRefreshInterval = setInterval(refreshAllData, 5000);
+  // Adaptive refresh loop:
+  // - Running/analyzing: 5s (full)
+  // - Stopped/idle: 30s (core only, heavy endpoints downsampled)
+  resetDataRefreshLoop();
 
   // Refresh equity chart every 30 seconds
   equityInterval = setInterval(fetchEquityHistory, 30000);
@@ -2564,6 +2635,13 @@ onMounted(async () => {
   // Refresh agent performance every 2 minutes
   performanceInterval = setInterval(fetchAgentPerformance, 120000);
 });
+
+watch(
+  () => systemStatus.value?.scheduler?.state,
+  () => {
+    resetDataRefreshLoop();
+  }
+);
 
 onUnmounted(() => {
   isComponentMounted = false;

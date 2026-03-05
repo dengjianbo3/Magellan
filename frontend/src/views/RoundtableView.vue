@@ -27,101 +27,101 @@
             <label class="block text-sm font-bold text-text-secondary mb-2 uppercase tracking-wider">
               {{ t('roundtable.startPanel.topicLabel') }} <span class="text-rose-500">*</span>
             </label>
-            <textarea
-              v-model="discussionTopic"
-              :placeholder="t('roundtable.startPanel.topicPlaceholder')"
-              rows="3"
-              class="control-input w-full !h-auto min-h-[108px] resize-y !rounded-2xl !bg-white/10 px-4 py-3 text-white"
-            />
-          </div>
-
-          <!-- Experts Selection -->
-          <div>
-            <label class="block text-sm font-bold text-text-secondary mb-3 uppercase tracking-wider">
-              {{ t('roundtable.startPanel.expertsLabel') }} ({{ selectedExperts.length }} {{ t('roundtable.startPanel.expertsSelected') }})
-            </label>
-            <!-- Selected experts tags -->
-            <div class="flex flex-wrap gap-2 mb-3">
-              <span
-                v-for="expertId in selectedExperts"
-                :key="expertId"
-                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/30 text-primary text-sm"
-              >
-                <span class="material-symbols-outlined text-base">{{ getExpertById(expertId)?.icon }}</span>
-                {{ getExpertById(expertId)?.name }}
-                <button @click="toggleExpert(expertId)" class="hover:text-white ml-1">
-                  <span class="material-symbols-outlined text-base">close</span>
-                </button>
-              </span>
-              <span v-if="selectedExperts.length === 0" class="text-text-secondary text-sm italic">
-                {{ t('roundtable.startPanel.expertPickerEmpty') }}
-              </span>
-            </div>
-            <!-- Dropdown multi-select -->
-            <div class="relative" ref="expertDropdownRef">
-              <button
-                @click="showExpertDropdown = !showExpertDropdown"
-                class="flex h-12 w-full items-center justify-between rounded-xl border border-white/5 bg-white/8 px-4 text-left text-white transition-all hover:bg-white/12"
-              >
-                <span class="text-text-secondary">{{ t('roundtable.startPanel.expertPickerPlaceholder') }}</span>
-                <span class="material-symbols-outlined text-text-secondary transition-transform" :class="showExpertDropdown ? 'rotate-180' : ''">
-                  expand_more
-                </span>
-              </button>
-              <!-- Dropdown list -->
-              <div
-                v-if="showExpertDropdown"
-                class="immersive-scroll absolute left-0 right-0 top-full z-50 mt-2 max-h-64 overflow-y-auto rounded-xl border border-white/5 bg-surface/95 shadow-2xl backdrop-blur-sm"
-              >
-                <div
-                  v-for="expert in availableExperts"
-                  :key="expert.id"
-                  @click="toggleExpert(expert.id)"
-                  :class="[
-                    'flex items-center gap-3 px-4 py-3 cursor-pointer transition-all border-b border-white/5 last:border-b-0',
-                    selectedExperts.includes(expert.id)
-                      ? 'bg-primary/10 text-primary'
-                      : 'hover:bg-white/5 text-white'
-                  ]"
-                >
-                  <span class="material-symbols-outlined text-xl">{{ expert.icon }}</span>
-                  <div class="flex-1 min-w-0">
-                    <div class="font-medium text-sm">{{ expert.name }}</div>
-                    <div class="text-xs text-text-secondary line-clamp-1">{{ expert.description }}</div>
-                  </div>
-                  <span v-if="selectedExperts.includes(expert.id)" class="material-symbols-outlined text-primary">
-                    check_circle
-                  </span>
-                </div>
-              </div>
-            </div>
-            <!-- Note about Leader -->
-            <p class="text-xs text-text-secondary mt-2 flex items-center gap-1">
-              <span class="material-symbols-outlined text-sm text-primary">info</span>
-              {{ t('roundtable.startPanel.hostAutoIncluded') }}
-            </p>
-          </div>
-
-          <!-- Discussion Settings -->
-          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,430px)] lg:justify-start">
-            <div class="rounded-xl border border-white/5 bg-white/5 p-4 lg:min-h-[156px]">
-              <label class="block text-sm font-bold text-text-secondary mb-3 uppercase tracking-wider">
-                {{ t('roundtable.startPanel.roundsLabel') }}
-              </label>
-              <div class="relative">
-                <select
+            <div class="relative">
+              <textarea
+                v-model="discussionTopic"
+                :placeholder="t('roundtable.startPanel.topicPlaceholder')"
+                rows="3"
+                class="control-input w-full !h-auto min-h-[120px] resize-y !rounded-2xl !bg-white/10 px-4 py-3 pb-16 text-white"
+              />
+              <div class="absolute bottom-3 right-3 w-[130px] md:w-[140px]">
+                <label class="sr-only">{{ t('roundtable.startPanel.roundsLabel') }}</label>
+                <div class="relative">
+                  <select
                     v-model="maxRounds"
-                    class="control-select w-full cursor-pointer appearance-none !h-12 !rounded-xl !bg-white/10 !text-white"
-                >
+                    class="control-select w-full cursor-pointer appearance-none !h-10 !rounded-lg !border-white/10 !bg-white/12 !text-white !text-sm"
+                  >
                     <option :value="3">3 {{ t('roundtable.startPanel.rounds') }}</option>
                     <option :value="5">5 {{ t('roundtable.startPanel.rounds') }}</option>
                     <option :value="8">8 {{ t('roundtable.startPanel.rounds') }}</option>
                     <option :value="10">10 {{ t('roundtable.startPanel.rounds') }}</option>
-                </select>
-                <span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none">expand_more</span>
+                  </select>
+                  <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none">expand_more</span>
+                </div>
               </div>
             </div>
-            <div class="rounded-xl border border-white/5 bg-white/5 p-4 lg:min-h-[156px]">
+          </div>
+
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
+            <!-- Experts Selection -->
+            <div>
+              <label class="block text-sm font-bold text-text-secondary mb-3 uppercase tracking-wider">
+                {{ t('roundtable.startPanel.expertsLabel') }} ({{ selectedExperts.length }} {{ t('roundtable.startPanel.expertsSelected') }})
+              </label>
+              <!-- Selected experts tags -->
+              <div class="flex min-h-[60px] flex-wrap gap-2 mb-3">
+                <span
+                  v-for="expertId in selectedExperts"
+                  :key="expertId"
+                  class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/30 text-primary text-sm"
+                >
+                  <span class="material-symbols-outlined text-base">{{ getExpertById(expertId)?.icon }}</span>
+                  {{ getExpertById(expertId)?.name }}
+                  <button @click="toggleExpert(expertId)" class="hover:text-white ml-1">
+                    <span class="material-symbols-outlined text-base">close</span>
+                  </button>
+                </span>
+                <span v-if="selectedExperts.length === 0" class="text-text-secondary text-sm italic">
+                  {{ t('roundtable.startPanel.expertPickerEmpty') }}
+                </span>
+              </div>
+              <!-- Dropdown multi-select -->
+              <div class="relative" ref="expertDropdownRef">
+                <button
+                  @click="showExpertDropdown = !showExpertDropdown"
+                  class="flex h-12 w-full items-center justify-between rounded-xl border border-white/5 bg-white/8 px-4 text-left text-white transition-all hover:bg-white/12"
+                >
+                  <span class="text-text-secondary">{{ t('roundtable.startPanel.expertPickerPlaceholder') }}</span>
+                  <span class="material-symbols-outlined text-text-secondary transition-transform" :class="showExpertDropdown ? 'rotate-180' : ''">
+                    expand_more
+                  </span>
+                </button>
+                <!-- Dropdown list -->
+                <div
+                  v-if="showExpertDropdown"
+                  class="immersive-scroll absolute left-0 right-0 top-full z-50 mt-2 max-h-64 overflow-y-auto rounded-xl border border-white/5 bg-surface/95 shadow-2xl backdrop-blur-sm"
+                >
+                  <div
+                    v-for="expert in availableExperts"
+                    :key="expert.id"
+                    @click="toggleExpert(expert.id)"
+                    :class="[
+                      'flex items-center gap-3 px-4 py-3 cursor-pointer transition-all border-b border-white/5 last:border-b-0',
+                      selectedExperts.includes(expert.id)
+                        ? 'bg-primary/10 text-primary'
+                        : 'hover:bg-white/5 text-white'
+                    ]"
+                  >
+                    <span class="material-symbols-outlined text-xl">{{ expert.icon }}</span>
+                    <div class="flex-1 min-w-0">
+                      <div class="font-medium text-sm">{{ expert.name }}</div>
+                      <div class="text-xs text-text-secondary line-clamp-1">{{ expert.description }}</div>
+                    </div>
+                    <span v-if="selectedExperts.includes(expert.id)" class="material-symbols-outlined text-primary">
+                      check_circle
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <!-- Note about Leader -->
+              <p class="text-xs text-text-secondary mt-2 flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm text-primary">info</span>
+                {{ t('roundtable.startPanel.hostAutoIncluded') }}
+              </p>
+            </div>
+
+            <!-- Knowledge Selection -->
+            <div class="rounded-xl border border-white/5 bg-white/5 p-4">
               <label class="block text-sm font-bold text-text-secondary mb-3 uppercase tracking-wider">
                 {{ t('roundtable.startPanel.knowledgeBase') }}
               </label>
@@ -522,7 +522,7 @@
                 <span class="material-symbols-outlined text-primary text-xl md:text-2xl">{{ getExpertIcon(message.sender) }}</span>
               </div>
               <div class="flex-1 min-w-0">
-                <div class="flex items-baseline gap-3 mb-2">
+                <div class="mb-2 flex flex-wrap items-center gap-2 md:gap-3">
                   <span
                     class="inline-flex min-w-0 items-center gap-1.5 rounded-full bg-primary/15 px-2 py-1 font-semibold text-primary-light"
                     :class="useAppMobileLayout ? 'text-xs' : 'text-sm'"
@@ -537,15 +537,35 @@
                   >
                     {{ getMessageTypeLabel(message.message_type) }}
                   </span>
+                  <span
+                    v-if="getInteractionMeta(message).hasRoute"
+                    class="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/15 px-2.5 py-1 text-[11px] font-bold text-cyan-200"
+                  >
+                    <span class="material-symbols-outlined text-[13px]">route</span>
+                    {{ getInteractionMeta(message).routeText }}
+                  </span>
+                  <span
+                    v-if="getInteractionMeta(message).tagText"
+                    :class="getInteractionTagClass(getInteractionMeta(message).kind)"
+                    class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold"
+                  >
+                    <span class="material-symbols-outlined text-[13px]">{{ getInteractionMeta(message).tagIcon }}</span>
+                    {{ getInteractionMeta(message).tagText }}
+                  </span>
                 </div>
                 <div
                   class="rounded-3xl rounded-tl-none bg-white/10 text-text-primary leading-relaxed shadow-sm relative overflow-hidden"
-                  :class="useAppMobileLayout ? 'p-2.5' : 'p-3 md:p-5'"
+                  :class="[useAppMobileLayout ? 'p-2.5' : 'p-3 md:p-5', getMessageBubbleClass(message)]"
                 >
+                  <div
+                    v-if="getInteractionMeta(message).kind !== 'neutral'"
+                    class="absolute inset-y-0 left-0 w-1"
+                    :class="getInteractionAccentClass(getInteractionMeta(message).kind)"
+                  ></div>
                   <div
                 class="meeting-markdown max-w-none break-words"
                 :class="{ 'report-mode': isReportLike(message.content) }"
-                v-html="formatMeetingMinutes(message.content)"
+                v-html="formatMeetingMinutes(getRenderableMessageContent(message))"
               ></div>
 
                   <!-- Decorative corner -->
@@ -1516,6 +1536,7 @@ const handleWebSocketMessage = (data) => {
         id: Date.now() + Math.random(),
         type: 'agent_message',
         sender: event.agent_name,
+        recipient: event.data?.recipient || 'ALL',
         content: event.message,
         message_type: event.data?.message_type || 'broadcast',
         timestamp: event.timestamp || new Date().toISOString()
@@ -2227,15 +2248,142 @@ const formatTime = (timestamp) => {
 };
 
 const getMessageTypeLabel = (type) => {
-  const labels = {
-    'broadcast': 'Public',
-    'direct': 'Private',
-    'question': 'Questions',
-    'response': 'Response',
-    'agreement': 'Agree',
-    'disagreement': 'Disagree'
-  };
+  const isZh = String(locale.value || '').startsWith('zh');
+  const labels = isZh
+    ? {
+        broadcast: '公开',
+        direct: '私信',
+        question: '提问',
+        response: '回应',
+        agreement: '支持',
+        disagreement: '反对',
+        challenge: '质询'
+      }
+    : {
+        broadcast: 'Public',
+        direct: 'Private',
+        question: 'Question',
+        response: 'Response',
+        agreement: 'Support',
+        disagreement: 'Disagree',
+        challenge: 'Challenge'
+      };
   return labels[type] || type;
+};
+
+const interactionMetaCache = new Map();
+const ROUTE_PREFIX_RE = /^\s*\[([^\]\n]{1,48})\s*(?:→|->|➡️)\s*([^\]\n]{1,48})\]\s*/;
+const DISAGREE_RE = /(我(?:必须)?反对|我不认同|不同意|驳斥|反驳|我质疑|disagree|oppose|rebut)/i;
+const AGREE_RE = /(我同意|我赞同|我支持|我认可|agree|support|concur)/i;
+const QUESTION_RE = /(？|\?|请(?:你|.*专家)?.{0,12}(回应|解释|说明|回答)|question|clarify|can you explain|how do you)/i;
+
+const isAllRecipient = (recipient) => {
+  const target = String(recipient || '').trim().toUpperCase();
+  return target === '' || target === 'ALL' || target === '全体' || target === '所有人';
+};
+
+const getRenderableMessageContent = (message) => {
+  const text = String(message?.content || '');
+  return text.replace(ROUTE_PREFIX_RE, '').trimStart();
+};
+
+const detectInteractionKind = (message, bodyText, hasDirectedRoute) => {
+  const msgType = String(message?.message_type || '').toLowerCase();
+  if (!hasDirectedRoute) return 'neutral';
+  if (msgType === 'disagreement') return 'disagreement';
+  if (msgType === 'agreement') return 'agreement';
+  if (msgType === 'question' || msgType === 'challenge') return 'question';
+  // Heuristic intent detection is allowed only on explicit routed messages.
+  // This avoids false positives on normal long-form analysis text.
+  if (DISAGREE_RE.test(bodyText)) return 'disagreement';
+  if (AGREE_RE.test(bodyText)) return 'agreement';
+  if (QUESTION_RE.test(bodyText)) return 'question';
+  return 'neutral';
+};
+
+const getInteractionMeta = (message) => {
+  if (!message) {
+    return { hasRoute: false, routeText: '', kind: 'neutral', tagText: '', tagIcon: 'label' };
+  }
+  const cacheKey = `${locale.value || ''}|${message.id || ''}|${message.message_type || ''}|${message.recipient || ''}|${String(message.content || '').slice(0, 160)}`;
+  const cached = interactionMetaCache.get(cacheKey);
+  if (cached) return cached;
+
+  const text = String(message.content || '');
+  const routeMatch = text.match(ROUTE_PREFIX_RE);
+  const from = routeMatch?.[1]?.trim() || String(message.sender || '').trim();
+  const to = routeMatch?.[2]?.trim() || String(message.recipient || '').trim();
+  const hasRoute = Boolean(from && to);
+  const hasDirectedRoute = hasRoute && !isAllRecipient(to);
+  const body = getRenderableMessageContent(message);
+  const kind = detectInteractionKind(message, body, hasDirectedRoute);
+
+  const isZh = String(locale.value || '').startsWith('zh');
+  const tagMap = isZh
+    ? {
+        disagreement: { text: '观点交锋', icon: 'gavel' },
+        agreement: { text: '观点支持', icon: 'thumb_up' },
+        question: { text: '交叉质询', icon: 'help' },
+        neutral: { text: '', icon: 'label' }
+      }
+    : {
+        disagreement: { text: 'Conflict', icon: 'gavel' },
+        agreement: { text: 'Support', icon: 'thumb_up' },
+        question: { text: 'Cross Question', icon: 'help' },
+        neutral: { text: '', icon: 'label' }
+      };
+
+  const meta = {
+    hasRoute: hasDirectedRoute,
+    routeText: hasDirectedRoute ? `${from} → ${to}` : '',
+    kind,
+    tagText: tagMap[kind]?.text || '',
+    tagIcon: tagMap[kind]?.icon || 'label'
+  };
+
+  interactionMetaCache.set(cacheKey, meta);
+  if (interactionMetaCache.size > 500) interactionMetaCache.clear();
+  return meta;
+};
+
+const getInteractionTagClass = (kind) => {
+  switch (kind) {
+    case 'disagreement':
+      return 'border-rose-400/30 bg-rose-500/15 text-rose-200';
+    case 'agreement':
+      return 'border-emerald-400/30 bg-emerald-500/15 text-emerald-200';
+    case 'question':
+      return 'border-amber-400/30 bg-amber-500/15 text-amber-200';
+    default:
+      return 'border-white/10 bg-white/10 text-white/70';
+  }
+};
+
+const getInteractionAccentClass = (kind) => {
+  switch (kind) {
+    case 'disagreement':
+      return 'bg-rose-400/90';
+    case 'agreement':
+      return 'bg-emerald-400/90';
+    case 'question':
+      return 'bg-amber-400/90';
+    default:
+      return 'bg-transparent';
+  }
+};
+
+const getMessageBubbleClass = (message) => {
+  const kind = getInteractionMeta(message).kind;
+  switch (kind) {
+    case 'disagreement':
+      return 'border border-rose-400/25 bg-rose-500/10';
+    case 'agreement':
+      return 'border border-emerald-400/25 bg-emerald-500/10';
+    case 'question':
+      return 'border border-amber-400/25 bg-amber-500/10';
+    default:
+      return '';
+  }
 };
 
 // ==================== HITL (Human-in-the-Loop) Methods ====================
