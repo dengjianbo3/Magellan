@@ -1,10 +1,8 @@
 <template>
-  <div class="page-shell conversation-scroll h-full min-h-0 overflow-hidden flex flex-col" :class="{ 'roundtable-mobile-immersive': useAppMobileLayout }">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title page-title-gradient">{{ t('roundtable.title') }}</h1>
-        <p class="page-subtitle">{{ t('roundtable.subtitle') }}</p>
-      </div>
+  <div class="page-shell conversation-scroll relative h-full min-h-0 overflow-hidden flex flex-col" :class="{ 'roundtable-mobile-immersive': useAppMobileLayout }">
+    <div class="pointer-events-none absolute inset-0 -z-10">
+      <div class="absolute -left-16 top-1/4 h-64 w-64 rounded-full bg-primary/10 blur-3xl"></div>
+      <div class="absolute -right-20 bottom-16 h-72 w-72 rounded-full bg-accent-cyan/10 blur-3xl"></div>
     </div>
 
     <!-- Start Discussion Panel -->
@@ -12,10 +10,10 @@
       v-if="!isDiscussionActive"
       :class="[
         'immersive-scroll flex flex-1 justify-center overflow-y-auto',
-        useAppMobileLayout ? 'rounded-none bg-transparent p-1.5' : 'section-card p-3.5 md:p-10 lg:p-12'
+        useAppMobileLayout ? 'rounded-none bg-transparent px-1.5 py-1.5' : 'rounded-none bg-transparent px-1.5 py-2 md:px-3 md:py-4'
       ]"
     >
-      <div class="max-w-2xl w-full">
+      <div class="w-full max-w-[1240px]">
         <h2 class="mb-5 flex items-center gap-3 text-lg font-bold text-white md:mb-8 md:text-2xl">
             <span class="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
                 <span class="material-symbols-outlined">forum</span>
@@ -29,127 +27,127 @@
             <label class="block text-sm font-bold text-text-secondary mb-2 uppercase tracking-wider">
               {{ t('roundtable.startPanel.topicLabel') }} <span class="text-rose-500">*</span>
             </label>
-            <textarea
-              v-model="discussionTopic"
-              :placeholder="t('roundtable.startPanel.topicPlaceholder')"
-              rows="3"
-              class="w-full min-h-[108px] rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white placeholder-text-secondary transition-all resize-y focus:outline-none focus:border-primary/50 focus:bg-black/50"
-            />
-          </div>
-
-          <!-- Experts Selection -->
-          <div>
-            <label class="block text-sm font-bold text-text-secondary mb-3 uppercase tracking-wider">
-              {{ t('roundtable.startPanel.expertsLabel') }} ({{ selectedExperts.length }} {{ t('roundtable.startPanel.expertsSelected') }})
-            </label>
-            <!-- Selected experts tags -->
-            <div class="flex flex-wrap gap-2 mb-3">
-              <span
-                v-for="expertId in selectedExperts"
-                :key="expertId"
-                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/30 text-primary text-sm"
-              >
-                <span class="material-symbols-outlined text-base">{{ getExpertById(expertId)?.icon }}</span>
-                {{ getExpertById(expertId)?.name }}
-                <button @click="toggleExpert(expertId)" class="hover:text-white ml-1">
-                  <span class="material-symbols-outlined text-base">close</span>
-                </button>
-              </span>
-              <span v-if="selectedExperts.length === 0" class="text-text-secondary text-sm italic">
-                Please select experts to join the discussion
-              </span>
-            </div>
-            <!-- Dropdown multi-select -->
-            <div class="relative" ref="expertDropdownRef">
-              <button
-                @click="showExpertDropdown = !showExpertDropdown"
-                class="flex h-12 w-full items-center justify-between rounded-xl border border-white/10 bg-black/30 px-4 text-left text-white transition-all hover:border-primary/50"
-              >
-                <span class="text-text-secondary">Click to add or remove experts...</span>
-                <span class="material-symbols-outlined text-text-secondary transition-transform" :class="showExpertDropdown ? 'rotate-180' : ''">
-                  expand_more
-                </span>
-              </button>
-              <!-- Dropdown list -->
-              <div
-                v-if="showExpertDropdown"
-                class="immersive-scroll absolute top-full left-0 right-0 mt-2 bg-gray-900/95 border border-white/10 rounded-xl shadow-2xl z-50 max-h-64 overflow-y-auto backdrop-blur-sm"
-              >
-                <div
-                  v-for="expert in availableExperts"
-                  :key="expert.id"
-                  @click="toggleExpert(expert.id)"
-                  :class="[
-                    'flex items-center gap-3 px-4 py-3 cursor-pointer transition-all border-b border-white/5 last:border-b-0',
-                    selectedExperts.includes(expert.id)
-                      ? 'bg-primary/10 text-primary'
-                      : 'hover:bg-white/5 text-white'
-                  ]"
-                >
-                  <span class="material-symbols-outlined text-xl">{{ expert.icon }}</span>
-                  <div class="flex-1 min-w-0">
-                    <div class="font-medium text-sm">{{ expert.name }}</div>
-                    <div class="text-xs text-text-secondary line-clamp-1">{{ expert.description }}</div>
-                  </div>
-                  <span v-if="selectedExperts.includes(expert.id)" class="material-symbols-outlined text-primary">
-                    check_circle
-                  </span>
-                </div>
-              </div>
-            </div>
-            <!-- Note about Leader -->
-            <p class="text-xs text-text-secondary mt-2 flex items-center gap-1">
-              <span class="material-symbols-outlined text-sm text-primary">info</span>
-              The discussion host is included automatically and does not need manual selection.
-            </p>
-          </div>
-
-          <!-- Discussion Settings -->
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
-            <div>
-              <label class="block text-sm font-bold text-text-secondary mb-2 uppercase tracking-wider">
-                {{ t('roundtable.startPanel.roundsLabel') }}
-              </label>
-              <div class="relative">
-                <select
+            <div class="relative">
+              <textarea
+                v-model="discussionTopic"
+                :placeholder="t('roundtable.startPanel.topicPlaceholder')"
+                rows="3"
+                class="control-input w-full !h-auto min-h-[120px] resize-y !rounded-2xl !bg-white/10 px-4 py-3 pb-16 text-white"
+              />
+              <div class="absolute bottom-3 right-3 w-[130px] md:w-[140px]">
+                <label class="sr-only">{{ t('roundtable.startPanel.roundsLabel') }}</label>
+                <div class="relative">
+                  <select
                     v-model="maxRounds"
-                    class="control-select w-full cursor-pointer appearance-none !h-12 !rounded-xl !bg-black/30 !text-white"
-                >
+                    class="control-select w-full cursor-pointer appearance-none !h-10 !rounded-lg !border-white/10 !bg-white/12 !text-white !text-sm"
+                  >
                     <option :value="3">3 {{ t('roundtable.startPanel.rounds') }}</option>
                     <option :value="5">5 {{ t('roundtable.startPanel.rounds') }}</option>
                     <option :value="8">8 {{ t('roundtable.startPanel.rounds') }}</option>
                     <option :value="10">10 {{ t('roundtable.startPanel.rounds') }}</option>
-                </select>
-                <span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none">expand_more</span>
+                  </select>
+                  <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none">expand_more</span>
+                </div>
               </div>
             </div>
-            <div class="rounded-xl border border-white/10 bg-black/20 p-4">
+          </div>
+
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
+            <!-- Experts Selection -->
+            <div>
               <label class="block text-sm font-bold text-text-secondary mb-3 uppercase tracking-wider">
-                Knowledge Base
+                {{ t('roundtable.startPanel.expertsLabel') }} ({{ selectedExperts.length }} {{ t('roundtable.startPanel.expertsSelected') }})
+              </label>
+              <!-- Selected experts tags -->
+              <div class="flex min-h-[60px] flex-wrap gap-2 mb-3">
+                <span
+                  v-for="expertId in selectedExperts"
+                  :key="expertId"
+                  class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/30 text-primary text-sm"
+                >
+                  <span class="material-symbols-outlined text-base">{{ getExpertById(expertId)?.icon }}</span>
+                  {{ getExpertById(expertId)?.name }}
+                  <button @click="toggleExpert(expertId)" class="hover:text-white ml-1">
+                    <span class="material-symbols-outlined text-base">close</span>
+                  </button>
+                </span>
+                <span v-if="selectedExperts.length === 0" class="text-text-secondary text-sm italic">
+                  {{ t('roundtable.startPanel.expertPickerEmpty') }}
+                </span>
+              </div>
+              <!-- Dropdown multi-select -->
+              <div class="relative" ref="expertDropdownRef">
+                <button
+                  @click="showExpertDropdown = !showExpertDropdown"
+                  class="flex h-12 w-full items-center justify-between rounded-xl border border-white/5 bg-white/8 px-4 text-left text-white transition-all hover:bg-white/12"
+                >
+                  <span class="text-text-secondary">{{ t('roundtable.startPanel.expertPickerPlaceholder') }}</span>
+                  <span class="material-symbols-outlined text-text-secondary transition-transform" :class="showExpertDropdown ? 'rotate-180' : ''">
+                    expand_more
+                  </span>
+                </button>
+                <!-- Dropdown list -->
+                <div
+                  v-if="showExpertDropdown"
+                  class="immersive-scroll absolute left-0 right-0 top-full z-50 mt-2 max-h-64 overflow-y-auto rounded-xl border border-white/5 bg-surface/95 shadow-2xl backdrop-blur-sm"
+                >
+                  <div
+                    v-for="expert in availableExperts"
+                    :key="expert.id"
+                    @click="toggleExpert(expert.id)"
+                    :class="[
+                      'flex items-center gap-3 px-4 py-3 cursor-pointer transition-all border-b border-white/5 last:border-b-0',
+                      selectedExperts.includes(expert.id)
+                        ? 'bg-primary/10 text-primary'
+                        : 'hover:bg-white/5 text-white'
+                    ]"
+                  >
+                    <span class="material-symbols-outlined text-xl">{{ expert.icon }}</span>
+                    <div class="flex-1 min-w-0">
+                      <div class="font-medium text-sm">{{ expert.name }}</div>
+                      <div class="text-xs text-text-secondary line-clamp-1">{{ expert.description }}</div>
+                    </div>
+                    <span v-if="selectedExperts.includes(expert.id)" class="material-symbols-outlined text-primary">
+                      check_circle
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <!-- Note about Leader -->
+              <p class="text-xs text-text-secondary mt-2 flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm text-primary">info</span>
+                {{ t('roundtable.startPanel.hostAutoIncluded') }}
+              </p>
+            </div>
+
+            <!-- Knowledge Selection -->
+            <div class="rounded-xl border border-white/5 bg-white/5 p-4">
+              <label class="block text-sm font-bold text-text-secondary mb-3 uppercase tracking-wider">
+                {{ t('roundtable.startPanel.knowledgeBase') }}
               </label>
               <label class="flex items-center gap-2 text-sm text-text-primary mb-3">
                 <input
                   type="checkbox"
                   v-model="useKnowledgeBase"
-                  class="w-4 h-4 rounded border-white/20 bg-black/30 text-primary focus:ring-primary/50"
+                  class="h-4 w-4 rounded border-white/20 bg-white/10 text-primary focus:ring-primary/50"
                 />
-                <span>Enable knowledge retrieval</span>
+                <span>{{ t('roundtable.startPanel.enableKnowledge') }}</span>
               </label>
               <div>
                 <label class="block text-xs font-bold text-text-secondary mb-2 uppercase tracking-wider">
-                  Retrieval Scope
+                  {{ t('roundtable.startPanel.retrievalScope') }}
                 </label>
                 <div class="relative">
                   <select
                     v-model="knowledgeCategory"
                     :disabled="!useKnowledgeBase"
-                    class="control-select w-full cursor-pointer appearance-none !bg-black/30 !text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="control-select w-full cursor-pointer appearance-none !bg-white/10 !text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <option value="all">All Knowledge</option>
-                    <option value="general">General Docs</option>
-                    <option value="financial">Financial Docs</option>
-                    <option value="market">Market Docs</option>
-                    <option value="legal">Legal Docs</option>
+                    <option value="all">{{ t('roundtable.startPanel.knowledgeScopeAll') }}</option>
+                    <option value="general">{{ t('roundtable.startPanel.knowledgeScopeGeneral') }}</option>
+                    <option value="financial">{{ t('roundtable.startPanel.knowledgeScopeFinancial') }}</option>
+                    <option value="market">{{ t('roundtable.startPanel.knowledgeScopeMarket') }}</option>
+                    <option value="legal">{{ t('roundtable.startPanel.knowledgeScopeLegal') }}</option>
                   </select>
                   <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none">expand_more</span>
                 </div>
@@ -158,16 +156,16 @@
           </div>
 
           <!-- History Reference Section -->
-          <div class="border-t border-white/10 pt-6">
+          <div class="border-t border-white/5 pt-6">
             <div class="flex items-center justify-between mb-4">
               <label class="flex items-center gap-2">
                 <input
                   type="checkbox"
                   v-model="useHistoryReference"
-                  class="w-4 h-4 rounded border-white/20 bg-black/30 text-primary focus:ring-primary/50"
+                  class="h-4 w-4 rounded border-white/20 bg-white/10 text-primary focus:ring-primary/50"
                 />
                 <span class="text-sm font-bold text-text-secondary uppercase tracking-wider">
-                  Continue from history
+                  {{ t('roundtable.startPanel.continueFromHistory') }}
                 </span>
               </label>
               <button
@@ -176,7 +174,7 @@
                 class="text-xs text-primary hover:text-primary-light flex items-center gap-1"
               >
                 <span class="material-symbols-outlined text-sm">refresh</span>
-                Refresh List
+                {{ t('roundtable.startPanel.refreshList') }}
               </button>
             </div>
 
@@ -184,12 +182,12 @@
               <!-- History List -->
               <div v-if="loadingHistory" class="text-center py-4">
                 <span class="material-symbols-outlined animate-spin text-primary">progress_activity</span>
-                <p class="text-sm text-text-secondary mt-2">Loading discussion history...</p>
+                <p class="text-sm text-text-secondary mt-2">{{ t('roundtable.startPanel.loadingHistory') }}</p>
               </div>
 
               <div v-else-if="historyList.length === 0" class="text-center py-4">
                 <span class="material-symbols-outlined text-text-secondary text-3xl">history</span>
-                <p class="text-sm text-text-secondary mt-2">No history found</p>
+                <p class="text-sm text-text-secondary mt-2">{{ t('roundtable.startPanel.noHistoryFound') }}</p>
               </div>
 
               <div v-else class="immersive-scroll max-h-48 overflow-y-auto space-y-2 pr-2">
@@ -201,14 +199,14 @@
                     'p-3 rounded-xl border cursor-pointer transition-all',
                     selectedHistoryRef?.id === history.id
                       ? 'border-primary bg-primary/10'
-                      : 'border-white/10 bg-white/5 hover:bg-white/10'
+                      : 'border-white/5 bg-white/5 hover:bg-white/10'
                   ]"
                 >
                   <div class="flex items-start justify-between gap-2">
                     <div class="flex-1 min-w-0">
                       <h4 class="text-sm font-bold text-white truncate">{{ history.topic }}</h4>
                       <p class="text-xs text-text-secondary mt-1">
-                        {{ formatHistoryDate(history.created_at) }} · {{ history.total_turns }} rounds
+                        {{ formatHistoryDate(history.created_at) }} · {{ history.total_turns }} {{ t('roundtable.startPanel.rounds') }}
                       </p>
                     </div>
                     <span v-if="selectedHistoryRef?.id === history.id" class="text-primary">
@@ -223,10 +221,9 @@
                 <div class="flex items-start gap-2">
                   <span class="material-symbols-outlined text-amber-400 text-lg">lightbulb</span>
                   <div class="flex-1">
-                    <p class="text-sm font-bold text-amber-400 mb-1">Continue from history</p>
+                    <p class="text-sm font-bold text-amber-400 mb-1">{{ t('roundtable.startPanel.continueFromHistory') }}</p>
                     <p class="text-xs text-text-secondary">
-                      A new discussion will start using meeting minutes from "{{ selectedHistoryRef.topic }}".
-                      Experts will review previous conclusions while being encouraged to propose new viewpoints and challenges.
+                      {{ t('roundtable.startPanel.historyHint', { topic: selectedHistoryRef.topic }) }}
                     </p>
                   </div>
                 </div>
@@ -243,7 +240,7 @@
                 'w-full flex items-center justify-center gap-3 px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300',
                 canStartDiscussion
                   ? 'bg-gradient-to-r from-primary to-primary-dark text-white shadow-glow hover:shadow-glow-lg hover:-translate-y-1'
-                  : 'bg-white/10 text-text-secondary cursor-not-allowed'
+                  : 'cursor-not-allowed bg-white/8 text-text-secondary'
               ]"
             >
               <span class="material-symbols-outlined text-2xl">rocket_launch</span>
@@ -255,7 +252,11 @@
     </div>
 
     <!-- Active Discussion View -->
-    <div v-else class="flex flex-1 min-h-0 flex-col gap-3 md:gap-6 xl:flex-row xl:gap-8" :class="useAppMobileLayout ? 'gap-2 overflow-x-hidden' : ''">
+    <div
+      v-else
+      class="flex flex-1 min-h-0 flex-col gap-1 md:gap-2 xl:grid xl:grid-cols-[minmax(0,1fr)_272px] xl:grid-rows-1 xl:gap-1"
+      :class="useAppMobileLayout ? 'gap-1 overflow-x-hidden' : ''"
+    >
       <transition
         enter-active-class="transition duration-200 ease-out"
         enter-from-class="opacity-0"
@@ -285,7 +286,7 @@
                     <span class="text-text-secondary font-medium">{{ t('roundtable.discussion.currentRound') }}</span>
                     <span class="text-white font-bold">{{ currentRound }} / {{ maxRounds }}</span>
                   </div>
-                  <div class="h-2 w-full overflow-hidden rounded-full border border-white/5 bg-black/30">
+                  <div class="h-2 w-full overflow-hidden rounded-full border border-white/5 bg-white/8">
                     <div
                       class="relative h-full rounded-full bg-gradient-to-r from-primary to-accent-cyan transition-all duration-500"
                       :style="{ width: (currentRound / maxRounds * 100) + '%' }"
@@ -301,7 +302,7 @@
               </div>
             </div>
 
-            <div class="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div class="mt-4 rounded-2xl border border-white/5 bg-white/5 p-4">
               <h3 class="mb-3 text-xs font-bold uppercase tracking-wider text-text-secondary">{{ t('roundtable.discussion.participants') }}</h3>
               <div class="space-y-2">
                 <div
@@ -334,22 +335,30 @@
                 <span class="material-symbols-outlined" :class="{ 'animate-spin': isGeneratingSummary }">
                   {{ isGeneratingSummary ? 'sync' : 'summarize' }}
                 </span>
-                {{ isGeneratingSummary ? 'Generating...' : 'Generate Minutes' }}
+                {{ isGeneratingSummary ? t('roundtable.discussion.generatingMinutes') : t('roundtable.discussion.generateMinutes') }}
               </button>
               <div class="grid grid-cols-2 gap-3">
                 <button
                   @click="stopDiscussion"
-                  class="flex items-center justify-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 font-bold text-rose-400 transition-colors hover:bg-rose-500/20"
+                  :disabled="isStoppingDiscussion"
+                  :class="[
+                    'flex items-center justify-center gap-2 rounded-xl border px-4 py-3 font-bold transition-colors',
+                    isStoppingDiscussion
+                      ? 'cursor-not-allowed border-white/5 bg-white/5 text-text-secondary'
+                      : 'border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20'
+                  ]"
                 >
-                  <span class="material-symbols-outlined">stop</span>
-                  Stop
+                  <span class="material-symbols-outlined" :class="{ 'animate-spin': isStoppingDiscussion }">
+                    {{ isStoppingDiscussion ? 'progress_activity' : 'stop' }}
+                  </span>
+                  {{ isStoppingDiscussion ? t('roundtable.discussion.stopping') : t('roundtable.discussion.stopButton') }}
                 </button>
                 <button
                   @click="exportDiscussion"
-                  class="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-bold text-text-primary transition-colors hover:bg-white/10"
+                  class="flex items-center justify-center gap-2 rounded-xl border border-white/5 bg-white/5 px-4 py-3 font-bold text-text-primary transition-colors hover:bg-white/10"
                 >
                   <span class="material-symbols-outlined">download</span>
-                  Export
+                  {{ t('roundtable.discussion.exportShort') }}
                 </button>
               </div>
             </div>
@@ -357,7 +366,7 @@
         </div>
       </transition>
       <!-- Left Sidebar: Experts Panel -->
-      <div class="hidden w-full flex-col gap-6 xl:flex xl:w-80 xl:flex-shrink-0">
+      <div class="hidden w-full min-w-0 flex-col gap-2.5 xl:col-start-2 xl:row-start-1 xl:flex xl:min-h-0 xl:w-full xl:sticky xl:top-0 xl:max-h-[calc(100dvh-6.75rem)] xl:overflow-y-auto">
         <!-- Discussion Info -->
         <div class="section-card">
           <h3 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-4">{{ t('roundtable.discussion.progress') }}</h3>
@@ -367,7 +376,7 @@
                 <span class="text-text-secondary font-medium">{{ t('roundtable.discussion.currentRound') }}</span>
                 <span class="text-white font-bold">{{ currentRound }} / {{ maxRounds }}</span>
                 </div>
-                <div class="w-full bg-black/30 rounded-full h-2 overflow-hidden border border-white/5">
+                <div class="h-2 w-full overflow-hidden rounded-full border border-white/5 bg-white/8">
                 <div
                     class="bg-gradient-to-r from-primary to-accent-cyan rounded-full h-full transition-all duration-500 relative"
                     :style="{ width: (currentRound / maxRounds * 100) + '%' }"
@@ -384,7 +393,7 @@
         </div>
 
         <!-- Active Experts -->
-        <div class="section-card immersive-scroll flex-1 overflow-y-auto">
+        <div class="section-card immersive-scroll flex-1 min-h-0 overflow-y-auto">
           <h3 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-4">{{ t('roundtable.discussion.participants') }}</h3>
           <div class="space-y-3">
             <div
@@ -422,31 +431,39 @@
             <span class="material-symbols-outlined" :class="{ 'animate-spin': isGeneratingSummary }">
               {{ isGeneratingSummary ? 'sync' : 'summarize' }}
             </span>
-            {{ isGeneratingSummary ? 'Generating...' : 'Generate Minutes' }}
+            {{ isGeneratingSummary ? t('roundtable.discussion.generatingMinutes') : t('roundtable.discussion.generateMinutes') }}
           </button>
           <div class="grid grid-cols-2 gap-3">
               <button
                 @click="stopDiscussion"
-                class="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 hover:bg-rose-500/20 transition-colors font-bold"
+                :disabled="isStoppingDiscussion"
+                :class="[
+                  'flex items-center justify-center gap-2 px-4 py-3 rounded-xl border transition-colors font-bold',
+                  isStoppingDiscussion
+                    ? 'cursor-not-allowed border-white/5 bg-white/5 text-text-secondary'
+                    : 'bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20'
+                ]"
               >
-                <span class="material-symbols-outlined">stop</span>
-                Stop
+                <span class="material-symbols-outlined" :class="{ 'animate-spin': isStoppingDiscussion }">
+                  {{ isStoppingDiscussion ? 'progress_activity' : 'stop' }}
+                </span>
+                {{ isStoppingDiscussion ? t('roundtable.discussion.stopping') : t('roundtable.discussion.stopButton') }}
               </button>
               <button
                 @click="exportDiscussion"
-                class="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-text-primary hover:bg-white/10 transition-colors font-bold"
+                class="flex items-center justify-center gap-2 rounded-xl border border-white/5 bg-white/5 px-4 py-3 font-bold text-text-primary transition-colors hover:bg-white/10"
               >
                 <span class="material-symbols-outlined">download</span>
-                Export
+                {{ t('roundtable.discussion.exportShort') }}
               </button>
           </div>
         </div>
       </div>
 
       <!-- Main Discussion Area -->
-      <div class="relative flex flex-1 min-h-0 flex-col overflow-hidden overflow-x-hidden" :class="useAppMobileLayout ? 'rounded-none bg-transparent' : 'rounded-2xl glass-panel'">
+      <div class="relative flex flex-1 min-h-0 flex-col overflow-hidden overflow-x-hidden bg-transparent xl:col-start-1 xl:row-start-1" :class="useAppMobileLayout ? 'rounded-none' : 'rounded-none'">
         <!-- Discussion Header -->
-        <div class="border-b border-white/10 bg-white/5 backdrop-blur-md flex-shrink-0" :class="useAppMobileLayout ? 'px-2.5 py-2.5' : 'px-4 py-4 md:px-8 md:py-5'">
+        <div class="relative flex-shrink-0" :class="useAppMobileLayout ? 'px-1.5 py-1' : 'px-2.5 py-1.5 md:px-5 md:py-2.5'">
           <div class="flex items-center justify-between">
             <div class="flex-1 min-w-0">
               <h2 class="truncate font-bold text-white" :class="useAppMobileLayout ? 'text-lg' : 'text-xl'">{{ discussionTopic }}</h2>
@@ -458,7 +475,7 @@
             <span
               :class="[
                 'hidden sm:inline-flex text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider border shadow-[0_0_10px_rgba(0,0,0,0.2)]',
-                discussionStatus === 'running' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-white/10 text-text-secondary border-white/10'
+                discussionStatus === 'running' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-white/8 text-text-secondary border-white/5'
               ]"
             >
               {{ discussionStatus === 'running' ? t('roundtable.discussion.status.running') : t('roundtable.discussion.status.completed') }}
@@ -475,10 +492,10 @@
         </div>
 
         <!-- Reconnecting Banner -->
-        <div v-if="isReconnecting" class="px-6 py-3 bg-amber-500/20 border-b border-amber-500/30 flex-shrink-0 backdrop-blur-md z-10">
+        <div v-if="isReconnecting" class="z-10 flex-shrink-0 border-b border-amber-500/20 bg-amber-500/15 px-3 py-2 backdrop-blur-md md:px-5">
           <div class="flex items-center gap-3 text-amber-300 justify-center">
             <span class="material-symbols-outlined animate-spin">sync</span>
-            <span class="text-sm font-bold">Connection lost, attempting to reconnect...</span>
+            <span class="text-sm font-bold">{{ t('roundtable.system.reconnectingLost') }}</span>
           </div>
         </div>
 
@@ -486,12 +503,14 @@
         <div
           ref="messagesContainer"
           class="immersive-scroll flex-1 overflow-y-auto overflow-x-hidden scroll-smooth"
-          :class="useAppMobileLayout ? 'p-2 space-y-2.5' : 'p-4 space-y-4 md:p-8 md:space-y-6'"
+          :class="useAppMobileLayout ? 'px-1.5 py-1.5' : 'px-2 py-2 md:px-5 md:py-2.5'"
+          @scroll.passive="handleMessagesScroll"
         >
-          <div v-for="message in messages" :key="message.id" class="animate-fade-in">
+          <div class="mx-auto w-full max-w-[1240px] space-y-3 md:space-y-4">
+            <div v-for="message in messages" :key="message.id" class="animate-fade-in">
             <!-- System Message -->
-            <div v-if="message.type === 'system'" class="flex justify-center py-2">
-              <div class="px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-text-secondary flex items-center gap-2">
+            <div v-if="message.type === 'system'" class="flex justify-center py-1.5">
+              <div class="flex items-center gap-2 rounded-full border border-white/5 bg-white/5 px-4 py-1.5 text-xs font-medium text-text-secondary">
                 <span class="material-symbols-outlined text-sm">info</span>
                 {{ message.content }}
               </div>
@@ -499,12 +518,18 @@
 
             <!-- Agent Message -->
             <div v-else-if="message.type === 'agent_message'" class="flex gap-3 group md:gap-5">
-              <div class="w-10 h-10 rounded-xl bg-black/30 border border-white/10 flex items-center justify-center flex-shrink-0 shadow-lg self-start mt-1 md:h-12 md:w-12">
+              <div class="mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center self-start rounded-xl border border-white/5 bg-white/8 shadow-lg md:h-12 md:w-12">
                 <span class="material-symbols-outlined text-primary text-xl md:text-2xl">{{ getExpertIcon(message.sender) }}</span>
               </div>
-              <div :class="useAppMobileLayout ? 'flex-1 min-w-0' : 'flex-1 max-w-4xl'">
-                <div class="flex items-baseline gap-3 mb-2">
-                  <span class="font-bold text-white" :class="useAppMobileLayout ? 'text-sm' : 'text-base'">{{ message.sender }}</span>
+              <div class="flex-1 min-w-0">
+                <div class="mb-2 flex flex-wrap items-center gap-2 md:gap-3">
+                  <span
+                    class="inline-flex min-w-0 items-center gap-1.5 rounded-full bg-primary/15 px-2 py-1 font-semibold text-primary-light"
+                    :class="useAppMobileLayout ? 'text-xs' : 'text-sm'"
+                  >
+                    <span class="material-symbols-outlined text-[13px]">smart_toy</span>
+                    <span class="truncate">{{ message.sender }}</span>
+                  </span>
                   <span class="text-xs text-text-secondary font-mono">{{ formatTime(message.timestamp) }}</span>
                   <span
                     v-if="message.message_type !== 'broadcast'"
@@ -512,16 +537,36 @@
                   >
                     {{ getMessageTypeLabel(message.message_type) }}
                   </span>
+                  <span
+                    v-if="getInteractionMeta(message).hasRoute"
+                    class="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/15 px-2.5 py-1 text-[11px] font-bold text-cyan-200"
+                  >
+                    <span class="material-symbols-outlined text-[13px]">route</span>
+                    {{ getInteractionMeta(message).routeText }}
+                  </span>
+                  <span
+                    v-if="getInteractionMeta(message).tagText"
+                    :class="getInteractionTagClass(getInteractionMeta(message).kind)"
+                    class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold"
+                  >
+                    <span class="material-symbols-outlined text-[13px]">{{ getInteractionMeta(message).tagIcon }}</span>
+                    {{ getInteractionMeta(message).tagText }}
+                  </span>
                 </div>
                 <div
-                  class="glass-card rounded-2xl rounded-tl-none border border-white/10 bg-white/5 text-text-primary leading-relaxed shadow-md relative overflow-hidden"
-                  :class="useAppMobileLayout ? 'p-2.5' : 'p-3 md:p-5'"
+                  class="rounded-3xl rounded-tl-none bg-white/10 text-text-primary leading-relaxed shadow-sm relative overflow-hidden"
+                  :class="[useAppMobileLayout ? 'p-2.5' : 'p-3 md:p-5', getMessageBubbleClass(message)]"
                 >
                   <div
-                    class="meeting-markdown max-w-none break-words"
-                    :class="{ 'report-mode': isReportLike(message.content) }"
-                    v-html="formatMeetingMinutes(message.content)"
+                    v-if="getInteractionMeta(message).kind !== 'neutral'"
+                    class="absolute inset-y-0 left-0 w-1"
+                    :class="getInteractionAccentClass(getInteractionMeta(message).kind)"
                   ></div>
+                  <div
+                class="meeting-markdown max-w-none break-words"
+                :class="{ 'report-mode': isReportLike(message.content) }"
+                v-html="formatMeetingMinutes(getRenderableMessageContent(message))"
+              ></div>
 
                   <!-- Decorative corner -->
                   <div class="absolute -top-[1px] -left-[1px] w-4 h-4 border-t border-l border-white/20 rounded-tl-none pointer-events-none"></div>
@@ -541,18 +586,18 @@
 
             <!-- Thinking Indicator with Scrollable Log -->
             <div v-else-if="message.type === 'thinking'" class="flex gap-3 md:gap-5">
-              <div class="w-10 h-10 rounded-xl bg-black/30 border border-white/10 flex items-center justify-center flex-shrink-0 shadow-lg self-start mt-1 opacity-70 md:h-12 md:w-12">
+              <div class="mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center self-start rounded-xl border border-white/5 bg-white/8 opacity-70 shadow-lg md:h-12 md:w-12">
                 <span class="material-symbols-outlined text-primary text-xl animate-pulse md:text-2xl">psychology</span>
               </div>
-              <div :class="useAppMobileLayout ? 'flex-1 min-w-0' : 'flex-1 max-w-[600px]'">
+              <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-2">
                   <span class="font-bold text-text-secondary text-sm">{{ message.agent }}</span>
                   <span class="text-xs text-primary animate-pulse">Thinking...</span>
                 </div>
                 <!-- Terminal-like log box -->
-                <div class="rounded-xl bg-gray-900/80 border border-white/10 overflow-hidden">
+                <div class="overflow-hidden rounded-xl border border-white/5 bg-surface/70">
                   <!-- Header bar -->
-                  <div class="flex items-center gap-2 px-3 py-2 bg-gray-800/50 border-b border-white/10">
+                  <div class="flex items-center gap-2 border-b border-white/5 bg-white/5 px-3 py-2">
                     <div class="w-2 h-2 rounded-full bg-red-500"></div>
                     <div class="w-2 h-2 rounded-full bg-yellow-500"></div>
                     <div class="w-2 h-2 rounded-full bg-green-500"></div>
@@ -586,7 +631,7 @@
                 <div class="absolute top-0 right-0 w-64 h-64 bg-primary/10 blur-[80px] rounded-full pointer-events-none"></div>
                 
                 <div class="relative z-10">
-                    <div class="flex items-center justify-between mb-6 pb-4 border-b border-white/10">
+                    <div class="mb-6 flex items-center justify-between border-b border-white/5 pb-4">
                     <div class="flex items-center gap-3">
                         <div class="p-2 rounded-lg bg-primary/20 text-primary">
                             <span class="material-symbols-outlined text-2xl">summarize</span>
@@ -600,7 +645,7 @@
                         class="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors text-xs font-bold"
                     >
                         <span class="material-symbols-outlined text-sm">download</span>
-                        Export
+                        {{ t('roundtable.discussion.exportShort') }}
                     </button>
                     </div>
                     <div
@@ -611,13 +656,25 @@
                 </div>
               </div>
             </div>
-          </div>
+            </div>
 
           <!-- Loading indicator -->
-          <div v-if="isConnecting" class="flex justify-center py-12">
-            <div class="text-center">
-              <div class="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mx-auto mb-4 shadow-[0_0_20px_rgba(56,189,248,0.4)]"></div>
-              <p class="text-primary font-bold animate-pulse">{{ t('roundtable.discussion.connecting') }}</p>
+            <div v-if="isConnecting" class="flex justify-center py-12">
+              <div class="text-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mx-auto mb-4 shadow-[0_0_20px_rgba(56,189,248,0.4)]"></div>
+                <p class="text-primary font-bold animate-pulse">{{ t('roundtable.discussion.connecting') }}</p>
+              </div>
+            </div>
+
+            <div v-if="showUnreadIncomingHint" class="sticky bottom-2 z-20 flex justify-center">
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 rounded-full bg-primary/85 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-primary/25 transition-colors hover:bg-primary"
+                @click="jumpToLatest"
+              >
+                <span class="material-symbols-outlined text-[14px]">south</span>
+                {{ unreadIncomingHintLabel }}
+              </button>
             </div>
           </div>
         </div>
@@ -651,7 +708,7 @@
           <label class="block text-sm font-bold text-text-secondary mb-2">
             {{ t('roundtable.hitl.respondingTo') }}
           </label>
-          <div class="p-4 rounded-xl bg-black/30 border border-white/10">
+          <div class="rounded-xl border border-white/5 bg-white/8 p-4">
             <div class="text-xs text-text-secondary mb-1">
               {{ messages[selectedMessageIndex]?.sender }}
             </div>
@@ -669,7 +726,7 @@
           <textarea
             v-model="interventionContent"
             :placeholder="t('roundtable.hitl.inputPlaceholder')"
-            class="w-full h-40 rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white placeholder-text-secondary transition-all resize-none focus:outline-none focus:border-primary/50 focus:bg-black/50"
+            class="control-input h-40 w-full resize-none !rounded-xl !bg-white/10 px-4 py-3 text-white"
           />
           <div class="mt-2 text-xs text-text-secondary">
             {{ t('roundtable.hitl.inputHint') }}
@@ -695,7 +752,7 @@
           <button
             @click="closeInterventionDialog"
             :disabled="isSubmittingIntervention"
-            class="px-6 py-3 rounded-xl border border-white/10 text-text-primary hover:bg-white/5 transition-all"
+            class="rounded-xl border border-white/5 px-6 py-3 text-text-primary transition-all hover:bg-white/5"
           >
             {{ t('roundtable.hitl.cancel') }}
           </button>
@@ -730,11 +787,14 @@ const startTime = ref('');
 const isConnecting = ref(false);
 const isReconnecting = ref(false); // Track reconnection attempts
 const isGeneratingSummary = ref(false); // Track summary generation
+const isStoppingDiscussion = ref(false);
 const useKnowledgeBase = ref(false);
 const knowledgeCategory = ref('all');
 const mobileControlPanelOpen = ref(false);
 const isNativeApp = ref(false);
 const isMobileViewport = ref(false);
+const isAtBottom = ref(true);
+const unreadIncomingCount = ref(0);
 let reconnectAttempts = 0;
 const reconnectBaseDelayMs = 1500;
 let reconnectTimer = null;
@@ -747,6 +807,14 @@ let discussionConfig = null; // Store config for reconnection
 const markdownRenderCache = new Map();
 const reportDetectCache = new Map();
 const useAppMobileLayout = computed(() => isNativeApp.value && isMobileViewport.value);
+const showUnreadIncomingHint = computed(() => unreadIncomingCount.value > 0 && !isAtBottom.value);
+const unreadIncomingHintLabel = computed(() => {
+  const zh = String(locale.value || '').startsWith('zh');
+  if (zh) {
+    return unreadIncomingCount.value > 1 ? `${unreadIncomingCount.value} 条新消息` : '有新消息';
+  }
+  return unreadIncomingCount.value > 1 ? `${unreadIncomingCount.value} new messages` : 'New message';
+});
 
 // Human-in-the-Loop (HITL) state
 const sessionId = ref(''); // Session ID for HITL API calls
@@ -791,11 +859,11 @@ const selectedExperts = ref([]);
 
 const getKnowledgeCategoryLabel = (category) => {
   const labels = {
-    all: 'All Knowledge',
-    general: 'General Docs',
-    financial: 'Financial Docs',
-    market: 'Market Docs',
-    legal: 'Legal Docs'
+    all: t('roundtable.startPanel.knowledgeScopeAll'),
+    general: t('roundtable.startPanel.knowledgeScopeGeneral'),
+    financial: t('roundtable.startPanel.knowledgeScopeFinancial'),
+    market: t('roundtable.startPanel.knowledgeScopeMarket'),
+    legal: t('roundtable.startPanel.knowledgeScopeLegal')
   };
   return labels[category] || labels.all;
 };
@@ -881,13 +949,12 @@ const tryResumePersistedRoundtableSession = () => {
   shouldReconnect = true;
   reconnectAttempts = 0;
   isDiscussionActive.value = true;
-  isConnecting.value = true;
   discussionStatus.value = 'running';
   currentRound.value = 0;
   messages.value = [{
     id: Date.now(),
     type: 'system',
-    content: 'Resuming previous discussion session...'
+    content: t('roundtable.system.resumingSession')
   }];
 
   connectWebSocket({ resume: true });
@@ -922,12 +989,11 @@ const tryResumeBackendActiveSession = async () => {
     shouldReconnect = true;
     reconnectAttempts = 0;
     isDiscussionActive.value = true;
-    isConnecting.value = true;
     discussionStatus.value = 'running';
     messages.value = [{
       id: Date.now(),
       type: 'system',
-      content: 'Recovered an active discussion from backend...'
+      content: t('roundtable.system.recoveredSession')
     }];
     connectWebSocket({ resume: true });
     return true;
@@ -1212,7 +1278,6 @@ const startDiscussion = async () => {
   mobileControlPanelOpen.value = false;
 
   isDiscussionActive.value = true;
-  isConnecting.value = true;
   discussionStatus.value = 'running';
   currentRound.value = 0;
   messages.value = [];
@@ -1221,20 +1286,22 @@ const startDiscussion = async () => {
   startTime.value = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 
   // Add system message
-  let systemMsg = `Discussion started - ${selectedExperts.value.length} experts joined`;
+  let systemMsg = t('roundtable.system.discussionStarted', { count: selectedExperts.value.length });
   if (discussionConfig.knowledge?.enabled) {
-    systemMsg += `\nKnowledge retrieval enabled (scope: ${getKnowledgeCategoryLabel(discussionConfig.knowledge.category)}）`;
+    systemMsg += `\n${t('roundtable.system.knowledgeEnabled', { scope: getKnowledgeCategoryLabel(discussionConfig.knowledge.category) })}`;
   } else {
-    systemMsg += '\nKnowledge retrieval disabled';
+    systemMsg += `\n${t('roundtable.system.knowledgeDisabled')}`;
   }
   if (discussionConfig.historyReference) {
-    systemMsg += `\nContinuing from history "${discussionConfig.historyReference.topic}"`;
+    systemMsg += `\n${t('roundtable.system.continueFromHistory', { topic: discussionConfig.historyReference.topic })}`;
   }
   messages.value.push({
     id: Date.now(),
     type: 'system',
     content: systemMsg
   });
+  unreadIncomingCount.value = 0;
+  isAtBottom.value = true;
 
   // Connect to WebSocket
   connectWebSocket({ resume: false });
@@ -1256,6 +1323,7 @@ const connectWebSocket = async ({ resume = false } = {}) => {
         type: 'system',
         content: '登录状态已过期，请重新登录后再发起头脑风暴。'
       });
+      maybeAutoScrollOnIncoming();
       return;
     }
 
@@ -1346,6 +1414,7 @@ const connectWebSocket = async ({ resume = false } = {}) => {
           type: 'system',
           content: '鉴权失败（登录已过期），请重新登录后再试。'
         });
+        maybeAutoScrollOnIncoming();
         clearPersistedRoundtableSession();
         return;
       }
@@ -1360,6 +1429,7 @@ const connectWebSocket = async ({ resume = false } = {}) => {
           type: 'system',
           content: 'Authentication expired. Please log in again.'
         });
+        maybeAutoScrollOnIncoming();
         clearPersistedRoundtableSession();
       } else if (shouldReconnect && discussionStatus.value === 'running') {
         scheduleReconnect();
@@ -1387,7 +1457,7 @@ const handleWebSocketMessage = (data) => {
       type: 'system',
       content: data.message
     });
-    scrollToBottom();
+    maybeAutoScrollOnIncoming();
   } else if (data.type === 'agent_event') {
     const event = data.event;
 
@@ -1409,7 +1479,7 @@ const handleWebSocketMessage = (data) => {
           logs: []
         });
       }
-      scrollToBottom();
+      maybeAutoScrollOnIncoming();
     } else if (event.event_type === 'log') {
       // Append log to existing thinking card
       const thinkingIndex = messages.value.findIndex(
@@ -1424,7 +1494,7 @@ const handleWebSocketMessage = (data) => {
           timestamp: Date.now()
         });
       }
-      scrollToBottom();
+      maybeAutoScrollOnIncoming();
     } else if (event.event_type === 'progress' || event.event_type === 'analyzing' || event.event_type === 'searching') {
       // Update status message and add to logs
       const thinkingIndex = messages.value.findIndex(
@@ -1449,7 +1519,7 @@ const handleWebSocketMessage = (data) => {
           logs: [{ text: event.message, timestamp: Date.now() }]
         });
       }
-      scrollToBottom();
+      maybeAutoScrollOnIncoming();
     } else if (event.event_type === 'result') {
       // Convert thinking card to collapsed state, keep logs for reference
       const thinkingIndex = messages.value.findIndex(
@@ -1466,18 +1536,19 @@ const handleWebSocketMessage = (data) => {
         id: Date.now() + Math.random(),
         type: 'agent_message',
         sender: event.agent_name,
+        recipient: event.data?.recipient || 'ALL',
         content: event.message,
         message_type: event.data?.message_type || 'broadcast',
         timestamp: event.timestamp || new Date().toISOString()
       });
-      scrollToBottom();
+      maybeAutoScrollOnIncoming();
     } else if (event.event_type === 'started') {
       messages.value.push({
         id: Date.now(),
         type: 'system',
         content: event.message
       });
-      scrollToBottom();
+      maybeAutoScrollOnIncoming();
     } else if (event.event_type === 'completed') {
       discussionStatus.value = 'completed';
       messages.value.push({
@@ -1485,14 +1556,14 @@ const handleWebSocketMessage = (data) => {
         type: 'system',
         content: event.message
       });
-      scrollToBottom();
+      maybeAutoScrollOnIncoming();
     } else if (event.event_type === 'error') {
       messages.value.push({
         id: Date.now(),
         type: 'system',
         content: `Error: ${event.message}`
       });
-      scrollToBottom();
+      maybeAutoScrollOnIncoming();
     }
   } else if (data.type === 'discussion_complete') {
     discussionStatus.value = 'completed';
@@ -1536,7 +1607,7 @@ const handleWebSocketMessage = (data) => {
         });
       }
     }
-    scrollToBottom();
+    maybeAutoScrollOnIncoming();
   } else if (data.type === 'error') {
     messages.value.push({
       id: Date.now(),
@@ -1555,23 +1626,66 @@ const handleWebSocketMessage = (data) => {
         ws.close(1000, 'session-not-recoverable');
       }
     }
-    scrollToBottom();
+    maybeAutoScrollOnIncoming();
   }
 };
 
-const stopDiscussion = () => {
+const stopDiscussion = async () => {
+  if (isStoppingDiscussion.value) return;
+  isStoppingDiscussion.value = true;
   console.log('[Roundtable] Stopping discussion...');
   shouldReconnect = false; // Disable auto-reconnect
   clearReconnectTimer();
   mobileControlPanelOpen.value = false;
-  if (ws) {
-    suppressCloseHandlingOnce = true;
-    ws.close(1000, 'User stopped discussion'); // Normal closure
+
+  try {
+    if (sessionId.value) {
+      const response = await fetch(apiUrl('/api/roundtable/stop'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({ session_id: sessionId.value })
+      });
+      await readJsonResponse(response, 'Stop roundtable discussion');
+    }
+    messages.value.push({
+      id: Date.now(),
+      type: 'system',
+      content: t('roundtable.system.stopRequestSent')
+    });
+    maybeAutoScrollOnIncoming();
+
+    if (ws) {
+      suppressCloseHandlingOnce = true;
+      ws.close(1000, 'User requested stop');
+    }
+    stopHeartbeat();
+    discussionStatus.value = 'completed';
+    isReconnecting.value = false;
+    clearPersistedRoundtableSession();
+  } catch (error) {
+    console.error('[Roundtable] Failed to stop discussion via API:', error);
+    messages.value.push({
+      id: Date.now(),
+      type: 'system',
+      content: t('roundtable.system.stopRequestFailed', { error: error?.message || t('analysisWizard.unknownError') })
+    });
+    maybeAutoScrollOnIncoming();
+
+    if (ws) {
+      suppressCloseHandlingOnce = true;
+      ws.close(1000, 'User stopped discussion (local fallback)');
+    }
+    stopHeartbeat();
+    discussionStatus.value = 'completed';
+    isReconnecting.value = false;
+    clearPersistedRoundtableSession();
+    return;
+  } finally {
+    isStoppingDiscussion.value = false;
   }
-  stopHeartbeat();
-  discussionStatus.value = 'completed';
-  isReconnecting.value = false;
-  clearPersistedRoundtableSession();
 };
 
 const generateMeetingSummary = async () => {
@@ -1651,7 +1765,7 @@ const generateMeetingSummary = async () => {
               if (msgIndex !== -1) {
                 messages.value[msgIndex].content = fullContent;
               }
-              scrollToBottom();
+              maybeAutoScrollOnIncoming();
             }
             
             if (data.done) {
@@ -1670,7 +1784,7 @@ const generateMeetingSummary = async () => {
       }
     }
 
-    scrollToBottom();
+    maybeAutoScrollOnIncoming();
   } catch (error) {
     console.error('Error generating meeting summary:', error);
     
@@ -1685,6 +1799,7 @@ const generateMeetingSummary = async () => {
       type: 'system',
       content: 'Failed to generate meeting minutes, please retry: ' + error.message
     });
+    maybeAutoScrollOnIncoming();
   } finally {
     isGeneratingSummary.value = false;
   }
@@ -2024,7 +2139,7 @@ const collapseToolResults = (content) => {
                           const lines = block.split('\n').map(l => l.trim()).filter(l => l);
                           const sourceIdx = lines.findIndex(l => l.startsWith('Source:'));
                           if (sourceIdx >= 0) {
-                              const title = sourceIdx > 0 ? lines[sourceIdx - 1] : 'Untitled Result';
+                              const title = sourceIdx > 0 ? lines[sourceIdx - 1] : t('roundtable.system.untitledResult');
                               const url = lines[sourceIdx].replace('Source:', '').trim();
                               const contentLine = lines.find(l => l.startsWith('Content:'));
                               const desc = contentLine ? contentLine.replace('Content:', '').trim() : '';
@@ -2039,7 +2154,7 @@ const collapseToolResults = (content) => {
           if (items.length > 0) {
               // CRITICAL FIX: No indentation in the generated HTML to prevent Markdown parser from treating it as code blocks
               let cards = items.map(item => 
-                `<div class="p-3 bg-black/20 rounded-lg border border-white/5 hover:border-white/10 transition-colors group flex flex-col gap-2 text-left"><a href="${item.url}" target="_blank" class="text-emerald-400 font-bold text-sm hover:underline leading-tight flex items-start gap-2"><span class="flex-1 break-words">${item.title}</span><span class="material-symbols-outlined text-[10px] opacity-50 group-hover:opacity-100 mt-1 flex-shrink-0">open_in_new</span></a>${item.url ? `<div class="text-[10px] text-white/30 font-mono truncate">${item.url}</div>` : ''}<div class="text-xs text-white/70 leading-relaxed line-clamp-4 break-words">${item.desc}</div></div>`
+                `<div class="p-3 bg-white/5 rounded-lg border border-white/5 hover:bg-white/8 transition-colors group flex flex-col gap-2 text-left"><a href="${item.url}" target="_blank" class="text-emerald-400 font-bold text-sm hover:underline leading-tight flex items-start gap-2"><span class="flex-1 break-words">${item.title}</span><span class="material-symbols-outlined text-[10px] opacity-50 group-hover:opacity-100 mt-1 flex-shrink-0">open_in_new</span></a>${item.url ? `<div class="text-[10px] text-white/30 font-mono truncate">${item.url}</div>` : ''}<div class="text-xs text-white/70 leading-relaxed line-clamp-4 break-words">${item.desc}</div></div>`
               ).join('');
               
               formattedBody = `<div class="grid grid-cols-1 gap-3 mt-2">${cards}</div>`;
@@ -2060,35 +2175,47 @@ const collapseToolResults = (content) => {
 
 /**
  * Check if user is near the bottom of the messages container
- * Returns true if user is within 150px of the bottom
+ * Returns true if user is within threshold px of the bottom.
  */
-const isNearBottom = () => {
+const isNearBottom = (threshold = 150) => {
   if (!messagesContainer.value) return true;
   const { scrollTop, scrollHeight, clientHeight } = messagesContainer.value;
-  return scrollHeight - scrollTop - clientHeight < 150;
+  return scrollHeight - scrollTop - clientHeight < threshold;
 };
 
-/**
- * Scroll to bottom only if user is already near the bottom
- * This prevents interrupting users who are reading history
- */
+const handleMessagesScroll = () => {
+  const near = isNearBottom();
+  isAtBottom.value = near;
+  if (near) {
+    unreadIncomingCount.value = 0;
+  }
+};
+
 const scrollToBottom = () => {
-  nextTick(() => {
-    if (messagesContainer.value && isNearBottom()) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
-    }
-  });
-};
-
-/**
- * Force scroll to bottom (used for user's own messages)
- */
-const forceScrollToBottom = () => {
   nextTick(() => {
     if (messagesContainer.value) {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+      isAtBottom.value = true;
+      unreadIncomingCount.value = 0;
     }
   });
+};
+
+/**
+ * Scroll only when user is following the bottom.
+ * Otherwise keep the current viewport and show unread hint.
+ */
+const maybeAutoScrollOnIncoming = () => {
+  if (isNearBottom() || isAtBottom.value) {
+    scrollToBottom();
+    return;
+  }
+  unreadIncomingCount.value += 1;
+};
+
+const jumpToLatest = () => {
+  unreadIncomingCount.value = 0;
+  scrollToBottom();
 };
 
 // Format timestamp for log display
@@ -2121,15 +2248,142 @@ const formatTime = (timestamp) => {
 };
 
 const getMessageTypeLabel = (type) => {
-  const labels = {
-    'broadcast': 'Public',
-    'direct': 'Private',
-    'question': 'Questions',
-    'response': 'Response',
-    'agreement': 'Agree',
-    'disagreement': 'Disagree'
-  };
+  const isZh = String(locale.value || '').startsWith('zh');
+  const labels = isZh
+    ? {
+        broadcast: '公开',
+        direct: '私信',
+        question: '提问',
+        response: '回应',
+        agreement: '支持',
+        disagreement: '反对',
+        challenge: '质询'
+      }
+    : {
+        broadcast: 'Public',
+        direct: 'Private',
+        question: 'Question',
+        response: 'Response',
+        agreement: 'Support',
+        disagreement: 'Disagree',
+        challenge: 'Challenge'
+      };
   return labels[type] || type;
+};
+
+const interactionMetaCache = new Map();
+const ROUTE_PREFIX_RE = /^\s*\[([^\]\n]{1,48})\s*(?:→|->|➡️)\s*([^\]\n]{1,48})\]\s*/;
+const DISAGREE_RE = /(我(?:必须)?反对|我不认同|不同意|驳斥|反驳|我质疑|disagree|oppose|rebut)/i;
+const AGREE_RE = /(我同意|我赞同|我支持|我认可|agree|support|concur)/i;
+const QUESTION_RE = /(？|\?|请(?:你|.*专家)?.{0,12}(回应|解释|说明|回答)|question|clarify|can you explain|how do you)/i;
+
+const isAllRecipient = (recipient) => {
+  const target = String(recipient || '').trim().toUpperCase();
+  return target === '' || target === 'ALL' || target === '全体' || target === '所有人';
+};
+
+const getRenderableMessageContent = (message) => {
+  const text = String(message?.content || '');
+  return text.replace(ROUTE_PREFIX_RE, '').trimStart();
+};
+
+const detectInteractionKind = (message, bodyText, hasDirectedRoute) => {
+  const msgType = String(message?.message_type || '').toLowerCase();
+  if (!hasDirectedRoute) return 'neutral';
+  if (msgType === 'disagreement') return 'disagreement';
+  if (msgType === 'agreement') return 'agreement';
+  if (msgType === 'question' || msgType === 'challenge') return 'question';
+  // Heuristic intent detection is allowed only on explicit routed messages.
+  // This avoids false positives on normal long-form analysis text.
+  if (DISAGREE_RE.test(bodyText)) return 'disagreement';
+  if (AGREE_RE.test(bodyText)) return 'agreement';
+  if (QUESTION_RE.test(bodyText)) return 'question';
+  return 'neutral';
+};
+
+const getInteractionMeta = (message) => {
+  if (!message) {
+    return { hasRoute: false, routeText: '', kind: 'neutral', tagText: '', tagIcon: 'label' };
+  }
+  const cacheKey = `${locale.value || ''}|${message.id || ''}|${message.message_type || ''}|${message.recipient || ''}|${String(message.content || '').slice(0, 160)}`;
+  const cached = interactionMetaCache.get(cacheKey);
+  if (cached) return cached;
+
+  const text = String(message.content || '');
+  const routeMatch = text.match(ROUTE_PREFIX_RE);
+  const from = routeMatch?.[1]?.trim() || String(message.sender || '').trim();
+  const to = routeMatch?.[2]?.trim() || String(message.recipient || '').trim();
+  const hasRoute = Boolean(from && to);
+  const hasDirectedRoute = hasRoute && !isAllRecipient(to);
+  const body = getRenderableMessageContent(message);
+  const kind = detectInteractionKind(message, body, hasDirectedRoute);
+
+  const isZh = String(locale.value || '').startsWith('zh');
+  const tagMap = isZh
+    ? {
+        disagreement: { text: '观点交锋', icon: 'gavel' },
+        agreement: { text: '观点支持', icon: 'thumb_up' },
+        question: { text: '交叉质询', icon: 'help' },
+        neutral: { text: '', icon: 'label' }
+      }
+    : {
+        disagreement: { text: 'Conflict', icon: 'gavel' },
+        agreement: { text: 'Support', icon: 'thumb_up' },
+        question: { text: 'Cross Question', icon: 'help' },
+        neutral: { text: '', icon: 'label' }
+      };
+
+  const meta = {
+    hasRoute: hasDirectedRoute,
+    routeText: hasDirectedRoute ? `${from} → ${to}` : '',
+    kind,
+    tagText: tagMap[kind]?.text || '',
+    tagIcon: tagMap[kind]?.icon || 'label'
+  };
+
+  interactionMetaCache.set(cacheKey, meta);
+  if (interactionMetaCache.size > 500) interactionMetaCache.clear();
+  return meta;
+};
+
+const getInteractionTagClass = (kind) => {
+  switch (kind) {
+    case 'disagreement':
+      return 'border-rose-400/30 bg-rose-500/15 text-rose-200';
+    case 'agreement':
+      return 'border-emerald-400/30 bg-emerald-500/15 text-emerald-200';
+    case 'question':
+      return 'border-amber-400/30 bg-amber-500/15 text-amber-200';
+    default:
+      return 'border-white/10 bg-white/10 text-white/70';
+  }
+};
+
+const getInteractionAccentClass = (kind) => {
+  switch (kind) {
+    case 'disagreement':
+      return 'bg-rose-400/90';
+    case 'agreement':
+      return 'bg-emerald-400/90';
+    case 'question':
+      return 'bg-amber-400/90';
+    default:
+      return 'bg-transparent';
+  }
+};
+
+const getMessageBubbleClass = (message) => {
+  const kind = getInteractionMeta(message).kind;
+  switch (kind) {
+    case 'disagreement':
+      return 'border border-rose-400/25 bg-rose-500/10';
+    case 'agreement':
+      return 'border border-emerald-400/25 bg-emerald-500/10';
+    case 'question':
+      return 'border border-amber-400/25 bg-amber-500/10';
+    default:
+      return '';
+  }
 };
 
 // ==================== HITL (Human-in-the-Loop) Methods ====================
@@ -2190,7 +2444,7 @@ const submitIntervention = async () => {
     });
 
     // Force scroll for user's own message
-    forceScrollToBottom();
+    scrollToBottom();
 
     // Close dialog and reset state
     showInterventionDialog.value = false;
@@ -2203,6 +2457,7 @@ const submitIntervention = async () => {
       type: 'system',
       content: t('roundtable.hitl.interventionSent')
     });
+    maybeAutoScrollOnIncoming();
 
   } catch (error) {
     console.error('[HITL] Error submitting intervention:', error);
@@ -2212,6 +2467,7 @@ const submitIntervention = async () => {
       type: 'system',
       content: `${t('roundtable.hitl.interventionError')}: ${error.message}`
     });
+    maybeAutoScrollOnIncoming();
   } finally {
     isSubmittingIntervention.value = false;
   }

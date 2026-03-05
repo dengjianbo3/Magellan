@@ -60,12 +60,26 @@ class ReWOOAgent(Agent):
         role_prompt: str,
         llm_gateway_url: str = "http://llm_gateway:8003",
         model: str = "gpt-4",
-        temperature: float = 0.7
+        temperature: float = 0.7,
+        language: str = None,
     ):
         super().__init__(name, role_prompt, llm_gateway_url, model, temperature)
         self.planning_temperature = 0.3  # 规划阶段使用更低温度
         self.solving_temperature = temperature  # 综合阶段使用正常温度
         self._memory_store = get_memory_store()
+        # Keep per-agent output language explicit for skills/prompting.
+        self.language = str(language or self._infer_language_from_prompt(role_prompt))
+
+    @staticmethod
+    def _infer_language_from_prompt(prompt: str) -> str:
+        text = str(prompt or "")
+        for ch in text:
+            if "\u4e00" <= ch <= "\u9fff":
+                return "zh"
+        return "en"
+
+    def _is_zh_language(self) -> bool:
+        return str(getattr(self, "language", "") or "").lower().startswith("zh")
 
     async def think_and_act(self) -> List:
         """
@@ -680,6 +694,16 @@ DO NOT add explanations. DO NOT use markdown code blocks. JUST the raw JSON arra
 
     def _create_solving_prompt(self) -> str:
         """Create the solving phase prompt"""
+        language_instruction = (
+            "- **中文输出**: 最终回答必须使用简体中文，风格专业、简洁、可执行"
+            if self._is_zh_language()
+            else "- **English Output**: Use concise, professional English"
+        )
+        synthesis_hint = (
+            "请综合以上信息并输出结构化分析报告。"
+            if self._is_zh_language()
+            else "Please synthesize all the above information and generate a structured analysis report."
+        )
         return f"""You are {self.name}, generating the final analysis based on tool execution results.
 
 {self.role_prompt}
@@ -696,11 +720,14 @@ You have executed a series of tool calls and obtained observation results. Now y
 - **Data-Driven**: Reference specific data sources and values
 - **In-Depth**: Not just data listing, include insights and judgments
 - **Objective**: Clearly distinguish between facts and inferences
-- **English Output**: Use concise, professional English
+- {language_instruction}
 - **Direct Output**: Do not add "TO: ALL", "CC:" or other email format prefixes
 
 ## Analysis Framework:
 Apply the appropriate analysis framework based on your role (e.g., DuPont analysis for finance, SWOT for market analysis)
+
+## Final Instruction:
+{synthesis_hint}
 """
 
     def _format_tools_description(self) -> str:
@@ -789,6 +816,12 @@ Please create a tool call plan for this task (JSON format).
             else:
                 results_text += f"**Result**: {str(obs)[:2000]}\n"
 
+        final_instruction = (
+            "请综合以上信息并输出结构化分析报告。"
+            if self._is_zh_language()
+            else "Please synthesize all the above information and generate a structured analysis report."
+        )
+
         return f"""# Original Task
 {query}
 
@@ -798,7 +831,7 @@ Please create a tool call plan for this task (JSON format).
 # Execution Plan and Results
 {results_text}
 
-Please synthesize all the above information and generate a structured analysis report.
+{final_instruction}
 """
 
     def _format_context(self, context: Dict[str, Any]) -> str:

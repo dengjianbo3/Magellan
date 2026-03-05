@@ -16,6 +16,7 @@ from reportlab.platypus import (
     Table, TableStyle
 )
 from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 from datetime import datetime
 from typing import Dict, Any, List
@@ -57,13 +58,22 @@ class PDFReportGenerator:
         Returns:
             字体名称 (如果中文字体不可用，返回Helvetica)
         """
-        # 尝试使用 Noto Sans CJK 中文字体
-        chinese_font_paths = [
+        # 优先使用显式配置的字体路径
+        chinese_font_paths = []
+        env_font_path = os.getenv('PDF_CJK_FONT_PATH', '').strip()
+        if env_font_path:
+            chinese_font_paths.append(env_font_path)
+
+        # 常见系统路径
+        chinese_font_paths.extend([
             '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
             '/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc',
             '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
             '/usr/local/share/fonts/NotoSansCJK-Regular.ttc',
-        ]
+            '/System/Library/Fonts/PingFang.ttc',
+            '/System/Library/Fonts/Hiragino Sans GB.ttc',
+            '/Library/Fonts/Arial Unicode.ttf',
+        ])
         
         for font_path in chinese_font_paths:
             if os.path.exists(font_path):
@@ -75,6 +85,15 @@ class PDFReportGenerator:
                 except Exception as e:
                     print(f"[PDFGenerator] Failed to register font {font_path}: {e}")
                     continue
+
+        # ReportLab 内置 CID 中文字体，无需系统字体文件
+        if self.language == "zh":
+            try:
+                pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
+                print("[PDFGenerator] Using CID Chinese font fallback: STSong-Light")
+                return 'STSong-Light'
+            except Exception as e:
+                print(f"[PDFGenerator] Failed to register CID font STSong-Light: {e}")
         
         # 如果是中文但没有找到中文字体，打印警告
         if self.language == "zh":
@@ -89,6 +108,14 @@ class PDFReportGenerator:
         # 根据语言选择字体
         title_font = self.chinese_font if self.language == "zh" else 'Helvetica-Bold'
         body_font = self.chinese_font if self.language == "zh" else 'Helvetica'
+
+        # 覆盖默认 BodyText，避免被默认 Times-Roman 抢占导致中文乱码
+        styles['BodyText'].fontName = body_font
+        styles['BodyText'].fontSize = 11
+        styles['BodyText'].leading = 16
+        styles['BodyText'].textColor = colors.HexColor('#2c3e50')
+        styles['BodyText'].alignment = TA_JUSTIFY
+        styles['BodyText'].spaceAfter = 10
 
         # 标题样式
         if 'ReportTitle' not in styles:
@@ -124,19 +151,6 @@ class PDFReportGenerator:
                 spaceBefore=12,
                 spaceAfter=6,
                 fontName=title_font
-            ))
-
-        # 正文样式
-        if 'BodyText' not in styles:
-            styles.add(ParagraphStyle(
-                name='BodyText',
-                parent=styles['Normal'],
-                fontSize=11,
-                leading=16,
-                textColor=colors.HexColor('#2c3e50'),
-                alignment=TA_JUSTIFY,
-                spaceAfter=10,
-                fontName=body_font
             ))
 
         # 重点文本
@@ -232,6 +246,12 @@ class PDFReportGenerator:
 
         return output_path
 
+    def _table_header_font(self) -> str:
+        return self.chinese_font_bold if self.language == "zh" else 'Helvetica-Bold'
+
+    def _table_body_font(self) -> str:
+        return self.chinese_font if self.language == "zh" else 'Helvetica'
+
     def _build_financial_section_v2(self, financial_data: Dict[str, Any], im_data: Dict[str, Any]) -> List:
         """构建财务分析章节 - 支持新旧两种格式"""
         story = []
@@ -275,7 +295,8 @@ class PDFReportGenerator:
                         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498db')),
                         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTNAME', (0, 0), (-1, 0), self._table_header_font()),
+                        ('FONTNAME', (0, 1), (-1, -1), self._table_body_font()),
                         ('FONTSIZE', (0, 0), (-1, 0), 12),
                         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
                         ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
@@ -489,7 +510,8 @@ class PDFReportGenerator:
                 ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498db')),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTNAME', (0, 0), (-1, 0), self._table_header_font()),
+                ('FONTNAME', (0, 1), (-1, -1), self._table_body_font()),
                 ('FONTSIZE', (0, 0), (-1, 0), 12),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),

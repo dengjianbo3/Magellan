@@ -646,6 +646,7 @@ def _create_expert_chat_agent_pool(
                 setattr(agent, "user_id", str(user_id or "anonymous"))
                 setattr(agent, "session_id", str(session_id or ""))
                 setattr(agent, "atomic_agent_id", chat_agent_id)
+                setattr(agent, "language", registry_language)
                 pool[chat_agent_id] = agent
             except Exception as create_error:
                 logger.exception(
@@ -676,10 +677,12 @@ def _ensure_expert_chat_agent_pool(
 
     existing = session_state.get("agents")
     if isinstance(existing, dict) and session_state.get("agent_pool_signature") == signature:
+        registry_language = _expert_chat_registry_language(language)
         for agent_id, agent in existing.items():
             setattr(agent, "user_id", str(user_id or "anonymous"))
             setattr(agent, "session_id", str(session_id or ""))
             setattr(agent, "atomic_agent_id", str(agent_id))
+            setattr(agent, "language", registry_language)
         return existing
 
     pool = _create_expert_chat_agent_pool(
@@ -2734,6 +2737,7 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                 setattr(agent, "session_id", session_id)
                 agent_id = getattr(agent, "id", None) or getattr(agent, "name", None) or "unknown"
                 setattr(agent, "atomic_agent_id", str(agent_id))
+                setattr(agent, "language", str(language or "en"))
 
             num_agents = len(agents)
             print(f"[ROUNDTABLE] Created {num_agents} agents: {[a.name for a in agents]}", flush=True)
