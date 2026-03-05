@@ -2570,6 +2570,14 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
             context = initial_request.get("context", {})
             language = initial_request.get("language", "en")  # Default to English for hybrid mode
 
+            def _safe_roundtable_id_component(text: str, max_len: int = 42) -> str:
+                value = str(text or "").strip().lower()
+                value = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "_", value)
+                value = value.strip("_")
+                if not value:
+                    value = "topic"
+                return value[:max_len]
+
             knowledge_context = context.get("knowledge", {}) if isinstance(context, dict) else {}
             if not isinstance(knowledge_context, dict):
                 knowledge_context = {}
@@ -2591,7 +2599,8 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
             )
 
             # Generate session ID
-            session_id = f"roundtable_{company_name}_{uuid.uuid4().hex[:8]}"
+            safe_company_name = _safe_roundtable_id_component(company_name or topic)
+            session_id = f"roundtable_{safe_company_name}_{uuid.uuid4().hex[:8]}"
             print(f"[ROUNDTABLE] Starting discussion for: {company_name}, session: {session_id}", flush=True)
 
             # Create agent event bus for real-time updates

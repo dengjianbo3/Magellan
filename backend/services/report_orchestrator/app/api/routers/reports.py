@@ -107,6 +107,50 @@ async def get_reports(
     }
 
 
+@router.get("/lookup")
+async def get_report_by_query(
+    report_id: str = Query(..., description="Report ID"),
+    storage: ReportStorage = Depends(get_storage),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """通过 query 参数获取报告（兼容包含'/'等特殊字符的ID）"""
+    report = storage.get(report_id, user_id=current_user.id)
+    if not report:
+        raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
+    return {
+        "success": True,
+        "report": report
+    }
+
+
+@router.get("/lookup/audit-package")
+async def get_report_audit_package_by_query(
+    report_id: str = Query(..., description="Report ID"),
+    storage: ReportStorage = Depends(get_storage),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """通过 query 参数获取审计包（兼容特殊ID）"""
+    return await get_report_audit_package(
+        report_id=report_id,
+        storage=storage,
+        current_user=current_user,
+    )
+
+
+@router.delete("/lookup")
+async def delete_report_by_query(
+    report_id: str = Query(..., description="Report ID"),
+    storage: ReportStorage = Depends(get_storage),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """通过 query 参数删除报告（兼容特殊ID）"""
+    return await delete_report(
+        report_id=report_id,
+        storage=storage,
+        current_user=current_user,
+    )
+
+
 @router.get("/{report_id}")
 async def get_report(
     report_id: str,
@@ -292,6 +336,24 @@ def _extract_team_scores(report: Dict[str, Any]) -> Dict[str, float]:
         if isinstance(result, dict) and isinstance(result.get("team_scores"), dict):
             return result.get("team_scores") or {}
     return {}
+
+
+@router.get("/lookup/charts/{chart_type}")
+async def get_report_chart_by_query(
+    chart_type: str,
+    report_id: str = Query(..., description="Report ID"),
+    language: str = Query("zh", description="Language: zh or en"),
+    storage: ReportStorage = Depends(get_storage),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """通过 query 参数生成图表（兼容特殊ID）"""
+    return await get_report_chart(
+        report_id=report_id,
+        chart_type=chart_type,
+        language=language,
+        storage=storage,
+        current_user=current_user,
+    )
 
 
 @router.get("/{report_id}/charts/{chart_type}")

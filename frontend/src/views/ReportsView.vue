@@ -1071,10 +1071,52 @@ const currentLanguage = computed(() => {
   return lang.startsWith('zh') ? 'zh' : 'en';
 });
 
+const isReportIdPathUnsafe = (reportId) => /[/?#]/.test(String(reportId || ''));
+
+const reportDetailUrl = (reportId) => {
+  const rawId = String(reportId || '');
+  if (isReportIdPathUnsafe(rawId)) {
+    return `${API_BASE}/api/reports/lookup?report_id=${encodeURIComponent(rawId)}`;
+  }
+  return `${API_BASE}/api/reports/${encodeURIComponent(rawId)}`;
+};
+
+const reportDeleteUrl = (reportId) => {
+  const rawId = String(reportId || '');
+  if (isReportIdPathUnsafe(rawId)) {
+    return `${API_BASE}/api/reports/lookup?report_id=${encodeURIComponent(rawId)}`;
+  }
+  return `${API_BASE}/api/reports/${encodeURIComponent(rawId)}`;
+};
+
+const reportExportUrl = (reportId, format, language) => {
+  const rawId = String(reportId || '');
+  if (isReportIdPathUnsafe(rawId)) {
+    return `${API_BASE}/api/reports/lookup/export/${format}?report_id=${encodeURIComponent(rawId)}&language=${encodeURIComponent(language)}`;
+  }
+  return `${API_BASE}/api/reports/${encodeURIComponent(rawId)}/export/${format}?language=${encodeURIComponent(language)}`;
+};
+
+const reportChartUrl = (reportId, chartType, language) => {
+  const rawId = String(reportId || '');
+  if (isReportIdPathUnsafe(rawId)) {
+    return `${API_BASE}/api/reports/lookup/charts/${chartType}?report_id=${encodeURIComponent(rawId)}&language=${encodeURIComponent(language)}`;
+  }
+  return `${API_BASE}/api/reports/${encodeURIComponent(rawId)}/charts/${chartType}?language=${encodeURIComponent(language)}`;
+};
+
+const reportAuditUrl = (reportId) => {
+  const rawId = String(reportId || '');
+  if (isReportIdPathUnsafe(rawId)) {
+    return `${API_BASE}/api/reports/lookup/audit-package?report_id=${encodeURIComponent(rawId)}`;
+  }
+  return `${API_BASE}/api/reports/${encodeURIComponent(rawId)}/audit-package`;
+};
+
 // Computed API base for use in template
 const chartUrl = (reportId, chartType) => {
   const lang = currentLanguage.value;
-  const raw = `${API_BASE}/api/reports/${reportId}/charts/${chartType}?language=${lang}`;
+  const raw = reportChartUrl(reportId, chartType, lang);
   return appendTokenToUrl(raw);
 };
 
@@ -1170,7 +1212,7 @@ const viewReport = async (reportId) => {
     // Reset states
     showDiscussionHistory.value = false;
 
-    const response = await fetch(`${API_BASE}/api/reports/${reportId}`, {
+    const response = await fetch(reportDetailUrl(reportId), {
       headers: {
         ...getAuthHeaders()
       }
@@ -1223,7 +1265,7 @@ const deleteReport = async () => {
   if (!reportToDelete.value) return;
 
   try {
-    const response = await fetch(`${API_BASE}/api/reports/${reportToDelete.value.id}`, {
+    const response = await fetch(reportDeleteUrl(reportToDelete.value.id), {
       method: 'DELETE',
       headers: {
         ...getAuthHeaders()
@@ -1272,7 +1314,7 @@ const exportReport = async (reportId, format) => {
     const langParam = language.startsWith('zh') ? 'zh' : 'en';
 
     // Call export API
-    const url = `${API_BASE}/api/reports/${reportId}/export/${format}?language=${langParam}`;
+    const url = reportExportUrl(reportId, format, langParam);
     console.log(`[ReportsView] Exporting report ${reportId} as ${format}, language=${langParam}`);
 
     const response = await fetch(appendTokenToUrl(url), {
@@ -1324,7 +1366,7 @@ const exportAuditPackage = async (reportId) => {
   try {
     auditExportLoading.value = true;
     exportMenuReportId.value = null;
-    const response = await fetch(`${API_BASE}/api/reports/${reportId}/audit-package`, {
+    const response = await fetch(reportAuditUrl(reportId), {
       headers: {
         ...getAuthHeaders(),
       },

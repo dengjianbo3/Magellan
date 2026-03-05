@@ -14,7 +14,7 @@ import tempfile
 from urllib.parse import quote
 from typing import Dict, Any, Optional, Callable
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from ...core.auth import CurrentUser, get_current_user
@@ -118,6 +118,20 @@ def _prepare_chart_data(report: Dict[str, Any], chart_type: str) -> Dict[str, An
         raise ValueError(f"Unknown chart type: {chart_type}")
 
 
+@router.get("/lookup/export/pdf")
+async def export_report_to_pdf_by_query(
+    report_id: str = Query(..., description="Report ID"),
+    language: str = "zh",
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """通过 query 参数导出 PDF（兼容特殊ID）"""
+    return await export_report_to_pdf(
+        report_id=report_id,
+        language=language,
+        current_user=current_user,
+    )
+
+
 @router.get("/{report_id}/export/pdf")
 async def export_report_to_pdf(
     report_id: str,
@@ -169,6 +183,20 @@ async def export_report_to_pdf(
             status_code=500,
             detail=f"Failed to generate PDF: {str(e)}"
         )
+
+
+@router.get("/lookup/export/word")
+async def export_report_to_word_by_query(
+    report_id: str = Query(..., description="Report ID"),
+    language: str = "zh",
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """通过 query 参数导出 Word（兼容特殊ID）"""
+    return await export_report_to_word(
+        report_id=report_id,
+        language=language,
+        current_user=current_user,
+    )
 
 
 @router.get("/{report_id}/export/word")
@@ -224,6 +252,20 @@ async def export_report_to_word(
         )
 
 
+@router.get("/lookup/export/excel")
+async def export_report_to_excel_by_query(
+    report_id: str = Query(..., description="Report ID"),
+    language: str = "zh",
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """通过 query 参数导出 Excel（兼容特殊ID）"""
+    return await export_report_to_excel(
+        report_id=report_id,
+        language=language,
+        current_user=current_user,
+    )
+
+
 @router.get("/{report_id}/export/excel")
 async def export_report_to_excel(
     report_id: str,
@@ -274,6 +316,22 @@ async def export_report_to_excel(
             status_code=500,
             detail=f"Failed to generate Excel: {str(e)}"
         )
+
+
+@router.get("/lookup/charts/{chart_type}")
+async def generate_report_chart_by_query(
+    chart_type: str,
+    report_id: str = Query(..., description="Report ID"),
+    language: str = "zh",
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """通过 query 参数生成图表（兼容特殊ID）"""
+    return await generate_report_chart(
+        report_id=report_id,
+        chart_type=chart_type,
+        language=language,
+        current_user=current_user,
+    )
 
 
 @router.get("/{report_id}/charts/{chart_type}")
