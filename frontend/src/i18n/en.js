@@ -178,6 +178,18 @@ export default {
       direct: 'Direct routing',
       leader: 'Leader routing'
     },
+    research: {
+      stages: {
+        ready: 'Ready',
+        routing: 'Routing',
+        responding: 'Responding',
+        delegating: 'Delegating',
+        collecting: 'Collecting',
+        summarizing: 'Synthesizing',
+        disconnected: 'Paused',
+        error: 'Error'
+      }
+    },
     system: {
       connected: 'Connected to expert chat',
       disconnected: 'Disconnected from expert chat',
@@ -564,6 +576,8 @@ export default {
       // Roundtable specific
       meetingMinutes: 'Meeting Minutes',
       roundtableDiscussion: 'Brainstorm Session',
+      expertChat: 'Expert Chat',
+      expertChatMemo: 'Expert Chat Research Memo',
       participatingExperts: 'Participating Experts',
       discussionHistory: 'Discussion History',
       clickToExpand: 'Click to expand full discussion',
@@ -571,6 +585,16 @@ export default {
       conclusionReason: 'Conclusion Reason',
       discussionTopic: 'Discussion Topic',
       discussionDuration: 'Discussion Duration',
+      researchTurn: 'Research Turn',
+      researchQuality: 'Research Quality',
+      evidenceSources: 'Evidence Sources',
+      latestQuestion: 'Latest Question',
+      latestAnswer: 'Latest Answer',
+      workflowStage: 'Workflow Stage',
+      auditTrail: 'Audit Trail',
+      noAuditEntries: 'No audit entries yet',
+      confidenceShort: 'Conf.',
+      sourcesShort: 'Sources',
 
       // Analysis sections
       detailedAnalysis: 'Detailed Analysis Report',
@@ -604,6 +628,7 @@ export default {
       // Actions
       actions: 'Actions',
       exportPdf: 'Export PDF',
+      exportAuditJson: 'Export Audit JSON',
       exporting: 'Exporting...',
       shareReport: 'Share Report',
       deleteReport: 'Delete Report',

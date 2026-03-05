@@ -196,6 +196,18 @@ export default {
       direct: '直连专家',
       leader: 'Leader 路由'
     },
+    research: {
+      stages: {
+        ready: '待命',
+        routing: '路由分发',
+        responding: '输出回复',
+        delegating: '委派专家',
+        collecting: '收集中',
+        summarizing: '汇总结论',
+        disconnected: '已暂停',
+        error: '异常'
+      }
+    },
     system: {
       connected: '已连接专家群聊',
       disconnected: '已断开专家群聊',
@@ -582,6 +594,8 @@ export default {
       // Roundtable specific
       meetingMinutes: '会议纪要',
       roundtableDiscussion: '头脑风暴',
+      expertChat: '专家群聊',
+      expertChatMemo: '专家群聊研究纪要',
       participatingExperts: '参与专家',
       discussionHistory: '讨论历史记录',
       clickToExpand: '点击展开查看完整讨论过程',
@@ -589,6 +603,16 @@ export default {
       conclusionReason: '会议结束原因',
       discussionTopic: '讨论主题',
       discussionDuration: '讨论时长',
+      researchTurn: '研究轮次',
+      researchQuality: '研究质量',
+      evidenceSources: '证据来源',
+      latestQuestion: '最新问题',
+      latestAnswer: '最新结论',
+      workflowStage: '流程阶段',
+      auditTrail: '审计轨迹',
+      noAuditEntries: '暂无审计记录',
+      confidenceShort: '置信度',
+      sourcesShort: '来源',
 
       // Analysis sections
       detailedAnalysis: '详细分析报告',
@@ -622,6 +646,7 @@ export default {
       // Actions
       actions: '操作',
       exportPdf: '导出 PDF',
+      exportAuditJson: '导出审计 JSON',
       exporting: '导出中...',
       shareReport: '分享报告',
       deleteReport: '删除报告',

@@ -61,18 +61,19 @@
               :class="[
                 'w-12 h-12 rounded-xl flex items-center justify-center shadow-lg backdrop-blur-sm border transition-transform group-hover:scale-110 duration-300',
                 report.type === 'roundtable' ? 'bg-primary/10 border-primary/20 text-primary' :
+                report.type === 'expert_chat' ? 'bg-accent-cyan/10 border-accent-cyan/30 text-accent-cyan' :
                 report.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
-                report.status === 'in-progress' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                (report.status === 'inProgress' || report.status === 'in-progress') ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
                 'bg-white/8 border-white/5 text-text-secondary'
               ]"
             >
-              <span class="material-symbols-outlined text-2xl">{{ report.type === 'roundtable' ? 'groups' : 'article' }}</span>
+              <span class="material-symbols-outlined text-2xl">{{ report.type === 'roundtable' ? 'groups' : report.type === 'expert_chat' ? 'forum' : 'article' }}</span>
             </div>
             <span
               :class="[
                 'text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider border shadow-[0_0_10px_rgba(0,0,0,0.2)]',
                 report.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' :
-                report.status === 'in-progress' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
+                (report.status === 'inProgress' || report.status === 'in-progress') ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
                 'bg-white/8 text-text-secondary border-white/5'
               ]"
             >
@@ -127,6 +128,13 @@
               <button @click="exportReport(report.id, 'excel')" class="w-full px-4 py-2.5 text-left text-sm text-text-primary hover:bg-primary/20 hover:text-white transition-colors flex items-center gap-2">
                 <span class="material-symbols-outlined text-base text-emerald-400">table_chart</span> Excel
               </button>
+              <button
+                v-if="report.type === 'expert_chat'"
+                @click="exportAuditPackage(report.id)"
+                class="w-full px-4 py-2.5 text-left text-sm text-text-primary hover:bg-primary/20 hover:text-white transition-colors flex items-center gap-2"
+              >
+                <span class="material-symbols-outlined text-base text-amber-300">shield</span> Audit JSON
+              </button>
             </div>
           </div>
 
@@ -160,8 +168,8 @@
       <div class="flex-1 md:text-right">
         <h1 class="page-title page-title-gradient md:!text-3xl">{{ selectedReport.display_title || selectedReport.project_name || selectedReport.topic || selectedReport.company_name }}</h1>
         <div class="mt-2 flex flex-wrap items-center gap-2 md:justify-end md:gap-3">
-           <span class="px-2 py-0.5 rounded bg-white/10 text-xs font-bold text-text-primary">{{ selectedReport.company_name }}</span>
-           <span class="text-text-secondary text-sm">•</span>
+           <span v-if="selectedReport.company_name" class="px-2 py-0.5 rounded bg-white/10 text-xs font-bold text-text-primary">{{ selectedReport.company_name }}</span>
+           <span v-if="selectedReport.company_name" class="text-text-secondary text-sm">•</span>
            <span class="text-text-secondary text-sm font-mono">{{ new Date(selectedReport.created_at).toLocaleString(locale) }}</span>
         </div>
       </div>
@@ -288,6 +296,81 @@
               <span class="material-symbols-outlined text-amber-400">info</span> {{ t('reports.detail.conclusionReason') }}
             </h2>
             <p class="text-text-secondary">{{ selectedReport.conclusion_reason }}</p>
+          </div>
+        </template>
+
+        <!-- ============================================ -->
+        <!-- Expert Chat Governance Report Template -->
+        <!-- ============================================ -->
+        <template v-else-if="selectedReport.type === 'expert_chat'">
+          <div class="section-card">
+            <div class="mb-5 flex items-center justify-between">
+              <h2 class="flex items-center gap-2 text-lg font-bold text-white">
+                <span class="material-symbols-outlined text-accent-cyan">forum</span>
+                {{ t('reports.detail.expertChatMemo') }}
+              </h2>
+              <span class="rounded-full bg-accent-cyan/20 px-3 py-1 text-xs font-bold text-accent-cyan">
+                {{ t('reports.detail.expertChat') }}
+              </span>
+            </div>
+
+            <div class="mb-6 grid grid-cols-1 gap-3 rounded-xl border border-white/5 bg-white/8 p-4 sm:grid-cols-3 sm:gap-4">
+              <div class="text-center">
+                <div class="text-2xl font-bold text-primary">{{ selectedReport.workflow?.turn || 0 }}</div>
+                <div class="mt-1 text-xs text-text-secondary">{{ t('reports.detail.researchTurn') }}</div>
+              </div>
+              <div class="text-center">
+                <div class="text-2xl font-bold text-accent-cyan">{{ selectedReport.quality_metrics?.score || 0 }}</div>
+                <div class="mt-1 text-xs text-text-secondary">{{ t('reports.detail.researchQuality') }}</div>
+              </div>
+              <div class="text-center">
+                <div class="text-2xl font-bold text-amber-300">{{ selectedReport.audit_summary?.source_count || 0 }}</div>
+                <div class="mt-1 text-xs text-text-secondary">{{ t('reports.detail.evidenceSources') }}</div>
+              </div>
+            </div>
+
+            <div class="space-y-4">
+              <div class="rounded-xl border border-white/5 bg-white/5 p-4">
+                <div class="mb-1 text-xs uppercase tracking-wider text-text-secondary">{{ t('reports.detail.latestQuestion') }}</div>
+                <p class="text-sm text-text-primary whitespace-pre-wrap">{{ selectedReport.discussion_summary?.latest_question || 'N/A' }}</p>
+              </div>
+              <div class="rounded-xl border border-white/5 bg-white/5 p-4">
+                <div class="mb-1 text-xs uppercase tracking-wider text-text-secondary">{{ t('reports.detail.latestAnswer') }}</div>
+                <div class="prose prose-invert prose-sm max-w-none report-content text-text-secondary" v-html="renderMarkdown(selectedReport.discussion_summary?.latest_answer || '')"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <h2 class="mb-4 flex items-center gap-2 text-lg font-bold text-white">
+              <span class="material-symbols-outlined text-amber-300">shield</span>
+              {{ t('reports.detail.auditTrail') }}
+            </h2>
+            <div class="space-y-3 max-h-[560px] overflow-y-auto pr-1">
+              <div
+                v-for="(entry, index) in (selectedReport.audit_package?.audit_timeline || []).slice().reverse()"
+                :key="entry.entry_id || index"
+                class="rounded-xl border border-white/5 bg-white/5 p-3"
+              >
+                <div class="mb-2 flex items-center justify-between gap-2">
+                  <p class="text-sm font-semibold text-white">{{ entry.agent_name || entry.agent_id || 'Agent' }}</p>
+                  <span class="text-[11px] text-text-secondary">{{ formatMessageTime(entry.timestamp) }}</span>
+                </div>
+                <p class="text-xs text-text-secondary whitespace-pre-wrap">{{ entry.summary || '' }}</p>
+                <div class="mt-2 flex flex-wrap gap-1.5">
+                  <span class="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-text-secondary">#{{ entry.mode || 'leader' }}</span>
+                  <span v-if="entry.confidence !== undefined && entry.confidence !== null" class="rounded-full bg-primary/20 px-2 py-0.5 text-[10px] text-primary-light">
+                    {{ t('reports.detail.confidenceShort') }} {{ entry.confidence }}
+                  </span>
+                  <span v-if="(entry.source_urls || []).length" class="rounded-full bg-accent-cyan/20 px-2 py-0.5 text-[10px] text-accent-cyan">
+                    {{ t('reports.detail.sourcesShort') }} {{ (entry.source_urls || []).length }}
+                  </span>
+                </div>
+              </div>
+              <div v-if="!(selectedReport.audit_package?.audit_timeline || []).length" class="rounded-xl border border-white/5 bg-white/5 p-4 text-sm text-text-secondary">
+                {{ t('reports.detail.noAuditEntries') }}
+              </div>
+            </div>
           </div>
         </template>
 
@@ -541,7 +624,7 @@
         </div>
 
         <!-- Analysis Steps (Universal) - Hide for roundtable discussions -->
-        <div v-if="selectedReport.type !== 'roundtable' && selectedReport.steps" class="section-card">
+        <div v-if="selectedReport.type !== 'roundtable' && selectedReport.type !== 'expert_chat' && selectedReport.steps" class="section-card">
           <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
              <span class="material-symbols-outlined text-primary">checklist</span> {{ t('reports.detail.executionSteps') }}
           </h2>
@@ -572,7 +655,7 @@
         </div>
 
         <!-- Visual Analytics (Universal) - Hide for roundtable discussions -->
-        <div v-if="selectedReport.type !== 'roundtable'" class="section-card">
+        <div v-if="selectedReport.type !== 'roundtable' && selectedReport.type !== 'expert_chat'" class="section-card">
           <div class="flex items-center justify-between mb-6">
             <h2 class="text-lg font-bold text-white flex items-center gap-2">
                <span class="material-symbols-outlined text-accent-cyan">analytics</span> {{ t('reports.detail.dataVisualization') }}
@@ -649,10 +732,10 @@
             <div class="pb-3 border-b border-white/5">
               <span class="text-text-secondary block text-xs mb-1">{{ t('reports.detail.reportType') }}</span>
               <p class="text-white font-bold flex items-center gap-2">
-                <span class="material-symbols-outlined text-base" :class="selectedReport.type === 'roundtable' ? 'text-primary' : 'text-emerald-400'">
-                  {{ selectedReport.type === 'roundtable' ? 'groups' : 'article' }}
+                <span class="material-symbols-outlined text-base" :class="selectedReport.type === 'roundtable' ? 'text-primary' : selectedReport.type === 'expert_chat' ? 'text-accent-cyan' : 'text-emerald-400'">
+                  {{ selectedReport.type === 'roundtable' ? 'groups' : selectedReport.type === 'expert_chat' ? 'forum' : 'article' }}
                 </span>
-                {{ selectedReport.type === 'roundtable' ? t('reports.detail.roundtableDiscussion') : (selectedReport.analysis_type || 'Analysis') }}
+                {{ selectedReport.type === 'roundtable' ? t('reports.detail.roundtableDiscussion') : selectedReport.type === 'expert_chat' ? t('reports.detail.expertChat') : (selectedReport.analysis_type || 'Analysis') }}
               </p>
             </div>
             <!-- Roundtable specific info -->
@@ -664,6 +747,19 @@
               <div class="pb-3 border-b border-white/5">
                 <span class="text-text-secondary block text-xs mb-1">{{ t('reports.detail.discussionDuration') }}</span>
                 <p class="text-white font-mono">{{ formatDuration(selectedReport.discussion_summary?.total_duration_seconds) }}</p>
+              </div>
+            </template>
+            <template v-else-if="selectedReport.type === 'expert_chat'">
+              <div class="pb-3 border-b border-white/5">
+                <span class="text-text-secondary block text-xs mb-1">{{ t('reports.detail.workflowStage') }}</span>
+                <p class="text-white">{{ selectedReport.workflow?.stage || 'ready' }}</p>
+              </div>
+              <div class="pb-3 border-b border-white/5">
+                <span class="text-text-secondary block text-xs mb-1">{{ t('reports.detail.researchQuality') }}</span>
+                <p class="text-white font-mono">
+                  {{ selectedReport.quality_metrics?.score || 0 }}
+                  <span v-if="selectedReport.quality_metrics?.label"> · {{ selectedReport.quality_metrics?.label }}</span>
+                </p>
               </div>
             </template>
             <div>
@@ -694,6 +790,16 @@
                     <span class="material-symbols-outlined text-base text-emerald-400">table_chart</span> Excel
                 </button>
             </div>
+
+            <button
+              v-if="selectedReport.type === 'expert_chat'"
+              @click="exportAuditPackage(selectedReport.id)"
+              :disabled="auditExportLoading"
+              class="secondary-btn mt-2 w-full justify-center disabled:opacity-50"
+            >
+              <span class="material-symbols-outlined">shield</span>
+              {{ auditExportLoading ? t('reports.detail.exporting') : t('reports.detail.exportAuditJson') }}
+            </button>
 
             <button @click="shareReport(selectedReport.id)" class="secondary-btn mt-2 w-full justify-center">
               <span class="material-symbols-outlined">share</span> {{ t('reports.detail.shareReport') }}
@@ -887,6 +993,7 @@ const showDeleteConfirm = ref(false); // Delete confirmation dialog
 const reportToDelete = ref(null); // Report being deleted
 const exportMenuReportId = ref(null); // Track which report's export menu is open
 const exportLoading = ref(false); // Track export operation state
+const auditExportLoading = ref(false);
 const showDiscussionHistory = ref(false); // Toggle for roundtable discussion history
 
 // Agent color mapping for roundtable
@@ -983,7 +1090,9 @@ const reports = computed(() => reportsData.value.map(report => {
   // Map analysis_type to display status
   const statusMap = {
     'completed': 'completed',
-    'pending_review': 'in-progress',
+    'in-progress': 'inProgress',
+    'in_progress': 'inProgress',
+    'pending_review': 'inProgress',
     'draft': 'draft'
   };
 
@@ -992,6 +1101,8 @@ const reports = computed(() => reportsData.value.map(report => {
   if (report.type === 'roundtable') {
     // For roundtable, use config.num_agents or participating_agents
     agentCount = report.config?.num_agents || report.discussion_summary?.participating_agents?.length || 0;
+  } else if (report.type === 'expert_chat') {
+    agentCount = report.discussion_summary?.participating_agents?.length || 0;
   } else {
     agentCount = report.steps ? report.steps.filter(s => s.status === 'success').length : 0;
   }
@@ -1003,6 +1114,12 @@ const reports = computed(() => reportsData.value.map(report => {
     description = locale.value.startsWith('zh')
       ? `头脑风暴会议 - ${turns} 轮对话`
       : `Brainstorm session - ${turns} turns`;
+  } else if (report.type === 'expert_chat') {
+    const turnCount = report.workflow?.turn || 0;
+    const quality = report.quality_metrics?.score || 0;
+    description = locale.value.startsWith('zh')
+      ? `专家群聊研究纪要 - ${turnCount} 轮 · 质量 ${quality}`
+      : `Expert chat research memo - ${turnCount} turns · quality ${quality}`;
   } else {
     description = `${report.analysis_type || ''} analysis for ${report.company_name || ''}`;
   }
@@ -1013,7 +1130,11 @@ const reports = computed(() => reportsData.value.map(report => {
     description: description,
     date: formattedDate,
     status: statusMap[report.status] || 'completed',
-    statusText: report.type === 'roundtable' ? t('reports.detail.roundtableDiscussion') : t(`reports.status.${statusMap[report.status] || 'completed'}`),
+    statusText: report.type === 'roundtable'
+      ? t('reports.detail.roundtableDiscussion')
+      : report.type === 'expert_chat'
+        ? t('reports.detail.expertChat')
+        : t(`reports.status.${statusMap[report.status] || 'completed'}`),
     agents: agentCount,
     type: report.type || report.analysis_type
   };
@@ -1196,6 +1317,35 @@ const exportReport = async (reportId, format) => {
     showError(`${locale.value.startsWith('zh') ? '导出报告失败' : 'Failed to export report'}: ${err.message}`);
   } finally {
     exportLoading.value = false;
+  }
+};
+
+const exportAuditPackage = async (reportId) => {
+  try {
+    auditExportLoading.value = true;
+    exportMenuReportId.value = null;
+    const response = await fetch(`${API_BASE}/api/reports/${reportId}/audit-package`, {
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+    const data = await readJsonResponse(response, 'Audit package');
+    const payload = data.audit_package || {};
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit_${reportId}.json`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    success(locale.value.startsWith('zh') ? '审计包已导出' : 'Audit package exported');
+  } catch (err) {
+    console.error('[ReportsView] Failed to export audit package:', err);
+    showError(`${locale.value.startsWith('zh') ? '导出审计包失败' : 'Failed to export audit package'}: ${err.message}`);
+  } finally {
+    auditExportLoading.value = false;
   }
 };
 

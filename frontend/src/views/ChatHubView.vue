@@ -205,6 +205,27 @@
         </div>
 
         <div
+          v-if="researchStatus"
+          class="relative px-2.5 pb-1 md:px-5"
+          :class="useAppImmersiveLayout ? 'px-1.5 pb-0.5' : ''"
+        >
+          <div class="mx-auto flex w-full max-w-[1240px] flex-wrap items-center gap-1.5">
+            <span class="inline-flex items-center rounded-full bg-white/10 px-2.5 py-1 text-[11px] text-text-secondary">
+              <span class="material-symbols-outlined mr-1 text-[13px] text-primary">hub</span>
+              {{ researchStageLabel }}
+            </span>
+            <span class="inline-flex items-center rounded-full bg-primary/18 px-2.5 py-1 text-[11px] text-primary-light">
+              <span class="material-symbols-outlined mr-1 text-[13px]">workspace_premium</span>
+              {{ researchQualityLabel }}
+            </span>
+            <span class="inline-flex items-center rounded-full bg-white/10 px-2.5 py-1 text-[11px] text-text-secondary">
+              <span class="material-symbols-outlined mr-1 text-[13px]">library_books</span>
+              {{ researchEvidenceLabel }}
+            </span>
+          </div>
+        </div>
+
+        <div
           ref="messagesContainer"
           class="immersive-scroll relative flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 md:px-5 md:py-2.5"
           :class="useAppImmersiveLayout ? 'px-1.5 py-1.5' : ''"
@@ -602,6 +623,7 @@ const isMobileViewport = ref(false);
 const isNativeApp = ref(false);
 const isAtBottom = ref(true);
 const unreadIncomingCount = ref(0);
+const researchStatus = ref(null);
 
 const messagesContainer = ref(null);
 const composerRef = ref(null);
@@ -830,6 +852,26 @@ const unreadIncomingHintLabel = computed(() => {
   }
   return unreadIncomingCount.value > 1 ? `${unreadIncomingCount.value} new messages` : 'New message';
 });
+const researchStageLabel = computed(() => {
+  const stage = String(researchStatus.value?.workflow?.stage || 'ready');
+  const key = `chatHub.research.stages.${stage}`;
+  const fallback = languageTag().startsWith('zh') ? '研究进行中' : 'Research in progress';
+  const translated = t(key);
+  return translated === key ? fallback : translated;
+});
+const researchQualityLabel = computed(() => {
+  const score = Number(researchStatus.value?.quality?.score || 0);
+  const label = String(researchStatus.value?.quality?.label || '');
+  const prefix = languageTag().startsWith('zh') ? '研究质量' : 'Quality';
+  return `${prefix} ${score}${label ? ` · ${label}` : ''}`;
+});
+const researchEvidenceLabel = computed(() => {
+  const evidenceCount = Number(researchStatus.value?.evidence?.count || 0);
+  const sourceCount = Number(researchStatus.value?.evidence?.sources || 0);
+  return languageTag().startsWith('zh')
+    ? `证据 ${evidenceCount} · 来源 ${sourceCount}`
+    : `Evidence ${evidenceCount} · Sources ${sourceCount}`;
+});
 
 function languageTag() {
   return String(locale.value || 'zh-CN').startsWith('zh') ? 'zh-CN' : 'en-US';
@@ -934,6 +976,32 @@ function sanitizeMessages(list) {
   return (Array.isArray(list) ? list : []).filter((msg) => !isConnectionSystemMessage(msg));
 }
 
+function normalizeResearchStatus(status) {
+  if (!status || typeof status !== 'object') return null;
+  const workflow = status.workflow && typeof status.workflow === 'object' ? status.workflow : {};
+  const quality = status.quality && typeof status.quality === 'object' ? status.quality : {};
+  const evidence = status.evidence && typeof status.evidence === 'object' ? status.evidence : {};
+  return {
+    workflow: {
+      stage: String(workflow.stage || 'ready'),
+      status: String(workflow.status || 'running'),
+      turn: Number(workflow.turn || 0),
+      updated_at: workflow.updated_at || nowIso(),
+    },
+    quality: {
+      score: Number(quality.score || 0),
+      label: String(quality.label || ''),
+      components: quality.components && typeof quality.components === 'object' ? quality.components : {},
+      updated_at: quality.updated_at || nowIso(),
+    },
+    evidence: {
+      count: Number(evidence.count || 0),
+      sources: Number(evidence.sources || 0),
+      audit_entries: Number(evidence.audit_entries || 0),
+    },
+  };
+}
+
 function buildSessionPreview(sessionMessages) {
   const reversed = [...sessionMessages].reverse();
   const found = reversed.find((msg) => msg.role === 'assistant' || msg.role === 'user');
@@ -986,6 +1054,7 @@ function loadSessions() {
         preview: String(item.preview || ''),
         updatedAt: String(item.updatedAt || nowIso()),
         messages: Array.isArray(item.messages) ? item.messages : [],
+        researchStatus: normalizeResearchStatus(item.researchStatus),
       }))
       .filter((item) => item.id);
   } catch {
@@ -1056,6 +1125,7 @@ function updateActiveSessionStore() {
     preview: buildSessionPreview(serialized),
     updatedAt: nowIso(),
     messages: serialized,
+    researchStatus: normalizeResearchStatus(researchStatus.value),
   };
 
   const idx = sessions.value.findIndex((item) => item.id === activeSessionId.value);
@@ -1079,6 +1149,7 @@ function ensureSessionExists(targetId) {
     preview: '',
     updatedAt: nowIso(),
     messages: [],
+    researchStatus: null,
   });
   persistSessions();
 }
@@ -1091,6 +1162,7 @@ function createSessionRecord() {
     preview: '',
     updatedAt: nowIso(),
     messages: [],
+    researchStatus: null,
   };
   sessions.value.unshift(item);
   sessions.value = [...sessions.value];
@@ -1108,6 +1180,7 @@ function setActiveSession(targetId) {
   activeSessionId.value = target.id;
   localStorage.setItem(LAST_SESSION_KEY, target.id);
   messages.value = sanitizeMessages(safeClone(target.messages || []));
+  researchStatus.value = normalizeResearchStatus(target.researchStatus);
   clearSelectedAttachments();
   mentionState.value = null;
   mentionActiveIndex.value = 0;
@@ -1125,6 +1198,7 @@ function createNewSession() {
   localStorage.setItem(LAST_SESSION_KEY, item.id);
   messages.value = [];
   sessionId.value = item.id;
+  researchStatus.value = null;
   clearSelectedAttachments();
   mentionState.value = null;
   mentionActiveIndex.value = 0;
@@ -1182,11 +1256,13 @@ function deleteSession(targetId) {
       activeSessionId.value = created.id;
       sessionId.value = created.id;
       messages.value = [];
+      researchStatus.value = null;
     } else {
       const fallback = nextSessions[0];
       activeSessionId.value = fallback.id;
       sessionId.value = fallback.id;
       messages.value = safeClone(fallback.messages || []);
+      researchStatus.value = normalizeResearchStatus(fallback.researchStatus);
     }
     localStorage.setItem(LAST_SESSION_KEY, activeSessionId.value);
     reconnectCurrentSession();
@@ -1519,6 +1595,11 @@ function handleServerMessage(event) {
     case 'route_decided':
       turnRoutingMode.value = data.mode || '';
       turnStage.value = 'routing';
+      break;
+
+    case 'research_status':
+      researchStatus.value = normalizeResearchStatus(data);
+      updateActiveSessionStore();
       break;
 
     case 'delegation_started':
@@ -2290,6 +2371,7 @@ onMounted(() => {
   activeSessionId.value = initial;
   const target = sessions.value.find((item) => item.id === initial);
   messages.value = sanitizeMessages(safeClone(target?.messages || []));
+  researchStatus.value = normalizeResearchStatus(target?.researchStatus);
   sessionId.value = initial;
 
   reconnectCurrentSession();

@@ -125,6 +125,31 @@ async def get_report(
     }
 
 
+@router.get("/{report_id}/audit-package")
+async def get_report_audit_package(
+    report_id: str,
+    storage: ReportStorage = Depends(get_storage),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """获取专家群聊报告的审计包(JSON)"""
+    report = storage.get(report_id, user_id=current_user.id)
+    if not report:
+        raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
+
+    report_type = str(report.get("type") or "")
+    if report_type != "expert_chat":
+        raise HTTPException(status_code=400, detail="Audit package is only available for expert_chat reports")
+
+    audit_package = report.get("audit_package") or {}
+    return {
+        "success": True,
+        "report_id": report_id,
+        "report_type": report_type,
+        "generated_at": datetime.now().isoformat(),
+        "audit_package": audit_package,
+    }
+
+
 @router.delete("/{report_id}")
 async def delete_report(
     report_id: str,
