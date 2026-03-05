@@ -9,10 +9,10 @@
     </div>
 
     <!-- Settings Sections -->
-    <div class="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-4 lg:gap-8">
+    <div class="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-4 lg:gap-6">
       <!-- Settings Navigation -->
       <div class="lg:col-span-1">
-        <div class="glass-panel rounded-2xl p-2.5 md:p-4 lg:sticky lg:top-6">
+        <div class="glass-panel rounded-2xl p-2.5 md:p-4 lg:sticky lg:top-2">
           <nav class="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-2 lg:overflow-visible lg:pb-0">
             <button
               v-for="section in sections"
@@ -36,7 +36,7 @@
       <div class="space-y-4 md:space-y-6 lg:col-span-3">
         <!-- Profile Settings -->
         <div v-if="activeSection === 'profile'" class="glass-panel rounded-2xl p-4 md:p-6 lg:p-8 animate-fade-in">
-          <h2 class="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10 md:mb-8">{{ t('settings.sections.profile') }}</h2>
+          <h2 class="text-xl font-bold text-white mb-6 pb-4 border-b border-white/5 md:mb-8">{{ t('settings.sections.profile') }}</h2>
           <div class="space-y-6 md:space-y-8">
             <div class="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-8">
               <div class="relative group cursor-pointer">
@@ -69,7 +69,7 @@
                   v-model="userProfile.name"
                   type="text"
                   :placeholder="t('settings.profile.namePlaceholder') || 'Enter your name'"
-                  class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all"
+                  class="control-input w-full !h-[46px]"
                 />
               </div>
               <div>
@@ -78,7 +78,7 @@
                   v-model="userProfile.organization"
                   type="text"
                   :placeholder="t('settings.profile.organizationPlaceholder') || 'Company name'"
-                  class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all"
+                  class="control-input w-full !h-[46px]"
                 />
               </div>
             </div>
@@ -89,7 +89,7 @@
                 :value="userProfile.email"
                 type="email"
                 disabled
-                class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-text-secondary focus:outline-none cursor-not-allowed"
+                class="control-input w-full !h-[46px] !text-text-secondary cursor-not-allowed"
               />
               <p class="text-xs text-text-secondary mt-1">{{ t('settings.profile.emailHint') || 'Email cannot be changed' }}</p>
             </div>
@@ -112,7 +112,7 @@
 
         <!-- Notification Settings -->
         <div v-if="activeSection === 'notifications'" class="glass-panel rounded-2xl p-4 md:p-6 lg:p-8 animate-fade-in">
-          <h2 class="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10 md:mb-8">{{ t('settings.sections.notifications') }}</h2>
+          <h2 class="text-xl font-bold text-white mb-6 pb-4 border-b border-white/5 md:mb-8">{{ t('settings.sections.notifications') }}</h2>
           <div class="space-y-4">
             <div class="flex items-center justify-between p-5 rounded-xl bg-white/5 border border-white/5">
               <div>
@@ -151,7 +151,7 @@
 
         <!-- Security Settings -->
         <div v-if="activeSection === 'security'" class="glass-panel rounded-2xl p-4 md:p-6 lg:p-8 animate-fade-in">
-          <h2 class="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10 md:mb-8">{{ t('settings.sections.security') }}</h2>
+          <h2 class="text-xl font-bold text-white mb-6 pb-4 border-b border-white/5 md:mb-8">{{ t('settings.sections.security') }}</h2>
           <div class="space-y-8">
             <div>
               <h3 class="font-bold text-primary mb-4 text-sm uppercase tracking-wider">{{ t('settings.security.changePassword') }}</h3>
@@ -161,7 +161,7 @@
                   <input
                     v-model="passwordForm.currentPassword"
                     type="password"
-                    class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all"
+                    class="control-input w-full !h-[46px]"
                   />
                 </div>
                 <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -170,7 +170,7 @@
                         <input
                             v-model="passwordForm.newPassword"
                             type="password"
-                            class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all"
+                            class="control-input w-full !h-[46px]"
                         />
                     </div>
                     <div>
@@ -178,7 +178,7 @@
                         <input
                             v-model="passwordForm.confirmPassword"
                             type="password"
-                            class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all"
+                            class="control-input w-full !h-[46px]"
                         />
                     </div>
                 </div>
@@ -215,7 +215,7 @@
 
         <!-- AI Model Settings -->
         <div v-if="activeSection === 'api'" class="glass-panel rounded-2xl p-4 md:p-6 lg:p-8 animate-fade-in">
-          <h2 class="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10 md:mb-8">{{ t('settings.api.title') }}</h2>
+          <h2 class="text-xl font-bold text-white mb-6 pb-4 border-b border-white/5 md:mb-8">{{ t('settings.api.title') }}</h2>
           <div class="space-y-6">
             <div class="p-5 rounded-xl bg-white/5 border border-white/5">
               <div class="flex items-start justify-between gap-4">
@@ -235,6 +235,28 @@
                   <span
                     class="absolute top-[2px] left-[2px] h-6 w-6 rounded-full border border-gray-300 bg-white transition-transform"
                     :class="llmUsePro ? 'translate-x-7 border-white' : 'translate-x-0'"
+                  ></span>
+                </button>
+              </div>
+            </div>
+
+            <div class="p-5 rounded-xl bg-white/5 border border-white/5">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="font-bold text-white mb-1">{{ t('settings.api.autoTradingBetaLabel') }}</p>
+                  <p class="text-sm text-text-secondary">{{ t('settings.api.autoTradingBetaDesc') }}</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  :aria-checked="autoTradingBetaEnabled ? 'true' : 'false'"
+                  class="relative inline-flex h-7 w-14 items-center rounded-full transition-colors"
+                  :class="autoTradingBetaEnabled ? 'bg-primary' : 'bg-black/40'"
+                  @click="toggleAutoTradingBeta"
+                >
+                  <span
+                    class="absolute top-[2px] left-[2px] h-6 w-6 rounded-full border border-gray-300 bg-white transition-transform"
+                    :class="autoTradingBetaEnabled ? 'translate-x-7 border-white' : 'translate-x-0'"
                   ></span>
                 </button>
               </div>
@@ -290,7 +312,7 @@
 
         <!-- Language Settings -->
         <div v-if="activeSection === 'language'" class="glass-panel rounded-2xl p-4 md:p-6 lg:p-8 animate-fade-in">
-          <h2 class="text-xl font-bold text-white mb-6 pb-4 border-b border-white/10 md:mb-8">{{ t('settings.language.title') }}</h2>
+          <h2 class="text-xl font-bold text-white mb-6 pb-4 border-b border-white/5 md:mb-8">{{ t('settings.language.title') }}</h2>
           <div class="space-y-8">
             <div>
               <label class="block text-sm font-bold text-text-secondary mb-4 uppercase tracking-wider">{{ t('settings.language.label') }}</label>
@@ -298,7 +320,7 @@
                 <select
                   :value="locale"
                   @change="handleLanguageChange($event.target.value)"
-                  class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all appearance-none cursor-pointer"
+                  class="control-select w-full !h-[46px] appearance-none cursor-pointer"
                 >
                   <option value="zh-CN">{{ t('settings.language.languages.zhCN') }}</option>
                   <option value="en">{{ t('settings.language.languages.en') }}</option>
@@ -319,17 +341,20 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useLanguage } from '../composables/useLanguage';
 import { useToast } from '../composables/useToast';
+import { useFeatureFlags } from '../composables/useFeatureFlags';
 import { AUTH_BASE, llmUrl } from '@/config/api';
 import { readJsonResponse } from '@/services/httpResponse';
 
 const { t, locale, setLocale } = useLanguage();
 const { success, error: showError, info } = useToast();
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
+const { autoTradingBetaEnabled, setAutoTradingBetaEnabled } = useFeatureFlags();
 
 // Show avatar change info (feature coming soon)
 const showAvatarChangeInfo = () => {
@@ -619,6 +644,11 @@ const toggleLlmPreference = async () => {
   await updateLlmPreference(nextValue, prevValue);
 };
 
+const toggleAutoTradingBeta = () => {
+  setAutoTradingBetaEnabled(!autoTradingBetaEnabled.value);
+  success(t('settings.api.autoTradingBetaSwitched'));
+};
+
 const handleLanguageChange = (lang) => {
   setLocale(lang);
 };
@@ -634,6 +664,10 @@ const logoutFromSettings = async () => {
 
 // Fetch profile on mount
 onMounted(() => {
+  const section = String(route.query?.section || '').trim();
+  if (section && sections.value.some((item) => item.id === section)) {
+    activeSection.value = section;
+  }
   fetchProfile();
   loadNotificationPrefs();
   loadLlmPreference();

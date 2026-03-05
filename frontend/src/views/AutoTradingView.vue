@@ -53,7 +53,7 @@
             <button
             v-else
             @click="stopTrading"
-            class="flex items-center h-10 px-4 rounded-lg bg-white/10 hover:bg-red-500/20 text-white hover:text-red-400 font-semibold border border-white/10 hover:border-red-500/50 transition-all active:scale-95"
+            class="flex items-center h-10 px-4 rounded-lg bg-white/12 hover:bg-red-500/20 text-white hover:text-red-400 font-semibold border border-white/5 hover:border-red-500/50 transition-all active:scale-95"
             >
             <span class="material-symbols-outlined mr-1.5 text-lg">stop</span>
             <span class="text-sm">{{ t('trading.stop') }}</span>
@@ -65,7 +65,7 @@
             <!-- Team -->
             <button
             @click="showTeamModal = true"
-            class="hidden lg:flex items-center h-10 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium border border-white/5 hover:border-white/10 transition-all active:scale-95"
+            class="hidden lg:flex items-center h-10 px-3 rounded-lg bg-white/8 hover:bg-white/12 text-white font-medium border border-white/5 hover:border-white/10 transition-all active:scale-95"
             >
             <span class="material-symbols-outlined mr-1.5 text-lg">groups</span>
             <span class="text-xs">{{ t('trading.agentTeam') }}</span>
@@ -116,7 +116,7 @@
               <span class="text-text-secondary text-sm">{{ t('trading.startingCapital') }}</span>
               <span class="text-white font-medium">${{ formatNumber(initialCapital) }}</span>
             </div>
-            <div class="flex justify-between items-center pt-2 border-t border-white/10">
+            <div class="flex justify-between items-center pt-2 border-t border-white/5">
               <span class="text-text-secondary">{{ t('trading.currentEquity') }}</span>
               <span class="text-2xl font-bold text-white">${{ formatNumber(account.totalEquity) }}</span>
             </div>

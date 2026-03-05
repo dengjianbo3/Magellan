@@ -7,9 +7,9 @@
       </div>
     </div>
 
-    <div class="relative flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)] gap-2.5 md:gap-4 lg:gap-6 lg:grid-cols-[18rem,minmax(0,1fr)]">
+    <div class="relative flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)] gap-2.5 md:gap-4 lg:gap-5 lg:grid-cols-[17.5rem,minmax(0,1fr)]">
       <!-- Left Sidebar: Categories -->
-      <div class="glass-panel hidden min-h-[260px] flex-col rounded-2xl p-6 lg:flex lg:h-full lg:sticky lg:top-0 lg:max-h-full lg:overflow-y-auto">
+      <div class="glass-panel hidden min-h-[260px] flex-col rounded-2xl p-5 lg:flex lg:h-full lg:sticky lg:top-1 lg:max-h-full lg:overflow-y-auto">
       <h3 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-6">{{ t('knowledge.newCategory') }}</h3>
       
       <div class="space-y-2 flex-1">
@@ -37,8 +37,8 @@
         </button>
       </div>
 
-      <div class="mt-6 pt-6 border-t border-white/10">
-        <button class="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-text-primary transition-colors text-sm font-bold group">
+      <div class="mt-6 pt-6 border-t border-white/5">
+        <button class="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/8 hover:bg-white/12 border border-transparent text-text-primary transition-colors text-sm font-bold group">
           <span class="material-symbols-outlined group-hover:rotate-90 transition-transform">add</span>
           {{ t('knowledge.newCategory') }}
         </button>
@@ -48,44 +48,44 @@
       <!-- Main Content Area -->
       <div class="min-w-0 flex h-full min-h-0 flex-col overflow-hidden rounded-2xl glass-panel">
         <!-- Header -->
-        <div class="sticky top-0 z-20 border-b border-white/10 bg-background-dark/82 p-3.5 backdrop-blur-md md:p-8">
+        <div class="sticky top-1 z-20 border-b border-white/5 bg-background-dark/78 p-3.5 backdrop-blur-md md:p-7">
           <div class="section-header !mb-0 gap-2.5">
             <div>
               <p class="page-subtitle !mt-0">
-                {{ searchMode ? `${searchResults.length} search results` : `${filteredDocuments.length} ${t('knowledge.documentsCount')}` }}
+                {{ searchMode ? t('knowledge.searchResultsCount', { count: searchResults.length }) : `${filteredDocuments.length} ${t('knowledge.documentsCount')}` }}
               </p>
             </div>
-            <div class="flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
-              <div class="relative group w-full sm:w-80">
+            <div class="flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:items-end sm:gap-3">
+              <div class="relative group w-full sm:w-[27rem]">
                 <div class="absolute inset-0 bg-primary/20 blur-md rounded-lg opacity-0 group-focus-within:opacity-100 transition-opacity duration-500"></div>
                 <input
                   v-model="searchQuery"
                   @keyup.enter="performSearch"
                   type="text"
                   :placeholder="t('knowledge.searchPlaceholder')"
-                  class="control-input relative z-10 w-full pl-10 pr-20 !h-11 !bg-black/20"
+                  class="relative z-10 h-11 w-full rounded-lg border border-transparent bg-black/20 pl-12 pr-[6.25rem] text-sm text-white placeholder-text-secondary outline-none transition-colors focus:bg-white/15"
                 />
-                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary z-20">
+                <span class="material-symbols-outlined pointer-events-none absolute left-4 top-1/2 z-20 -translate-y-1/2 text-[18px] text-text-secondary">
                   search
                 </span>
                 <button
                   v-if="searchMode"
                   @click="clearSearch"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded-md bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 transition-colors font-bold z-20"
+                  class="absolute right-2 top-1/2 z-20 min-w-[56px] -translate-y-1/2 rounded-md bg-rose-500/20 px-2 py-1 text-center text-xs font-bold text-rose-400 transition-colors hover:bg-rose-500/30"
                 >
-                  Clear
+                  {{ t('knowledge.clearSearch') }}
                 </button>
                 <button
                   v-else-if="searchQuery"
                   @click="performSearch"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs rounded-md bg-primary/20 text-primary hover:bg-primary/30 transition-colors font-bold z-20"
+                  class="absolute right-2 top-1/2 z-20 min-w-[56px] -translate-y-1/2 rounded-md bg-primary/20 px-2 py-1 text-center text-xs font-bold text-primary transition-colors hover:bg-primary/30"
                 >
-                  Search
+                  {{ t('common.search') }}
                 </button>
               </div>
               <button
                 @click="showUploadModal = true"
-                class="page-primary-btn justify-center whitespace-nowrap sm:w-auto"
+                class="page-primary-btn !h-11 justify-center whitespace-nowrap px-5 sm:w-auto sm:self-end"
               >
                 <span class="material-symbols-outlined">cloud_upload</span>
                 {{ t('knowledge.upload') }}
@@ -121,33 +121,33 @@
             <article
               v-for="doc in searchMode ? searchResults : filteredDocuments"
               :key="`mobile_${doc.id}`"
-              class="rounded-2xl border border-white/10 bg-white/6 p-3"
+              class="rounded-2xl border border-transparent bg-white/8 p-3"
             >
               <div class="flex items-start gap-3">
                 <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
                   <span class="material-symbols-outlined text-base">{{ getFileIcon(doc.metadata?.file_type) }}</span>
                 </div>
                 <div class="min-w-0 flex-1">
-                  <p class="truncate text-sm font-bold text-white">{{ doc.metadata?.title || doc.metadata?.filename || 'Untitled' }}</p>
-                  <p class="mt-1 line-clamp-2 text-xs text-text-secondary">{{ doc.text ? doc.text.substring(0, 88) + '...' : 'No description' }}</p>
+                  <p class="truncate text-sm font-bold text-white">{{ doc.metadata?.title || doc.metadata?.filename || t('knowledge.untitled') }}</p>
+                  <p class="mt-1 line-clamp-2 text-xs text-text-secondary">{{ doc.text ? doc.text.substring(0, 88) + '...' : t('knowledge.noDescription') }}</p>
                 </div>
                 <button
                   type="button"
                   class="rounded-lg p-2 text-text-secondary transition-colors hover:bg-rose-500/20 hover:text-rose-400"
                   @click="confirmDelete(doc)"
-                  title="Delete"
+                  :title="t('common.delete')"
                 >
                   <span class="material-symbols-outlined text-lg">delete</span>
                 </button>
               </div>
               <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                <span class="rounded-md border border-white/10 bg-white/10 px-2 py-1 font-semibold uppercase tracking-wide text-text-primary">
+                <span class="rounded-md border border-white/5 bg-white/12 px-2 py-1 font-semibold uppercase tracking-wide text-text-primary">
                   {{ doc.metadata?.file_type || 'UNK' }}
                 </span>
                 <span class="text-text-secondary">{{ formatFileSize(doc.text?.length) }}</span>
                 <span class="text-text-secondary">{{ formatDate(doc.metadata?.created_at) }}</span>
                 <span v-if="searchMode && doc.score" class="rounded-full border border-primary/30 bg-primary/20 px-2 py-1 font-semibold text-primary">
-                  {{ (doc.score * 100).toFixed(0) }}% Match
+                  {{ (doc.score * 100).toFixed(0) }}% {{ t('knowledge.match') }}
                 </span>
               </div>
             </article>
@@ -177,13 +177,13 @@
                       <span class="material-symbols-outlined">{{ getFileIcon(doc.metadata?.file_type) }}</span>
                     </div>
                     <div class="min-w-0">
-                      <p class="font-bold text-white text-sm truncate max-w-[200px]">{{ doc.metadata?.title || doc.metadata?.filename || 'Untitled' }}</p>
-                      <p class="text-xs text-text-secondary truncate max-w-[250px]">{{ doc.text ? doc.text.substring(0, 60) + '...' : 'No description' }}</p>
+                      <p class="font-bold text-white text-sm truncate max-w-[200px]">{{ doc.metadata?.title || doc.metadata?.filename || t('knowledge.untitled') }}</p>
+                      <p class="text-xs text-text-secondary truncate max-w-[250px]">{{ doc.text ? doc.text.substring(0, 60) + '...' : t('knowledge.noDescription') }}</p>
                     </div>
                   </div>
                 </td>
                 <td class="px-6 py-4 border-y border-white/5 group-hover:border-white/10">
-                  <span class="text-xs font-bold px-2.5 py-1 rounded-md bg-white/10 text-text-primary uppercase tracking-wide border border-white/10">
+                  <span class="text-xs font-bold px-2.5 py-1 rounded-md bg-white/12 text-text-primary uppercase tracking-wide border border-white/5">
                     {{ doc.metadata?.file_type || 'UNK' }}
                   </span>
                 </td>
@@ -191,7 +191,7 @@
                 <td class="px-6 py-4 border-y border-white/5 group-hover:border-white/10 text-sm text-text-secondary font-mono">{{ formatDate(doc.metadata?.created_at) }}</td>
                 <td class="px-6 py-4 border-y border-white/5 group-hover:border-white/10">
                   <span v-if="searchMode && doc.score" class="text-xs px-2.5 py-1 rounded-full font-bold bg-primary/20 text-primary border border-primary/30">
-                    {{ (doc.score * 100).toFixed(0) }}% Match
+                    {{ (doc.score * 100).toFixed(0) }}% {{ t('knowledge.match') }}
                   </span>
                   <span v-else class="text-xs px-2.5 py-1 rounded-full font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center w-fit gap-1">
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> {{ t('knowledge.status.processed') }}
@@ -199,7 +199,7 @@
                 </td>
                 <td class="px-6 py-4 rounded-r-xl border-y border-r border-white/5 group-hover:border-white/10">
                   <div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button @click="confirmDelete(doc)" class="p-2 rounded-lg hover:bg-rose-500/20 text-text-secondary hover:text-rose-400 transition-colors" title="Delete">
+                    <button @click="confirmDelete(doc)" class="p-2 rounded-lg hover:bg-rose-500/20 text-text-secondary hover:text-rose-400 transition-colors" :title="t('common.delete')">
                       <span class="material-symbols-outlined text-xl">delete</span>
                     </button>
                   </div>
@@ -236,7 +236,7 @@
       @click.self="showUploadModal = false"
     >
       <div class="modal-shell max-w-lg mx-4">
-        <div class="flex items-center justify-between mb-8 pb-4 border-b border-white/10">
+        <div class="flex items-center justify-between mb-8 pb-4 border-b border-white/5">
           <h2 class="text-2xl font-bold text-white flex items-center gap-3">
              <span class="material-symbols-outlined text-primary">cloud_upload</span>
              {{ t('knowledge.uploadModal.title') }}
@@ -252,12 +252,12 @@
         <div class="space-y-6">
           <!-- Title Input -->
           <div>
-            <label class="block text-sm font-bold text-text-primary mb-2 uppercase tracking-wider">Title (Optional)</label>
+            <label class="block text-sm font-bold text-text-primary mb-2 uppercase tracking-wider">{{ t('knowledge.uploadModal.titleOptional') }}</label>
             <input
               v-model="uploadForm.title"
               type="text"
-              placeholder="Document title"
-              class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder-text-secondary focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all"
+              :placeholder="t('knowledge.uploadModal.titlePlaceholder')"
+              class="control-input w-full !h-[46px]"
             />
           </div>
 
@@ -267,7 +267,7 @@
             <div class="relative">
                 <select
                 v-model="uploadForm.category"
-                class="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:outline-none focus:border-primary/50 focus:bg-black/50 transition-all appearance-none cursor-pointer"
+                class="control-select w-full !h-[46px] appearance-none cursor-pointer"
                 >
                 <option v-for="cat in categories.filter(c => c.id !== 'all')" :key="cat.id" :value="cat.id">
                     {{ cat.name }}
@@ -281,7 +281,7 @@
           <div>
             <label class="block text-sm font-bold text-text-primary mb-2 uppercase tracking-wider">{{ t('knowledge.uploadModal.files') }}</label>
             <div
-              class="border-2 border-dashed border-white/10 rounded-xl p-10 text-center hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group"
+              class="border-2 border-dashed border-white/5 rounded-xl bg-white/[0.02] p-10 text-center hover:border-primary/35 hover:bg-primary/5 transition-all cursor-pointer group"
               @click="triggerFileUpload"
             >
               <span class="material-symbols-outlined text-5xl text-text-secondary mb-4 group-hover:text-primary group-hover:scale-110 transition-all duration-300">cloud_upload</span>
@@ -328,11 +328,11 @@
           </div>
 
           <!-- Actions -->
-          <div class="flex items-center gap-4 pt-6 border-t border-white/10">
+          <div class="flex items-center gap-4 pt-6 border-t border-white/5">
             <button
               @click="showUploadModal = false"
               :disabled="uploading"
-              class="flex-1 px-6 py-3 rounded-xl border border-white/10 text-text-primary hover:bg-white/5 transition-colors font-bold disabled:opacity-50"
+              class="flex-1 px-6 py-3 rounded-xl border border-transparent bg-white/10 text-text-primary hover:bg-white/15 transition-colors font-bold disabled:opacity-50"
             >
               {{ t('knowledge.uploadModal.cancel') }}
             </button>
@@ -365,24 +365,24 @@
           <div class="w-16 h-16 rounded-full bg-rose-500/20 flex items-center justify-center mb-4 shadow-[0_0_20px_rgba(244,63,94,0.3)]">
             <span class="material-symbols-outlined text-rose-500 text-3xl">delete_forever</span>
           </div>
-          <h2 class="text-xl font-bold text-white mb-2">Delete Document?</h2>
+          <h2 class="text-xl font-bold text-white mb-2">{{ t('knowledge.deleteDialog.title') }}</h2>
           <p class="text-sm text-text-secondary leading-relaxed">
-            Are you sure you want to delete "<strong>{{ documentToDelete?.metadata?.title || documentToDelete?.metadata?.filename }}</strong>"? This action cannot be undone.
+            {{ t('knowledge.deleteDialog.message', { name: documentToDelete?.metadata?.title || documentToDelete?.metadata?.filename }) }}
           </p>
         </div>
 
         <div class="flex items-center gap-4">
           <button
             @click="cancelDelete"
-            class="flex-1 px-6 py-3 rounded-xl border border-white/10 text-white hover:bg-white/10 transition-colors font-bold"
+            class="flex-1 px-6 py-3 rounded-xl border border-transparent bg-white/10 text-white hover:bg-white/15 transition-colors font-bold"
           >
-            Cancel
+            {{ t('common.cancel') }}
           </button>
           <button
             @click="deleteDocument"
             class="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 text-white hover:shadow-[0_0_15px_rgba(244,63,94,0.5)] transition-all font-bold"
           >
-            Delete
+            {{ t('common.delete') }}
           </button>
         </div>
       </div>
@@ -502,7 +502,7 @@ const fetchDocuments = async () => {
     updateCategoryCounts();
   } catch (err) {
     console.error('Error fetching documents:', err);
-    error(err?.message || 'Failed to load documents');
+    error(err?.message || t('knowledge.toast.loadFailed'));
   } finally {
     loading.value = false;
   }
@@ -560,7 +560,7 @@ const uploadFiles = async () => {
       await readJsonResponse(response, `Knowledge upload (${file.name})`);
     }
 
-    success(`Successfully uploaded ${uploadForm.value.files.length} file(s)`);
+    success(t('knowledge.toast.uploadSuccess', { count: uploadForm.value.files.length }));
 
     // Refresh BM25 index after upload
     try {
@@ -584,7 +584,7 @@ const uploadFiles = async () => {
     await fetchStats();
   } catch (err) {
     console.error('Error uploading files:', err);
-    error(err.message || 'Failed to upload files');
+    error(err?.message || t('knowledge.toast.uploadFailed'));
   } finally {
     uploading.value = false;
   }
@@ -615,13 +615,13 @@ const deleteDocument = async () => {
     );
     await readJsonResponse(response, 'Knowledge delete document');
 
-    success('Document deleted successfully');
+    success(t('knowledge.toast.deleteSuccess'));
 
     await fetchDocuments();
     await fetchStats();
   } catch (err) {
     console.error('Error deleting document:', err);
-    error('Failed to delete document');
+    error(t('knowledge.toast.deleteFailed'));
   } finally {
     cancelDelete();
   }
@@ -648,10 +648,10 @@ const performSearch = async () => {
     searchResults.value = data.results || [];
     searchMode.value = true;
 
-    success(`Found ${searchResults.value.length} results`);
+    success(t('knowledge.toast.searchSuccess', { count: searchResults.value.length }));
   } catch (err) {
     console.error('Error searching:', err);
-    error('Search failed');
+    error(t('knowledge.toast.searchFailed'));
   } finally {
     searching.value = false;
   }

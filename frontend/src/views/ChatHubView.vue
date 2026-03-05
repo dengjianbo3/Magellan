@@ -41,7 +41,7 @@
                 v-model.trim="sessionSearchQuery"
                 type="text"
                 :placeholder="t('common.search') || 'Search...'"
-                class="w-full rounded-xl border border-white/10 bg-white/6 px-9 py-2 text-sm text-text-primary placeholder-text-secondary outline-none transition-colors focus:border-primary/40 focus:bg-white/10"
+                class="control-input h-10 w-full rounded-xl pl-9 pr-9 text-sm"
               />
               <span class="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-text-secondary">search</span>
             </div>
@@ -72,12 +72,12 @@
     </transition>
 
     <div
-      class="grid h-full flex-1 min-h-0 grid-cols-1 gap-0 md:gap-2 xl:gap-1"
-      :class="historyCollapsed ? 'xl:grid-cols-[minmax(0,1fr)_96px] xl:grid-rows-1' : 'xl:grid-cols-[minmax(0,1fr)_312px] xl:grid-rows-1'"
+      class="grid h-full flex-1 min-h-0 grid-cols-1 gap-0 md:gap-1 xl:gap-0"
+      :class="historyCollapsed ? 'xl:grid-cols-[minmax(0,1fr)_42px] xl:grid-rows-1' : 'xl:grid-cols-[minmax(0,1fr)_292px] xl:grid-rows-1'"
     >
       <aside
         class="hidden min-h-0 h-full flex-col overflow-hidden xl:col-start-2 xl:row-start-1 xl:flex transition-all duration-200"
-        :class="historyCollapsed ? 'rounded-2xl bg-transparent p-1' : 'rounded-3xl bg-transparent p-3'"
+        :class="historyCollapsed ? 'rounded-2xl bg-transparent p-0' : 'rounded-3xl bg-transparent p-2'"
       >
         <div v-if="!historyCollapsed" class="mb-3 flex items-center justify-between gap-2">
           <h3 class="section-title !mb-0">
@@ -94,12 +94,12 @@
           </div>
         </div>
 
-        <div v-else class="mb-3 flex flex-col items-center gap-2">
-          <button class="icon-btn h-10 w-10 border-0 bg-white/10 hover:bg-white/15" :title="historyToggleLabel" @click="toggleHistoryPanel">
-            <span class="material-symbols-outlined text-base">chevron_right</span>
+        <div v-else class="mb-2 flex flex-col items-center gap-1 pt-1">
+          <button class="icon-btn h-7 w-7 border-0 bg-white/10 hover:bg-white/15" :title="historyToggleLabel" @click="toggleHistoryPanel">
+            <span class="material-symbols-outlined text-[15px]">chevron_right</span>
           </button>
-          <button class="icon-btn h-10 w-10 border-0 bg-white/10 hover:bg-white/15" :title="t('chatHub.newSession')" @click="createNewSession">
-            <span class="material-symbols-outlined">add</span>
+          <button class="icon-btn h-7 w-7 border-0 bg-white/10 hover:bg-white/15" :title="t('chatHub.newSession')" @click="createNewSession">
+            <span class="material-symbols-outlined text-[15px]">add</span>
           </button>
         </div>
 
@@ -109,7 +109,7 @@
               v-model.trim="sessionSearchQuery"
               type="text"
               :placeholder="t('common.search') || 'Search...'"
-              class="w-full rounded-xl border border-white/10 bg-white/6 px-9 py-2 text-sm text-text-primary placeholder-text-secondary outline-none transition-colors focus:border-primary/40 focus:bg-white/10"
+              class="control-input h-10 w-full rounded-xl pl-9 pr-9 text-sm"
             />
             <span class="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-text-secondary">search</span>
             <button
@@ -171,18 +171,7 @@
           </button>
         </div>
 
-        <div v-else class="immersive-scroll flex-1 overflow-y-auto space-y-2 pr-1">
-          <button
-            v-for="session in filteredSessions"
-            :key="session.id"
-            class="mx-auto flex h-10 w-10 items-center justify-center rounded-xl text-xs font-bold transition-colors"
-            :class="session.id === activeSessionId ? 'bg-primary/25 text-primary-light' : 'bg-white/10 text-text-secondary hover:text-white'"
-            :title="session.title || t('chatHub.sessionUntitled')"
-            @click="setActiveSession(session.id)"
-          >
-            {{ sessionInitial(session) }}
-          </button>
-        </div>
+        <div v-else class="flex-1"></div>
       </aside>
 
       <section
@@ -193,8 +182,8 @@
         <div class="pointer-events-none absolute left-10 bottom-10 h-32 w-32 rounded-full bg-accent-cyan/10 blur-3xl"></div>
 
         <div
-          class="relative flex items-center justify-between gap-2 md:flex-wrap md:gap-3 md:px-5 md:py-4"
-          :class="useAppImmersiveLayout ? 'px-3 pb-1.5 pt-0.5' : 'px-4 py-4'"
+          class="relative flex items-center justify-between gap-2 px-2.5 py-1.5 md:px-5 md:py-2.5"
+          :class="useAppImmersiveLayout ? 'px-1.5 pb-1 pt-0.5' : ''"
         >
           <div class="min-w-0">
             <div class="flex items-center gap-2">
@@ -215,8 +204,13 @@
           </div>
         </div>
 
-        <div ref="messagesContainer" class="immersive-scroll relative flex-1 overflow-y-auto overflow-x-hidden pb-3 pt-1.5 md:px-5 md:py-3" :class="useAppImmersiveLayout ? 'px-1.5' : 'px-2'">
-          <div class="mx-auto w-full max-w-[920px] space-y-3 md:space-y-4">
+        <div
+          ref="messagesContainer"
+          class="immersive-scroll relative flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 md:px-5 md:py-2.5"
+          :class="useAppImmersiveLayout ? 'px-1.5 py-1.5' : ''"
+          @scroll.passive="handleMessagesScroll"
+        >
+          <div class="mx-auto w-full max-w-[1240px] space-y-3 md:space-y-4">
             <div v-if="messages.length === 0" class="flex min-h-full items-center justify-center py-14 md:py-12">
               <div class="w-full max-w-2xl text-center">
                 <p class="text-2xl font-semibold tracking-tight text-white md:text-4xl">{{ t('chatHub.emptyState.title') }}</p>
@@ -258,9 +252,23 @@
                   ]"
                 >
                   <div class="mb-2 flex items-center justify-between gap-3">
-                    <p class="text-xs font-bold uppercase tracking-wider" :class="msg.role === 'user' ? 'text-primary-light' : 'text-text-secondary'">
-                      {{ msg.speaker }}
-                    </p>
+                    <div
+                      class="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-primary/20 px-2 py-1"
+                      :class="msg.role === 'user' ? 'bg-primary/20 text-primary-light' : 'bg-primary/15 text-primary-light'"
+                    >
+                      <span class="material-symbols-outlined text-[13px]">
+                        {{ msg.role === 'user' ? 'person' : 'smart_toy' }}
+                      </span>
+                      <p class="truncate text-[12px] font-semibold tracking-wide">
+                        {{ msg.speaker }}
+                      </p>
+                      <span
+                        v-if="msg.role === 'assistant' && (msg.agentId || msg.agent_id)"
+                        class="truncate text-[10px] text-primary-light/85"
+                      >
+                        @{{ msg.agentId || msg.agent_id }}
+                      </span>
+                    </div>
                     <p class="text-[11px] text-text-secondary">{{ formatTime(msg.timestamp) }}</p>
                   </div>
 
@@ -278,7 +286,7 @@
                     <div
                       v-for="att in msg.attachments"
                       :key="att.id || att.name"
-                      class="overflow-hidden rounded-xl bg-black/25"
+                      class="overflow-hidden rounded-xl bg-white/8"
                     >
                       <img
                         v-if="att.previewUrl"
@@ -298,13 +306,13 @@
               </div>
             </template>
 
-            <div v-if="turnInFlight" class="mx-auto w-full max-w-[97%] rounded-2xl bg-white/8 px-4 py-3 backdrop-blur-sm md:max-w-3xl">
+            <div v-if="turnInFlight" class="mx-auto w-full max-w-[97%] rounded-2xl bg-white/8 px-4 py-3 backdrop-blur-sm md:max-w-[86%]">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center gap-2 text-sm text-primary-light">
                   <span class="material-symbols-outlined animate-spin text-base">progress_activity</span>
                   <span class="font-semibold">{{ waitStageLabel }}</span>
                 </div>
-                <div class="rounded-full bg-black/25 px-2.5 py-1 text-xs text-text-secondary">
+                <div class="rounded-full bg-white/8 px-2.5 py-1 text-xs text-text-secondary">
                   {{ waitElapsedLabel }}
                 </div>
               </div>
@@ -351,14 +359,25 @@
                 </div>
               </div>
             </div>
+
+            <div v-if="showUnreadIncomingHint" class="sticky bottom-2 z-20 flex justify-center">
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 rounded-full bg-primary/85 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-primary/25 transition-colors hover:bg-primary"
+                @click="jumpToLatest"
+              >
+                <span class="material-symbols-outlined text-[14px]">south</span>
+                {{ unreadIncomingHintLabel }}
+              </button>
+            </div>
           </div>
         </div>
 
         <div
-          class="relative shrink-0 px-2 md:px-4 md:pb-4 md:pt-2"
+          class="relative shrink-0 px-2 md:px-5 md:pb-4 md:pt-2"
           :class="useAppImmersiveLayout ? 'pb-[calc(env(safe-area-inset-bottom,0px)+0.06rem)] pt-0' : 'pb-[calc(env(safe-area-inset-bottom,0px)+0.45rem)] pt-1'"
         >
-          <div class="mx-auto w-full max-w-[940px]">
+          <div class="mx-auto w-full max-w-[1240px]">
             <div v-if="selectedAttachments.length" class="mb-3 flex flex-wrap gap-2">
               <div
                 v-for="att in selectedAttachments"
@@ -375,7 +394,7 @@
               </div>
             </div>
 
-            <div ref="composerRef" class="relative rounded-[22px] bg-white/[0.06] p-2 shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl md:rounded-[28px] md:p-3">
+            <div ref="composerRef" class="chat-composer-surface relative rounded-[22px] p-2 backdrop-blur-xl md:rounded-[28px] md:p-3">
               <div class="mb-2 items-center gap-2 overflow-x-auto pb-1" :class="useAppImmersiveLayout ? 'hidden md:flex' : 'flex'">
                 <span class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">{{ t('chatHub.composer.specialists') }}</span>
                 <button
@@ -412,7 +431,7 @@
                   v-model="inputMessage"
                   :rows="useAppImmersiveLayout ? 2 : (isMobileViewport ? 3 : 4)"
                   :placeholder="t('chatHub.inputPlaceholder')"
-                  class="w-full resize-none rounded-[18px] bg-black/18 px-4 py-3 text-sm leading-6 text-white placeholder-text-secondary outline-none transition-colors focus:bg-black/26 md:rounded-2xl"
+                  class="chat-input-surface w-full resize-none rounded-[18px] px-4 py-3 text-sm leading-6 text-white placeholder-text-secondary outline-none transition-all md:rounded-2xl"
                   @keydown="handleTextareaKeydown"
                   @compositionstart="handleCompositionStart"
                   @compositionend="handleCompositionEnd"
@@ -451,7 +470,7 @@
                     <input
                       v-model="knowledgeEnabled"
                       type="checkbox"
-                      class="h-4 w-4 rounded border-white/20 bg-black/30 text-primary focus:ring-primary/40"
+                      class="h-4 w-4 rounded border-white/20 bg-white/10 text-primary focus:ring-primary/40"
                     />
                     <span>{{ t('chatHub.knowledge.enabled') }}</span>
                   </label>
@@ -477,7 +496,7 @@
                       <div
                         v-for="agent in agents"
                         :key="agent.id"
-                        class="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs"
+                        class="rounded-lg border border-white/5 bg-white/5 px-2 py-1.5 text-xs"
                       >
                         <span class="font-semibold text-white">{{ agent.name }}</span>
                         <span class="text-text-secondary"> · @{{ agent.id }}</span>
@@ -581,6 +600,8 @@ const connected = ref(false);
 const connecting = ref(false);
 const isMobileViewport = ref(false);
 const isNativeApp = ref(false);
+const isAtBottom = ref(true);
+const unreadIncomingCount = ref(0);
 
 const messagesContainer = ref(null);
 const composerRef = ref(null);
@@ -802,6 +823,13 @@ const starterPromptsForDisplay = computed(() => {
   if (isMobileViewport.value) return starterPrompts.value.slice(0, 4);
   return starterPrompts.value;
 });
+const showUnreadIncomingHint = computed(() => unreadIncomingCount.value > 0 && !isAtBottom.value);
+const unreadIncomingHintLabel = computed(() => {
+  if (languageTag().startsWith('zh')) {
+    return unreadIncomingCount.value > 1 ? `${unreadIncomingCount.value} 条新消息` : '有新消息';
+  }
+  return unreadIncomingCount.value > 1 ? `${unreadIncomingCount.value} new messages` : 'New message';
+});
 
 function languageTag() {
   return String(locale.value || 'zh-CN').startsWith('zh') ? 'zh-CN' : 'en-US';
@@ -965,7 +993,36 @@ function loadSessions() {
   }
 }
 
-function scrollToBottom() {
+function isNearBottom(threshold = 120) {
+  const el = messagesContainer.value;
+  if (!el) return true;
+  return (el.scrollHeight - (el.scrollTop + el.clientHeight)) <= threshold;
+}
+
+function handleMessagesScroll() {
+  const near = isNearBottom();
+  isAtBottom.value = near;
+  if (near) {
+    unreadIncomingCount.value = 0;
+  }
+}
+
+function jumpToLatest() {
+  unreadIncomingCount.value = 0;
+  scrollToBottom(true);
+}
+
+function handleIncomingUpdate() {
+  const near = isNearBottom();
+  if (near || isAtBottom.value) {
+    unreadIncomingCount.value = 0;
+    scrollToBottom(true);
+    return;
+  }
+  unreadIncomingCount.value += 1;
+}
+
+function scrollToBottom(forcePinned = false) {
   nextTick(() => {
     const el = messagesContainer.value;
     if (!el) return;
@@ -978,6 +1035,12 @@ function scrollToBottom() {
         const latest = messagesContainer.value;
         if (!latest) return;
         latest.scrollTop = latest.scrollHeight;
+        if (forcePinned) {
+          isAtBottom.value = true;
+          unreadIncomingCount.value = 0;
+        } else {
+          isAtBottom.value = isNearBottom();
+        }
       });
     });
   });
@@ -1050,8 +1113,10 @@ function setActiveSession(targetId) {
   mentionActiveIndex.value = 0;
   showCollabPanel.value = false;
   mobileHistoryOpen.value = false;
+  unreadIncomingCount.value = 0;
+  isAtBottom.value = true;
   reconnectCurrentSession();
-  scrollToBottom();
+  scrollToBottom(true);
 }
 
 function createNewSession() {
@@ -1066,6 +1131,8 @@ function createNewSession() {
   showCollabPanel.value = false;
   mobileHistoryOpen.value = false;
   showAllSessions.value = false;
+  unreadIncomingCount.value = 0;
+  isAtBottom.value = true;
   reconnectCurrentSession();
 }
 
@@ -1152,7 +1219,7 @@ function addSystemMessage(content, level = 'info') {
     timestamp: nowIso(),
   });
   updateActiveSessionStore();
-  scrollToBottom();
+  handleIncomingUpdate();
 }
 
 function addUserMessage(content, attachments = []) {
@@ -1166,7 +1233,8 @@ function addUserMessage(content, attachments = []) {
     timestamp: nowIso(),
   });
   updateActiveSessionStore();
-  scrollToBottom();
+  unreadIncomingCount.value = 0;
+  scrollToBottom(true);
 }
 
 function addAssistantMessage(agentId, agentName, content) {
@@ -1182,7 +1250,7 @@ function addAssistantMessage(agentId, agentName, content) {
   turnGotAssistantMessage.value = true;
   turnStage.value = 'responding';
   updateActiveSessionStore();
-  scrollToBottom();
+  handleIncomingUpdate();
   maybeFinishTurn(false);
 }
 
@@ -1194,14 +1262,18 @@ function setThinking(agentId, isThinking) {
     }
     turnCurrentThinkingAgentId.value = agentId;
     turnStage.value = delegationActive.value ? 'collecting' : 'responding';
-    scrollToBottom();
+    if (isNearBottom() || isAtBottom.value) {
+      scrollToBottom(true);
+    }
     return;
   }
   thinkingAgentIds.value = thinkingAgentIds.value.filter((id) => id !== agentId);
   if (turnCurrentThinkingAgentId.value === agentId) {
     turnCurrentThinkingAgentId.value = '';
   }
-  scrollToBottom();
+  if (isNearBottom() || isAtBottom.value) {
+    scrollToBottom(true);
+  }
   maybeFinishTurn(false);
 }
 
@@ -2158,7 +2230,9 @@ function handleGlobalClick(event) {
 }
 
 function handleMessageImageLoad() {
-  scrollToBottom();
+  if (isNearBottom() || isAtBottom.value) {
+    scrollToBottom(true);
+  }
 }
 
 function handleBrowserOnline() {
@@ -2190,13 +2264,6 @@ watch([knowledgeEnabled, knowledgeCategory, locale], () => {
   sendStartSession();
 });
 
-watch(
-  () => messages.value.length,
-  () => {
-    scrollToBottom();
-  }
-);
-
 onMounted(() => {
   waitDurationStats.value = loadWaitDurationStats();
   updateNativeAppMode();
@@ -2227,7 +2294,7 @@ onMounted(() => {
 
   reconnectCurrentSession();
   startReconnectWatchdog();
-  scrollToBottom();
+  scrollToBottom(true);
   document.addEventListener('click', handleGlobalClick);
   window.addEventListener('online', handleBrowserOnline);
   document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -2269,6 +2336,25 @@ watch(historyCollapsed, (next) => {
 
 .app-chat-immersive :deep(.overflow-y-auto::-webkit-scrollbar) {
   display: none;
+}
+
+.chat-composer-surface {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(135deg, rgba(18, 28, 43, 0.9), rgba(13, 22, 36, 0.84));
+  box-shadow:
+    0 12px 28px rgba(3, 8, 20, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.chat-input-surface {
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  background: linear-gradient(180deg, rgba(26, 36, 52, 0.9), rgba(20, 29, 43, 0.9));
+}
+
+.chat-input-surface:focus {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: linear-gradient(180deg, rgba(31, 43, 61, 0.94), rgba(24, 35, 50, 0.94));
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.14);
 }
 
 .analysis-markdown {

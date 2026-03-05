@@ -55,7 +55,7 @@
         class="flex-1 min-h-0 overflow-hidden overflow-x-hidden scroll-smooth md:px-8 md:pb-3 md:pt-4"
         :class="isNativeApp ? 'px-0 pb-[calc(env(safe-area-inset-bottom,0px)+0.05rem)] pt-[calc(env(safe-area-inset-top,0px)+2.9rem)]' : 'px-3 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-14'"
       >
-        <div class="h-full min-h-0 w-full" :class="isNativeApp ? 'w-full' : 'mx-auto max-w-[1080px]'">
+        <div class="h-full min-h-0 w-full">
           <router-view />
         </div>
       </div>

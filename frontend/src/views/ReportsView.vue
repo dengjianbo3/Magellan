@@ -13,7 +13,7 @@
     </div>
 
     <!-- Filters -->
-    <div class="toolbar-panel sticky top-0 z-20">
+    <div class="toolbar-panel sticky top-1 z-20">
       <div class="toolbar-row">
         <div class="flex flex-wrap items-center gap-2">
           <select class="control-select w-full cursor-pointer sm:w-auto">
@@ -63,7 +63,7 @@
                 report.type === 'roundtable' ? 'bg-primary/10 border-primary/20 text-primary' :
                 report.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
                 report.status === 'in-progress' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
-                'bg-white/5 border-white/10 text-text-secondary'
+                'bg-white/8 border-white/5 text-text-secondary'
               ]"
             >
               <span class="material-symbols-outlined text-2xl">{{ report.type === 'roundtable' ? 'groups' : 'article' }}</span>
@@ -73,7 +73,7 @@
                 'text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider border shadow-[0_0_10px_rgba(0,0,0,0.2)]',
                 report.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' :
                 report.status === 'in-progress' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
-                'bg-white/5 text-text-secondary border-white/10'
+                'bg-white/8 text-text-secondary border-white/5'
               ]"
             >
               {{ report.statusText }}
@@ -97,7 +97,7 @@
           </div>
         </div>
 
-        <div class="relative z-10 grid grid-cols-2 gap-2 border-t border-white/10 pt-4 sm:grid-cols-4">
+        <div class="relative z-10 grid grid-cols-2 gap-2 border-t border-white/5 pt-3.5 sm:grid-cols-4">
           <button class="col-span-2 flex items-center justify-center gap-2 rounded-lg bg-primary/10 px-3 py-2 text-sm font-bold text-primary transition-all hover:bg-primary hover:text-white group/btn sm:col-span-2">
             <span class="material-symbols-outlined text-lg group-hover/btn:scale-110 transition-transform">visibility</span>
             {{ t('reports.card.view') }}
@@ -116,7 +116,7 @@
             <div
               v-if="exportMenuReportId === report.id"
               @click.stop
-              class="absolute bottom-full left-0 mb-2 w-48 glass-panel border border-white/10 rounded-xl shadow-xl py-1 z-50 backdrop-blur-xl overflow-hidden animate-fade-in"
+              class="absolute bottom-full left-0 mb-2 w-48 glass-panel border border-white/5 rounded-xl shadow-xl py-1 z-50 backdrop-blur-xl overflow-hidden animate-fade-in"
             >
               <button @click="exportReport(report.id, 'pdf')" class="w-full px-4 py-2.5 text-left text-sm text-text-primary hover:bg-primary/20 hover:text-white transition-colors flex items-center gap-2">
                 <span class="material-symbols-outlined text-base text-rose-400">picture_as_pdf</span> PDF
@@ -188,7 +188,7 @@
             </div>
 
             <!-- Meeting Stats -->
-            <div class="mb-6 grid grid-cols-1 gap-3 rounded-xl border border-white/10 bg-white/5 p-4 sm:grid-cols-3 sm:gap-4">
+            <div class="mb-6 grid grid-cols-1 gap-3 rounded-xl border border-white/5 bg-white/8 p-4 sm:grid-cols-3 sm:gap-4">
               <div class="text-center">
                 <div class="text-2xl font-bold text-primary">{{ selectedReport.config?.num_agents || selectedReport.discussion_summary?.participating_agents?.length || 'N/A' }}</div>
                 <div class="text-xs text-text-secondary mt-1">{{ t('reports.detail.participatingExperts') }}</div>
@@ -218,7 +218,7 @@
               <span
                 v-for="agent in (selectedReport.config?.agents || selectedReport.discussion_summary?.participating_agents)"
                 :key="agent"
-                class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-text-primary text-sm font-medium flex items-center gap-2"
+                class="px-4 py-2 rounded-lg bg-white/8 border border-white/5 text-text-primary text-sm font-medium flex items-center gap-2"
               >
                 <span class="w-2 h-2 rounded-full" :class="getAgentColor(agent)"></span>
                 {{ agent }}
@@ -316,7 +316,7 @@
             <div 
               v-for="(content, title) in selectedReport.sections" 
               :key="title"
-              class="p-5 rounded-xl bg-white/5 border border-white/10"
+              class="p-5 rounded-xl bg-white/8 border border-white/5"
             >
               <h3 class="text-lg font-bold text-white mb-3 capitalize">{{ title.replace(/_/g, ' ') }}</h3>
               
@@ -355,7 +355,7 @@
             </div>
 
             <!-- Score Breakdown -->
-            <div v-if="selectedReport.preliminary_im.scores_breakdown" class="mt-6 pt-6 border-t border-white/10">
+            <div v-if="selectedReport.preliminary_im.scores_breakdown" class="mt-6 pt-6 border-t border-white/5">
               <div class="grid grid-cols-3 gap-4">
                 <div v-for="(score, key) in selectedReport.preliminary_im.scores_breakdown" :key="key" class="text-center">
                   <div class="text-2xl font-bold" :class="getScoreColor(score)">{{ score }}</div>
@@ -384,7 +384,7 @@
               <!-- Handle structured findings (objects with category, score, key_points, concerns) -->
               <template v-if="isStructuredFindings(selectedReport.preliminary_im.key_findings)">
                 <div v-for="(finding, index) in selectedReport.preliminary_im.key_findings" :key="index"
-                     class="p-5 rounded-xl bg-white/5 border border-white/10">
+                     class="p-5 rounded-xl bg-white/8 border border-white/5">
                   <!-- Category Header with Score -->
                   <div class="flex items-center justify-between mb-4">
                     <h3 class="text-base font-bold text-white flex items-center gap-2">
@@ -430,7 +430,7 @@
               <!-- Handle simple string findings -->
               <template v-else>
                 <div v-for="(finding, index) in selectedReport.preliminary_im.key_findings" :key="index"
-                     class="flex items-start gap-3 p-4 rounded-xl bg-white/5 border border-white/5">
+                     class="flex items-start gap-3 p-4 rounded-xl bg-white/8 border border-white/5">
                   <span class="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold shrink-0">{{ index + 1 }}</span>
                   <p class="text-text-secondary text-sm leading-relaxed">{{ typeof finding === 'string' ? finding : JSON.stringify(finding) }}</p>
                 </div>
@@ -511,7 +511,7 @@
             </h2>
             <div class="space-y-3">
               <div v-for="(step, index) in selectedReport.preliminary_im.next_steps" :key="index"
-                   class="flex items-start gap-3 p-4 rounded-xl bg-white/5 border border-white/5">
+                   class="flex items-start gap-3 p-4 rounded-xl bg-white/8 border border-white/5">
                 <span class="w-8 h-8 rounded-lg bg-accent-violet/20 text-accent-violet flex items-center justify-center shrink-0">
                   <span class="material-symbols-outlined text-sm">arrow_forward</span>
                 </span>
@@ -527,12 +527,12 @@
             </h2>
             <div class="space-y-4">
               <div v-for="(question, index) in selectedReport.preliminary_im.dd_questions" :key="index"
-                   class="p-4 rounded-xl bg-white/5 border border-white/5">
+                   class="p-4 rounded-xl bg-white/8 border border-white/5">
                 <div class="flex gap-3">
                   <span class="text-primary font-bold">{{ index + 1 }}.</span>
                   <p class="font-semibold text-text-primary text-sm">{{ question.question || question }}</p>
                 </div>
-                <div v-if="question.answer" class="mt-3 pl-6 border-l-2 border-white/10 ml-1">
+                <div v-if="question.answer" class="mt-3 pl-6 border-l-2 border-white/5 ml-1">
                   <p class="text-sm text-text-secondary">{{ question.answer }}</p>
                 </div>
               </div>
@@ -549,7 +549,7 @@
             <div
               v-for="step in selectedReport.steps"
               :key="step.id"
-              class="flex items-start gap-4 p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors"
+              class="flex items-start gap-4 p-4 rounded-xl bg-white/8 border border-white/5 hover:border-white/10 transition-colors"
             >
               <div
                 :class="[
@@ -579,7 +579,7 @@
             </h2>
             <button
               @click="refreshCharts"
-              class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-text-primary transition-colors text-xs font-bold flex items-center gap-2"
+              class="px-3 py-1.5 rounded-lg bg-white/8 hover:bg-white/12 border border-white/5 text-text-primary transition-colors text-xs font-bold flex items-center gap-2"
             >
               <span class="material-symbols-outlined text-sm">refresh</span>
               {{ t('reports.detail.refresh') }}
@@ -731,7 +731,7 @@
       <div class="flex items-center gap-4">
         <button
           @click="cancelDelete"
-          class="flex-1 px-6 py-3 rounded-xl border border-white/10 text-white hover:bg-white/10 transition-colors font-bold"
+          class="flex-1 px-6 py-3 rounded-xl border border-transparent bg-white/10 text-white hover:bg-white/15 transition-colors font-bold"
         >
           {{ t('reports.detail.cancel') }}
         </button>
@@ -917,9 +917,9 @@ const getMessageClass = (message) => {
   if (sender === 'Leader' || sender === '主持人' || sender === 'Host') {
     return 'bg-primary/10 border-primary/30';
   } else if (sender === 'Meeting Orchestrator') {
-    return 'bg-white/5 border-white/10';
+    return 'bg-white/8 border-white/5';
   }
-  return 'bg-white/5 border-white/10';
+  return 'bg-white/8 border-white/5';
 };
 
 const getMessageTypeLabel = (type) => {

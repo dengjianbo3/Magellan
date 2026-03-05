@@ -657,9 +657,14 @@ export default {
     title: 'Knowledge Base',
     subtitle: 'Upload, retrieve, and manage research materials',
     documentsCount: 'documents',
+    searchResultsCount: '{count} search results',
     searchPlaceholder: 'Search documents...',
+    clearSearch: 'Clear',
     upload: 'Upload',
     newCategory: 'New Category',
+    untitled: 'Untitled',
+    noDescription: 'No description',
+    match: 'Match',
 
     categories: {
       all: 'All Documents',
@@ -692,6 +697,8 @@ export default {
 
     uploadModal: {
       title: 'Upload Documents',
+      titleOptional: 'Title (Optional)',
+      titlePlaceholder: 'Document title',
       category: 'Category',
       files: 'Files',
       uploadPrompt: 'Click to upload or drag and drop',
@@ -700,6 +707,21 @@ export default {
       file: 'file',
       files: 'files',
       cancel: 'Cancel'
+    },
+
+    deleteDialog: {
+      title: 'Delete Document?',
+      message: 'Are you sure you want to delete "{name}"? This action cannot be undone.'
+    },
+
+    toast: {
+      loadFailed: 'Failed to load documents',
+      uploadSuccess: 'Successfully uploaded {count} file(s)',
+      uploadFailed: 'Failed to upload files',
+      deleteSuccess: 'Document deleted successfully',
+      deleteFailed: 'Failed to delete document',
+      searchSuccess: 'Found {count} results',
+      searchFailed: 'Search failed'
     }
   },
 
@@ -769,6 +791,9 @@ export default {
       llmProviderDesc: 'Select the LLM provider for AI analysis',
       useProLabel: 'Use Pro Model',
       useProDesc: 'Enable for stronger reasoning quality, disable for faster Flash responses.',
+      autoTradingBetaLabel: 'Auto Trading (Beta)',
+      autoTradingBetaDesc: 'Enable to show the Auto Trading frontend in sidebar; disable to hide and block this page.',
+      autoTradingBetaSwitched: 'Auto Trading beta switch updated',
       currentModelLabel: 'Current active model',
       modelSwitchSuccess: 'Model switched successfully',
       modelSwitchError: 'Failed to switch model: {error}',
@@ -1092,8 +1117,24 @@ export default {
       topicPlaceholder: 'e.g., Tesla Q4 2024 Investment Value Analysis',
       expertsLabel: 'Participating Experts',
       expertsSelected: 'selected',
+      expertPickerPlaceholder: 'Click to add or remove experts...',
+      expertPickerEmpty: 'Please select experts to join the discussion',
+      hostAutoIncluded: 'The discussion host is included automatically and does not need manual selection.',
       roundsLabel: 'Discussion Rounds',
       rounds: 'rounds',
+      knowledgeBase: 'Knowledge Base',
+      enableKnowledge: 'Enable knowledge retrieval',
+      retrievalScope: 'Retrieval Scope',
+      knowledgeScopeAll: 'All Knowledge',
+      knowledgeScopeGeneral: 'General Docs',
+      knowledgeScopeFinancial: 'Financial Docs',
+      knowledgeScopeMarket: 'Market Docs',
+      knowledgeScopeLegal: 'Legal Docs',
+      continueFromHistory: 'Continue from history',
+      refreshList: 'Refresh List',
+      loadingHistory: 'Loading discussion history...',
+      noHistoryFound: 'No history found',
+      historyHint: 'A new discussion will start using meeting minutes from "{topic}". Experts will review previous conclusions while being encouraged to propose new viewpoints and challenges.',
       startButton: 'Start Discussion',
       required: 'Required'
     },
@@ -1131,7 +1172,11 @@ export default {
       currentRound: 'Current Round',
       messageCount: 'Message Count',
       participants: 'Participating Experts',
+      generateMinutes: 'Generate Minutes',
+      generatingMinutes: 'Generating...',
+      stopping: 'Stopping...',
       stopButton: 'Stop Discussion',
+      exportShort: 'Export',
       exportButton: 'Export Results',
       status: {
         running: 'In Progress',
@@ -1144,6 +1189,19 @@ export default {
     summary: {
       title: 'Discussion Summary',
       completed: 'Brainstorm session completed'
+    },
+
+    system: {
+      discussionStarted: 'Discussion started - {count} experts joined',
+      knowledgeEnabled: 'Knowledge retrieval enabled (scope: {scope})',
+      knowledgeDisabled: 'Knowledge retrieval disabled',
+      continueFromHistory: 'Continuing from history "{topic}"',
+      resumingSession: 'Resuming previous discussion session...',
+      recoveredSession: 'Recovered an active discussion from backend...',
+      reconnectingLost: 'Connection lost, attempting to reconnect...',
+      stopRequestSent: 'Stop request sent. Ending discussion...',
+      stopRequestFailed: 'Failed to stop remotely, disconnected locally: {error}',
+      untitledResult: 'Untitled Result'
     },
 
     // Human-in-the-Loop (HITL)

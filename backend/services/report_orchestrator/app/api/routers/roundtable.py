@@ -274,6 +274,88 @@ async def pause_for_human_input(
         raise HTTPException(status_code=500, detail=f"Failed to pause meeting: {str(e)}")
 
 
+@router.post("/stop", tags=["Roundtable"])
+async def stop_roundtable_discussion(
+    request: dict,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    手动停止正在运行的圆桌讨论。
+
+    Request body:
+    {
+        "session_id": "roundtable_xxx_12345678"
+    }
+    """
+    session_id = str(request.get("session_id") or "").strip()
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Missing session_id")
+
+    runtime = _roundtable_sessions.get(session_id)
+    meeting = _active_meetings.get(session_id) or (runtime.get("meeting") if isinstance(runtime, dict) else None)
+    if not meeting:
+        raise HTTPException(status_code=404, detail=f"No active meeting found for session_id: {session_id}")
+
+    owner_user_id = getattr(meeting, "_owner_user_id", None)
+    if not owner_user_id and isinstance(runtime, dict):
+        owner_user_id = runtime.get("user_id")
+    if owner_user_id and str(owner_user_id) != str(current_user.id):
+        raise HTTPException(status_code=404, detail=f"No active meeting found for session_id: {session_id}")
+
+    runtime_status = str(runtime.get("status") or "") if isinstance(runtime, dict) else ""
+    if runtime_status in {"completed", "error"}:
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "already_stopped": True,
+            "message": "讨论已结束",
+        }
+
+    try:
+        # Ask meeting loop to conclude ASAP.
+        if hasattr(meeting, "should_conclude"):
+            meeting.should_conclude = True
+        if hasattr(meeting, "conclusion_reason"):
+            meeting.conclusion_reason = "用户手动停止讨论"
+        temp_state = getattr(meeting, "_temp_state", None)
+        if isinstance(temp_state, dict):
+            temp_state["should_conclude"] = True
+            temp_state["conclusion_reason"] = "用户手动停止讨论"
+
+        # Stop running loop and release wait state if paused for HITL.
+        if hasattr(meeting, "stop"):
+            meeting.stop()
+        waiting = bool(getattr(meeting, "waiting_for_human", False))
+        human_event = getattr(meeting, "human_intervention_event", None)
+        if waiting and human_event is not None and not human_event.is_set():
+            human_event.set()
+
+        if isinstance(runtime, dict):
+            runtime["status"] = "stopping"
+            runtime["updated_at"] = datetime.now().isoformat()
+            event_bus = runtime.get("event_bus")
+            if event_bus:
+                try:
+                    await event_bus.publish_result(
+                        agent_name="Meeting Orchestrator",
+                        message="🛑 用户已手动停止讨论，正在收尾...",
+                        data={"message_type": "manual_stop"},
+                    )
+                except Exception:
+                    pass
+
+        logger.info(f"Roundtable stop requested: session_id={session_id}, user_id={current_user.id}")
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "already_stopped": False,
+            "message": "已发送停止指令，讨论正在结束。",
+        }
+    except Exception as e:
+        logger.error(f"Error stopping roundtable {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to stop roundtable: {str(e)}")
+
+
 @router.post("/generate_summary", tags=["Roundtable"])
 async def generate_roundtable_summary(
     request: dict,

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
+import { isAutoTradingBetaEnabled } from '@/composables/useFeatureFlags';
 
 // Import layouts
 import AuthenticatedLayout from '@/components/layout/AuthenticatedLayout.vue';
@@ -123,6 +124,14 @@ router.beforeEach(async (to, from, next) => {
   // If route is for guests only and user is authenticated
   if (guestOnly && isAuthenticated) {
     return next({ name: 'ChatHub' });
+  }
+
+  // Auto trading frontend is behind Settings -> Beta toggle.
+  if (to.name === 'AutoTrading' && !isAutoTradingBetaEnabled()) {
+    return next({
+      name: 'Settings',
+      query: { section: 'api' }
+    });
   }
 
   next();

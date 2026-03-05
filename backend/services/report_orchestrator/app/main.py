@@ -3077,6 +3077,19 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
         await websocket.close(code=1008, reason="Authentication required")
         return
 
+    # Best-effort GC for stale expert-chat sessions.
+    now_ts = time.time()
+    for sid, state in list(active_chat_sessions.items()):
+        try:
+            updated_at = state.get("updated_at") or state.get("created_at")
+            if not updated_at:
+                continue
+            updated_ts = datetime.fromisoformat(updated_at).timestamp()
+            if now_ts - updated_ts > 6 * 3600:
+                active_chat_sessions.pop(sid, None)
+        except Exception:
+            continue
+
     session_id = f"expertchat_{uuid.uuid4().hex[:10]}"
     language = "zh-CN"
     knowledge_enabled = False
@@ -3091,6 +3104,8 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
         "shared_evidence_board": [],
         "agents": {},
         "agent_pool_signature": "",
+        "created_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.utcnow().isoformat(),
     }
     _ensure_expert_chat_agent_pool(
         active_chat_sessions[session_id],
@@ -3107,8 +3122,47 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
         task.add_done_callback(lambda t: inflight_turn_tasks.discard(t))
         return task
 
+    def _touch_session_state(state: Optional[Dict[str, Any]] = None):
+        target = state or active_chat_sessions.get(session_id)
+        if isinstance(target, dict):
+            target["updated_at"] = datetime.utcnow().isoformat()
+
+    async def _safe_send(payload: Dict[str, Any]) -> bool:
+        try:
+            await websocket.send_json(payload)
+            return True
+        except Exception as send_err:
+            logger.info(f"[ExpertChat] Skip ws send for session={session_id}: {send_err}")
+            return False
+
+    async def _replay_missing_assistant_messages(
+        state: Dict[str, Any],
+        resume_history: List[Dict[str, Any]],
+    ):
+        client_assistant_count = sum(
+            1 for item in resume_history
+            if isinstance(item, dict) and str(item.get("role")) == "assistant"
+        )
+        server_assistant_messages = [
+            item for item in state.get("messages", [])
+            if isinstance(item, dict) and str(item.get("role")) == "assistant"
+        ]
+
+        for item in server_assistant_messages[client_assistant_count:]:
+            agent_id = str(item.get("agent_id") or "leader")
+            await _safe_send(
+                {
+                    "type": "agent_message",
+                    "session_id": session_id,
+                    "agent_id": agent_id,
+                    "agent_name": item.get("speaker") or _display_agent_name(agent_id, language),
+                    "content": str(item.get("content") or ""),
+                    "mode": str(item.get("mode") or "leader"),
+                }
+            )
+
     try:
-        await websocket.send_json(
+        await _safe_send(
             {
                 "type": "session_started",
                 "session_id": session_id,
@@ -3121,7 +3175,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
             message_type = payload.get("type", "user_message")
 
             if message_type == "ping":
-                await websocket.send_json({"type": "pong", "session_id": session_id})
+                await _safe_send({"type": "pong", "session_id": session_id})
                 continue
 
             if message_type == "start_session":
@@ -3136,7 +3190,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                 if requested_session_id and requested_session_id != session_id:
                     existing = active_chat_sessions.get(requested_session_id)
                     if existing and str(existing.get("user_id")) != str(current_user.id):
-                        await websocket.send_json(
+                        await _safe_send(
                             {
                                 "type": "error",
                                 "session_id": session_id,
@@ -3159,6 +3213,8 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                             "shared_evidence_board": _rebuild_shared_evidence_board_from_history(resume_history),
                             "agents": {},
                             "agent_pool_signature": "",
+                            "created_at": datetime.utcnow().isoformat(),
+                            "updated_at": datetime.utcnow().isoformat(),
                         }
                 elif requested_session_id and requested_session_id == session_id and resume_history:
                     if not active_chat_sessions[session_id]["messages"]:
@@ -3175,11 +3231,14 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                         "shared_evidence_board": [],
                         "agents": {},
                         "agent_pool_signature": "",
+                        "created_at": datetime.utcnow().isoformat(),
+                        "updated_at": datetime.utcnow().isoformat(),
                     },
                 )
                 active_chat_sessions[session_id]["language"] = language
                 active_chat_sessions[session_id]["knowledge_enabled"] = knowledge_enabled
                 active_chat_sessions[session_id]["knowledge_category"] = knowledge_category
+                _touch_session_state(active_chat_sessions[session_id])
                 _ensure_expert_chat_agent_pool(
                     active_chat_sessions[session_id],
                     language=language,
@@ -3188,17 +3247,21 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                     user_id=str(current_user.id),
                     session_id=session_id,
                 )
-                await websocket.send_json(
+                await _safe_send(
                     {
                         "type": "session_ready",
                         "session_id": session_id,
                         "agents": _build_expert_chat_agents(language),
                     }
                 )
+                await _replay_missing_assistant_messages(
+                    active_chat_sessions[session_id],
+                    resume_history,
+                )
                 continue
 
             if message_type != "user_message":
-                await websocket.send_json(
+                await _safe_send(
                     {
                         "type": "error",
                         "session_id": session_id,
@@ -3210,7 +3273,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
             content = str(payload.get("content", "")).strip()
             attachments = _sanitize_expert_chat_attachments(payload.get("attachments", []))
             if not content and not attachments:
-                await websocket.send_json(
+                await _safe_send(
                     {"type": "error", "session_id": session_id, "message": "Empty message"}
                 )
                 continue
@@ -3237,6 +3300,8 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                     "shared_evidence_board": [],
                     "agents": {},
                     "agent_pool_signature": "",
+                    "created_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.utcnow().isoformat(),
                 },
             )
             session_state.setdefault("shared_evidence_board", [])
@@ -3247,6 +3312,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
             session_state["language"] = language
             session_state["knowledge_enabled"] = knowledge_enabled
             session_state["knowledge_category"] = knowledge_category
+            _touch_session_state(session_state)
             session_agents = _ensure_expert_chat_agent_pool(
                 session_state,
                 language=language,
@@ -3292,7 +3358,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                         latency_seconds=0.0,
                     )
 
-                    await websocket.send_json(
+                    await _safe_send(
                         {
                             "type": "route_decided",
                             "session_id": session_id,
@@ -3308,7 +3374,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                             shared_evidence_board,
                             language=language,
                         )
-                        await websocket.send_json(
+                        await _safe_send(
                             {
                                 "type": "agent_thinking",
                                 "session_id": session_id,
@@ -3366,9 +3432,10 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 "content": response_text,
                                 "content_summary": response_summary,
                                 "timestamp": datetime.utcnow().isoformat(),
+                                "mode": "direct",
                             }
                         )
-                        await websocket.send_json(
+                        await _safe_send(
                             {
                                 "type": "agent_message",
                                 "session_id": session_id,
@@ -3381,7 +3448,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
 
                 # Default mode: Leader first, then optional delegation.
                 else:
-                    await websocket.send_json(
+                    await _safe_send(
                         {
                             "type": "route_decided",
                             "session_id": session_id,
@@ -3410,7 +3477,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                             "leader_reply": "",
                             "reason": "leader_router_error",
                         }
-                        await websocket.send_json(
+                        await _safe_send(
                             {
                                 "type": "route_fallback",
                                 "session_id": session_id,
@@ -3431,7 +3498,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                             delegated_ids,
                             max_parallel=EXPERT_CHAT_MAX_PARALLEL_SPECIALISTS,
                         )
-                        await websocket.send_json(
+                        await _safe_send(
                             {
                                 "type": "delegation_started",
                                 "session_id": session_id,
@@ -3443,7 +3510,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                         )
 
                         for stage_index, stage_agent_ids in enumerate(execution_stages, start=1):
-                            await websocket.send_json(
+                            await _safe_send(
                                 {
                                     "type": "delegation_stage",
                                     "session_id": session_id,
@@ -3460,7 +3527,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                             stage_tasks: Dict[str, asyncio.Task] = {}
                             for sid in stage_agent_ids:
                                 specialist_name = _display_agent_name(sid, language)
-                                await websocket.send_json(
+                                await _safe_send(
                                     {
                                         "type": "agent_thinking",
                                         "session_id": session_id,
@@ -3520,9 +3587,10 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                         "content": output,
                                         "content_summary": output_summary,
                                         "timestamp": datetime.utcnow().isoformat(),
+                                        "mode": "delegated",
                                     }
                                 )
-                                await websocket.send_json(
+                                await _safe_send(
                                     {
                                         "type": "agent_message",
                                         "session_id": session_id,
@@ -3535,7 +3603,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                     }
                                 )
 
-                        await websocket.send_json(
+                        await _safe_send(
                             {
                                 "type": "delegation_finished",
                                 "session_id": session_id,
@@ -3550,7 +3618,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                     )
                     if should_send_leader_followup:
                         leader_name = _display_agent_name("leader", language)
-                        await websocket.send_json(
+                        await _safe_send(
                             {
                                 "type": "agent_thinking",
                                 "session_id": session_id,
@@ -3598,9 +3666,10 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                     max_chars=280,
                                 ),
                                 "timestamp": datetime.utcnow().isoformat(),
+                                "mode": "leader",
                             }
                         )
-                        await websocket.send_json(
+                        await _safe_send(
                             {
                                 "type": "agent_message",
                                 "session_id": session_id,
@@ -3617,7 +3686,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
 
             except Exception as llm_error:
                 logger.exception("[ExpertChat] message handling failed")
-                await websocket.send_json(
+                await _safe_send(
                     {
                         "type": "error",
                         "session_id": session_id,
@@ -3627,16 +3696,12 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect:
         logger.info(f"[ExpertChat] Client disconnected: {session_id}")
-        pending = [t for t in list(inflight_turn_tasks) if not t.done()]
-        for task in pending:
-            task.cancel()
-        if pending:
-            await asyncio.gather(*pending, return_exceptions=True)
+        _touch_session_state(active_chat_sessions.get(session_id))
     except Exception as e:
         logger.exception(f"[ExpertChat] Fatal error: {e}")
         try:
             if websocket.client_state == 1:
-                await websocket.send_json(
+                await _safe_send(
                     {
                         "type": "error",
                         "session_id": session_id,
@@ -3646,12 +3711,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
         except Exception:
             pass
     finally:
-        pending = [t for t in list(inflight_turn_tasks) if not t.done()]
-        for task in pending:
-            task.cancel()
-        if pending:
-            await asyncio.gather(*pending, return_exceptions=True)
-        active_chat_sessions.pop(session_id, None)
+        _touch_session_state(active_chat_sessions.get(session_id))
 
 @app.websocket("/ws/conversation")
 async def websocket_conversation_endpoint(websocket: WebSocket):

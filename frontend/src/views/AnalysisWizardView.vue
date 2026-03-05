@@ -154,7 +154,7 @@
         </div>
 
         <!-- Session Info -->
-        <div class="mb-6 p-4 rounded-xl bg-white/5 border border-white/10">
+        <div class="mb-6 p-4 rounded-xl bg-white/8 border border-white/5">
           <div class="flex items-center justify-between mb-2">
             <span class="text-text-secondary text-sm">{{ t('analysisWizard.projectName') || 'Project Name' }}</span>
             <span class="text-white font-medium">{{ pendingSession.projectName }}</span>
@@ -172,7 +172,7 @@
         <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4">
           <button
             @click="dismissRecovery"
-            class="flex-1 px-6 py-3 rounded-xl border border-white/10 text-white hover:bg-white/10 transition-colors font-bold"
+            class="flex-1 px-6 py-3 rounded-xl border border-transparent bg-white/10 text-white hover:bg-white/15 transition-colors font-bold"
           >
             {{ t('analysisWizard.startNew') || 'Start New' }}
           </button>
