@@ -44,6 +44,7 @@ MAX_REWOO_QUERY_CHARS = int(os.getenv("REWOO_MAX_QUERY_CHARS", "12000"))
 MAX_REWOO_CONTEXT_MESSAGES = int(os.getenv("REWOO_MAX_CONTEXT_MESSAGES", "8"))
 MAX_REWOO_CONTEXT_MESSAGE_CHARS = int(os.getenv("REWOO_MAX_CONTEXT_MESSAGE_CHARS", "2000"))
 MAX_LLM_PAYLOAD_PREVIEW_CHARS = int(os.getenv("REWOO_MAX_LLM_PAYLOAD_PREVIEW_CHARS", "2000"))
+MAX_REWOO_EVIDENCE_ITEMS = max(1, int(os.getenv("REWOO_EVIDENCE_MAX_ITEMS", "24")))
 
 
 class ReWOOAgent(Agent):
@@ -69,6 +70,8 @@ class ReWOOAgent(Agent):
         self._memory_store = get_memory_store()
         # Keep per-agent output language explicit for skills/prompting.
         self.language = str(language or self._infer_language_from_prompt(role_prompt))
+        self._last_evidence_chain: List[Dict[str, Any]] = []
+        self._last_task_brief: str = ""
 
     @staticmethod
     def _infer_language_from_prompt(prompt: str) -> str:
@@ -80,6 +83,21 @@ class ReWOOAgent(Agent):
 
     def _is_zh_language(self) -> bool:
         return str(getattr(self, "language", "") or "").lower().startswith("zh")
+
+    def _build_task_brief(self, new_messages: List[Any]) -> str:
+        if not new_messages:
+            return ""
+        first = new_messages[0]
+        sender = str(getattr(first, "sender", "") or "Unknown")
+        snippet = compact_text(" ".join(str(getattr(first, "content", "") or "").split()), max_chars=180)
+        if len(new_messages) == 1:
+            if self._is_zh_language():
+                return f"收到来自 {sender} 的任务：{snippet}"
+            return f"Received task from {sender}: {snippet}"
+
+        if self._is_zh_language():
+            return f"收到 {len(new_messages)} 条上下文消息，当前核心任务：{snippet}"
+        return f"Received {len(new_messages)} context messages. Current focus: {snippet}"
 
     async def think_and_act(self) -> List:
         """
@@ -107,6 +125,8 @@ class ReWOOAgent(Agent):
 
         # 3. Extract query and context from messages
         # Combine all message content as the query
+        self._last_evidence_chain = []
+        self._last_task_brief = self._build_task_brief(new_messages)
         query_parts = []
         for msg in new_messages:
             query_parts.append(f"[{msg.sender}]: {msg.content}")
@@ -159,7 +179,15 @@ class ReWOOAgent(Agent):
                     sender=self.name,
                     recipient=recipient,
                     content=result,
-                    message_type=message_type
+                    message_type=message_type,
+                    metadata={
+                        "task_brief": self._last_task_brief,
+                        "evidence_chain": self.get_last_evidence_chain(),
+                        "evidence_summary": {
+                            "steps": len(self.get_last_evidence_chain()),
+                            "has_tool_evidence": len(self.get_last_evidence_chain()) > 0,
+                        },
+                    },
                 )
 
                 self.message_history.append(msg)
@@ -298,11 +326,65 @@ class ReWOOAgent(Agent):
 
         # Phase 2: Execute (并行)
         observations = await self._execute_phase(plan)
+        self._last_evidence_chain = self._build_evidence_chain(plan, observations)
 
         # Phase 3: Solve
         result = await self._solve_phase(query, context, plan, observations)
 
         return result
+
+    def get_last_evidence_chain(self, limit: int = MAX_REWOO_EVIDENCE_ITEMS) -> List[Dict[str, Any]]:
+        if not self._last_evidence_chain:
+            return []
+        safe_limit = max(1, int(limit or MAX_REWOO_EVIDENCE_ITEMS))
+        return [dict(item) for item in self._last_evidence_chain[-safe_limit:]]
+
+    def _build_evidence_chain(
+        self,
+        plan: List[Dict[str, Any]],
+        observations: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        chain: List[Dict[str, Any]] = []
+        for idx, (step, obs) in enumerate(zip(plan or [], observations or []), start=1):
+            tool_name = str((step or {}).get("tool") or "")
+            params = (step or {}).get("params") if isinstance((step or {}).get("params"), dict) else {}
+            purpose = str((step or {}).get("purpose") or "")
+            status = "success"
+            error = ""
+            duration_ms = 0
+            output = obs
+
+            if isinstance(obs, dict):
+                if obs.get("success") is False or obs.get("error"):
+                    status = "error"
+                    error = str(obs.get("error") or "")
+                if isinstance(obs.get("duration_ms"), (int, float)):
+                    duration_ms = int(obs.get("duration_ms") or 0)
+
+            preview = self._safe_preview(output, max_chars=1800)
+            sources = self._extract_urls(preview, limit=8)
+            numeric_outputs = self._extract_numeric_snippets(preview, limit=8)
+
+            chain.append(
+                {
+                    "kind": "tool_call",
+                    "step": idx,
+                    "tool": tool_name,
+                    "purpose": purpose,
+                    "status": status,
+                    "params": params,
+                    "duration_ms": duration_ms,
+                    "output_preview": preview,
+                    "sources": sources,
+                    "numeric_outputs": numeric_outputs,
+                    "error": error,
+                    "timestamp": time.time(),
+                }
+            )
+
+        if len(chain) > MAX_REWOO_EVIDENCE_ITEMS:
+            chain = chain[-MAX_REWOO_EVIDENCE_ITEMS:]
+        return chain
 
     async def _plan_phase(
         self,
@@ -560,6 +642,9 @@ class ReWOOAgent(Agent):
         started_at = time.perf_counter()
         try:
             result = await asyncio.wait_for(tool.execute(**tool_params), timeout=timeout)
+            duration_ms = int((time.perf_counter() - started_at) * 1000)
+            if isinstance(result, dict):
+                result.setdefault("duration_ms", duration_ms)
             record_tool_call(
                 channel="rewoo_agent",
                 agent=self.name,
@@ -569,6 +654,7 @@ class ReWOOAgent(Agent):
             )
             return result
         except asyncio.TimeoutError:
+            duration_ms = int((time.perf_counter() - started_at) * 1000)
             record_tool_call(
                 channel="rewoo_agent",
                 agent=self.name,
@@ -580,8 +666,10 @@ class ReWOOAgent(Agent):
                 "success": False,
                 "error": "Tool execution timeout",
                 "summary": f"Tool execution timeout ({timeout}s)",
+                "duration_ms": duration_ms,
             }
         except Exception as exc:
+            duration_ms = int((time.perf_counter() - started_at) * 1000)
             record_tool_call(
                 channel="rewoo_agent",
                 agent=self.name,
@@ -593,6 +681,7 @@ class ReWOOAgent(Agent):
                 "success": False,
                 "error": str(exc),
                 "summary": f"Tool execution error: {exc}",
+                "duration_ms": duration_ms,
             }
 
     async def _solve_phase(
@@ -720,6 +809,8 @@ You have executed a series of tool calls and obtained observation results. Now y
 - **Data-Driven**: Reference specific data sources and values
 - **In-Depth**: Not just data listing, include insights and judgments
 - **Objective**: Clearly distinguish between facts and inferences
+- **Audience-Friendly**: Write for non-technical readers. Avoid jargon unless necessary.
+- **No Raw Dumps**: Never output raw JSON, tool payloads, parameter blocks, or stack traces. Translate them into readable facts.
 - {language_instruction}
 - **Direct Output**: Do not add "TO: ALL", "CC:" or other email format prefixes
 
@@ -817,9 +908,9 @@ Please create a tool call plan for this task (JSON format).
                 results_text += f"**Result**: {str(obs)[:2000]}\n"
 
         final_instruction = (
-            "请综合以上信息并输出结构化分析报告。"
+            "请综合以上信息并输出结构化分析报告。注意：不要输出原始JSON、工具入参、调试日志，只保留外行可读的结论和证据。"
             if self._is_zh_language()
-            else "Please synthesize all the above information and generate a structured analysis report."
+            else "Please synthesize all information into a structured report. Do not output raw JSON, tool params, or debug logs; keep only reader-friendly conclusions and evidence."
         )
 
         return f"""# Original Task

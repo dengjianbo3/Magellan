@@ -480,14 +480,14 @@
             >
               {{ discussionStatus === 'running' ? t('roundtable.discussion.status.running') : t('roundtable.discussion.status.completed') }}
             </span>
-            <button
-              type="button"
-              class="icon-btn ml-2 border-0 bg-white/10 hover:bg-white/15 xl:hidden"
-              :title="t('roundtable.discussion.participants')"
-              @click="mobileControlPanelOpen = true"
-            >
-              <span class="material-symbols-outlined text-base">tune</span>
-            </button>
+              <button
+                type="button"
+                class="icon-btn ml-2 border-0 bg-white/10 hover:bg-white/15 xl:hidden"
+                :title="t('roundtable.discussion.participants')"
+                @click="mobileControlPanelOpen = true"
+              >
+                <span class="material-symbols-outlined text-base">tune</span>
+              </button>
           </div>
         </div>
 
@@ -506,7 +506,7 @@
           :class="useAppMobileLayout ? 'px-1.5 py-1.5' : 'px-2 py-2 md:px-5 md:py-2.5'"
           @scroll.passive="handleMessagesScroll"
         >
-          <div class="mx-auto w-full max-w-[1240px] space-y-3 md:space-y-4">
+          <div class="mx-auto w-full space-y-3 md:space-y-4" :class="discussionContentWidthClass">
             <div v-for="message in messages" :key="message.id" class="animate-fade-in">
             <!-- System Message -->
             <div v-if="message.type === 'system'" class="flex justify-center py-1.5">
@@ -567,6 +567,14 @@
                 :class="{ 'report-mode': isReportLike(message.content) }"
                 v-html="formatMeetingMinutes(getRenderableMessageContent(message))"
               ></div>
+
+                  <InlineEvidenceChain
+                    v-if="hasMessageEvidence(message)"
+                    :chain="getMessageEvidenceChain(message)"
+                    :packet="getMessageEvidencePacket(message)"
+                    :task-brief="String(message.task_brief || '')"
+                    :locale-tag="locale"
+                  />
 
                   <!-- Decorative corner -->
                   <div class="absolute -top-[1px] -left-[1px] w-4 h-4 border-t border-l border-white/20 rounded-tl-none pointer-events-none"></div>
@@ -678,6 +686,7 @@
             </div>
           </div>
         </div>
+
       </div>
     </div>
 
@@ -772,6 +781,7 @@ import { marked } from 'marked';
 import { appendTokenToUrl, getAuthHeaders } from '@/services/authHeaders';
 import { readJsonResponse } from '@/services/httpResponse';
 import { useAuthStore } from '@/stores/auth';
+import InlineEvidenceChain from '@/components/common/InlineEvidenceChain.vue';
 
 const { t, locale } = useLanguage();
 const authStore = useAuthStore();
@@ -815,6 +825,7 @@ const unreadIncomingHintLabel = computed(() => {
   }
   return unreadIncomingCount.value > 1 ? `${unreadIncomingCount.value} new messages` : 'New message';
 });
+const discussionContentWidthClass = computed(() => 'max-w-[1240px]');
 
 // Human-in-the-Loop (HITL) state
 const sessionId = ref(''); // Session ID for HITL API calls
@@ -1531,6 +1542,15 @@ const handleWebSocketMessage = (data) => {
         messages.value.splice(thinkingIndex, 1);
       }
 
+      const metadata = event.data?.metadata && typeof event.data.metadata === 'object'
+        ? event.data.metadata
+        : {};
+      const evidenceChain = normalizeEvidenceChain(
+        event.data?.evidence_chain
+          || metadata.evidence_chain
+          || []
+      );
+
       // Add agent message
       messages.value.push({
         id: Date.now() + Math.random(),
@@ -1539,6 +1559,9 @@ const handleWebSocketMessage = (data) => {
         recipient: event.data?.recipient || 'ALL',
         content: event.message,
         message_type: event.data?.message_type || 'broadcast',
+        task_brief: String(event.data?.task_brief || metadata.task_brief || '').trim(),
+        evidence_chain: evidenceChain,
+        evidence_packet: normalizeEvidencePacket(metadata.evidence_packet || {}),
         timestamp: event.timestamp || new Date().toISOString()
       });
       maybeAutoScrollOnIncoming();
@@ -2096,13 +2119,27 @@ const collapseToolResults = (content) => {
     const bgColor = isError ? 'bg-amber-500/5' : 'bg-cyan-500/5';
     
     let formattedBody = '';
-    let summaryText = 'Click to view details';
+    let summaryText = locale.value.startsWith('zh') ? '已完成工具调用，关键信息已提取' : 'Tool call finished with key findings extracted';
     let isSearchResults = toolName.toLowerCase().includes('search');
 
     try {
-      // Default raw dump
-      formattedBody = `<div class="whitespace-pre-wrap text-xs text-white/70 font-mono break-all">${rawContent}</div>`;
-      summaryText = rawContent.length > 50 ? rawContent.substring(0, 50).replace(/\n/g, ' ') + '...' : rawContent.replace(/\n/g, ' ');
+      const plainText = String(rawContent || '')
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (isError) {
+        const readableError = plainText
+          .replace(/[{}[\]"]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 220);
+        formattedBody = `<div class="rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-100">${readableError || (locale.value.startsWith('zh') ? '工具调用失败，建议稍后重试。' : 'Tool call failed. Please retry later.')}</div>`;
+        summaryText = locale.value.startsWith('zh') ? '调用失败（已隐藏技术细节）' : 'Call failed (technical details hidden)';
+      } else {
+        formattedBody = `<div class="rounded-lg border border-cyan-500/20 bg-cyan-500/8 px-3 py-2 text-xs text-cyan-100">${locale.value.startsWith('zh') ? '本次工具调用已完成，系统已自动提取关键证据点并展示在证据链卡片中。' : 'This tool call completed. Key evidence has been extracted and shown in the evidence cards.'}</div>`;
+      }
 
       // --- Search Result Parsing Strategies ---
       if (isSearchResults) {
@@ -2269,6 +2306,65 @@ const getMessageTypeLabel = (type) => {
         challenge: 'Challenge'
       };
   return labels[type] || type;
+};
+
+const normalizeEvidenceChain = (rawChain, maxItems = 24) => {
+  if (!Array.isArray(rawChain)) return [];
+  return rawChain
+    .filter((item) => item && typeof item === 'object')
+    .slice(-maxItems)
+    .map((item, idx) => ({
+      kind: String(item.kind || 'tool_call'),
+      step: Number(item.step || idx + 1),
+      tool: String(item.tool || ''),
+      purpose: String(item.purpose || ''),
+      status: String(item.status || ''),
+      params: item.params && typeof item.params === 'object' ? item.params : {},
+      duration_ms: Number(item.duration_ms || 0),
+      output_preview: String(item.output_preview || ''),
+      sources: Array.isArray(item.sources) ? item.sources.map((url) => String(url || '').trim()).filter(Boolean).slice(0, 10) : [],
+      numeric_outputs: Array.isArray(item.numeric_outputs) ? item.numeric_outputs.map((num) => String(num || '').trim()).filter(Boolean).slice(0, 10) : [],
+      error: String(item.error || ''),
+      timestamp: item.timestamp || null,
+    }));
+};
+
+const normalizeEvidencePacket = (rawPacket) => {
+  if (!rawPacket || typeof rawPacket !== 'object') return {};
+  const keyPoints = Array.isArray(rawPacket.key_points) ? rawPacket.key_points : [];
+  const risks = Array.isArray(rawPacket.risks) ? rawPacket.risks : [];
+  return {
+    summary: String(rawPacket.summary || ''),
+    key_points: keyPoints.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 6),
+    risks: risks.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 5),
+    confidence: rawPacket.confidence ?? null,
+  };
+};
+
+const hasEvidencePacketContent = (packet) => {
+  if (!packet || typeof packet !== 'object') return false;
+  if (String(packet.summary || '').trim()) return true;
+  if (Array.isArray(packet.key_points) && packet.key_points.length > 0) return true;
+  if (Array.isArray(packet.risks) && packet.risks.length > 0) return true;
+  if (packet.confidence !== null && packet.confidence !== undefined && String(packet.confidence).trim() !== '') return true;
+  return false;
+};
+
+const getMessageEvidenceChain = (message) => {
+  return normalizeEvidenceChain(message?.evidenceChain || message?.evidence_chain);
+};
+
+const getMessageEvidencePacket = (message) => {
+  const packet = normalizeEvidencePacket(message?.evidencePacket || message?.evidence_packet);
+  return hasEvidencePacketContent(packet) ? packet : {};
+};
+
+const hasMessageEvidence = (message) => {
+  const chain = getMessageEvidenceChain(message);
+  const packet = getMessageEvidencePacket(message);
+  if (chain.length > 0) return true;
+  if (hasEvidencePacketContent(packet)) return true;
+  return false;
 };
 
 const interactionMetaCache = new Map();

@@ -367,6 +367,8 @@ class Meeting:
         if self.agent_event_bus:
             # 推送消息事件到前端
             from ..agent_event_bus import AgentEvent, AgentEventType
+            metadata = message.metadata if isinstance(message.metadata, dict) else {}
+            evidence_chain = metadata.get("evidence_chain") if isinstance(metadata.get("evidence_chain"), list) else []
             await self.agent_event_bus.publish(
                 AgentEvent(
                     agent_name=message.sender,
@@ -377,6 +379,10 @@ class Meeting:
                         "message_type": message.message_type,
                         "timestamp": message.timestamp,
                         "message_id": message.message_id,
+                        "task_brief": str(metadata.get("task_brief") or ""),
+                        "metadata": metadata,
+                        "evidence_chain": evidence_chain,
+                        "evidence_summary": metadata.get("evidence_summary"),
                     }
                 )
             )

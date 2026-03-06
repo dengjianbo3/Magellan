@@ -41,7 +41,7 @@
                 v-model.trim="sessionSearchQuery"
                 type="text"
                 :placeholder="t('common.search') || 'Search...'"
-                class="control-input h-10 w-full rounded-xl pl-9 pr-9 text-sm"
+                class="control-input h-10 w-full rounded-xl !pl-11 !pr-9 text-sm"
               />
               <span class="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-text-secondary">search</span>
             </div>
@@ -109,7 +109,7 @@
               v-model.trim="sessionSearchQuery"
               type="text"
               :placeholder="t('common.search') || 'Search...'"
-              class="control-input h-10 w-full rounded-xl pl-9 pr-9 text-sm"
+              class="control-input h-10 w-full rounded-xl !pl-11 !pr-9 text-sm"
             />
             <span class="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-text-secondary">search</span>
             <button
@@ -231,7 +231,7 @@
           :class="useAppImmersiveLayout ? 'px-1.5 py-1.5' : ''"
           @scroll.passive="handleMessagesScroll"
         >
-          <div class="mx-auto w-full max-w-[1240px] space-y-3 md:space-y-4">
+          <div class="mx-auto w-full space-y-3 md:space-y-4" :class="mainContentWidthClass">
             <div v-if="messages.length === 0" class="flex min-h-full items-center justify-center py-14 md:py-12">
               <div class="w-full max-w-2xl text-center">
                 <p class="text-2xl font-semibold tracking-tight text-white md:text-4xl">{{ t('chatHub.emptyState.title') }}</p>
@@ -302,6 +302,14 @@
                   <p v-else class="whitespace-pre-wrap break-words text-sm leading-relaxed">
                     {{ msg.content }}
                   </p>
+
+                  <InlineEvidenceChain
+                    v-if="msg.role === 'assistant' && hasMessageEvidence(msg)"
+                    :chain="getMessageEvidenceChain(msg)"
+                    :packet="getMessageEvidencePacket(msg)"
+                    :task-brief="String(msg.taskBrief || msg.task_brief || '')"
+                    :locale-tag="languageTag()"
+                  />
 
                   <div v-if="msg.role === 'user' && msg.attachments && msg.attachments.length" class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
                     <div
@@ -398,7 +406,7 @@
           class="relative shrink-0 px-2 md:px-5 md:pb-4 md:pt-2"
           :class="useAppImmersiveLayout ? 'pb-[calc(env(safe-area-inset-bottom,0px)+0.06rem)] pt-0' : 'pb-[calc(env(safe-area-inset-bottom,0px)+0.45rem)] pt-1'"
         >
-          <div class="mx-auto w-full max-w-[1240px]">
+          <div class="mx-auto w-full" :class="mainContentWidthClass">
             <div v-if="selectedAttachments.length" class="mb-3 flex flex-wrap gap-2">
               <div
                 v-for="att in selectedAttachments"
@@ -572,6 +580,7 @@
             </div>
           </div>
         </div>
+
       </section>
     </div>
   </div>
@@ -585,6 +594,7 @@ import { useI18n } from '@/i18n';
 import { wsUrl } from '@/config/api';
 import { appendTokenToUrl, getAccessToken } from '@/services/authHeaders';
 import { useAuthStore } from '@/stores/auth';
+import InlineEvidenceChain from '@/components/common/InlineEvidenceChain.vue';
 
 marked.setOptions({
   gfm: true,
@@ -872,6 +882,7 @@ const researchEvidenceLabel = computed(() => {
     ? `证据 ${evidenceCount} · 来源 ${sourceCount}`
     : `Evidence ${evidenceCount} · Sources ${sourceCount}`;
 });
+const mainContentWidthClass = computed(() => 'max-w-[1240px]');
 
 function languageTag() {
   return String(locale.value || 'zh-CN').startsWith('zh') ? 'zh-CN' : 'en-US';
@@ -1002,6 +1013,48 @@ function normalizeResearchStatus(status) {
   };
 }
 
+function normalizeEvidenceChain(rawChain, maxItems = 24) {
+  if (!Array.isArray(rawChain)) return [];
+  return rawChain
+    .filter((item) => item && typeof item === 'object')
+    .slice(-maxItems)
+    .map((item, idx) => ({
+      kind: String(item.kind || 'tool_call'),
+      step: Number(item.step || idx + 1),
+      tool: String(item.tool || ''),
+      purpose: String(item.purpose || ''),
+      status: String(item.status || ''),
+      params: item.params && typeof item.params === 'object' ? item.params : {},
+      duration_ms: Number(item.duration_ms || 0),
+      output_preview: String(item.output_preview || ''),
+      sources: Array.isArray(item.sources) ? item.sources.map((url) => String(url || '').trim()).filter(Boolean).slice(0, 10) : [],
+      numeric_outputs: Array.isArray(item.numeric_outputs) ? item.numeric_outputs.map((num) => String(num || '').trim()).filter(Boolean).slice(0, 10) : [],
+      error: String(item.error || ''),
+      timestamp: item.timestamp || null,
+    }));
+}
+
+function normalizeEvidencePacket(rawPacket) {
+  if (!rawPacket || typeof rawPacket !== 'object') return {};
+  const keyPoints = Array.isArray(rawPacket.key_points) ? rawPacket.key_points : [];
+  const risks = Array.isArray(rawPacket.risks) ? rawPacket.risks : [];
+  return {
+    summary: String(rawPacket.summary || ''),
+    key_points: keyPoints.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 6),
+    risks: risks.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 5),
+    confidence: rawPacket.confidence ?? null,
+  };
+}
+
+function hasEvidencePacketContent(packet) {
+  if (!packet || typeof packet !== 'object') return false;
+  if (String(packet.summary || '').trim()) return true;
+  if (Array.isArray(packet.key_points) && packet.key_points.length > 0) return true;
+  if (Array.isArray(packet.risks) && packet.risks.length > 0) return true;
+  if (packet.confidence !== null && packet.confidence !== undefined && String(packet.confidence).trim() !== '') return true;
+  return false;
+}
+
 function buildSessionPreview(sessionMessages) {
   const reversed = [...sessionMessages].reverse();
   const found = reversed.find((msg) => msg.role === 'assistant' || msg.role === 'user');
@@ -1015,22 +1068,29 @@ function buildSessionTitle(sessionMessages) {
 }
 
 function serializeMessages(sessionMessages) {
-  return sanitizeMessages(sessionMessages).slice(-MAX_SESSION_MESSAGES).map((msg) => ({
-    id: msg.id || makeId('msg'),
-    type: msg.type || 'message',
-    role: msg.role || 'user',
-    speaker: msg.speaker || '',
-    content: String(msg.content || ''),
-    timestamp: msg.timestamp || nowIso(),
-    level: msg.level || undefined,
-    agent_id: msg.agentId || msg.agent_id || undefined,
-    attachments: (msg.attachments || []).map((att) => ({
-      id: att.id || makeId('att'),
-      name: att.name || 'image',
-      mimeType: att.mimeType || att.mime_type || '',
-      size: Number(att.size || 0),
-    })),
-  }));
+  return sanitizeMessages(sessionMessages).slice(-MAX_SESSION_MESSAGES).map((msg) => {
+    const evidenceChain = normalizeEvidenceChain(msg.evidenceChain || msg.evidence_chain);
+    const evidencePacket = normalizeEvidencePacket(msg.evidencePacket || msg.evidence_packet);
+    return {
+      id: msg.id || makeId('msg'),
+      type: msg.type || 'message',
+      role: msg.role || 'user',
+      speaker: msg.speaker || '',
+      content: String(msg.content || ''),
+      timestamp: msg.timestamp || nowIso(),
+      level: msg.level || undefined,
+      agent_id: msg.agentId || msg.agent_id || undefined,
+      task_brief: String(msg.taskBrief || msg.task_brief || '').trim() || undefined,
+      evidence_chain: evidenceChain,
+      evidence_packet: hasEvidencePacketContent(evidencePacket) ? evidencePacket : undefined,
+      attachments: (msg.attachments || []).map((att) => ({
+        id: att.id || makeId('att'),
+        name: att.name || 'image',
+        mimeType: att.mimeType || att.mime_type || '',
+        size: Number(att.size || 0),
+      })),
+    };
+  });
 }
 
 function persistSessions() {
@@ -1281,6 +1341,13 @@ function buildResumeHistory() {
       content: String(msg.content || ''),
       timestamp: msg.timestamp || nowIso(),
       agent_id: msg.agentId || msg.agent_id || undefined,
+      mode: msg.mode || undefined,
+      task_brief: String(msg.taskBrief || msg.task_brief || '').trim() || undefined,
+      evidence_chain: normalizeEvidenceChain(msg.evidenceChain || msg.evidence_chain),
+      evidence_packet: (() => {
+        const packet = normalizeEvidencePacket(msg.evidencePacket || msg.evidence_packet);
+        return hasEvidencePacketContent(packet) ? packet : undefined;
+      })(),
     }));
 }
 
@@ -1313,7 +1380,9 @@ function addUserMessage(content, attachments = []) {
   scrollToBottom(true);
 }
 
-function addAssistantMessage(agentId, agentName, content) {
+function addAssistantMessage(agentId, agentName, content, options = {}) {
+  const evidenceChain = normalizeEvidenceChain(options.evidence_chain);
+  const evidencePacket = normalizeEvidencePacket(options.evidence_packet);
   messages.value.push({
     id: makeId('agent'),
     type: 'message',
@@ -1321,6 +1390,10 @@ function addAssistantMessage(agentId, agentName, content) {
     agentId,
     speaker: agentName || agentId,
     content,
+    mode: options.mode || 'leader',
+    taskBrief: String(options.task_brief || '').trim(),
+    evidenceChain,
+    evidencePacket,
     timestamp: nowIso(),
   });
   turnGotAssistantMessage.value = true;
@@ -1356,6 +1429,25 @@ function setThinking(agentId, isThinking) {
 function clearThinking() {
   thinkingAgentIds.value = [];
   turnCurrentThinkingAgentId.value = '';
+}
+
+function getMessageEvidenceChain(msg) {
+  return normalizeEvidenceChain(msg?.evidenceChain || msg?.evidence_chain);
+}
+
+function getMessageEvidencePacket(msg) {
+  const packet = normalizeEvidencePacket(msg?.evidencePacket || msg?.evidence_packet);
+  return hasEvidencePacketContent(packet) ? packet : {};
+}
+
+function hasMessageEvidence(msg) {
+  const chain = getMessageEvidenceChain(msg);
+  const packet = getMessageEvidencePacket(msg);
+  if (chain.length > 0) return true;
+  if (String(packet.summary || '').trim()) return true;
+  if (Array.isArray(packet.key_points) && packet.key_points.length > 0) return true;
+  if (Array.isArray(packet.risks) && packet.risks.length > 0) return true;
+  return false;
 }
 
 function parseIncoming(event) {
@@ -1633,7 +1725,12 @@ function handleServerMessage(event) {
 
     case 'agent_message':
       setThinking(data.agent_id, false);
-      addAssistantMessage(data.agent_id, data.agent_name, data.content || '');
+      addAssistantMessage(data.agent_id, data.agent_name, data.content || '', {
+        mode: data.mode || 'leader',
+        task_brief: data.task_brief || '',
+        evidence_chain: data.evidence_chain || [],
+        evidence_packet: data.evidence_packet || {},
+      });
       break;
 
     case 'error':

@@ -140,6 +140,9 @@ EXPERT_CHAT_AUDIT_REPORT_HISTORY_LIMIT = max(
 EXPERT_CHAT_AUDIT_REPORT_PERSIST_INTERVAL_SECONDS = max(
     1, int(os.getenv("EXPERT_CHAT_AUDIT_REPORT_PERSIST_INTERVAL_SECONDS", "2"))
 )
+EXPERT_CHAT_EVIDENCE_MAX_ITEMS = max(
+    1, int(os.getenv("EXPERT_CHAT_EVIDENCE_MAX_ITEMS", "24"))
+)
 
 # In-memory chat sessions (PoC scope)
 active_chat_sessions: Dict[str, Dict[str, Any]] = {}
@@ -713,6 +716,40 @@ def _display_agent_name(agent_id: str, language: str) -> str:
     return profile.get("name_en", agent_id)
 
 
+def _build_expert_chat_task_brief(
+    agent_id: str,
+    language: str,
+    user_message: str,
+    mode: str,
+) -> str:
+    profile = EXPERT_CHAT_AGENT_PROFILES.get(agent_id, {})
+    role = profile.get("role_zh") if _is_zh(language) else profile.get("role_en")
+    role = str(role or agent_id).strip()
+    topic = re.sub(r"@([^\s@,，。:：;；!?？]+)", "", str(user_message or ""))
+    topic = compact_text(" ".join(topic.split()), max_chars=120)
+
+    if _is_zh(language):
+        if mode == "leader_summarize":
+            return "整合各专家观点与证据，给出最终结论与风险提示。"
+        if mode == "delegated":
+            return f"受 Leader 委派，从“{role}”视角分析问题并给出判断：{topic}"
+        if mode == "direct_specialist":
+            return f"用户点名咨询，请从“{role}”视角直接回答：{topic}"
+        if mode == "leader_router":
+            return "Leader 直接回答用户问题，给出可执行建议。"
+        return f"围绕用户问题进行分析并输出结论：{topic}"
+
+    if mode == "leader_summarize":
+        return "Synthesize specialist viewpoints and evidence into a final conclusion with risks."
+    if mode == "delegated":
+        return f"Delegated by Leader: analyze from the {role} perspective and answer: {topic}"
+    if mode == "direct_specialist":
+        return f"User directly asked this specialist. Answer from the {role} perspective: {topic}"
+    if mode == "leader_router":
+        return "Leader directly answers the user with an actionable conclusion."
+    return f"Analyze the user's request and provide a conclusion: {topic}"
+
+
 def _build_expert_chat_agents(language: str) -> List[Dict[str, str]]:
     agents: List[Dict[str, str]] = []
     for agent_id, profile in EXPERT_CHAT_AGENT_PROFILES.items():
@@ -1120,7 +1157,85 @@ def _build_agent_task_prompt(
     return prompt
 
 
-async def _run_expert_chat_agent_once(agent: Any, prompt: str) -> str:
+def _sanitize_evidence_chain(
+    raw_chain: Any,
+    max_items: int = EXPERT_CHAT_EVIDENCE_MAX_ITEMS,
+) -> List[Dict[str, Any]]:
+    if not isinstance(raw_chain, list):
+        return []
+    out: List[Dict[str, Any]] = []
+    for entry in raw_chain[-max_items:]:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            duration_ms = int(float(entry.get("duration_ms") or 0))
+        except Exception:
+            duration_ms = 0
+        params_raw = entry.get("params")
+        safe_params: Dict[str, Any] = {}
+        if isinstance(params_raw, dict):
+            for key, value in list(params_raw.items())[:12]:
+                k = str(key)[:80]
+                if isinstance(value, (dict, list)):
+                    try:
+                        v = json.dumps(value, ensure_ascii=False, default=str)[:600]
+                    except Exception:
+                        v = str(value)[:600]
+                else:
+                    v = str(value)[:300]
+                safe_params[k] = v
+
+        sources = [
+            str(url).strip()[:600]
+            for url in (entry.get("sources") if isinstance(entry.get("sources"), list) else [])
+            if str(url).strip()
+        ][:10]
+        numeric_outputs = [
+            compact_text(str(item), max_chars=180)
+            for item in (entry.get("numeric_outputs") if isinstance(entry.get("numeric_outputs"), list) else [])
+            if str(item).strip()
+        ][:10]
+        out.append(
+            {
+                "kind": str(entry.get("kind") or "tool_call"),
+                "step": int(entry.get("step") or 0),
+                "tool": str(entry.get("tool") or "")[:120],
+                "purpose": compact_text(str(entry.get("purpose") or ""), max_chars=260),
+                "status": str(entry.get("status") or "unknown")[:24],
+                "params": safe_params,
+                "duration_ms": max(0, duration_ms),
+                "output_preview": compact_text(str(entry.get("output_preview") or ""), max_chars=2200),
+                "sources": sources,
+                "numeric_outputs": numeric_outputs,
+                "error": compact_text(str(entry.get("error") or ""), max_chars=320),
+                "timestamp": entry.get("timestamp"),
+            }
+        )
+    return out[-max_items:]
+
+
+def _sanitize_evidence_packet(raw_packet: Any) -> Dict[str, Any]:
+    if not isinstance(raw_packet, dict):
+        return {}
+    key_points = raw_packet.get("key_points") if isinstance(raw_packet.get("key_points"), list) else []
+    risks = raw_packet.get("risks") if isinstance(raw_packet.get("risks"), list) else []
+    packet = {
+        "summary": compact_text(str(raw_packet.get("summary") or ""), max_chars=320),
+        "key_points": [compact_text(str(item), max_chars=180) for item in key_points[:6] if str(item).strip()],
+        "risks": [compact_text(str(item), max_chars=180) for item in risks[:5] if str(item).strip()],
+        "confidence": raw_packet.get("confidence"),
+    }
+    if (
+        not packet["summary"]
+        and not packet["key_points"]
+        and not packet["risks"]
+        and packet["confidence"] in {None, ""}
+    ):
+        return {}
+    return packet
+
+
+async def _run_expert_chat_agent_once(agent: Any, prompt: str) -> Dict[str, Any]:
     from .core.roundtable.message import Message, MessageType
     from .core.roundtable.message_bus import MessageBus
 
@@ -1146,7 +1261,23 @@ async def _run_expert_chat_agent_once(agent: Any, prompt: str) -> str:
         for item in (outputs or [])
         if getattr(item, "content", None)
     ]
-    return "\n\n".join([part for part in text_parts if part]).strip()
+    evidence_chain: List[Dict[str, Any]] = []
+    for item in (outputs or []):
+        metadata = getattr(item, "metadata", None)
+        if not isinstance(metadata, dict):
+            continue
+        evidence_chain.extend(_sanitize_evidence_chain(metadata.get("evidence_chain")))
+
+    if not evidence_chain and hasattr(agent, "get_last_evidence_chain"):
+        try:
+            evidence_chain = _sanitize_evidence_chain(agent.get_last_evidence_chain())
+        except Exception:
+            evidence_chain = []
+
+    return {
+        "content": "\n\n".join([part for part in text_parts if part]).strip(),
+        "evidence_chain": _sanitize_evidence_chain(evidence_chain),
+    }
 
 
 def _sanitize_resume_history(raw_history: Any) -> List[Dict[str, Any]]:
@@ -1173,9 +1304,21 @@ def _sanitize_resume_history(raw_history: Any) -> List[Dict[str, Any]]:
         }
         if role == "assistant":
             msg["agent_id"] = str(item.get("agent_id") or "").strip()[:80]
+            mode = str(item.get("mode") or "").strip()
+            if mode:
+                msg["mode"] = mode[:32]
+            task_brief = compact_text(str(item.get("task_brief") or ""), max_chars=260)
+            if task_brief:
+                msg["task_brief"] = task_brief
             summary = str(item.get("content_summary") or "").strip()
             if summary:
                 msg["content_summary"] = summary[:400]
+            chain = _sanitize_evidence_chain(item.get("evidence_chain"))
+            if chain:
+                msg["evidence_chain"] = chain
+            packet = _sanitize_evidence_packet(item.get("evidence_packet"))
+            if packet.get("summary") or packet.get("key_points") or packet.get("risks"):
+                msg["evidence_packet"] = packet
         cleaned.append(msg)
     return cleaned
 
@@ -1502,7 +1645,8 @@ async def _ask_specialist(
         shared_evidence_context=shared_evidence_context,
         delegated_by_leader=delegated_by_leader,
     )
-    raw_answer = await _run_expert_chat_agent_once(specialist_agent, prompt)
+    specialist_result = await _run_expert_chat_agent_once(specialist_agent, prompt)
+    raw_answer = str(specialist_result.get("content") or "").strip()
     if not raw_answer:
         raise RuntimeError(f"ExpertChat specialist agent returned empty output: {agent_id}")
     parsed = extract_specialist_response(
@@ -1535,7 +1679,8 @@ async def _ask_specialist(
     return {
         "content": answer,
         "summary": str(parsed.get("summary") or "")[:320],
-        "evidence_packet": parsed.get("evidence_packet") or {},
+        "evidence_packet": _sanitize_evidence_packet(parsed.get("evidence_packet") or {}),
+        "evidence_chain": _sanitize_evidence_chain(specialist_result.get("evidence_chain")),
     }
 
 
@@ -1550,7 +1695,7 @@ async def _leader_direct_reply(
     attachments: Optional[List[Dict[str, Any]]] = None,
     attachment_context: str = "",
     session_agents: Optional[Dict[str, Any]] = None,
-) -> str:
+) -> Dict[str, Any]:
     attachment_note = _attachments_summary(attachments or [], language)
     leader_agent = (session_agents or {}).get("leader")
     if leader_agent is None:
@@ -1574,7 +1719,8 @@ async def _leader_direct_reply(
         memory_context=memory_context,
         delegated_by_leader=False,
     )
-    answer = await _run_expert_chat_agent_once(leader_agent, prompt)
+    leader_result = await _run_expert_chat_agent_once(leader_agent, prompt)
+    answer = str(leader_result.get("content") or "").strip()
     if not answer:
         raise RuntimeError("ExpertChat leader agent returned empty output")
     if EXPERT_CHAT_MEMORY_ASYNC_WRITE:
@@ -1595,7 +1741,10 @@ async def _leader_direct_reply(
             answer=answer,
             delegated_by_leader=False,
         )
-    return answer
+    return {
+        "content": answer,
+        "evidence_chain": _sanitize_evidence_chain(leader_result.get("evidence_chain")),
+    }
 
 
 async def _leader_summarize_with_specialists(
@@ -1608,7 +1757,7 @@ async def _leader_summarize_with_specialists(
     attachments: Optional[List[Dict[str, Any]]] = None,
     attachment_context: str = "",
     session_agents: Optional[Dict[str, Any]] = None,
-) -> str:
+) -> Dict[str, Any]:
     attachment_note = _attachments_summary(attachments or [], language)
     leader_agent = (session_agents or {}).get("leader")
     if leader_agent is None:
@@ -1633,7 +1782,8 @@ async def _leader_summarize_with_specialists(
         delegated_by_leader=False,
         specialist_outputs=specialist_outputs,
     )
-    answer = await _run_expert_chat_agent_once(leader_agent, prompt)
+    leader_result = await _run_expert_chat_agent_once(leader_agent, prompt)
+    answer = str(leader_result.get("content") or "").strip()
     if not answer:
         raise RuntimeError("ExpertChat leader summarize returned empty output")
     if EXPERT_CHAT_MEMORY_ASYNC_WRITE:
@@ -1654,7 +1804,10 @@ async def _leader_summarize_with_specialists(
             answer=answer,
             delegated_by_leader=False,
         )
-    return answer
+    return {
+        "content": answer,
+        "evidence_chain": _sanitize_evidence_chain(leader_result.get("evidence_chain")),
+    }
 
 # --- WebSocket Workflow ---
 @app.websocket("/ws/start_analysis")
@@ -2827,7 +2980,6 @@ async def websocket_roundtable_endpoint(websocket: WebSocket):
                 ("接下来.*会怎么", "短期走势"),
             ]
 
-            import re
             unpredictability_warning = None
             for pattern, category in unpredictable_patterns:
                 if re.search(pattern, topic):
@@ -3361,6 +3513,9 @@ def _build_expert_chat_report_payload(
                 "content": compact_text(str(item.get("content") or ""), max_chars=600),
                 "timestamp": item.get("timestamp"),
                 "mode": item.get("mode"),
+                "task_brief": compact_text(str(item.get("task_brief") or ""), max_chars=220),
+                "evidence_chain": _sanitize_evidence_chain(item.get("evidence_chain")),
+                "evidence_packet": _sanitize_evidence_packet(item.get("evidence_packet")),
             }
         )
 
@@ -3599,6 +3754,9 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                     "agent_name": item.get("speaker") or _display_agent_name(agent_id, language),
                     "content": str(item.get("content") or ""),
                     "mode": str(item.get("mode") or "leader"),
+                    "task_brief": compact_text(str(item.get("task_brief") or ""), max_chars=260),
+                    "evidence_chain": _sanitize_evidence_chain(item.get("evidence_chain")),
+                    "evidence_packet": _sanitize_evidence_packet(item.get("evidence_packet")),
                 }
             )
 
@@ -3864,8 +4022,15 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                         )
 
                         evidence_packet: Dict[str, Any] = {}
+                        evidence_chain: List[Dict[str, Any]] = []
+                        task_brief = _build_expert_chat_task_brief(
+                            agent_id=agent_id,
+                            language=language,
+                            user_message=effective_content,
+                            mode="leader_router" if agent_id == "leader" else "direct_specialist",
+                        )
                         if agent_id == "leader":
-                            response_text = await _leader_direct_reply(
+                            leader_direct = await _leader_direct_reply(
                                 user_message=effective_content,
                                 history=history,
                                 language=language,
@@ -3877,6 +4042,8 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 attachment_context=attachment_context,
                                 session_agents=session_agents,
                             )
+                            response_text = str(leader_direct.get("content") or "").strip()
+                            evidence_chain = _sanitize_evidence_chain(leader_direct.get("evidence_chain"))
                             response_summary = compact_text(
                                 response_text.replace("\n", " "),
                                 max_chars=280,
@@ -3899,7 +4066,8 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                             )
                             response_text = str(specialist_result.get("content", "")).strip()
                             response_summary = str(specialist_result.get("summary", "")).strip()[:320]
-                            evidence_packet = specialist_result.get("evidence_packet") or {}
+                            evidence_packet = _sanitize_evidence_packet(specialist_result.get("evidence_packet"))
+                            evidence_chain = _sanitize_evidence_chain(specialist_result.get("evidence_chain"))
                             if isinstance(evidence_packet, dict) and evidence_packet.get("summary"):
                                 shared_evidence_board.append(evidence_packet)
                                 if len(shared_evidence_board) > 24:
@@ -3914,6 +4082,9 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 "content_summary": response_summary,
                                 "timestamp": datetime.utcnow().isoformat(),
                                 "mode": "direct",
+                                "task_brief": task_brief,
+                                "evidence_chain": evidence_chain,
+                                "evidence_packet": evidence_packet,
                             }
                         )
                         _append_expert_chat_audit_entry(
@@ -3934,6 +4105,9 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 "agent_name": agent_name,
                                 "content": response_text,
                                 "mode": "direct",
+                                "task_brief": task_brief,
+                                "evidence_chain": evidence_chain,
+                                "evidence_packet": evidence_packet,
                             }
                         )
                         await _publish_research_status(session_state, persist_artifact=True)
@@ -4082,8 +4256,15 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                         f"Specialist '{sid}' execution failed: {result}"
                                     ) from result
                                 specialist_name = _display_agent_name(sid, language)
+                                task_brief = _build_expert_chat_task_brief(
+                                    agent_id=sid,
+                                    language=language,
+                                    user_message=effective_content,
+                                    mode="delegated",
+                                )
                                 output = str(result.get("content", "")).strip()
                                 output_summary = str(result.get("summary", "")).strip()[:320]
+                                evidence_chain = _sanitize_evidence_chain(result.get("evidence_chain"))
                                 specialist_outputs.append(
                                     {
                                         "agent_id": sid,
@@ -4091,7 +4272,7 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                         "content": compact_text(output, max_chars=1400),
                                     }
                                 )
-                                evidence_packet = result.get("evidence_packet") or {}
+                                evidence_packet = _sanitize_evidence_packet(result.get("evidence_packet"))
                                 if isinstance(evidence_packet, dict) and evidence_packet.get("summary"):
                                     shared_evidence_board.append(evidence_packet)
                                     if len(shared_evidence_board) > 24:
@@ -4105,6 +4286,9 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                         "content_summary": output_summary,
                                         "timestamp": datetime.utcnow().isoformat(),
                                         "mode": "delegated",
+                                        "task_brief": task_brief,
+                                        "evidence_chain": evidence_chain,
+                                        "evidence_packet": evidence_packet,
                                     }
                                 )
                                 _append_expert_chat_audit_entry(
@@ -4127,6 +4311,9 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                         "mode": "delegated",
                                         "stage_index": stage_index,
                                         "stage_total": len(execution_stages),
+                                        "task_brief": task_brief,
+                                        "evidence_chain": evidence_chain,
+                                        "evidence_packet": evidence_packet,
                                     }
                                 )
                                 await _publish_research_status(session_state, persist_artifact=True)
@@ -4161,8 +4348,15 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                             }
                         )
 
+                        leader_evidence_chain: List[Dict[str, Any]] = []
+                        leader_task_brief = _build_expert_chat_task_brief(
+                            agent_id="leader",
+                            language=language,
+                            user_message=effective_content,
+                            mode="leader_summarize" if specialist_outputs else ("leader_router" if planned_leader_reply else "leader_router"),
+                        )
                         if specialist_outputs:
-                            leader_response = await _leader_summarize_with_specialists(
+                            leader_followup = await _leader_summarize_with_specialists(
                                 user_message=effective_content,
                                 specialist_outputs=specialist_outputs,
                                 history=history,
@@ -4173,10 +4367,12 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 attachment_context=attachment_context,
                                 session_agents=session_agents,
                             )
+                            leader_response = str(leader_followup.get("content") or "").strip()
+                            leader_evidence_chain = _sanitize_evidence_chain(leader_followup.get("evidence_chain"))
                         elif planned_leader_reply:
                             leader_response = planned_leader_reply
                         else:
-                            leader_response = await _leader_direct_reply(
+                            leader_direct = await _leader_direct_reply(
                                 user_message=effective_content,
                                 history=history,
                                 language=language,
@@ -4188,6 +4384,8 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 attachment_context=attachment_context,
                                 session_agents=session_agents,
                             )
+                            leader_response = str(leader_direct.get("content") or "").strip()
+                            leader_evidence_chain = _sanitize_evidence_chain(leader_direct.get("evidence_chain"))
 
                         history.append(
                             {
@@ -4198,6 +4396,9 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 "content_summary": compact_text(leader_response.replace("\n", " "), max_chars=280),
                                 "timestamp": datetime.utcnow().isoformat(),
                                 "mode": "leader",
+                                "task_brief": leader_task_brief,
+                                "evidence_chain": leader_evidence_chain,
+                                "evidence_packet": {},
                             }
                         )
                         _append_expert_chat_audit_entry(
@@ -4218,6 +4419,9 @@ async def websocket_expert_chat_endpoint(websocket: WebSocket):
                                 "agent_name": leader_name,
                                 "content": leader_response,
                                 "mode": "leader",
+                                "task_brief": leader_task_brief,
+                                "evidence_chain": leader_evidence_chain,
+                                "evidence_packet": {},
                             }
                         )
                         await _publish_research_status(session_state, persist_artifact=True)

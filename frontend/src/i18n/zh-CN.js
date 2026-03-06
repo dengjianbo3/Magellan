@@ -208,6 +208,20 @@ export default {
         error: '异常'
       }
     },
+    evidence: {
+      title: '证据账本',
+      subtitle: '可点击来源与数值证据，便于快速核验',
+      show: '显示证据',
+      hide: '隐藏证据',
+      close: '关闭证据面板',
+      source: '来源',
+      domain: '域名',
+      numeric: '数值',
+      sourceList: '来源链接',
+      numericList: '数值证据',
+      emptySources: '暂无来源链接',
+      emptyNumeric: '暂无数值证据'
+    },
     system: {
       connected: '已连接专家群聊',
       disconnected: '已断开专家群聊',
@@ -1249,6 +1263,20 @@ export default {
     summary: {
       title: '讨论总结',
       completed: '头脑风暴已完成'
+    },
+    evidence: {
+      title: '证据账本',
+      subtitle: '集中查看可验证来源和数值依据',
+      show: '显示证据',
+      hide: '隐藏证据',
+      close: '关闭证据面板',
+      source: '来源',
+      domain: '域名',
+      numeric: '数值',
+      sourceList: '来源链接',
+      numericList: '数值证据',
+      emptySources: '暂无来源链接',
+      emptyNumeric: '暂无数值证据'
     },
 
     system: {

@@ -190,6 +190,20 @@ export default {
         error: 'Error'
       }
     },
+    evidence: {
+      title: 'Evidence Ledger',
+      subtitle: 'Clickable sources and numeric claims for quick verification',
+      show: 'Show evidence',
+      hide: 'Hide evidence',
+      close: 'Close evidence panel',
+      source: 'Sources',
+      domain: 'Domains',
+      numeric: 'Numbers',
+      sourceList: 'Source links',
+      numericList: 'Numeric evidence',
+      emptySources: 'No source links yet',
+      emptyNumeric: 'No numeric evidence yet'
+    },
     system: {
       connected: 'Connected to expert chat',
       disconnected: 'Disconnected from expert chat',
@@ -1214,6 +1228,20 @@ export default {
     summary: {
       title: 'Discussion Summary',
       completed: 'Brainstorm session completed'
+    },
+    evidence: {
+      title: 'Evidence Ledger',
+      subtitle: 'Unified view of verifiable sources and numeric claims',
+      show: 'Show evidence',
+      hide: 'Hide evidence',
+      close: 'Close evidence panel',
+      source: 'Sources',
+      domain: 'Domains',
+      numeric: 'Numbers',
+      sourceList: 'Source links',
+      numericList: 'Numeric evidence',
+      emptySources: 'No source links yet',
+      emptyNumeric: 'No numeric evidence yet'
     },
 
     system: {
