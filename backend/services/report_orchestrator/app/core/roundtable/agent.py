@@ -16,6 +16,7 @@ from ..model_policy import resolve_model_for_role
 AGENT_MAX_SYSTEM_PROMPT_CHARS = max(1024, int(os.getenv("AGENT_MAX_SYSTEM_PROMPT_CHARS", "6000")))
 AGENT_MAX_HISTORY_MESSAGE_CHARS = max(512, int(os.getenv("AGENT_MAX_HISTORY_MESSAGE_CHARS", "2000")))
 AGENT_MAX_PROMPT_TOTAL_CHARS = max(4096, int(os.getenv("AGENT_MAX_PROMPT_TOTAL_CHARS", "50000")))
+AGENT_EVIDENCE_MAX_ITEMS = max(1, int(os.getenv("AGENT_EVIDENCE_MAX_ITEMS", "24")))
 
 
 class Agent:
@@ -89,6 +90,8 @@ class Agent:
 
         # Agent current state
         self.status = "idle"  # idle, thinking, tool_using, speaking
+        # Raw execution evidence chain for current turn.
+        self._latest_tool_trace: List[Dict[str, Any]] = []
 
     def _resolve_request_model(self) -> Optional[str]:
         """
@@ -144,6 +147,7 @@ class Agent:
 
         # 3. Update status: thinking
         self.status = "thinking"
+        self._latest_tool_trace = []
 
         # 4. Build LLM prompt
         prompt_messages = self._build_llm_prompt()
@@ -158,6 +162,84 @@ class Agent:
         self.status = "idle"
 
         return outgoing_messages
+
+    @staticmethod
+    def _extract_urls(text: str, limit: int = 10) -> List[str]:
+        import re
+        if not text:
+            return []
+        hits = re.findall(r"https?://[^\s<>\]\)\"']+", str(text))
+        out: List[str] = []
+        for raw in hits:
+            url = str(raw).rstrip(".,;:!?)")
+            if url and url not in out:
+                out.append(url)
+            if len(out) >= limit:
+                break
+        return out
+
+    @staticmethod
+    def _extract_numeric_snippets(text: str, limit: int = 10) -> List[str]:
+        import re
+        if not text:
+            return []
+        pattern = re.compile(r"(?:[$€¥£]|USD|CNY|RMB|HKD|BTC|ETH)?\s*[+-]?\d[\d,]*(?:\.\d+)?\s*(?:%|bp|bps|x|倍|万|亿|trillion|billion|million|k|m|bn)?", re.IGNORECASE)
+        out: List[str] = []
+        for line in str(text).splitlines():
+            compact = " ".join(line.strip().split())
+            if not compact:
+                continue
+            if not pattern.search(compact):
+                continue
+            out.append(compact[:220])
+            if len(out) >= limit:
+                break
+        return out
+
+    @staticmethod
+    def _safe_preview(value: Any, max_chars: int = 1800) -> str:
+        import json
+        try:
+            if isinstance(value, (dict, list)):
+                text = json.dumps(value, ensure_ascii=False, default=str)
+            else:
+                text = str(value)
+        except Exception:
+            text = str(value)
+        return text[:max_chars]
+
+    def _append_tool_trace(
+        self,
+        *,
+        tool_name: str,
+        params: Dict[str, Any],
+        status: str,
+        duration_ms: int,
+        output: Any = None,
+        error: str = "",
+    ) -> None:
+        preview = self._safe_preview(output if output is not None else error, max_chars=1800)
+        entry = {
+            "kind": "tool_call",
+            "tool": str(tool_name or ""),
+            "status": str(status or "unknown"),
+            "params": params if isinstance(params, dict) else {},
+            "duration_ms": int(max(0, duration_ms)),
+            "output_preview": preview,
+            "sources": self._extract_urls(preview, limit=8),
+            "numeric_outputs": self._extract_numeric_snippets(preview, limit=8),
+            "error": str(error or ""),
+            "timestamp": time.time(),
+        }
+        self._latest_tool_trace.append(entry)
+        if len(self._latest_tool_trace) > AGENT_EVIDENCE_MAX_ITEMS:
+            self._latest_tool_trace = self._latest_tool_trace[-AGENT_EVIDENCE_MAX_ITEMS:]
+
+    def get_last_evidence_chain(self, limit: int = AGENT_EVIDENCE_MAX_ITEMS) -> List[Dict[str, Any]]:
+        if not self._latest_tool_trace:
+            return []
+        safe_limit = max(1, int(limit or AGENT_EVIDENCE_MAX_ITEMS))
+        return [dict(item) for item in self._latest_tool_trace[-safe_limit:]]
 
     def _build_llm_prompt(self) -> List[Dict[str, str]]:
         """
@@ -577,6 +659,14 @@ After tool execution, you will receive results to continue the discussion.
             # Execute tool
             tool_result = await self.tools[tool_name].execute(**tool_args)
             print(f"[Agent:{self.name}] Tool {tool_name} result: {tool_result}")
+            duration_ms = int((time.perf_counter() - started_at) * 1000)
+            self._append_tool_trace(
+                tool_name=tool_name,
+                params=tool_args if isinstance(tool_args, dict) else {},
+                status="success",
+                duration_ms=duration_ms,
+                output=tool_result,
+            )
             record_tool_call(
                 channel="roundtable_agent",
                 agent=self.name,
@@ -593,6 +683,15 @@ After tool execution, you will receive results to continue the discussion.
 
         except Exception as e:
             print(f"[Agent:{self.name}] Tool execution failed: {e}")
+            duration_ms = int((time.perf_counter() - started_at) * 1000)
+            self._append_tool_trace(
+                tool_name=tool_name,
+                params=tool_args if isinstance(tool_args, dict) else {},
+                status="error",
+                duration_ms=duration_ms,
+                output=None,
+                error=str(e),
+            )
             record_tool_call(
                 channel="roundtable_agent",
                 agent=self.name,
@@ -653,6 +752,14 @@ After tool execution, you will receive results to continue the discussion.
             # Execute tool
             tool_result = await self.tools[tool_name].execute(**params)
             print(f"[Agent:{self.name}] Tool {tool_name} result: {tool_result}")
+            duration_ms = int((time.perf_counter() - started_at) * 1000)
+            self._append_tool_trace(
+                tool_name=tool_name,
+                params=params,
+                status="success",
+                duration_ms=duration_ms,
+                output=tool_result,
+            )
             record_tool_call(
                 channel="roundtable_agent_legacy",
                 agent=self.name,
@@ -669,6 +776,15 @@ After tool execution, you will receive results to continue the discussion.
 
         except Exception as tool_error:
             print(f"[Agent:{self.name}] Tool {tool_name} error: {tool_error}")
+            duration_ms = int((time.perf_counter() - started_at) * 1000)
+            self._append_tool_trace(
+                tool_name=tool_name,
+                params=params if isinstance(params, dict) else {},
+                status="error",
+                duration_ms=duration_ms,
+                output=None,
+                error=str(tool_error),
+            )
             record_tool_call(
                 channel="roundtable_agent_legacy",
                 agent=self.name,

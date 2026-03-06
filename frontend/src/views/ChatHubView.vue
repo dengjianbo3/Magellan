@@ -41,7 +41,7 @@
                 v-model.trim="sessionSearchQuery"
                 type="text"
                 :placeholder="t('common.search') || 'Search...'"
-                class="w-full rounded-xl border border-white/10 bg-white/6 px-9 py-2 text-sm text-text-primary placeholder-text-secondary outline-none transition-colors focus:border-primary/40 focus:bg-white/10"
+                class="control-input h-10 w-full rounded-xl !pl-11 !pr-9 text-sm"
               />
               <span class="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-text-secondary">search</span>
             </div>
@@ -72,12 +72,12 @@
     </transition>
 
     <div
-      class="grid h-full flex-1 min-h-0 grid-cols-1 gap-0 md:gap-2 xl:gap-1"
-      :class="historyCollapsed ? 'xl:grid-cols-[minmax(0,1fr)_96px] xl:grid-rows-1' : 'xl:grid-cols-[minmax(0,1fr)_312px] xl:grid-rows-1'"
+      class="grid h-full flex-1 min-h-0 grid-cols-1 gap-0 md:gap-1 xl:gap-0"
+      :class="historyCollapsed ? 'xl:grid-cols-[minmax(0,1fr)_42px] xl:grid-rows-1' : 'xl:grid-cols-[minmax(0,1fr)_292px] xl:grid-rows-1'"
     >
       <aside
         class="hidden min-h-0 h-full flex-col overflow-hidden xl:col-start-2 xl:row-start-1 xl:flex transition-all duration-200"
-        :class="historyCollapsed ? 'rounded-2xl bg-transparent p-1' : 'rounded-3xl bg-transparent p-3'"
+        :class="historyCollapsed ? 'rounded-2xl bg-transparent p-0' : 'rounded-3xl bg-transparent p-2'"
       >
         <div v-if="!historyCollapsed" class="mb-3 flex items-center justify-between gap-2">
           <h3 class="section-title !mb-0">
@@ -94,12 +94,12 @@
           </div>
         </div>
 
-        <div v-else class="mb-3 flex flex-col items-center gap-2">
-          <button class="icon-btn h-10 w-10 border-0 bg-white/10 hover:bg-white/15" :title="historyToggleLabel" @click="toggleHistoryPanel">
-            <span class="material-symbols-outlined text-base">chevron_right</span>
+        <div v-else class="mb-2 flex flex-col items-center gap-1 pt-1">
+          <button class="icon-btn h-7 w-7 border-0 bg-white/10 hover:bg-white/15" :title="historyToggleLabel" @click="toggleHistoryPanel">
+            <span class="material-symbols-outlined text-[15px]">chevron_right</span>
           </button>
-          <button class="icon-btn h-10 w-10 border-0 bg-white/10 hover:bg-white/15" :title="t('chatHub.newSession')" @click="createNewSession">
-            <span class="material-symbols-outlined">add</span>
+          <button class="icon-btn h-7 w-7 border-0 bg-white/10 hover:bg-white/15" :title="t('chatHub.newSession')" @click="createNewSession">
+            <span class="material-symbols-outlined text-[15px]">add</span>
           </button>
         </div>
 
@@ -109,7 +109,7 @@
               v-model.trim="sessionSearchQuery"
               type="text"
               :placeholder="t('common.search') || 'Search...'"
-              class="w-full rounded-xl border border-white/10 bg-white/6 px-9 py-2 text-sm text-text-primary placeholder-text-secondary outline-none transition-colors focus:border-primary/40 focus:bg-white/10"
+              class="control-input h-10 w-full rounded-xl !pl-11 !pr-9 text-sm"
             />
             <span class="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-text-secondary">search</span>
             <button
@@ -171,18 +171,7 @@
           </button>
         </div>
 
-        <div v-else class="immersive-scroll flex-1 overflow-y-auto space-y-2 pr-1">
-          <button
-            v-for="session in filteredSessions"
-            :key="session.id"
-            class="mx-auto flex h-10 w-10 items-center justify-center rounded-xl text-xs font-bold transition-colors"
-            :class="session.id === activeSessionId ? 'bg-primary/25 text-primary-light' : 'bg-white/10 text-text-secondary hover:text-white'"
-            :title="session.title || t('chatHub.sessionUntitled')"
-            @click="setActiveSession(session.id)"
-          >
-            {{ sessionInitial(session) }}
-          </button>
-        </div>
+        <div v-else class="flex-1"></div>
       </aside>
 
       <section
@@ -193,8 +182,8 @@
         <div class="pointer-events-none absolute left-10 bottom-10 h-32 w-32 rounded-full bg-accent-cyan/10 blur-3xl"></div>
 
         <div
-          class="relative flex items-center justify-between gap-2 md:flex-wrap md:gap-3 md:px-5 md:py-4"
-          :class="useAppImmersiveLayout ? 'px-3 pb-1.5 pt-0.5' : 'px-4 py-4'"
+          class="relative flex items-center justify-between gap-2 px-2.5 py-1.5 md:px-5 md:py-2.5"
+          :class="useAppImmersiveLayout ? 'px-1.5 pb-1 pt-0.5' : ''"
         >
           <div class="min-w-0">
             <div class="flex items-center gap-2">
@@ -215,8 +204,34 @@
           </div>
         </div>
 
-        <div ref="messagesContainer" class="immersive-scroll relative flex-1 overflow-y-auto overflow-x-hidden pb-3 pt-1.5 md:px-5 md:py-3" :class="useAppImmersiveLayout ? 'px-1.5' : 'px-2'">
-          <div class="mx-auto w-full max-w-[920px] space-y-3 md:space-y-4">
+        <div
+          v-if="researchStatus"
+          class="relative px-2.5 pb-1 md:px-5"
+          :class="useAppImmersiveLayout ? 'px-1.5 pb-0.5' : ''"
+        >
+          <div class="mx-auto flex w-full max-w-[1240px] flex-wrap items-center gap-1.5">
+            <span class="inline-flex items-center rounded-full bg-white/10 px-2.5 py-1 text-[11px] text-text-secondary">
+              <span class="material-symbols-outlined mr-1 text-[13px] text-primary">hub</span>
+              {{ researchStageLabel }}
+            </span>
+            <span class="inline-flex items-center rounded-full bg-primary/18 px-2.5 py-1 text-[11px] text-primary-light">
+              <span class="material-symbols-outlined mr-1 text-[13px]">workspace_premium</span>
+              {{ researchQualityLabel }}
+            </span>
+            <span class="inline-flex items-center rounded-full bg-white/10 px-2.5 py-1 text-[11px] text-text-secondary">
+              <span class="material-symbols-outlined mr-1 text-[13px]">library_books</span>
+              {{ researchEvidenceLabel }}
+            </span>
+          </div>
+        </div>
+
+        <div
+          ref="messagesContainer"
+          class="immersive-scroll relative flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 md:px-5 md:py-2.5"
+          :class="useAppImmersiveLayout ? 'px-1.5 py-1.5' : ''"
+          @scroll.passive="handleMessagesScroll"
+        >
+          <div class="mx-auto w-full space-y-3 md:space-y-4" :class="mainContentWidthClass">
             <div v-if="messages.length === 0" class="flex min-h-full items-center justify-center py-14 md:py-12">
               <div class="w-full max-w-2xl text-center">
                 <p class="text-2xl font-semibold tracking-tight text-white md:text-4xl">{{ t('chatHub.emptyState.title') }}</p>
@@ -258,9 +273,23 @@
                   ]"
                 >
                   <div class="mb-2 flex items-center justify-between gap-3">
-                    <p class="text-xs font-bold uppercase tracking-wider" :class="msg.role === 'user' ? 'text-primary-light' : 'text-text-secondary'">
-                      {{ msg.speaker }}
-                    </p>
+                    <div
+                      class="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-primary/20 px-2 py-1"
+                      :class="msg.role === 'user' ? 'bg-primary/20 text-primary-light' : 'bg-primary/15 text-primary-light'"
+                    >
+                      <span class="material-symbols-outlined text-[13px]">
+                        {{ msg.role === 'user' ? 'person' : 'smart_toy' }}
+                      </span>
+                      <p class="truncate text-[12px] font-semibold tracking-wide">
+                        {{ msg.speaker }}
+                      </p>
+                      <span
+                        v-if="msg.role === 'assistant' && (msg.agentId || msg.agent_id)"
+                        class="truncate text-[10px] text-primary-light/85"
+                      >
+                        @{{ msg.agentId || msg.agent_id }}
+                      </span>
+                    </div>
                     <p class="text-[11px] text-text-secondary">{{ formatTime(msg.timestamp) }}</p>
                   </div>
 
@@ -274,11 +303,19 @@
                     {{ msg.content }}
                   </p>
 
+                  <InlineEvidenceChain
+                    v-if="msg.role === 'assistant' && hasMessageEvidence(msg)"
+                    :chain="getMessageEvidenceChain(msg)"
+                    :packet="getMessageEvidencePacket(msg)"
+                    :task-brief="String(msg.taskBrief || msg.task_brief || '')"
+                    :locale-tag="languageTag()"
+                  />
+
                   <div v-if="msg.role === 'user' && msg.attachments && msg.attachments.length" class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
                     <div
                       v-for="att in msg.attachments"
                       :key="att.id || att.name"
-                      class="overflow-hidden rounded-xl bg-black/25"
+                      class="overflow-hidden rounded-xl bg-white/8"
                     >
                       <img
                         v-if="att.previewUrl"
@@ -298,13 +335,13 @@
               </div>
             </template>
 
-            <div v-if="turnInFlight" class="mx-auto w-full max-w-[97%] rounded-2xl bg-white/8 px-4 py-3 backdrop-blur-sm md:max-w-3xl">
+            <div v-if="turnInFlight" class="mx-auto w-full max-w-[97%] rounded-2xl bg-white/8 px-4 py-3 backdrop-blur-sm md:max-w-[86%]">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center gap-2 text-sm text-primary-light">
                   <span class="material-symbols-outlined animate-spin text-base">progress_activity</span>
                   <span class="font-semibold">{{ waitStageLabel }}</span>
                 </div>
-                <div class="rounded-full bg-black/25 px-2.5 py-1 text-xs text-text-secondary">
+                <div class="rounded-full bg-white/8 px-2.5 py-1 text-xs text-text-secondary">
                   {{ waitElapsedLabel }}
                 </div>
               </div>
@@ -351,14 +388,25 @@
                 </div>
               </div>
             </div>
+
+            <div v-if="showUnreadIncomingHint" class="sticky bottom-2 z-20 flex justify-center">
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 rounded-full bg-primary/85 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-primary/25 transition-colors hover:bg-primary"
+                @click="jumpToLatest"
+              >
+                <span class="material-symbols-outlined text-[14px]">south</span>
+                {{ unreadIncomingHintLabel }}
+              </button>
+            </div>
           </div>
         </div>
 
         <div
-          class="relative shrink-0 px-2 md:px-4 md:pb-4 md:pt-2"
+          class="relative shrink-0 px-2 md:px-5 md:pb-4 md:pt-2"
           :class="useAppImmersiveLayout ? 'pb-[calc(env(safe-area-inset-bottom,0px)+0.06rem)] pt-0' : 'pb-[calc(env(safe-area-inset-bottom,0px)+0.45rem)] pt-1'"
         >
-          <div class="mx-auto w-full max-w-[940px]">
+          <div class="mx-auto w-full" :class="mainContentWidthClass">
             <div v-if="selectedAttachments.length" class="mb-3 flex flex-wrap gap-2">
               <div
                 v-for="att in selectedAttachments"
@@ -375,7 +423,7 @@
               </div>
             </div>
 
-            <div ref="composerRef" class="relative rounded-[22px] bg-white/[0.06] p-2 shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl md:rounded-[28px] md:p-3">
+            <div ref="composerRef" class="chat-composer-surface relative rounded-[22px] p-2 backdrop-blur-xl md:rounded-[28px] md:p-3">
               <div class="mb-2 items-center gap-2 overflow-x-auto pb-1" :class="useAppImmersiveLayout ? 'hidden md:flex' : 'flex'">
                 <span class="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">{{ t('chatHub.composer.specialists') }}</span>
                 <button
@@ -412,7 +460,7 @@
                   v-model="inputMessage"
                   :rows="useAppImmersiveLayout ? 2 : (isMobileViewport ? 3 : 4)"
                   :placeholder="t('chatHub.inputPlaceholder')"
-                  class="w-full resize-none rounded-[18px] bg-black/18 px-4 py-3 text-sm leading-6 text-white placeholder-text-secondary outline-none transition-colors focus:bg-black/26 md:rounded-2xl"
+                  class="chat-input-surface w-full resize-none rounded-[18px] px-4 py-3 text-sm leading-6 text-white placeholder-text-secondary outline-none transition-all md:rounded-2xl"
                   @keydown="handleTextareaKeydown"
                   @compositionstart="handleCompositionStart"
                   @compositionend="handleCompositionEnd"
@@ -451,7 +499,7 @@
                     <input
                       v-model="knowledgeEnabled"
                       type="checkbox"
-                      class="h-4 w-4 rounded border-white/20 bg-black/30 text-primary focus:ring-primary/40"
+                      class="h-4 w-4 rounded border-white/20 bg-white/10 text-primary focus:ring-primary/40"
                     />
                     <span>{{ t('chatHub.knowledge.enabled') }}</span>
                   </label>
@@ -477,7 +525,7 @@
                       <div
                         v-for="agent in agents"
                         :key="agent.id"
-                        class="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs"
+                        class="rounded-lg border border-white/5 bg-white/5 px-2 py-1.5 text-xs"
                       >
                         <span class="font-semibold text-white">{{ agent.name }}</span>
                         <span class="text-text-secondary"> · @{{ agent.id }}</span>
@@ -532,6 +580,7 @@
             </div>
           </div>
         </div>
+
       </section>
     </div>
   </div>
@@ -545,6 +594,7 @@ import { useI18n } from '@/i18n';
 import { wsUrl } from '@/config/api';
 import { appendTokenToUrl, getAccessToken } from '@/services/authHeaders';
 import { useAuthStore } from '@/stores/auth';
+import InlineEvidenceChain from '@/components/common/InlineEvidenceChain.vue';
 
 marked.setOptions({
   gfm: true,
@@ -581,6 +631,9 @@ const connected = ref(false);
 const connecting = ref(false);
 const isMobileViewport = ref(false);
 const isNativeApp = ref(false);
+const isAtBottom = ref(true);
+const unreadIncomingCount = ref(0);
+const researchStatus = ref(null);
 
 const messagesContainer = ref(null);
 const composerRef = ref(null);
@@ -802,6 +855,34 @@ const starterPromptsForDisplay = computed(() => {
   if (isMobileViewport.value) return starterPrompts.value.slice(0, 4);
   return starterPrompts.value;
 });
+const showUnreadIncomingHint = computed(() => unreadIncomingCount.value > 0 && !isAtBottom.value);
+const unreadIncomingHintLabel = computed(() => {
+  if (languageTag().startsWith('zh')) {
+    return unreadIncomingCount.value > 1 ? `${unreadIncomingCount.value} 条新消息` : '有新消息';
+  }
+  return unreadIncomingCount.value > 1 ? `${unreadIncomingCount.value} new messages` : 'New message';
+});
+const researchStageLabel = computed(() => {
+  const stage = String(researchStatus.value?.workflow?.stage || 'ready');
+  const key = `chatHub.research.stages.${stage}`;
+  const fallback = languageTag().startsWith('zh') ? '研究进行中' : 'Research in progress';
+  const translated = t(key);
+  return translated === key ? fallback : translated;
+});
+const researchQualityLabel = computed(() => {
+  const score = Number(researchStatus.value?.quality?.score || 0);
+  const label = String(researchStatus.value?.quality?.label || '');
+  const prefix = languageTag().startsWith('zh') ? '研究质量' : 'Quality';
+  return `${prefix} ${score}${label ? ` · ${label}` : ''}`;
+});
+const researchEvidenceLabel = computed(() => {
+  const evidenceCount = Number(researchStatus.value?.evidence?.count || 0);
+  const sourceCount = Number(researchStatus.value?.evidence?.sources || 0);
+  return languageTag().startsWith('zh')
+    ? `证据 ${evidenceCount} · 来源 ${sourceCount}`
+    : `Evidence ${evidenceCount} · Sources ${sourceCount}`;
+});
+const mainContentWidthClass = computed(() => 'max-w-[1240px]');
 
 function languageTag() {
   return String(locale.value || 'zh-CN').startsWith('zh') ? 'zh-CN' : 'en-US';
@@ -906,6 +987,74 @@ function sanitizeMessages(list) {
   return (Array.isArray(list) ? list : []).filter((msg) => !isConnectionSystemMessage(msg));
 }
 
+function normalizeResearchStatus(status) {
+  if (!status || typeof status !== 'object') return null;
+  const workflow = status.workflow && typeof status.workflow === 'object' ? status.workflow : {};
+  const quality = status.quality && typeof status.quality === 'object' ? status.quality : {};
+  const evidence = status.evidence && typeof status.evidence === 'object' ? status.evidence : {};
+  return {
+    workflow: {
+      stage: String(workflow.stage || 'ready'),
+      status: String(workflow.status || 'running'),
+      turn: Number(workflow.turn || 0),
+      updated_at: workflow.updated_at || nowIso(),
+    },
+    quality: {
+      score: Number(quality.score || 0),
+      label: String(quality.label || ''),
+      components: quality.components && typeof quality.components === 'object' ? quality.components : {},
+      updated_at: quality.updated_at || nowIso(),
+    },
+    evidence: {
+      count: Number(evidence.count || 0),
+      sources: Number(evidence.sources || 0),
+      audit_entries: Number(evidence.audit_entries || 0),
+    },
+  };
+}
+
+function normalizeEvidenceChain(rawChain, maxItems = 24) {
+  if (!Array.isArray(rawChain)) return [];
+  return rawChain
+    .filter((item) => item && typeof item === 'object')
+    .slice(-maxItems)
+    .map((item, idx) => ({
+      kind: String(item.kind || 'tool_call'),
+      step: Number(item.step || idx + 1),
+      tool: String(item.tool || ''),
+      purpose: String(item.purpose || ''),
+      status: String(item.status || ''),
+      params: item.params && typeof item.params === 'object' ? item.params : {},
+      duration_ms: Number(item.duration_ms || 0),
+      output_preview: String(item.output_preview || ''),
+      sources: Array.isArray(item.sources) ? item.sources.map((url) => String(url || '').trim()).filter(Boolean).slice(0, 10) : [],
+      numeric_outputs: Array.isArray(item.numeric_outputs) ? item.numeric_outputs.map((num) => String(num || '').trim()).filter(Boolean).slice(0, 10) : [],
+      error: String(item.error || ''),
+      timestamp: item.timestamp || null,
+    }));
+}
+
+function normalizeEvidencePacket(rawPacket) {
+  if (!rawPacket || typeof rawPacket !== 'object') return {};
+  const keyPoints = Array.isArray(rawPacket.key_points) ? rawPacket.key_points : [];
+  const risks = Array.isArray(rawPacket.risks) ? rawPacket.risks : [];
+  return {
+    summary: String(rawPacket.summary || ''),
+    key_points: keyPoints.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 6),
+    risks: risks.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 5),
+    confidence: rawPacket.confidence ?? null,
+  };
+}
+
+function hasEvidencePacketContent(packet) {
+  if (!packet || typeof packet !== 'object') return false;
+  if (String(packet.summary || '').trim()) return true;
+  if (Array.isArray(packet.key_points) && packet.key_points.length > 0) return true;
+  if (Array.isArray(packet.risks) && packet.risks.length > 0) return true;
+  if (packet.confidence !== null && packet.confidence !== undefined && String(packet.confidence).trim() !== '') return true;
+  return false;
+}
+
 function buildSessionPreview(sessionMessages) {
   const reversed = [...sessionMessages].reverse();
   const found = reversed.find((msg) => msg.role === 'assistant' || msg.role === 'user');
@@ -919,22 +1068,29 @@ function buildSessionTitle(sessionMessages) {
 }
 
 function serializeMessages(sessionMessages) {
-  return sanitizeMessages(sessionMessages).slice(-MAX_SESSION_MESSAGES).map((msg) => ({
-    id: msg.id || makeId('msg'),
-    type: msg.type || 'message',
-    role: msg.role || 'user',
-    speaker: msg.speaker || '',
-    content: String(msg.content || ''),
-    timestamp: msg.timestamp || nowIso(),
-    level: msg.level || undefined,
-    agent_id: msg.agentId || msg.agent_id || undefined,
-    attachments: (msg.attachments || []).map((att) => ({
-      id: att.id || makeId('att'),
-      name: att.name || 'image',
-      mimeType: att.mimeType || att.mime_type || '',
-      size: Number(att.size || 0),
-    })),
-  }));
+  return sanitizeMessages(sessionMessages).slice(-MAX_SESSION_MESSAGES).map((msg) => {
+    const evidenceChain = normalizeEvidenceChain(msg.evidenceChain || msg.evidence_chain);
+    const evidencePacket = normalizeEvidencePacket(msg.evidencePacket || msg.evidence_packet);
+    return {
+      id: msg.id || makeId('msg'),
+      type: msg.type || 'message',
+      role: msg.role || 'user',
+      speaker: msg.speaker || '',
+      content: String(msg.content || ''),
+      timestamp: msg.timestamp || nowIso(),
+      level: msg.level || undefined,
+      agent_id: msg.agentId || msg.agent_id || undefined,
+      task_brief: String(msg.taskBrief || msg.task_brief || '').trim() || undefined,
+      evidence_chain: evidenceChain,
+      evidence_packet: hasEvidencePacketContent(evidencePacket) ? evidencePacket : undefined,
+      attachments: (msg.attachments || []).map((att) => ({
+        id: att.id || makeId('att'),
+        name: att.name || 'image',
+        mimeType: att.mimeType || att.mime_type || '',
+        size: Number(att.size || 0),
+      })),
+    };
+  });
 }
 
 function persistSessions() {
@@ -958,6 +1114,7 @@ function loadSessions() {
         preview: String(item.preview || ''),
         updatedAt: String(item.updatedAt || nowIso()),
         messages: Array.isArray(item.messages) ? item.messages : [],
+        researchStatus: normalizeResearchStatus(item.researchStatus),
       }))
       .filter((item) => item.id);
   } catch {
@@ -965,7 +1122,36 @@ function loadSessions() {
   }
 }
 
-function scrollToBottom() {
+function isNearBottom(threshold = 120) {
+  const el = messagesContainer.value;
+  if (!el) return true;
+  return (el.scrollHeight - (el.scrollTop + el.clientHeight)) <= threshold;
+}
+
+function handleMessagesScroll() {
+  const near = isNearBottom();
+  isAtBottom.value = near;
+  if (near) {
+    unreadIncomingCount.value = 0;
+  }
+}
+
+function jumpToLatest() {
+  unreadIncomingCount.value = 0;
+  scrollToBottom(true);
+}
+
+function handleIncomingUpdate() {
+  const near = isNearBottom();
+  if (near || isAtBottom.value) {
+    unreadIncomingCount.value = 0;
+    scrollToBottom(true);
+    return;
+  }
+  unreadIncomingCount.value += 1;
+}
+
+function scrollToBottom(forcePinned = false) {
   nextTick(() => {
     const el = messagesContainer.value;
     if (!el) return;
@@ -978,6 +1164,12 @@ function scrollToBottom() {
         const latest = messagesContainer.value;
         if (!latest) return;
         latest.scrollTop = latest.scrollHeight;
+        if (forcePinned) {
+          isAtBottom.value = true;
+          unreadIncomingCount.value = 0;
+        } else {
+          isAtBottom.value = isNearBottom();
+        }
       });
     });
   });
@@ -993,6 +1185,7 @@ function updateActiveSessionStore() {
     preview: buildSessionPreview(serialized),
     updatedAt: nowIso(),
     messages: serialized,
+    researchStatus: normalizeResearchStatus(researchStatus.value),
   };
 
   const idx = sessions.value.findIndex((item) => item.id === activeSessionId.value);
@@ -1016,6 +1209,7 @@ function ensureSessionExists(targetId) {
     preview: '',
     updatedAt: nowIso(),
     messages: [],
+    researchStatus: null,
   });
   persistSessions();
 }
@@ -1028,6 +1222,7 @@ function createSessionRecord() {
     preview: '',
     updatedAt: nowIso(),
     messages: [],
+    researchStatus: null,
   };
   sessions.value.unshift(item);
   sessions.value = [...sessions.value];
@@ -1045,13 +1240,16 @@ function setActiveSession(targetId) {
   activeSessionId.value = target.id;
   localStorage.setItem(LAST_SESSION_KEY, target.id);
   messages.value = sanitizeMessages(safeClone(target.messages || []));
+  researchStatus.value = normalizeResearchStatus(target.researchStatus);
   clearSelectedAttachments();
   mentionState.value = null;
   mentionActiveIndex.value = 0;
   showCollabPanel.value = false;
   mobileHistoryOpen.value = false;
+  unreadIncomingCount.value = 0;
+  isAtBottom.value = true;
   reconnectCurrentSession();
-  scrollToBottom();
+  scrollToBottom(true);
 }
 
 function createNewSession() {
@@ -1060,12 +1258,15 @@ function createNewSession() {
   localStorage.setItem(LAST_SESSION_KEY, item.id);
   messages.value = [];
   sessionId.value = item.id;
+  researchStatus.value = null;
   clearSelectedAttachments();
   mentionState.value = null;
   mentionActiveIndex.value = 0;
   showCollabPanel.value = false;
   mobileHistoryOpen.value = false;
   showAllSessions.value = false;
+  unreadIncomingCount.value = 0;
+  isAtBottom.value = true;
   reconnectCurrentSession();
 }
 
@@ -1115,11 +1316,13 @@ function deleteSession(targetId) {
       activeSessionId.value = created.id;
       sessionId.value = created.id;
       messages.value = [];
+      researchStatus.value = null;
     } else {
       const fallback = nextSessions[0];
       activeSessionId.value = fallback.id;
       sessionId.value = fallback.id;
       messages.value = safeClone(fallback.messages || []);
+      researchStatus.value = normalizeResearchStatus(fallback.researchStatus);
     }
     localStorage.setItem(LAST_SESSION_KEY, activeSessionId.value);
     reconnectCurrentSession();
@@ -1138,6 +1341,13 @@ function buildResumeHistory() {
       content: String(msg.content || ''),
       timestamp: msg.timestamp || nowIso(),
       agent_id: msg.agentId || msg.agent_id || undefined,
+      mode: msg.mode || undefined,
+      task_brief: String(msg.taskBrief || msg.task_brief || '').trim() || undefined,
+      evidence_chain: normalizeEvidenceChain(msg.evidenceChain || msg.evidence_chain),
+      evidence_packet: (() => {
+        const packet = normalizeEvidencePacket(msg.evidencePacket || msg.evidence_packet);
+        return hasEvidencePacketContent(packet) ? packet : undefined;
+      })(),
     }));
 }
 
@@ -1152,7 +1362,7 @@ function addSystemMessage(content, level = 'info') {
     timestamp: nowIso(),
   });
   updateActiveSessionStore();
-  scrollToBottom();
+  handleIncomingUpdate();
 }
 
 function addUserMessage(content, attachments = []) {
@@ -1166,10 +1376,13 @@ function addUserMessage(content, attachments = []) {
     timestamp: nowIso(),
   });
   updateActiveSessionStore();
-  scrollToBottom();
+  unreadIncomingCount.value = 0;
+  scrollToBottom(true);
 }
 
-function addAssistantMessage(agentId, agentName, content) {
+function addAssistantMessage(agentId, agentName, content, options = {}) {
+  const evidenceChain = normalizeEvidenceChain(options.evidence_chain);
+  const evidencePacket = normalizeEvidencePacket(options.evidence_packet);
   messages.value.push({
     id: makeId('agent'),
     type: 'message',
@@ -1177,12 +1390,16 @@ function addAssistantMessage(agentId, agentName, content) {
     agentId,
     speaker: agentName || agentId,
     content,
+    mode: options.mode || 'leader',
+    taskBrief: String(options.task_brief || '').trim(),
+    evidenceChain,
+    evidencePacket,
     timestamp: nowIso(),
   });
   turnGotAssistantMessage.value = true;
   turnStage.value = 'responding';
   updateActiveSessionStore();
-  scrollToBottom();
+  handleIncomingUpdate();
   maybeFinishTurn(false);
 }
 
@@ -1194,20 +1411,43 @@ function setThinking(agentId, isThinking) {
     }
     turnCurrentThinkingAgentId.value = agentId;
     turnStage.value = delegationActive.value ? 'collecting' : 'responding';
-    scrollToBottom();
+    if (isNearBottom() || isAtBottom.value) {
+      scrollToBottom(true);
+    }
     return;
   }
   thinkingAgentIds.value = thinkingAgentIds.value.filter((id) => id !== agentId);
   if (turnCurrentThinkingAgentId.value === agentId) {
     turnCurrentThinkingAgentId.value = '';
   }
-  scrollToBottom();
+  if (isNearBottom() || isAtBottom.value) {
+    scrollToBottom(true);
+  }
   maybeFinishTurn(false);
 }
 
 function clearThinking() {
   thinkingAgentIds.value = [];
   turnCurrentThinkingAgentId.value = '';
+}
+
+function getMessageEvidenceChain(msg) {
+  return normalizeEvidenceChain(msg?.evidenceChain || msg?.evidence_chain);
+}
+
+function getMessageEvidencePacket(msg) {
+  const packet = normalizeEvidencePacket(msg?.evidencePacket || msg?.evidence_packet);
+  return hasEvidencePacketContent(packet) ? packet : {};
+}
+
+function hasMessageEvidence(msg) {
+  const chain = getMessageEvidenceChain(msg);
+  const packet = getMessageEvidencePacket(msg);
+  if (chain.length > 0) return true;
+  if (String(packet.summary || '').trim()) return true;
+  if (Array.isArray(packet.key_points) && packet.key_points.length > 0) return true;
+  if (Array.isArray(packet.risks) && packet.risks.length > 0) return true;
+  return false;
 }
 
 function parseIncoming(event) {
@@ -1449,6 +1689,11 @@ function handleServerMessage(event) {
       turnStage.value = 'routing';
       break;
 
+    case 'research_status':
+      researchStatus.value = normalizeResearchStatus(data);
+      updateActiveSessionStore();
+      break;
+
     case 'delegation_started':
       delegationActive.value = true;
       delegationEverStarted.value = true;
@@ -1480,7 +1725,12 @@ function handleServerMessage(event) {
 
     case 'agent_message':
       setThinking(data.agent_id, false);
-      addAssistantMessage(data.agent_id, data.agent_name, data.content || '');
+      addAssistantMessage(data.agent_id, data.agent_name, data.content || '', {
+        mode: data.mode || 'leader',
+        task_brief: data.task_brief || '',
+        evidence_chain: data.evidence_chain || [],
+        evidence_packet: data.evidence_packet || {},
+      });
       break;
 
     case 'error':
@@ -2158,7 +2408,9 @@ function handleGlobalClick(event) {
 }
 
 function handleMessageImageLoad() {
-  scrollToBottom();
+  if (isNearBottom() || isAtBottom.value) {
+    scrollToBottom(true);
+  }
 }
 
 function handleBrowserOnline() {
@@ -2190,13 +2442,6 @@ watch([knowledgeEnabled, knowledgeCategory, locale], () => {
   sendStartSession();
 });
 
-watch(
-  () => messages.value.length,
-  () => {
-    scrollToBottom();
-  }
-);
-
 onMounted(() => {
   waitDurationStats.value = loadWaitDurationStats();
   updateNativeAppMode();
@@ -2223,11 +2468,12 @@ onMounted(() => {
   activeSessionId.value = initial;
   const target = sessions.value.find((item) => item.id === initial);
   messages.value = sanitizeMessages(safeClone(target?.messages || []));
+  researchStatus.value = normalizeResearchStatus(target?.researchStatus);
   sessionId.value = initial;
 
   reconnectCurrentSession();
   startReconnectWatchdog();
-  scrollToBottom();
+  scrollToBottom(true);
   document.addEventListener('click', handleGlobalClick);
   window.addEventListener('online', handleBrowserOnline);
   document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -2269,6 +2515,25 @@ watch(historyCollapsed, (next) => {
 
 .app-chat-immersive :deep(.overflow-y-auto::-webkit-scrollbar) {
   display: none;
+}
+
+.chat-composer-surface {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(135deg, rgba(18, 28, 43, 0.9), rgba(13, 22, 36, 0.84));
+  box-shadow:
+    0 12px 28px rgba(3, 8, 20, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.chat-input-surface {
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  background: linear-gradient(180deg, rgba(26, 36, 52, 0.9), rgba(20, 29, 43, 0.9));
+}
+
+.chat-input-surface:focus {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: linear-gradient(180deg, rgba(31, 43, 61, 0.94), rgba(24, 35, 50, 0.94));
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.14);
 }
 
 .analysis-markdown {

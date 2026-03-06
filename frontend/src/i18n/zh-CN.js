@@ -196,6 +196,32 @@ export default {
       direct: '直连专家',
       leader: 'Leader 路由'
     },
+    research: {
+      stages: {
+        ready: '待命',
+        routing: '路由分发',
+        responding: '输出回复',
+        delegating: '委派专家',
+        collecting: '收集中',
+        summarizing: '汇总结论',
+        disconnected: '已暂停',
+        error: '异常'
+      }
+    },
+    evidence: {
+      title: '证据账本',
+      subtitle: '可点击来源与数值证据，便于快速核验',
+      show: '显示证据',
+      hide: '隐藏证据',
+      close: '关闭证据面板',
+      source: '来源',
+      domain: '域名',
+      numeric: '数值',
+      sourceList: '来源链接',
+      numericList: '数值证据',
+      emptySources: '暂无来源链接',
+      emptyNumeric: '暂无数值证据'
+    },
     system: {
       connected: '已连接专家群聊',
       disconnected: '已断开专家群聊',
@@ -582,6 +608,8 @@ export default {
       // Roundtable specific
       meetingMinutes: '会议纪要',
       roundtableDiscussion: '头脑风暴',
+      expertChat: '专家群聊',
+      expertChatMemo: '专家群聊研究纪要',
       participatingExperts: '参与专家',
       discussionHistory: '讨论历史记录',
       clickToExpand: '点击展开查看完整讨论过程',
@@ -589,6 +617,16 @@ export default {
       conclusionReason: '会议结束原因',
       discussionTopic: '讨论主题',
       discussionDuration: '讨论时长',
+      researchTurn: '研究轮次',
+      researchQuality: '研究质量',
+      evidenceSources: '证据来源',
+      latestQuestion: '最新问题',
+      latestAnswer: '最新结论',
+      workflowStage: '流程阶段',
+      auditTrail: '审计轨迹',
+      noAuditEntries: '暂无审计记录',
+      confidenceShort: '置信度',
+      sourcesShort: '来源',
 
       // Analysis sections
       detailedAnalysis: '详细分析报告',
@@ -622,6 +660,7 @@ export default {
       // Actions
       actions: '操作',
       exportPdf: '导出 PDF',
+      exportAuditJson: '导出审计 JSON',
       exporting: '导出中...',
       shareReport: '分享报告',
       deleteReport: '删除报告',
@@ -675,9 +714,14 @@ export default {
     title: '知识库',
     subtitle: '上传、检索并管理研究资料',
     documentsCount: '篇文档',
+    searchResultsCount: '{count} 条搜索结果',
     searchPlaceholder: '搜索文档...',
+    clearSearch: '清除',
     upload: '上传',
     newCategory: '新建分类',
+    untitled: '未命名',
+    noDescription: '暂无描述',
+    match: '匹配',
 
     categories: {
       all: '全部文档',
@@ -710,6 +754,8 @@ export default {
 
     uploadModal: {
       title: '上传文档',
+      titleOptional: '标题（可选）',
+      titlePlaceholder: '文档标题',
       category: '分类',
       files: '文件',
       uploadPrompt: '点击上传或拖拽文件',
@@ -718,6 +764,21 @@ export default {
       file: '个文件',
       files: '个文件',
       cancel: '取消'
+    },
+
+    deleteDialog: {
+      title: '删除文档？',
+      message: '确认删除“{name}”吗？此操作不可恢复。'
+    },
+
+    toast: {
+      loadFailed: '加载文档失败',
+      uploadSuccess: '成功上传 {count} 个文件',
+      uploadFailed: '上传文件失败',
+      deleteSuccess: '文档删除成功',
+      deleteFailed: '删除文档失败',
+      searchSuccess: '已找到 {count} 条结果',
+      searchFailed: '搜索失败'
     }
   },
 
@@ -787,6 +848,9 @@ export default {
       llmProviderDesc: '选择用于 AI 分析的大语言模型提供商',
       useProLabel: '使用 Pro 模型',
       useProDesc: '开启后使用更强的推理模型，关闭后使用更快的 Flash 模型。',
+      autoTradingBetaLabel: '自动交易（Beta）',
+      autoTradingBetaDesc: '开启后在侧边栏显示自动交易前端入口，关闭时隐藏并禁止访问该页面。',
+      autoTradingBetaSwitched: '自动交易 Beta 开关已更新',
       currentModelLabel: '当前生效模型',
       modelSwitchSuccess: '模型切换成功',
       modelSwitchError: '模型切换失败: {error}',
@@ -1127,8 +1191,24 @@ export default {
       topicPlaceholder: '例如: 特斯拉 2024 Q4 的投资价值分析',
       expertsLabel: '参与专家',
       expertsSelected: '已选择',
+      expertPickerPlaceholder: '点击添加或移除专家...',
+      expertPickerEmpty: '请选择参与讨论的专家',
+      hostAutoIncluded: '讨论主持人会自动加入，无需手动选择。',
       roundsLabel: '讨论轮数',
       rounds: '轮',
+      knowledgeBase: '知识库',
+      enableKnowledge: '启用知识检索',
+      retrievalScope: '检索范围',
+      knowledgeScopeAll: '全部知识',
+      knowledgeScopeGeneral: '通用资料',
+      knowledgeScopeFinancial: '财务资料',
+      knowledgeScopeMarket: '市场资料',
+      knowledgeScopeLegal: '法律资料',
+      continueFromHistory: '延续历史讨论',
+      refreshList: '刷新列表',
+      loadingHistory: '正在加载讨论历史...',
+      noHistoryFound: '暂无历史记录',
+      historyHint: '将基于「{topic}」的会议纪要启动新讨论。专家会在继承既有结论的同时，继续提出新的观点与挑战。',
       startButton: '开始讨论',
       required: '必填'
     },
@@ -1166,7 +1246,11 @@ export default {
       currentRound: '当前轮数',
       messageCount: '消息数量',
       participants: '参与专家',
+      generateMinutes: '生成纪要',
+      generatingMinutes: '生成中...',
+      stopping: '停止中...',
       stopButton: '停止讨论',
+      exportShort: '导出',
       exportButton: '导出结果',
       status: {
         running: '进行中',
@@ -1179,6 +1263,33 @@ export default {
     summary: {
       title: '讨论总结',
       completed: '头脑风暴已完成'
+    },
+    evidence: {
+      title: '证据账本',
+      subtitle: '集中查看可验证来源和数值依据',
+      show: '显示证据',
+      hide: '隐藏证据',
+      close: '关闭证据面板',
+      source: '来源',
+      domain: '域名',
+      numeric: '数值',
+      sourceList: '来源链接',
+      numericList: '数值证据',
+      emptySources: '暂无来源链接',
+      emptyNumeric: '暂无数值证据'
+    },
+
+    system: {
+      discussionStarted: '讨论已启动，共 {count} 位专家加入',
+      knowledgeEnabled: '已启用知识检索（范围：{scope}）',
+      knowledgeDisabled: '未启用知识检索',
+      continueFromHistory: '基于历史讨论继续：「{topic}」',
+      resumingSession: '正在恢复上次讨论会话...',
+      recoveredSession: '已从后端恢复活跃讨论会话...',
+      reconnectingLost: '连接中断，正在尝试重连...',
+      stopRequestSent: '已发送停止指令，讨论正在结束...',
+      stopRequestFailed: '停止请求失败，已本地断开：{error}',
+      untitledResult: '未命名结果'
     },
 
     // Human-in-the-Loop (HITL)
